@@ -51,7 +51,7 @@ def main():
               for p in range(0, len(rom.data), 4093)))
 
     print("\ndisassembler")
-    syms = Symbols.load(os.path.join(ROOT, "symbols"))
+    syms = Symbols.load(os.path.join(ROOT, "romhack", "symbols"))
     res = Tracer(rom, syms).trace()
     check("traces a substantial body of code", len(res.insns) > 15000,
           f"{len(res.insns)} instructions")

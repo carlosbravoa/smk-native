@@ -137,15 +137,62 @@ largest single run is 726 bytes at `$C7602B`. This is a very full cartridge —
 anything substantial needs `smk expand`, which grows the image to 1 MB or
 2 MB and fixes the header size byte.
 
+## Mode 7 track pipeline — **verified**
+
+This is what the native renderer runs on.  Three assets per track, uploaded by
+two DMA routines whose sizes gave the whole structure away:
+
+| routine | size | destination | meaning |
+|---|---|---|---|
+| `$81E7B5` | `$4000` | VRAM **low** bytes from `$7F:0000` | 128×128 tilemap |
+| `$81E769` | `$3000` | VRAM **high** bytes from `$7F:4000` | 192 Mode 7 tiles |
+
+### Tilemaps are compressed twice
+
+`$81E745` is the loader, and the double decompression is why a single ROM-wide
+scan finds almost no 16384-byte streams:
+
+```
+jsr $E64A          ; x = track * 3
+lda.l $81EB5B,x    ; -> Y  source address
+lda.l $81EB5D,x    ; -> A  source bank
+ldx #$C000
+jsl $84E09E        ; ROM      -> $7F:C000   (still compressed)
+ldy #$C000 / lda #$007F / ldx #$0000
+jsl $84E09E        ; $7F:C000 -> $7F:0000   (the actual 16384-byte map)
+```
+
+Table `$81EB5B` has **24 entries** — 20 GP courses plus 4 battle courses — and
+all 24 decode to exactly 16384 bytes.
+
+### Tiles are 4bpp packed with a per-tile palette base
+
+The expander at `$84E3C7` turns the blob from table `$81EBA3` into Mode 7's
+linear 8bpp tiles:
+
+```
++$000   one palette-base byte per tile (256 bytes)
++$100   32 bytes per tile: two 4-bit pixels per byte, LOW nibble first
+```
+
+Each nibble becomes one 8-bit pixel; a **non-zero** nibble is OR-ed with that
+tile's palette base, which is how a 16-colour tile reaches anywhere in the
+256-colour Mode 7 palette. Zero is the backdrop index and is left alone.
+`0x100 + 192*32 = 6400` — exactly the size of the tileset blob.
+
 ## Not yet established
 
 - The pixel layout of each graphics blob class. `smk gfx --identify` scores
   the candidates, and palettes decode correctly, but the per-asset tile
   format has not been confirmed against the game's own upload code for every
   table. Treat rendered PNGs as provisional.
-- Track layout data. No blob decompresses to 128×128 = 16384 bytes except
-  one at `$C70B29`, and its content is tile pixels rather than a tilemap, so
-  track geometry is stored some other way and has not been located.
+- **Which tileset and palette belong to each track.** All 24 tilemaps decode,
+  but only entry 1 of `$81EBA3` is a full 192-tile set, so the renderer
+  currently uses it for every course. The per-course theme selection is set
+  somewhere in the race-mode setup and has not been traced.
+- **The start line, and the surface-behaviour table** that says which tile is
+  road, grass, wall or boost. Both are needed before collision or lap logic.
+- Kart physics, item behaviour, and the AI racing lines.
 - The audio engine, object/kart behaviour tables, and text encoding.
 - 8% of the ROM is traced as code. The remainder is a mix of data and code
   reachable only through dispatch paths not yet resolved (52 indirect sites

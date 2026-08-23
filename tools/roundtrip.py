@@ -21,7 +21,7 @@ ASAR = os.path.join(ROOT, "vendor", "asar-build", "asar", "bin", "asar")
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", default=os.path.join(ROOT, "rom", "smk_usa.sfc"))
-    ap.add_argument("--syms", default=os.path.join(ROOT, "symbols"))
+    ap.add_argument("--syms", default=os.path.join(ROOT, "romhack", "symbols"))
     ap.add_argument("--keep", action="store_true", help="keep the temp asm/rom")
     a = ap.parse_args()
 

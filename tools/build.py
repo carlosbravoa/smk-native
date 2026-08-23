@@ -44,7 +44,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", default=os.path.join(ROOT, "rom", "smk_usa.sfc"))
     ap.add_argument("--out", default=os.path.join(ROOT, "build", "smk.sfc"))
-    ap.add_argument("--asm", default=os.path.join(ROOT, "src", "main.asm"))
+    ap.add_argument("--asm", default=os.path.join(ROOT, "romhack", "src", "main.asm"))
     ap.add_argument("--symfile", default=os.path.join(ROOT, "build", "smk.sym"))
     ap.add_argument("--assets", default=os.path.join(ROOT, "assets", "import"))
     ap.add_argument("-q", "--quiet", action="store_true")

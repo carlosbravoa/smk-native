@@ -15,7 +15,7 @@ from smktool import gfx as G
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEF_ROM = os.path.join(ROOT, "rom", "smk_usa.sfc")
-DEF_SYMS = os.path.join(ROOT, "symbols")
+DEF_SYMS = os.path.join(ROOT, "romhack", "symbols")
 
 
 def load(args) -> tuple[Rom, Symbols]:
@@ -133,6 +133,50 @@ def cmd_health(args):
     h = health(rom, Tracer(rom, syms).trace())
     h["coverage_pct"] = round(100 * h["coverage_bytes"] / len(rom.data), 3)
     print(json.dumps(h, indent=2))
+
+
+def cmd_lin(args):
+    """Linear disassembly from an address with explicit starting flags.
+
+    Use when the tracer has not reached a routine yet - a loader called only
+    through a dispatch path, say.  You supply M and X; getting them wrong
+    desynchronises the output, which is itself a useful signal.
+    """
+    rom, syms = load(args)
+    from smktool.opcodes import FORMAT, TERMINATORS
+    tr = Tracer(rom, syms)
+    a = parse_addr(args.addr)
+    m, x = args.m, args.x
+    for _ in range(args.count):
+        try:
+            pc = rom.snes_to_pc(a)
+        except MappingError:
+            print("  <unmapped>"); break
+        i = tr.decode(a, pc, m, x)
+        if i is None:
+            break
+        raw = " ".join("%02X" % b for b in rom.data[pc:pc + i.size])
+        if i.mode in ("immM", "immX"):
+            op = (" #$%02X" if i.size - 1 == 1 else " #$%04X") % i.operand
+        elif i.mode in ("rel", "rell"):
+            op = " $%06X" % i.target
+        elif i.mode == "bm":
+            op = " $%02X,$%02X" % (i.operand & 0xFF, i.operand >> 8)
+        else:
+            op = FORMAT.get(i.mode, "").format(i.operand)
+        nm = syms.ram_name(i.operand) if i.mode.startswith(("ab", "dp")) else None
+        print("  $%06X %-11s M=%d X=%d  %s%s%s"
+              % (a, raw, m, x, i.mnem.lower(), op, ("   ; " + nm) if nm else ""))
+        if i.mnem == "REP":
+            if i.operand & 0x20: m = 0
+            if i.operand & 0x10: x = 0
+        elif i.mnem == "SEP":
+            if i.operand & 0x20: m = 1
+            if i.operand & 0x10: x = 1
+        if i.mnem in TERMINATORS or i.mnem in ("RTL", "RTI"):
+            if args.stop:
+                break
+        a = (a & 0xFF0000) | ((a + i.size) & 0xFFFF)
 
 
 def cmd_hex(args):
@@ -271,6 +315,13 @@ def main():
 
     s = sub.add_parser("health", help="trace quality metrics (desync detectors)")
     s.set_defaults(fn=cmd_health)
+
+    s = sub.add_parser("lin", help="linear disassembly with given M/X")
+    s.add_argument("addr")
+    s.add_argument("-n", "--count", type=int, default=40)
+    s.add_argument("-m", type=int, default=0); s.add_argument("-x", type=int, default=0)
+    s.add_argument("--stop", action="store_true", help="stop at first terminator")
+    s.set_defaults(fn=cmd_lin)
 
     s = sub.add_parser("hex", help="hex dump at a snes address or file offset")
     s.add_argument("addr"); s.add_argument("-n", "--len", default="0x100")
