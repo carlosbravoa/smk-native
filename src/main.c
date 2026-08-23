@@ -68,7 +68,26 @@ typedef struct {
 
 static const kart_feel FEEL = { .speed = 3.6f, .turn = 0.048f };
 
-static void step_camera(smk_camera *cam, const input_state *in, float *vel)
+/* Blocked-movement response.
+ *
+ * PLACEHOLDER: the game's own wall handling is at $80F8C0 - when the surface
+ * byte has bit 5 set it writes $8000 to $42,x and $80 to $26,x, i.e. it
+ * enters a collision state with its own recovery.  Until that is decoded
+ * (roadmap P3) we simply refuse the move, trying each axis separately so
+ * grazing a wall slides along it instead of stopping dead.
+ */
+static void move_blocked(const smk_track *t, smk_camera *cam,
+                         float nx, float ny, float *vel)
+{
+    bool bx = smk_surface_solid(smk_track_surface(t, (int)nx, (int)cam->y));
+    bool by = smk_surface_solid(smk_track_surface(t, (int)cam->x, (int)ny));
+    if (!bx) cam->x = nx;
+    if (!by) cam->y = ny;
+    if (bx && by) *vel *= 0.25f;
+}
+
+static void step_camera(const smk_track *trk, smk_camera *cam,
+                        const input_state *in, float *vel)
 {
     float target = 0.0f;
     if (in->up)   target += FEEL.speed * (in->shift ? 1.9f : 1.0f);
@@ -82,14 +101,21 @@ static void step_camera(smk_camera *cam, const input_state *in, float *vel)
     /* steering authority falls off when barely moving, as it should */
     cam->angle += steer * (0.35f + 0.65f * fminf(fabsf(*vel) / FEEL.speed, 1.0f));
 
-    cam->x += cosf(cam->angle) * *vel;
-    cam->y += sinf(cam->angle) * *vel;
+    float nx = cam->x + cosf(cam->angle) * *vel;
+    float ny = cam->y + sinf(cam->angle) * *vel;
 
     /* the world wraps; the SNES tilemap does too */
-    if (cam->x < 0) cam->x += SMK_WORLD_PX;
-    if (cam->y < 0) cam->y += SMK_WORLD_PX;
-    if (cam->x >= SMK_WORLD_PX) cam->x -= SMK_WORLD_PX;
-    if (cam->y >= SMK_WORLD_PX) cam->y -= SMK_WORLD_PX;
+    if (nx < 0) nx += SMK_WORLD_PX;
+    if (ny < 0) ny += SMK_WORLD_PX;
+    if (nx >= SMK_WORLD_PX) nx -= SMK_WORLD_PX;
+    if (ny >= SMK_WORLD_PX) ny -= SMK_WORLD_PX;
+
+    if (smk_surface_solid(smk_track_surface(trk, (int)nx, (int)ny)))
+        move_blocked(trk, cam, nx, ny, vel);
+    else {
+        cam->x = nx;
+        cam->y = ny;
+    }
 }
 
 /* ------------------------------------------------------------------ */
@@ -304,7 +330,7 @@ int main(int argc, char **argv)
             }
             input_edges_clear(&in);
 
-            step_camera(&cam, &in, &vel);
+            step_camera(&trk, &cam, &in, &vel);
         }
         (void)stepped;   /* edges deliberately survive a tickless iteration */
 
@@ -325,7 +351,8 @@ int main(int argc, char **argv)
             char title[192];
             snprintf(title, sizeof title,
                      "Super Mario Kart  -  track %d  theme %d  -  "
-                     "%dx%d  %.0f fps", track, trk.theme, rw, rh,
+                     "%dx%d  surface $%02X  %.0f fps", track, trk.theme, rw, rh,
+                     smk_track_surface(&trk, (int)cam.x, (int)cam.y),
                      frames / secs);
             SDL_SetWindowTitle(win, title);
             frames = 0; fps_t0 = t1;

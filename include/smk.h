@@ -56,8 +56,15 @@ int smk_track_theme(const smk_rom *rom, int track);
 #define SMK_TILE_COUNT    192
 #define SMK_WORLD_PX      (SMK_MAP_DIM * SMK_TILE_PX)   /* 1024 */
 
+/* Surface behaviour, one byte per tile index, from the ROM's table.
+ * The physics at $80FA8C reads exactly this array (RAM $0B00) and the
+ * collision test at $80F8A7 is `and #$0020`. */
+#define SMK_SURF_SOLID   0x20u    /* bit 5: blocks the kart                 */
+#define SMK_SURF_SPECIAL 0x80u    /* bit 7: handled separately ($80FA8F)    */
+
 typedef struct {
     uint8_t  map[SMK_MAP_BYTES];                    /* tile index per cell   */
+    uint8_t  surface[SMK_TILE_COUNT];               /* behaviour per tile    */
     uint8_t  tiles[SMK_TILE_COUNT * SMK_TILE_BYTES];/* expanded 8bpp pixels  */
     uint32_t palette[256];                          /* 0xRRGGBB              */
     int      track;
@@ -74,6 +81,11 @@ void smk_track_guess_start(const smk_track *t, float *x, float *y, float *angle)
 
 /* Colour of a world pixel, wrapping at the 1024x1024 edge. */
 uint32_t smk_track_texel(const smk_track *t, int wx, int wy);
+
+/* Surface byte under a world position, exactly as $80FA62 computes it:
+ * index = (y >> 3) * 128 + (x >> 3), then map -> surface table. */
+uint8_t smk_track_surface(const smk_track *t, int wx, int wy);
+static inline bool smk_surface_solid(uint8_t s) { return (s & SMK_SURF_SOLID) != 0; }
 
 /* ---- Mode 7 camera and renderer --------------------------------------- */
 

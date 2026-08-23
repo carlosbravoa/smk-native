@@ -100,4 +100,52 @@ game's own code for all 24 tracks, checked in `tools/test.py`.
 
 ---
 
-*(next entry: 011)*
+**011** — Surface behaviour found, and with it the start of the kart RAM map.
+`$80FA62` is the per-kart surface lookup and reads as plainly as it gets:
+
+```
+lda $1C,x        ; kart Y
+asl A x4 / and #$3F80      ; (Y>>3)*128
+lda $18,x        ; kart X
+lsr A x3 / ora $00         ; + (X>>3)
+tax / lda $7F0000,x        ; tilemap byte
+tax / lda $0B00,x          ; <- surface table, RAM $0B00
+sta $68,x                  ; kart's current surface
+```
+
+RAM `$0B00` is filled by `$81EB11`: decompress `$87:FDBA`, then copy **192
+bytes** (one per Mode 7 tile) from the per-theme 16-bit offset in table
+`$81EB4B`. Offsets: `$100 $40 $129 $283 $205 $2E7 $1A9 $367`.
+
+The blob decompresses to only 883 bytes, so themes 5 and 7 read past its
+end. That is not a decode error — Rainbow Road (theme 7) genuinely comes
+back as `$00` for almost every tile, which is exactly right for a course
+that is road surrounded by nothing.
+
+Semantics established so far, from the consumer at `$80F8A5`:
+
+* **bit 5 (`$20`) = solid.** `lda $68,x / and #$0020 / bne` jumps to the
+  collision response, which writes `$8000` to `$42,x` and `$80` to `$26,x`.
+* bit 7 (`$80`) is a separate class, branched out at `$80FA8F`.
+* out of bounds (`>= $400` on either axis) sets bit 0 of `$10,x` and forces
+  surface `$40`.
+
+Kart RAM map so far (indexed by a per-kart X):
+
+| addr | meaning |
+|---|---|
+| `$18,x` | X position, world pixels 0..1023 |
+| `$1C,x` | Y position |
+| `$2A,x` | angle (fed to DSP-1 sin/cos at `$80F8CF`) |
+| `$10,x` | flags; bit 0 = off the map |
+| `$42,x` | collision state |
+| `$58,x` | current tilemap index |
+| `$68,x` | current surface byte |
+
+Verified: our surface tables are byte-identical to the game's `$81EB11`
+for all 8 themes. Rendering each course coloured by surface class produces
+clean regions that follow road, grass, walls, water and Rainbow Road's void.
+
+---
+
+*(next entry: 012)*

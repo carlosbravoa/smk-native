@@ -8,6 +8,8 @@
 #define TBL_TILESET  0x81EBA3u   /* packed 4bpp tiles + palette-base table */
 #define TBL_PALETTE  0x81EBBBu   /* 256 colours, BGR555                    */
 #define TBL_THEME    0x81EC2Fu   /* 24 bytes, track -> theme*2 ($81EC5E)   */
+#define SURF_BLOB    0x87FDBAu   /* compressed surface behaviour data       */
+#define TBL_SURF_OFF 0x81EB4Bu   /* per-theme 16-bit offset into that blob  */
 
 /* We mirror WRAM bank $7F, because the game's loads are not independent:
  * each decompresses through the staging area at $7F:C000 and the next one
@@ -66,6 +68,30 @@ static uint32_t bgr555(uint16_t v)
     /* scale 5 bits to 8 properly, not just <<3 */
     r = (r * 255 + 15) / 31; g = (g * 255 + 15) / 31; b = (b * 255 + 15) / 31;
     return (r << 16) | (g << 8) | b;
+}
+
+/* Surface behaviour table, per $81EB11:
+ *     decompress $87:FDBA, then copy 192 bytes starting at
+ *     $81EB4B[theme] into RAM $0B00.
+ * 192 is not a coincidence - it is one byte per Mode 7 tile. */
+static bool load_surface(const smk_rom *rom, int theme, uint8_t *out)
+{
+    static uint8_t buf[WRAM_SIZE];
+    memset(buf, 0, sizeof buf);
+    long n = smk_decompress_into(rom->data, rom->size,
+                                 smk_snes_to_pc(rom, SURF_BLOB),
+                                 buf, WRAM_SIZE, 0, NULL);
+    if (n < 0) return false;
+    uint32_t tp = smk_snes_to_pc(rom, TBL_SURF_OFF) + (uint32_t)theme * 2u;
+    uint32_t off = (uint32_t)rom->data[tp] | ((uint32_t)rom->data[tp + 1] << 8);
+    if (off >= WRAM_SIZE) return false;
+    /* Some themes read past the end of the decompressed blob - Rainbow Road
+     * most of all, which is why almost all of its tiles come back $00
+     * ("nothing there").  The game reads whatever WRAM held; we read the
+     * zeroed buffer, which is the same answer for a freshly cleared bank. */
+    (void)n;
+    memcpy(out, buf + off, SMK_TILE_COUNT);
+    return true;
 }
 
 /* Decompress table[index] into the WRAM image at `dest`. */
@@ -130,7 +156,21 @@ bool smk_track_load(const smk_rom *rom, int track, int theme,
     for (int i = 0; i < 256; i++)
         out->palette[i] = bgr555((uint16_t)(wram[STAGE_OFF + i * 2]
                                           | wram[STAGE_OFF + i * 2 + 1] << 8));
+
+    /* --- surface behaviour ------------------------------------------- */
+    if (!load_surface(rom, theme, out->surface)) {
+        snprintf(err, errsz, "theme %d: cannot load the surface table", theme);
+        return false;
+    }
     return true;
+}
+
+uint8_t smk_track_surface(const smk_track *t, int wx, int wy)
+{
+    wx &= (SMK_WORLD_PX - 1);
+    wy &= (SMK_WORLD_PX - 1);
+    unsigned tile = t->map[(wy >> 3) * SMK_MAP_DIM + (wx >> 3)];
+    return tile < SMK_TILE_COUNT ? t->surface[tile] : 0;
 }
 
 uint32_t smk_track_texel(const smk_track *t, int wx, int wy)
@@ -145,10 +185,10 @@ uint32_t smk_track_texel(const smk_track *t, int wx, int wy)
 /* Pick a plausible starting spot.
  *
  * PLACEHOLDER: the real per-track start line lives in track data that has
- * not been decoded yet.  Until then, look for the longest horizontal run of
- * a single tile whose width is road-like (4..24 tiles) and start in the
- * middle of it, facing along the run.  That lands on tarmac on every one of
- * the 24 maps, which is enough to drive around and look at things.
+ * not been decoded yet (roadmap P2).  Until then, look for the longest
+ * horizontal run of a single non-solid tile whose width is road-like
+ * (4..24 tiles) and start in the middle of it, facing along the run.  That
+ * lands on drivable ground on every one of the 24 maps.
  */
 void smk_track_guess_start(const smk_track *t, float *x, float *y, float *angle)
 {
@@ -162,7 +202,9 @@ void smk_track_guess_start(const smk_track *t, float *x, float *y, float *angle)
             if (tx && v == cur) {
                 run++;
             } else {
-                if (run >= 4 && run <= 24 && run > best_len) {
+                bool drivable = cur < SMK_TILE_COUNT
+                                && !smk_surface_solid(t->surface[cur]);
+                if (drivable && run >= 4 && run <= 24 && run > best_len) {
                     best_len = run;
                     best_tx  = tx - run / 2 - 1;
                     best_ty  = ty;
