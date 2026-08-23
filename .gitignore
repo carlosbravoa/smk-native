@@ -4,9 +4,13 @@
 rom/*
 !rom/README.md
 build/
+build-native/
+build*/
 assets/extracted/
 vendor/asar/
 vendor/asar-build/
+build-native/
+build*/
 *.sfc
 *.smc
 *.srm
