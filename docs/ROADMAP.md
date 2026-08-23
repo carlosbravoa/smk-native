@@ -1,0 +1,216 @@
+# Roadmap: a faithful native Super Mario Kart
+
+Goal: the game running on PC, SDL2, no emulator, **as faithful as possible**
+to the SNES original. "Faithful" means: behaviour derived from the ROM's own
+code and data, not from how it looks in videos or how another remake did it.
+
+This file is the single place where we are honest about the gap between the
+two. Every shortcut lives in the ledger below; a shortcut not written down
+here is a bug in this file.
+
+---
+
+## Working principles
+
+**1. Decode first, write later.**
+The expensive, uncertain work is reading the 65816 — the C is easy once the
+truth is known. So each phase front-loads the reverse engineering: pull the
+tables, decode the routines, prove the format with throwaway scripts, and
+only then write engine code. Writing the engine first and "filling in the
+real values later" is how inherited fiction becomes permanent — every value
+we invent today reads like a decoded fact in six months.
+
+**2. Build the oracle before the port.**
+For behaviour (physics especially), the strongest verification is to run the
+game's *own* routines and compare. Plan: a minimal 65816 interpreter (we
+already have the full opcode table and flag model in `tools/smktool/`) that
+can execute an isolated ROM routine over a RAM snapshot. Feed both the
+original routine and our C port the same state, diff the outputs across
+thousands of states. This is more work up front than eyeballing — and it is
+the *only* way to know the physics is right rather than plausible. This is
+the "complex task first" rule applied: the oracle is the complex task.
+
+**3. The game's arithmetic, not equivalents.**
+The original is 16-bit fixed-point with wraparound, signed shifts, and
+lookup tables. Reimplement in the same integer arithmetic. Float
+"equivalents" drift, and drift in a racing game is feel.
+
+**4. Every invented value is labelled at the point of use.**
+A `PLACEHOLDER`/`NOT the game's` comment in the code, and a row in the
+ledger here. When a phase replaces one, delete the row.
+
+**5. One decode log.**
+`docs/NOTES.md`, numbered entries, addresses included, ruled-out hypotheses
+kept and marked superseded rather than deleted. Negatives stop us
+re-investigating.
+
+---
+
+## Shortcut & assumption ledger (current)
+
+| # | where | what we do | what the game does | phase |
+|---|---|---|---|---|
+| S1 | `src/main.c` `FEEL`, `step_camera` | invented accel/steer constants, exponential speed lag | its own fixed-point kart physics, undecoded | P3 |
+| S2 | `src/assets.c` `smk_track_guess_start` | longest-road-run heuristic for the start position | per-track start line + grid layout, undecoded | P2 |
+| S3 | `src/main.c` (`tileset 1` everywhere) | one 192-tile set for all 24 tracks | per-course theme binding, undecoded | P1 |
+| S4 | `src/mode7.c` camera (`height 15, horizon 0.36, fov 0.55`) | hand-tuned to look right | M7A–D matrix + HDMA table computed per frame by the game | P3 |
+| S5 | `src/mode7.c` `sky_colour` | invented vertical gradient from palette entries 1–2 | BG2 backdrop / per-track horizon graphics | P5 |
+| S6 | everywhere | no collision — camera flies over walls | surface-behaviour table per tile, undecoded | P1 |
+| S7 | renderer | full-resolution smooth perspective | 256×224, per-scanline integer matrix | keep — named divergence, this is the point of a PC port. `--pixel` restores chunk. |
+| S8 | no audio | silence | SPC700 + S-DSP running its own program | P7 |
+
+---
+
+## Phases
+
+Ordered so that each unlocks the next, and the scary unknowns are probed
+early (see "Risks probed" lines — a risk we discover in phase 6 that
+invalidates phase 3 work is the failure mode to avoid).
+
+### P0 — Verification infrastructure (the oracle)
+*Do this before any behaviour work.*
+
+- Minimal 65816 interpreter over the ROM image + a flat RAM array: enough to
+  run a leaf routine to its RTS/RTL. Reuse `smktool.opcodes`; skip
+  interrupts, skip PPU. Add DSP-1 stubbing hooks (see risk R1).
+- Harness: set up RAM/registers from a JSON description, run routine, dump
+  the RAM/registers it touched.
+- Acceptance: it reproduces the decompressor at `$84E09E` byte-for-byte
+  against our C codec on all 69 assets. That validates the interpreter
+  itself against something we already trust.
+
+**Risks probed:** whether oracle-based verification is viable at all; DSP-1
+call frequency (R1).
+
+### P1 — The track, completely
+- **Surface-behaviour table**: which tile index is road / offroad / wall /
+  boost / jump / pit. Approach: the physics reads it every frame — find who
+  indexes RAM with `(y>>3)*128 + (x>>3)`-shaped math, or who reads the
+  tilemap copy in WRAM. This table gates *everything*: collision, speed on
+  grass, lap logic.
+- **Per-track theme bindings** (S3): which tileset+palette per course. It is
+  set during race-mode init; trace mode 6's setup path.
+- **Track object lists**: item boxes, coins, pipes, oil, jumps — their
+  positions must live in per-track data near the tilemap pointers.
+- Acceptance: render all 24 tracks with correct themes; overlay the surface
+  classes as colour; the overlay must visibly match roads/walls.
+
+### P2 — Start line, checkpoints, lap logic
+- Real start positions and grid (kills S2).
+- Lap counting is checkpoint-based (the game detects backwards driving), so
+  there is per-track checkpoint data. Find it near the object lists.
+- Acceptance: our lap counter agrees with the checkpoint data on a hand-driven
+  path around each track.
+
+### P3 — Kart physics (the core of "feel")
+The largest decode. Sub-order:
+1. Locate the per-frame kart update in race mode (mode 6 handlers; the kart
+   state block in RAM — position, velocity, angle — is findable by watching
+   which RAM the M7 matrix math consumes).
+2. Decode: accel/brake curves, steering + drift/hop, surface speed modifiers
+   (needs P1), wall response, jump/ramp physics.
+3. Port to C in the same fixed-point. Verify each sub-routine against the
+   P0 oracle over swept input states, not by feel.
+4. Only after the oracle agrees: replace S1, derive the camera from the kart
+   state the way the game computes its matrix (kills S4).
+- Acceptance: oracle diff = 0 over the swept state space for each ported
+  routine; then a human lap of Mario Circuit 1 that feels right.
+
+### P4 — Sprites: karts and objects on the plane
+- Kart sprite sheets (many rotation frames), character palettes, the
+  world→screen projection for sprites (scale by distance — the game has a
+  table for it), sprite sorting against the ground plane.
+- Acceptance: contact sheet of every character's rotation frames; a kart
+  rendered on-track at the right scale for its distance.
+
+### P5 — Race furniture
+- Item boxes, coins, pipes/obstacles behaving; the real horizon/backdrop
+  per track (kills S5); start-light sequence.
+
+### P6 — Opponents
+- AI drives per-track waypoint/racing-line data (it must exist — find it
+  with the object lists in P1). Rubber-banding parameters. Items later;
+  plain driving opponents first.
+
+### P7 — Audio
+- Faithful = run the game's own SPC700 program on an emulated SPC700+S-DSP
+  core, uploaded from the ROM exactly as the game does, and speak to it
+  through the 4 APU ports with the same command protocol the 65816 side
+  uses. This is the register-stream philosophy: don't re-synthesize, run the
+  original driver.
+- Decision to make when we get there: vendor an existing permissively-
+  licensed SPC core vs. write one. Do not hand-convert music.
+- Acceptance: A/B a recording of the title theme against an emulator.
+
+### P8 — Modes, menus, HUD, polish
+- Time trial first (no AI dependency), then GP structure, points, ranks.
+- HUD (the game renders it on BG1 over Mode 7), menus, 2P split-screen
+  (two Mode 7 views — renderer already resolution-independent, cheap for us).
+
+---
+
+## Risks — what could bite us
+
+**R1 — The DSP-1 coprocessor sits inside the physics.**
+The cart has a DSP-1 (cart type `$05`), used for Mode 7 maths — likely
+raster→world projection and possibly kart position/rotation maths. If the
+physics calls into it, "decode the physics" includes "decode which DSP-1
+commands are used and reimplement those". Mitigation: probe **early** (P0
+oracle work): find all reads/writes to `$6000/$7000` (DSP data/status), log
+which commands race mode issues. DSP-1 commands are publicly documented
+maths (multiply, inverse, rotate, project) — reimplementable — but we must
+know *which* and *where* before P3 planning, not during.
+
+**R2 — No reference emulator in the loop yet.**
+The oracle (P0) verifies routine-level fidelity, but whole-frame behaviour
+(interrupt timing, HDMA effects) has no ground truth on this machine yet.
+Mitigation: keep P0's scope honest (leaf routines), and when a whole-frame
+question appears, build/install a debug-friendly emulator then — not
+speculatively now.
+
+**R3 — Fixed-point subtleties.**
+65816 signed shifts, BCD/decimal-mode arithmetic (the game may use it for
+score/time), 16-bit wraparound, and the M/X width dance. The C port must
+match bit-for-bit; the oracle exists to catch exactly this. Never "clean up"
+an odd-looking computation — oddness is usually load-bearing.
+
+**R4 — RAM map archaeology.**
+Physics decode is really RAM-map decode: the kart state block, the surface
+table copy, the object array. Approach: name RAM addresses in
+`romhack/symbols/` as they are identified, and grow one authoritative RAM
+map file. Renaming late is cheap; two names for one address is chaos.
+
+**R5 — Scope creep toward engine-building.**
+The temptation is to write a nice entity system, then bend the decoded game
+into it. Resist: mirror the game's own structure (its RAM block layout, its
+update order) even where it is ugly. Order of update **matters** — ties in
+state machines resolve by code order (last write wins), and that decides
+observable behaviour.
+
+**R6 — 2P/battle mode assumptions.**
+Battle courses (tracks 20–23) and split-screen touch everything (two
+cameras, different HUD, different physics tuning?). Defer consistently:
+decode single-player first, but when choosing data structures, never assume
+"there is exactly one kart/camera".
+
+**R7 — Versions.**
+Everything is pinned to the USA revision (sha1 `47e103d8…`). Addresses in
+this project are wrong for PAL/JP/rev-1 ROMs. The loader already warns on an
+unrecognised dump; keep every new address in `romhack/symbols/`, never
+inline-undocumented, so a future second-version port is a table swap, not an
+archaeology dig.
+
+---
+
+## How to work a phase (the loop)
+
+1. Read this file's phase entry; open a numbered entry in `docs/NOTES.md`.
+2. Decode with the toolkit (`smk lin`, `smk trace`, xref scans). Throwaway
+   Python until the format/behaviour is *proven* (adjacency, oracle,
+   round-trip — whatever fits).
+3. Only then write the C. Same arithmetic. Placeholder comments for anything
+   still invented, and a ledger row here.
+4. Extend `smk_selftest` (C) and `tools/test.py` (Python) with the new facts.
+   Both suites green before commit.
+5. Update `docs/FINDINGS.md` (what is now known), the ledger here (what is
+   no longer faked), commit, push.

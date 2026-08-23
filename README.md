@@ -54,8 +54,9 @@ Being explicit, because the gap is large:
   theme selection has not been traced, so every course renders with tileset 1.
 - No sprites, no HUD, no menus.
 
-The next milestone is the tile **surface-behaviour** table (which tile is road,
-grass, wall, boost), because collision and lap logic both need it.
+The plan to close the gap — phases, risks, and an explicit ledger of every
+shortcut currently in the code — is [`docs/ROADMAP.md`](docs/ROADMAP.md).
+The running decode log is [`docs/NOTES.md`](docs/NOTES.md).
 
 ## Layout
 
