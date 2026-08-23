@@ -87,6 +87,40 @@ uint32_t smk_track_texel(const smk_track *t, int wx, int wy);
 uint8_t smk_track_surface(const smk_track *t, int wx, int wy);
 static inline bool smk_surface_solid(uint8_t s) { return (s & SMK_SURF_SOLID) != 0; }
 
+/* ---- Kart state, in the game's own arithmetic -------------------------
+ *
+ * These are the ROM's units, not convenient ones.  See docs/NOTES.md 016-017.
+ *
+ *   position   16.16 fixed point, in track pixels.  The ROM keeps the
+ *              fraction and the integer in separate words ($16/$18 for X,
+ *              $1A/$1C for Y); we keep one int32, which is the same number.
+ *   velocity   8.8 fixed point, pixels per frame ($22,x / $24,x).
+ *   angle      16-bit, 65536 = one full turn ($2A,x).  0 points along -Y
+ *              and it increases clockwise, because the ROM builds the
+ *              velocity as (sin, -cos) * speed.
+ *
+ * The integration at $80879D is exactly `position += velocity << 8`.
+ */
+#define SMK_POS_SHIFT   16
+#define SMK_POS_ONE     (1 << SMK_POS_SHIFT)
+#define SMK_WORLD_FIX   ((int32_t)SMK_WORLD_PX * SMK_POS_ONE)
+#define SMK_VEL_SHIFT   8
+#define SMK_VEL_ONE     (1 << SMK_VEL_SHIFT)    /* 1 pixel per frame */
+#define SMK_ANGLE_TURN  65536
+
+typedef struct {
+    int32_t  x, y;      /* 16.16 position                          */
+    int16_t  vx, vy;    /* 8.8 velocity, pixels per frame          */
+    uint16_t angle;     /* 65536 = full turn, 0 = -Y, clockwise    */
+    int16_t  speed;     /* 8.8, the radius handed to DSP-1 sin/cos */
+} smk_kart;
+
+/* Velocity from angle and speed, the way $80F8CF does it. */
+void smk_kart_face(smk_kart *k);
+/* One frame of motion: the integration at $80879D, with wall blocking. */
+void smk_kart_move(smk_kart *k, const smk_track *t);
+static inline int smk_kart_px(int32_t v) { return (int)(v >> SMK_POS_SHIFT); }
+
 /* ---- Mode 7 camera and renderer --------------------------------------- */
 
 typedef struct {

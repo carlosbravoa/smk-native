@@ -50,14 +50,19 @@ re-investigating.
 
 | # | where | what we do | what the game does | phase |
 |---|---|---|---|---|
-| S1 | `src/main.c` `FEEL`, `step_camera` | invented accel/steer constants, exponential speed lag | its own fixed-point kart physics, undecoded | P3 |
+| S1 | `src/main.c` `FEEL_*`, `step_kart` | invented accel/steer/drag constants (in the game's units) | its own acceleration curve, drift, hop and per-surface response | P3 |
 | S2 | `src/assets.c` `smk_track_guess_start` | longest-road-run heuristic for the start position | per-track start line + grid layout, undecoded | P2 |
 | S4 | `src/mode7.c` camera (`height 15, horizon 0.36, fov 0.55`) | hand-tuned to look right | M7A–D matrix + HDMA table computed per frame by the game | P3 |
 | S5 | `src/mode7.c` `sky_colour` | invented vertical gradient from palette entries 1–2 | BG2 backdrop / per-track horizon graphics | P5 |
 | S6 | `src/main.c` `move_blocked` | refuse the move, slide per axis | `$80F8C0`: enters a collision state (`$42,x`=$8000, `$26,x`=$80) with its own recovery | P3 |
 | S7 | renderer | full-resolution smooth perspective | 256×224, per-scanline integer matrix | keep — named divergence, this is the point of a PC port. `--pixel` restores chunk. |
 | S8 | no audio | silence | SPC700 + S-DSP running its own program | P7 |
-| S9 | `tools/smktool/dsp1.py` | DSP-1 maths implemented from documented behaviour; **output scalings unverified** | the real DSP-1 | blocks P3 — see NOTES 015 |
+| S9 | `tools/smktool/dsp1.py` | commands `$00`/`$0C`/`$28` scalings still unverified | the real DSP-1 | before they are relied on |
+
+*Resolved:* **S9 for command `$04` (sin/cos)** — pinned by unit analysis in
+NOTES 017; movement no longer rests on a guess. The kinematics (velocity
+construction and position integration) are now the ROM's own, in
+`src/kart.c`.
 
 *Resolved:* **S3** (per-course theme) — the ROM's own table `$81EC2F` is now
 used; C output is byte-identical to the game's loader on all 24 courses.
@@ -105,11 +110,11 @@ call frequency (R1).
 - Acceptance: our lap counter agrees with the checkpoint data on a hand-driven
   path around each track.
 
-### P3 — Kart physics (the core of "feel")   [BLOCKED on S9; recon done]
-Reconnaissance is in NOTES 016: the motion primitive, the RAM fields and all
-the units are identified. Two blockers before any porting:
-  1. **S9** — DSP-1 output scaling is unverified (NOTES 015).
-  2. the fractional position accumulator is not confirmed.
+### P3 — Kart physics (the core of "feel")   [kinematics ✅, control next]
+Done: the motion primitive, the RAM layout, the units, and the exact
+integration (NOTES 016-017), ported to `src/kart.c`. Remaining: the
+acceleration curve, steering/drift/hop, per-surface response and the
+collision state machine at `$80F8C0`.
 
 The largest decode. Sub-order:
 1. Locate the per-frame kart update in race mode (mode 6 handlers; the kart

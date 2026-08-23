@@ -58,64 +58,51 @@ static void pump(input_state *in)
 }
 
 /* ------------------------------------------------------------------ */
-/* Provisional kart-ish motion.  This is NOT the game's physics - Super
- * Mario Kart's handling lives in its own routines and has not been decoded
- * yet.  Named here so it is never mistaken for a faithful decode.          */
-typedef struct {
-    float speed;        /* world px per tick */
-    float turn;
-} kart_feel;
-
-static const kart_feel FEEL = { .speed = 3.6f, .turn = 0.048f };
-
-/* Blocked-movement response.
+/* Turning input into speed and heading.
  *
- * PLACEHOLDER: the game's own wall handling is at $80F8C0 - when the surface
- * byte has bit 5 set it writes $8000 to $42,x and $80 to $26,x, i.e. it
- * enters a collision state with its own recovery.  Until that is decoded
- * (roadmap P3) we simply refuse the move, trying each axis separately so
- * grazing a wall slides along it instead of stopping dead.
+ * PLACEHOLDER (ledger S1).  The motion itself - velocity from (sin, -cos) *
+ * speed, and position += velocity << 8 - is the ROM's, in src/kart.c.  What
+ * is invented is only how the *player* drives those two numbers: the ROM's
+ * acceleration curve, drift, hop and per-surface response are still
+ * undecoded, so these constants are chosen to feel reasonable and nothing
+ * more.  They are in the game's units so that decoding them later is a
+ * substitution, not a rewrite.
  */
-static void move_blocked(const smk_track *t, smk_camera *cam,
-                         float nx, float ny, float *vel)
+#define FEEL_TOP_SPEED   (3 * SMK_VEL_ONE)      /* 3.0 px/frame          */
+#define FEEL_BOOST        (5 * SMK_VEL_ONE / 2) /* x2.5 at the top       */
+#define FEEL_ACCEL        6                     /* 8.8 units per frame   */
+#define FEEL_BRAKE       14
+#define FEEL_DRAG         2
+#define FEEL_TURN        420                    /* angle units per frame */
+
+static void step_kart(smk_kart *k, const smk_track *trk, const input_state *in)
 {
-    bool bx = smk_surface_solid(smk_track_surface(t, (int)nx, (int)cam->y));
-    bool by = smk_surface_solid(smk_track_surface(t, (int)cam->x, (int)ny));
-    if (!bx) cam->x = nx;
-    if (!by) cam->y = ny;
-    if (bx && by) *vel *= 0.25f;
+    int target = 0;
+    if (in->up)   target = in->shift ? FEEL_BOOST : FEEL_TOP_SPEED;
+    if (in->down) target = -FEEL_TOP_SPEED / 2;
+
+    if (k->speed < target)      k->speed += FEEL_ACCEL;
+    else if (k->speed > target) k->speed -= (target == 0 ? FEEL_DRAG : FEEL_BRAKE);
+
+    /* steering authority falls off as the kart slows, as it must */
+    int auth = (k->speed < 0 ? -k->speed : k->speed);
+    if (auth > FEEL_TOP_SPEED) auth = FEEL_TOP_SPEED;
+    int turn = FEEL_TURN * auth / FEEL_TOP_SPEED;
+    if (in->left)  k->angle -= (uint16_t)turn;
+    if (in->right) k->angle += (uint16_t)turn;
+
+    smk_kart_face(k);            /* the ROM's (sin, -cos) * speed */
+    smk_kart_move(k, trk);       /* the ROM's position += velocity << 8 */
 }
 
-static void step_camera(const smk_track *trk, smk_camera *cam,
-                        const input_state *in, float *vel)
+/* The ROM's angle is 0 = -Y increasing clockwise; the renderer wants
+ * radians with 0 = +X, and (cos, sin) must equal (sin a, -cos a). */
+static void camera_from_kart(smk_camera *cam, const smk_kart *k)
 {
-    float target = 0.0f;
-    if (in->up)   target += FEEL.speed * (in->shift ? 1.9f : 1.0f);
-    if (in->down) target -= FEEL.speed * 0.55f;
-
-    *vel += (target - *vel) * 0.09f;           /* simple lag, not the game's */
-
-    float steer = 0.0f;
-    if (in->left)  steer -= FEEL.turn;
-    if (in->right) steer += FEEL.turn;
-    /* steering authority falls off when barely moving, as it should */
-    cam->angle += steer * (0.35f + 0.65f * fminf(fabsf(*vel) / FEEL.speed, 1.0f));
-
-    float nx = cam->x + cosf(cam->angle) * *vel;
-    float ny = cam->y + sinf(cam->angle) * *vel;
-
-    /* the world wraps; the SNES tilemap does too */
-    if (nx < 0) nx += SMK_WORLD_PX;
-    if (ny < 0) ny += SMK_WORLD_PX;
-    if (nx >= SMK_WORLD_PX) nx -= SMK_WORLD_PX;
-    if (ny >= SMK_WORLD_PX) ny -= SMK_WORLD_PX;
-
-    if (smk_surface_solid(smk_track_surface(trk, (int)nx, (int)ny)))
-        move_blocked(trk, cam, nx, ny, vel);
-    else {
-        cam->x = nx;
-        cam->y = ny;
-    }
+    cam->x = (float)k->x / (float)SMK_POS_ONE;
+    cam->y = (float)k->y / (float)SMK_POS_ONE;
+    cam->angle = (float)k->angle * (2.0f * (float)M_PI / (float)SMK_ANGLE_TURN)
+                 - (float)M_PI / 2.0f;
 }
 
 /* ------------------------------------------------------------------ */
@@ -264,10 +251,15 @@ int main(int argc, char **argv)
     SDL_Texture *tex = NULL;
     uint32_t *fb = NULL;
 
-    smk_camera cam = { .x = shot_x, .y = shot_y, .angle = shot_a,
-                       .height = cam_height, .horizon = cam_horizon,
+    smk_camera cam = { .height = cam_height, .horizon = cam_horizon,
                        .fov = cam_fov };
-    float vel = 0.0f;
+    smk_kart kart = {
+        .x = (int32_t)(shot_x * SMK_POS_ONE),
+        .y = (int32_t)(shot_y * SMK_POS_ONE),
+        .angle = (uint16_t)(shot_a * (float)SMK_ANGLE_TURN / (2.0f * (float)M_PI)
+                            + SMK_ANGLE_TURN / 4),
+    };
+    camera_from_kart(&cam, &kart);
 
     input_state in;
     memset(&in, 0, sizeof in);
@@ -315,9 +307,13 @@ int main(int argc, char **argv)
                 if (in.next_pal)   nth = (trk.theme + 1) % SMK_THEME_COUNT;
                 if (in.prev_pal)   nth = (trk.theme + SMK_THEME_COUNT - 1) % SMK_THEME_COUNT;
                 if (smk_track_load(&rom, nt, nth, &trk, err, sizeof err)) {
+                    float sx, sy, sa;
                     track = nt; theme = nth;
-                    smk_track_guess_start(&trk, &cam.x, &cam.y, &cam.angle);
-                    vel = 0;
+                    smk_track_guess_start(&trk, &sx, &sy, &sa);
+                    kart = (smk_kart){ .x = (int32_t)(sx * SMK_POS_ONE),
+                                       .y = (int32_t)(sy * SMK_POS_ONE),
+                                       .angle = (uint16_t)(SMK_ANGLE_TURN / 4) };
+                    camera_from_kart(&cam, &kart);
                 } else {
                     fprintf(stderr, "skipped: %s\n", err);
                     smk_track_load(&rom, track, theme, &trk, err, sizeof err);
@@ -330,7 +326,8 @@ int main(int argc, char **argv)
             }
             input_edges_clear(&in);
 
-            step_camera(&trk, &cam, &in, &vel);
+            step_kart(&kart, &trk, &in);
+            camera_from_kart(&cam, &kart);
         }
         (void)stepped;   /* edges deliberately survive a tickless iteration */
 
@@ -352,7 +349,7 @@ int main(int argc, char **argv)
             snprintf(title, sizeof title,
                      "Super Mario Kart  -  track %d  theme %d  -  "
                      "%dx%d  surface $%02X  %.0f fps", track, trk.theme, rw, rh,
-                     smk_track_surface(&trk, (int)cam.x, (int)cam.y),
+                     smk_track_surface(&trk, smk_kart_px(kart.x), smk_kart_px(kart.y)),
                      frames / secs);
             SDL_SetWindowTitle(win, title);
             frames = 0; fps_t0 = t1;

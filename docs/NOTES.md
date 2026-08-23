@@ -229,4 +229,43 @@ labelled placeholder motion (ledger S1) until they are settled.
 
 ---
 
-*(next entry: 017)*
+**017** — Position integration decoded, and it closes the DSP-1 scaling
+question for the command that matters.
+
+Kart position is **16.16**, kept as two words. `$80FD9D` copies the whole
+block and shows the layout: `$16` X fraction, `$18` X integer, `$1A` Y
+fraction, `$1C` Y integer, `$1E`/`$20` Z fraction/integer.
+
+The integration at `$80879D` is one 32-bit add of `velocity << 8`, written
+as two 16-bit adds:
+
+```
+clc
+lda $21,x / and #$FF00 / adc $16,x / sta $16,x   ; frac += (vel & $FF) << 8
+lda #$FF00 / and $22,x                           ; high byte of velocity
+bpl + / ora #$00FF                               ; sign extend
+xba                                              ; arithmetic >> 8
+adc $18,x / sta $18,x                            ; int += (vel >> 8) + carry
+```
+
+Reading `$21,x` rather than `$22,x` is the trick: the word straddling the
+byte boundary puts velocity's *fractional* byte in the high position, which
+is `(vel & $FF) << 8` for free.
+
+**This resolves S9 for DSP-1 command $04 by unit analysis.** For the
+arithmetic to be consistent - 8.8 velocity feeding a 16.16 position, with
+the `±$0100` velocity floor at `$80F9C1` meaning exactly 1.0 px/frame - the
+DSP-1 must return `radius * sin(angle)` **unshifted**, with radius being the
+speed in 8.8. No other scaling makes the units work. Commands `$00`, `$0C`
+and `$28` remain unverified, but movement no longer depends on them.
+
+Angle convention, from velocity being `(sin, -cos) * speed`: **0 points
+along -Y and increases clockwise** (a compass bearing).
+
+Ported to `src/kart.c` in the ROM's own arithmetic. What is still invented
+is only how player input drives `speed` and `angle` (ledger S1) - the
+acceleration curve, drift, hop and per-surface response are undecoded.
+
+---
+
+*(next entry: 018)*
