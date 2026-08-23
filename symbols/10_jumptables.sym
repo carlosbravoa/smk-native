@@ -1,0 +1,450 @@
+; auto-discovered by `smk jumptables` - REVIEW BEFORE TRUSTING
+; count comes from the conservative pointer scan.
+
+; $80853A JMP (high confidence, scan=4 bound=4)
+jumptab $8084D0 4 abs JumpTable_8084D0 M=0 X=0
+data    $8084D0 8 JumpTable_8084D0 ptr16
+
+; $80859E JMP (low confidence, scan=4 bound=-)
+jumptab $808612 4 abs JumpTable_808612 M=0 X=0
+data    $808612 8 JumpTable_808612 ptr16
+
+; $8094DD JMP (low confidence, scan=3 bound=-)
+jumptab $8094E0 3 abs JumpTable_8094E0 M=0 X=0
+data    $8094E0 6 JumpTable_8094E0 ptr16
+
+; $808910 JSR (low confidence, scan=0 bound=-)
+jumptab $8095FF 0 abs JumpTable_8095FF M=0 X=0
+data    $8095FF 0 JumpTable_8095FF ptr16
+
+; $8098C8 JMP (medium confidence, scan=3 bound=2)
+jumptab $8098CB 2 abs JumpTable_8098CB M=0 X=0
+data    $8098CB 4 JumpTable_8098CB ptr16
+
+; $8098E9 JMP (low confidence, scan=4 bound=-)
+jumptab $8098EC 4 abs JumpTable_8098EC M=0 X=0
+data    $8098EC 8 JumpTable_8098EC ptr16
+
+; $809B64 JMP (medium confidence, scan=8 bound=80)
+jumptab $809B67 8 abs JumpTable_809B67 M=1 X=0
+data    $809B67 16 JumpTable_809B67 ptr16
+
+; $809B93 JMP (low confidence, scan=15 bound=-)
+jumptab $809B96 15 abs JumpTable_809B96 M=1 X=0
+data    $809B96 30 JumpTable_809B96 ptr16
+
+; $809ECA JMP (low confidence, scan=3 bound=-)
+jumptab $809ECD 3 abs JumpTable_809ECD M=0 X=0
+data    $809ECD 6 JumpTable_809ECD ptr16
+
+; $809FE9 JMP (medium confidence, scan=3 bound=9)
+jumptab $809FEC 3 abs JumpTable_809FEC M=0 X=0
+data    $809FEC 6 JumpTable_809FEC ptr16
+
+; $80A122 JMP (medium confidence, scan=6 bound=128)
+jumptab $80A125 6 abs JumpTable_80A125 M=0 X=0
+data    $80A125 12 JumpTable_80A125 ptr16
+
+; $80A14F JMP (medium confidence, scan=3 bound=128)
+jumptab $80A152 3 abs JumpTable_80A152 M=0 X=0
+data    $80A152 6 JumpTable_80A152 ptr16
+
+; $80A207 JMP (low confidence, scan=3 bound=-)
+jumptab $80A20A 3 abs JumpTable_80A20A M=0 X=0
+data    $80A20A 6 JumpTable_80A20A ptr16
+
+; $80A233 JMP (low confidence, scan=3 bound=-)
+jumptab $80A236 3 abs JumpTable_80A236 M=0 X=0
+data    $80A236 6 JumpTable_80A236 ptr16
+
+; $80A557 JMP (low confidence, scan=12 bound=-)
+jumptab $80A53B 12 abs JumpTable_80A53B M=0 X=0
+data    $80A53B 24 JumpTable_80A53B ptr16
+
+; $80A6D6 JMP (medium confidence, scan=15 bound=64)
+jumptab $80A6D9 15 abs JumpTable_80A6D9 M=0 X=0
+data    $80A6D9 30 JumpTable_80A6D9 ptr16
+
+; $80AA2A JMP (low confidence, scan=15 bound=-)
+jumptab $80AA2D 15 abs JumpTable_80AA2D M=0 X=0
+data    $80AA2D 30 JumpTable_80AA2D ptr16
+
+; $80AD01 JSR (low confidence, scan=2 bound=-)
+jumptab $80AD32 2 abs JumpTable_80AD32 M=0 X=0
+data    $80AD32 4 JumpTable_80AD32 ptr16
+
+; $80AD73 JMP (medium confidence, scan=12 bound=72)
+jumptab $80AD76 12 abs JumpTable_80AD76 M=0 X=0
+data    $80AD76 24 JumpTable_80AD76 ptr16
+
+; $80B1C2 JMP (medium confidence, scan=8 bound=128)
+jumptab $80B1C5 8 abs JumpTable_80B1C5 M=0 X=0
+data    $80B1C5 16 JumpTable_80B1C5 ptr16
+
+; $80B415 JMP (medium confidence, scan=13 bound=16)
+jumptab $80B39B 13 abs JumpTable_80B39B M=0 X=0
+data    $80B39B 26 JumpTable_80B39B ptr16
+
+; $80B41D JMP (medium confidence, scan=8 bound=16)
+jumptab $80B3A5 8 abs JumpTable_80B3A5 M=0 X=0
+data    $80B3A5 16 JumpTable_80B3A5 ptr16
+
+; $80ECC8 JMP (medium confidence, scan=15 bound=85)
+jumptab $80ED47 15 abs JumpTable_80ED47 M=0 X=0
+data    $80ED47 30 JumpTable_80ED47 ptr16
+
+; $80ECCE JMP (medium confidence, scan=7 bound=85)
+jumptab $80ED57 7 abs JumpTable_80ED57 M=0 X=0
+data    $80ED57 14 JumpTable_80ED57 ptr16
+
+; $818160 JSR (low confidence, scan=2 bound=-)
+jumptab $81815C 2 abs JumpTable_81815C M=0 X=0
+data    $81815C 4 JumpTable_81815C ptr16
+
+; $818582 JSR (low confidence, scan=14 bound=-)
+jumptab $8185B3 14 abs JumpTable_8185B3 M=0 X=0
+data    $8185B3 28 JumpTable_8185B3 ptr16
+
+; $8185A1 JSR (low confidence, scan=7 bound=-)
+jumptab $8185C1 7 abs JumpTable_8185C1 M=0 X=0
+data    $8185C1 14 JumpTable_8185C1 ptr16
+
+; $81878C JSR (low confidence, scan=2 bound=-)
+jumptab $81877F 2 abs JumpTable_81877F M=0 X=0
+data    $81877F 4 JumpTable_81877F ptr16
+
+; $818F2C JMP (low confidence, scan=7 bound=-)
+jumptab $818F2F 7 abs JumpTable_818F2F M=0 X=0
+data    $818F2F 14 JumpTable_818F2F ptr16
+
+; $81A22A JSR (low confidence, scan=2 bound=-)
+jumptab $81A16A 2 abs JumpTable_81A16A M=0 X=0
+data    $81A16A 4 JumpTable_81A16A ptr16
+
+; $81A17D JSR (low confidence, scan=21 bound=-)
+jumptab $81A1AC 21 abs JumpTable_81A1AC M=0 X=0
+data    $81A1AC 42 JumpTable_81A1AC ptr16
+
+; $81A1A4 JSR (low confidence, scan=14 bound=-)
+jumptab $81A1BA 14 abs JumpTable_81A1BA M=0 X=0
+data    $81A1BA 28 JumpTable_81A1BA ptr16
+
+; $81A1A8 JSR (low confidence, scan=7 bound=-)
+jumptab $81A1C8 7 abs JumpTable_81A1C8 M=0 X=0
+data    $81A1C8 14 JumpTable_81A1C8 ptr16
+
+; $81A316 JMP (low confidence, scan=3 bound=-)
+jumptab $81A319 3 abs JumpTable_81A319 M=0 X=0
+data    $81A319 6 JumpTable_81A319 ptr16
+
+; $81A364 JMP (low confidence, scan=3 bound=-)
+jumptab $81A367 3 abs JumpTable_81A367 M=0 X=0
+data    $81A367 6 JumpTable_81A367 ptr16
+
+; $81A44A JSR (medium confidence, scan=5 bound=4)
+jumptab $81A454 4 abs JumpTable_81A454 M=0 X=0
+data    $81A454 8 JumpTable_81A454 ptr16
+
+; $81A47F JMP (medium confidence, scan=5 bound=2)
+jumptab $81A482 2 abs JumpTable_81A482 M=0 X=0
+data    $81A482 4 JumpTable_81A482 ptr16
+
+; $81A4CC JMP (low confidence, scan=11 bound=-)
+jumptab $81A4CF 11 abs JumpTable_81A4CF M=0 X=0
+data    $81A4CF 22 JumpTable_81A4CF ptr16
+
+; $81A54F JSR (medium confidence, scan=2 bound=1)
+jumptab $81A556 1 abs JumpTable_81A556 M=0 X=0
+data    $81A556 2 JumpTable_81A556 ptr16
+
+; $81A60A JMP (low confidence, scan=39 bound=-)
+jumptab $81A60D 39 abs JumpTable_81A60D M=0 X=0
+data    $81A60D 78 JumpTable_81A60D ptr16
+
+; $81A7CA JSR (low confidence, scan=2 bound=-)
+jumptab $81A7D1 2 abs JumpTable_81A7D1 M=0 X=0
+data    $81A7D1 4 JumpTable_81A7D1 ptr16
+
+; $81B143 JSR (low confidence, scan=4 bound=-)
+jumptab $81B152 4 abs JumpTable_81B152 M=0 X=0
+data    $81B152 8 JumpTable_81B152 ptr16
+
+; $81B15D JSR (low confidence, scan=4 bound=-)
+jumptab $81B162 4 abs JumpTable_81B162 M=0 X=0
+data    $81B162 8 JumpTable_81B162 ptr16
+
+; $81B177 JSR (low confidence, scan=24 bound=-)
+jumptab $81B195 24 abs JumpTable_81B195 M=0 X=0
+data    $81B195 48 JumpTable_81B195 ptr16
+
+; $81B186 JSR (low confidence, scan=16 bound=-)
+jumptab $81B1A5 16 abs JumpTable_81B1A5 M=0 X=0
+data    $81B1A5 32 JumpTable_81B1A5 ptr16
+
+; $81B190 JSR (low confidence, scan=8 bound=-)
+jumptab $81B1B5 8 abs JumpTable_81B1B5 M=0 X=0
+data    $81B1B5 16 JumpTable_81B1B5 ptr16
+
+; $81B69B JMP (low confidence, scan=4 bound=-)
+jumptab $81B69E 4 abs JumpTable_81B69E M=0 X=0
+data    $81B69E 8 JumpTable_81B69E ptr16
+
+; $81BDAC JMP (medium confidence, scan=5 bound=43605)
+jumptab $81BDAF 5 abs JumpTable_81BDAF M=0 X=0
+data    $81BDAF 10 JumpTable_81BDAF ptr16
+
+; $81C0A8 JSR (medium confidence, scan=20 bound=15)
+jumptab $81C0BA 15 abs JumpTable_81C0BA M=0 X=0
+data    $81C0BA 30 JumpTable_81C0BA ptr16
+
+; $81C0B1 JMP (medium confidence, scan=18 bound=15)
+jumptab $81C0BE 15 abs JumpTable_81C0BE M=0 X=0
+data    $81C0BE 30 JumpTable_81C0BE ptr16
+
+; $81C0B5 JMP (medium confidence, scan=7 bound=15)
+jumptab $81C0D4 7 abs JumpTable_81C0D4 M=0 X=0
+data    $81C0D4 14 JumpTable_81C0D4 ptr16
+
+; $81D559 JMP (low confidence, scan=7 bound=-)
+jumptab $81D55C 7 abs JumpTable_81D55C M=0 X=0
+data    $81D55C 14 JumpTable_81D55C ptr16
+
+; $81F157 JMP (low confidence, scan=3 bound=-)
+jumptab $81F15A 3 abs JumpTable_81F15A M=0 X=0
+data    $81F15A 6 JumpTable_81F15A ptr16
+
+; $81F1E1 JMP (low confidence, scan=3 bound=-)
+jumptab $81F1E4 3 abs JumpTable_81F1E4 M=0 X=0
+data    $81F1E4 6 JumpTable_81F1E4 ptr16
+
+; $81F672 JSR (low confidence, scan=8 bound=-)
+jumptab $81F697 8 abs JumpTable_81F697 M=0 X=0
+data    $81F697 16 JumpTable_81F697 ptr16
+
+; $81F68F JSR (low confidence, scan=4 bound=-)
+jumptab $81F69F 4 abs JumpTable_81F69F M=0 X=0
+data    $81F69F 8 JumpTable_81F69F ptr16
+
+; $81F82E JMP (low confidence, scan=17 bound=0)
+jumptab $81F88B 17 abs JumpTable_81F88B M=1 X=0
+data    $81F88B 34 JumpTable_81F88B ptr16
+
+; $81F833 JMP (low confidence, scan=14 bound=0)
+jumptab $81F891 14 abs JumpTable_81F891 M=1 X=0
+data    $81F891 28 JumpTable_81F891 ptr16
+
+; $81F838 JMP (low confidence, scan=7 bound=0)
+jumptab $81F89F 7 abs JumpTable_81F89F M=1 X=0
+data    $81F89F 14 JumpTable_81F89F ptr16
+
+; $81FA29 JSR (low confidence, scan=2 bound=-)
+jumptab $81FA47 2 abs JumpTable_81FA47 M=0 X=0
+data    $81FA47 4 JumpTable_81FA47 ptr16
+
+; $81FA63 JSR (medium confidence, scan=8 bound=72)
+jumptab $81FA6C 8 abs JumpTable_81FA6C M=0 X=0
+data    $81FA6C 16 JumpTable_81FA6C ptr16
+
+; $81FA68 JSR (medium confidence, scan=4 bound=72)
+jumptab $81FA74 4 abs JumpTable_81FA74 M=0 X=0
+data    $81FA74 8 JumpTable_81FA74 ptr16
+
+; $81FC1F JSR (medium confidence, scan=7 bound=255)
+jumptab $81FD5D 7 abs JumpTable_81FD5D M=0 X=0
+data    $81FD5D 14 JumpTable_81FD5D ptr16
+
+; $83F2C9 JSR (low confidence, scan=8 bound=-)
+jumptab $83F000 8 abs JumpTable_83F000 M=0 X=0
+data    $83F000 16 JumpTable_83F000 ptr16
+
+; $83FD70 JSR (medium confidence, scan=8 bound=1)
+jumptab $83FDFF 1 abs JumpTable_83FDFF M=0 X=0
+data    $83FDFF 2 JumpTable_83FDFF ptr16
+
+; $84DABF JSR (low confidence, scan=8 bound=-)
+jumptab $84DAA9 8 abs JumpTable_84DAA9 M=0 X=0
+data    $84DAA9 16 JumpTable_84DAA9 ptr16
+
+; $84E6D2 JSR (low confidence, scan=3 bound=-)
+jumptab $84E6D8 3 abs JumpTable_84E6D8 M=0 X=0
+data    $84E6D8 6 JumpTable_84E6D8 ptr16
+
+; $84ED23 JSR (low confidence, scan=15 bound=-)
+jumptab $84EC9A 15 abs JumpTable_84EC9A M=0 X=0
+data    $84EC9A 30 JumpTable_84EC9A ptr16
+
+; $84ED3B JSR (low confidence, scan=15 bound=-)
+jumptab $84EC9A 15 abs JumpTable_84EC9A M=0 X=0
+data    $84EC9A 30 JumpTable_84EC9A ptr16
+
+; $84EF9B JSR (low confidence, scan=16 bound=-)
+jumptab $84F017 16 abs JumpTable_84F017 M=0 X=0
+data    $84F017 32 JumpTable_84F017 ptr16
+
+; $84EFA5 JSR (low confidence, scan=16 bound=-)
+jumptab $84F017 16 abs JumpTable_84F017 M=0 X=0
+data    $84F017 32 JumpTable_84F017 ptr16
+
+; $84EEFD JSR (medium confidence, scan=8 bound=16896)
+jumptab $84F027 8 abs JumpTable_84F027 M=0 X=0
+data    $84F027 16 JumpTable_84F027 ptr16
+
+; $84F03A JMP (low confidence, scan=3 bound=-)
+jumptab $84F03D 3 abs JumpTable_84F03D M=0 X=0
+data    $84F03D 6 JumpTable_84F03D ptr16
+
+; $84F099 JMP (low confidence, scan=3 bound=-)
+jumptab $84F09C 3 abs JumpTable_84F09C M=0 X=0
+data    $84F09C 6 JumpTable_84F09C ptr16
+
+; $85805E JMP (low confidence, scan=18 bound=-)
+jumptab $85839B 18 abs JumpTable_85839B M=1 X=1
+data    $85839B 36 JumpTable_85839B ptr16
+
+; $85872C JMP (low confidence, scan=11 bound=-)
+jumptab $8583A9 11 abs JumpTable_8583A9 M=1 X=1
+data    $8583A9 22 JumpTable_8583A9 ptr16
+
+; $858890 JMP (medium confidence, scan=7 bound=8)
+jumptab $8583B1 7 abs JumpTable_8583B1 M=1 X=1
+data    $8583B1 14 JumpTable_8583B1 ptr16
+
+; $858A00 JSR (low confidence, scan=10 bound=-)
+jumptab $858B18 10 abs JumpTable_858B18 M=0 X=0
+data    $858B18 20 JumpTable_858B18 ptr16
+
+; $858A1A JSR (low confidence, scan=8 bound=-)
+jumptab $858B1C 8 abs JumpTable_858B1C M=0 X=0
+data    $858B1C 16 JumpTable_858B1C ptr16
+
+; $858A33 JSR (low confidence, scan=5 bound=-)
+jumptab $858B22 5 abs JumpTable_858B22 M=0 X=0
+data    $858B22 10 JumpTable_858B22 ptr16
+
+; $858A5A JSR (low confidence, scan=3 bound=-)
+jumptab $858B26 3 abs JumpTable_858B26 M=0 X=0
+data    $858B26 6 JumpTable_858B26 ptr16
+
+; $858BB1 JMP (medium confidence, scan=7 bound=713)
+jumptab $858BB4 7 abs JumpTable_858BB4 M=0 X=0
+data    $858BB4 14 JumpTable_858BB4 ptr16
+
+; $858C31 JMP (medium confidence, scan=5 bound=697)
+jumptab $858C34 5 abs JumpTable_858C34 M=0 X=0
+data    $858C34 10 JumpTable_858C34 ptr16
+
+; $858C95 JMP (medium confidence, scan=8 bound=685)
+jumptab $858C98 8 abs JumpTable_858C98 M=0 X=0
+data    $858C98 16 JumpTable_858C98 ptr16
+
+; $858D19 JMP (medium confidence, scan=6 bound=733)
+jumptab $858D1C 6 abs JumpTable_858D1C M=0 X=0
+data    $858D1C 12 JumpTable_858D1C ptr16
+
+; $858D79 JMP (medium confidence, scan=3 bound=529)
+jumptab $858D7C 3 abs JumpTable_858D7C M=0 X=0
+data    $858D7C 6 JumpTable_858D7C ptr16
+
+; $858DB1 JMP (medium confidence, scan=3 bound=692)
+jumptab $858DB4 3 abs JumpTable_858DB4 M=0 X=0
+data    $858DB4 6 JumpTable_858DB4 ptr16
+
+; $858E02 JMP (medium confidence, scan=5 bound=353)
+jumptab $858E05 5 abs JumpTable_858E05 M=0 X=0
+data    $858E05 10 JumpTable_858E05 ptr16
+
+; $859876 JMP (medium confidence, scan=3 bound=424)
+jumptab $859EDB 3 abs JumpTable_859EDB M=0 X=0
+data    $859EDB 6 JumpTable_859EDB ptr16
+
+; $85A7F8 JMP (low confidence, scan=11 bound=-)
+jumptab $85A87B 11 abs JumpTable_85A87B M=0 X=0
+data    $85A87B 22 JumpTable_85A87B ptr16
+
+; $85A7C5 JMP (medium confidence, scan=5 bound=232)
+jumptab $85A887 5 abs JumpTable_85A887 M=0 X=0
+data    $85A887 10 JumpTable_85A887 ptr16
+
+; $85A8EB JMP (medium confidence, scan=6 bound=262)
+jumptab $85A917 6 abs JumpTable_85A917 M=0 X=0
+data    $85A917 12 JumpTable_85A917 ptr16
+
+; $85A947 JMP (medium confidence, scan=6 bound=365)
+jumptab $85A973 6 abs JumpTable_85A973 M=0 X=0
+data    $85A973 12 JumpTable_85A973 ptr16
+
+; $85AE72 JMP (medium confidence, scan=17 bound=8)
+jumptab $85AE9A 8 abs JumpTable_85AE9A M=0 X=0
+data    $85AE9A 16 JumpTable_85AE9A ptr16
+
+; $85AEE7 JSR (medium confidence, scan=16 bound=3)
+jumptab $85AF63 3 abs JumpTable_85AF63 M=0 X=0
+data    $85AF63 6 JumpTable_85AF63 ptr16
+
+; $85AF3B JMP (low confidence, scan=8 bound=0)
+jumptab $85AF73 8 abs JumpTable_85AF73 M=0 X=0
+data    $85AF73 16 JumpTable_85AF73 ptr16
+
+; $85AFC1 JMP (medium confidence, scan=18 bound=304)
+jumptab $85B06E 18 abs JumpTable_85B06E M=0 X=0
+data    $85B06E 36 JumpTable_85B06E ptr16
+
+; $85B008 JMP (medium confidence, scan=14 bound=13)
+jumptab $85B076 13 abs JumpTable_85B076 M=0 X=0
+data    $85B076 26 JumpTable_85B076 ptr16
+
+; $85B0F6 JMP (medium confidence, scan=4 bound=301)
+jumptab $85B12C 4 abs JumpTable_85B12C M=0 X=0
+data    $85B12C 8 JumpTable_85B12C ptr16
+
+; $85B1CE JMP (medium confidence, scan=5 bound=609)
+jumptab $85B24A 5 abs JumpTable_85B24A M=0 X=0
+data    $85B24A 10 JumpTable_85B24A ptr16
+
+; $85B2AD JMP (medium confidence, scan=9 bound=304)
+jumptab $85B35D 9 abs JumpTable_85B35D M=0 X=0
+data    $85B35D 18 JumpTable_85B35D ptr16
+
+; $85B2E8 JMP (high confidence, scan=5 bound=5)
+jumptab $85B365 5 abs JumpTable_85B365 M=0 X=0
+data    $85B365 10 JumpTable_85B365 ptr16
+
+; $85B2F4 JMP (high confidence, scan=5 bound=5)
+jumptab $85B365 5 abs JumpTable_85B365 M=0 X=0
+data    $85B365 10 JumpTable_85B365 ptr16
+
+; $85B3C5 JMP (medium confidence, scan=11 bound=320)
+jumptab $85B485 11 abs JumpTable_85B485 M=0 X=0
+data    $85B485 22 JumpTable_85B485 ptr16
+
+; $85B40C JMP (medium confidence, scan=6 bound=5)
+jumptab $85B48F 5 abs JumpTable_85B48F M=0 X=0
+data    $85B48F 10 JumpTable_85B48F ptr16
+
+; $85B502 JMP (medium confidence, scan=17 bound=304)
+jumptab $85B5D0 17 abs JumpTable_85B5D0 M=0 X=0
+data    $85B5D0 34 JumpTable_85B5D0 ptr16
+
+; $85B531 JMP (high confidence, scan=13 bound=13)
+jumptab $85B5D8 13 abs JumpTable_85B5D8 M=0 X=0
+data    $85B5D8 26 JumpTable_85B5D8 ptr16
+
+; $85B53D JMP (high confidence, scan=13 bound=13)
+jumptab $85B5D8 13 abs JumpTable_85B5D8 M=0 X=0
+data    $85B5D8 26 JumpTable_85B5D8 ptr16
+
+; $85B645 JMP (medium confidence, scan=5 bound=308)
+jumptab $85B66A 5 abs JumpTable_85B66A M=0 X=0
+data    $85B66A 10 JumpTable_85B66A ptr16
+
+; $85B7C4 JMP (medium confidence, scan=5 bound=304)
+jumptab $85B7F2 5 abs JumpTable_85B7F2 M=0 X=0
+data    $85B7F2 10 JumpTable_85B7F2 ptr16
+
+; $85BB60 JMP (low confidence, scan=8 bound=-)
+jumptab $85BB9E 8 abs JumpTable_85BB9E M=0 X=0
+data    $85BB9E 16 JumpTable_85BB9E ptr16
+
+; $85BBDB JMP (medium confidence, scan=4 bound=1)
+jumptab $85BBA6 1 abs JumpTable_85BBA6 M=0 X=0
+data    $85BBA6 2 JumpTable_85BBA6 ptr16

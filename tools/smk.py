@@ -8,6 +8,7 @@ from smktool.rom import Rom, MappingError
 from smktool.symbols import Symbols
 from smktool.disasm import Tracer
 from smktool.listing import Formatter
+from smktool.tables import discover, health, emit_sym
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEF_ROM = os.path.join(ROOT, "rom", "smk_usa.sfc")
@@ -93,6 +94,44 @@ def cmd_dis(args):
         print(text, end="")
 
 
+def cmd_jumptables(args):
+    """Discover indirect-dispatch tables and converge to a fixpoint.
+
+    Each round writes the proposals, then re-traces: newly reachable code
+    exposes further dispatch sites, so this repeats until nothing new turns up.
+    """
+    out = args.out or os.path.join(DEF_SYMS, "10_jumptables.sym")
+    prev = None
+    for rd in range(1, args.rounds + 1):
+        rom, syms = load(args)
+        tr = Tracer(rom, syms)
+        res = tr.trace()
+        cands = discover(rom, res, tracer=tr)
+        if args.dry_run:
+            print(emit_sym(cands))
+            return
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+        open(out, "w").write(emit_sym(cands))
+        rom2, syms2 = load(args)
+        h = health(rom2, Tracer(rom2, syms2).trace())
+        print("round %d: tables=%-4d insns=%-6d cov=%5.2f%% junk=%-4d "
+              "overlaps=%-4d conflicts=%d"
+              % (rd, len(cands), h["instructions"],
+                 100 * h["coverage_bytes"] / len(rom2.data),
+                 h["junk_opcodes"], h["overlaps"], h["conflicts"]))
+        if prev == (len(cands), h["instructions"]):
+            break
+        prev = (len(cands), h["instructions"])
+    print("wrote", out)
+
+
+def cmd_health(args):
+    rom, syms = load(args)
+    h = health(rom, Tracer(rom, syms).trace())
+    h["coverage_pct"] = round(100 * h["coverage_bytes"] / len(rom.data), 3)
+    print(json.dumps(h, indent=2))
+
+
 def cmd_hex(args):
     rom, syms = load(args)
     a = parse_addr(args.addr)
@@ -147,6 +186,15 @@ def main():
     s.add_argument("--no-bytes", action="store_true")
     s.add_argument("-m", type=int, default=1); s.add_argument("-x", type=int, default=1)
     s.set_defaults(fn=cmd_dis)
+
+    s = sub.add_parser("jumptables", help="discover indirect dispatch tables")
+    s.add_argument("-o", "--out")
+    s.add_argument("-n", "--rounds", type=int, default=8)
+    s.add_argument("--dry-run", action="store_true")
+    s.set_defaults(fn=cmd_jumptables)
+
+    s = sub.add_parser("health", help="trace quality metrics (desync detectors)")
+    s.set_defaults(fn=cmd_health)
 
     s = sub.add_parser("hex", help="hex dump at a snes address or file offset")
     s.add_argument("addr"); s.add_argument("-n", "--len", default="0x100")

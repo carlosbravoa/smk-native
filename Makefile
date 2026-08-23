@@ -9,7 +9,7 @@ BASE    := rom/smk_usa.sfc
 OUT     := build/smk.sfc
 ASAR    := vendor/asar-build/asar/bin/asar
 
-.PHONY: all build verify info trace dis roundtrip tools clean distclean help
+.PHONY: all build verify info trace dis jumptables health roundtrip tools clean distclean help
 
 all: build
 
@@ -32,6 +32,14 @@ trace: $(BASE)
 ## full annotated listing -> build/smk.asm
 dis: $(BASE)
 	@mkdir -p build && $(SMK) dis -o build/smk.asm
+
+## discover indirect dispatch tables (writes symbols/10_jumptables.sym)
+jumptables: $(BASE)
+	@$(SMK) jumptables
+
+## trace-quality metrics
+health: $(BASE)
+	@$(SMK) health
 
 ## prove the disassembler round-trips byte-exactly
 roundtrip: $(ASAR) $(BASE)
