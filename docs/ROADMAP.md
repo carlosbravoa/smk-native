@@ -76,6 +76,26 @@ early (see "Risks probed" lines — a risk we discover in phase 6 that
 invalidates phase 3 work is the failure mode to avoid).
 
 ### P0 — Verification infrastructure (the oracle)  ✅ DONE
+### P0.5 — Make the oracle *run the game*  ⬅ NEXT, and it gates P2-P6
+
+Static decoding has a structural ceiling: 258 dispatches in the ROM jump
+through a pointer already held in a register (NOTES 018). Behaviour has to
+be observed, not read.
+
+Already working: APU IPL handshake stub, RDNMI/HVBJOY, NMI dispatch, and
+`run_frames()` at the game's own vblank pacing. The game boots and runs
+~1200 frames in 0.1 s.
+
+Missing, and the reason it idles in mode 13: **H/V IRQ** (`NMITIMEN` is
+`$B1`, so the game expects it). Needed:
+  - a scanline/dot counter driving `$213C`/`$213D`
+  - `$4207-$420A` HTIME/VTIME compare and IRQ dispatch via `$00:FFEE`
+  - `$4211` TIMEUP (read clears)
+  - then HDMA (`$420C`), which is how the Mode 7 matrix reaches the PPU
+
+Acceptance: drive the attract mode with synthetic input and reach the race
+mode; then read kart position/velocity/angle straight out of WRAM while
+frames advance.
 *Do this before any behaviour work.*
 
 - Minimal 65816 interpreter over the ROM image + a flat RAM array: enough to
@@ -185,7 +205,10 @@ which commands race mode issues. DSP-1 commands are publicly documented
 maths (multiply, inverse, rotate, project) — reimplementable — but we must
 know *which* and *where* before P3 planning, not during.
 
-**R2 — No reference emulator in the loop yet.**
+**R2 — No reference emulator in the loop yet.  [NOW BEING BUILT]**
+The whole-frame question the original note said to wait for has arrived
+(NOTES 018). The oracle boots the game and runs frames; it needs IRQ and
+HDMA to progress. Original note follows.
 The oracle (P0) verifies routine-level fidelity, but whole-frame behaviour
 (interrupt timing, HDMA effects) has no ground truth on this machine yet.
 Mitigation: keep P0's scope honest (leaf routines), and when a whole-frame

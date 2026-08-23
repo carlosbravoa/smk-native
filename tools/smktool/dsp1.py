@@ -32,6 +32,8 @@ class DSP1:
         self.out_index = 0
         self._pending_lo = None
         self.calls: list[tuple[int, list[int], list[int]]] = []   # for inspection
+        self.seen: dict[int, int] = {}       # command -> times issued
+        self.unknown: dict[int, int] = {}    # commands we do not model
 
     # ---- bus ----
     def read(self, addr: int) -> int:
@@ -53,10 +55,13 @@ class DSP1:
             self.results = []
             self.out_index = 0
             self._pending_lo = None
+            self.seen[val] = self.seen.get(val, 0) + 1
             if val not in SHAPES:
-                raise NotImplementedError(
-                    f"DSP-1 command ${val:02X} is not implemented; "
-                    "Super Mario Kart was only seen to use $00/$04/$0C/$28")
+                # Record rather than refuse: running the game is how we find
+                # out which commands it really issues, and a static scan
+                # under-reports (it missed $80 entirely).
+                self.unknown[val] = self.unknown.get(val, 0) + 1
+                self.cmd = None
             return
         if self._pending_lo is None:
             self._pending_lo = val

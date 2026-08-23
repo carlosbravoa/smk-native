@@ -161,11 +161,13 @@ three-byte BCD records per track with `$99 $59 $0A` — the 9'59"0A "no
 record" time. So the layout is 6 best times x 3 bytes + 2 = 20 bytes per
 track. Ruled out as a source of start positions.
 
-**014** — RULED OUT: the Mode 7 matrix is *not* written by direct stores.
-No traced instruction touches `$211B-$211E`. The perspective matrix is
-built in RAM and pushed by HDMA per scanline, which is what risk R2
-anticipated. Any attempt to read camera parameters out of stores to the PPU
-will find nothing; the HDMA table builder is the thing to decode.
+**014** — ~~RULED OUT: the Mode 7 matrix is not written by direct stores.~~
+**SUPERSEDED by 018.** The claim was that nothing touches `$211B-$211E`.
+That was a *coverage artifact*, not a fact: the static trace reaches only
+~8% of the ROM. Running the game (entry 018) shows it writing `$211B` and
+`$211C` during boot. HDMA is still likely involved for the per-scanline
+matrix, but "nothing writes the matrix" is wrong and was stated too
+strongly. Lesson: never report absence from a trace that covers 8%.
 
 **015** — HONESTY ITEM: the DSP-1 model in `tools/smktool/dsp1.py` is an
 **assumption, not a decode**. The four commands were identified from their
@@ -268,4 +270,46 @@ acceleration curve, drift, hop and per-surface response are undecoded.
 
 ---
 
-*(next entry: 018)*
+**018** — The oracle now **runs the game**, and that changes the plan.
+
+Static decoding has hit a ceiling that is structural, not incidental: the
+ROM contains **177 `jmp ($0000,x)` and 81 `jsr ($0000,x)`** dispatches where
+the pointer is already in a register, loaded from a state-machine record.
+Those cannot be resolved by reading. Every remaining behaviour phase (P3
+onward) is gated on being able to *observe* the game instead.
+
+So the interpreter was extended into a minimal machine:
+
+* **APU stub** — no SPC700. The 65816 only needs the IPL handshake: ports 0/1
+  read `$AA`/`$BB` for "ready", and the upload loop then waits for port 0 to
+  echo the counter it wrote. Echoing walks the game through its whole sound
+  upload (108k port writes observed).
+* **`$4210` RDNMI / `$4212` HVBJOY** with an NMI flag that clears on read.
+* **NMI dispatch** (`CPU.nmi`) pushing PB/PC/P and vectoring through
+  `$00:FFEA`, plus `run_frames()`, which fires NMI from the main loop's
+  vblank spin and runs until the spin is reached again. That is one
+  simulation step per vblank — the game's own pacing.
+
+Result: **the game boots and runs.** 1.53M instructions to reach the main
+loop, then ~1200 frames in 0.1 s. The frame counter at `$34` advances
+correctly and `$81E02D` sets the initial mode 13, which is genuine.
+
+**Where it stops.** It idles in mode 13 and never advances. `NMITIMEN` is
+`$B1`: NMI enabled, auto-joypad enabled, **and H/V IRQ enabled**. The IRQ
+handler at `$80801F` is not being driven because there is no scanline
+timing, so anything sequenced from IRQ never happens. INIDISP goes to `$80`
+(forced blank) after ~60 frames, consistent with a transition that never
+completes.
+
+**Next concrete step for this line:** scanline timing — an H/V counter,
+`$4207-$420A` (HTIME/VTIME) compare, IRQ dispatch through `$00:FFEE`, and
+`$4211` TIMEUP. HDMA (`$420C`) after that. Neither is exotic; both are a
+day's careful work, and they unblock P3 completely.
+
+This is scope the roadmap deliberately deferred (risk R2 said build an
+emulator "when a whole-frame question appears, not speculatively"). The
+question has now appeared.
+
+---
+
+*(next entry: 019)*

@@ -38,6 +38,21 @@ class Bus:
         self.log_hw = False
         self.hw_writes: list[tuple[int, int]] = []
 
+        # --- APU stub -------------------------------------------------
+        # We do not emulate the SPC700.  The 65816 side only needs the IPL
+        # handshake to succeed: the boot ROM signals "ready" as $AA/$BB in
+        # ports 0/1, and the upload loop then waits for port 0 to echo the
+        # byte counter it just wrote.  Echoing is enough to walk the game
+        # through its entire sound upload.
+        self.apu_out = [0xAA, 0xBB, 0x00, 0x00]
+        self.apu_writes = 0
+
+        # --- PPU status ----------------------------------------------
+        # $4210 RDNMI: bit 7 set means "NMI occurred"; reading clears it.
+        # $4212 HVBJOY: bit 7 vblank, bit 0 joypad busy.
+        self.nmi_flag = False
+        self.vblank = False
+
     # ---- classification ----
     def _rom_pc(self, bank: int, addr: int) -> int:
         return (((bank & 0x3F) << 16) | addr) & self.mask
@@ -52,6 +67,14 @@ class Bus:
         if low <= 0x3F:
             if addr < 0x2000:
                 return self.wram[addr]
+            if 0x2140 <= addr <= 0x2143:
+                return self.apu_out[addr & 3]
+            if addr == 0x4210:
+                v = 0x42 | (0x80 if self.nmi_flag else 0)
+                self.nmi_flag = False
+                return v
+            if addr == 0x4212:
+                return (0x80 if self.vblank else 0)
             if addr < 0x6000:
                 return self.reg_reads.get(addr, 0)
             if addr < 0x8000:
@@ -75,6 +98,10 @@ class Bus:
                 return
             if addr < 0x6000:
                 self.regs[addr] = val
+                if 0x2140 <= addr <= 0x2143:
+                    # echo: what the IPL upload loop is waiting for
+                    self.apu_out[addr & 3] = val
+                    self.apu_writes += 1
                 if self.log_hw:
                     self.hw_writes.append((addr, val))
                 return
@@ -291,6 +318,50 @@ class CPU:
         r = (a - v) & mask
         self.setflag(C_, a >= (v & mask))
         self.set_zn(r, eight)
+
+    # ---- interrupts -----------------------------------------------------
+    def nmi(self) -> None:
+        """Dispatch a native-mode NMI, as the hardware does at vblank."""
+        self.push8(self.PB)
+        self.push16(self.PC)
+        self.push8(self.P)
+        self.P |= I_
+        self.P &= ~D_
+        self.bus.nmi_flag = True
+        vec = self.bus.read(0, 0xFFEA) | self.bus.read(0, 0xFFEB) << 8
+        self.PB, self.PC = 0, vec
+
+    def run_to(self, pc24: int, budget: int = 4_000_000) -> bool:
+        """Step until the program counter reaches pc24."""
+        for _ in range(budget):
+            if ((self.PB << 16) | self.PC) == pc24:
+                return True
+            self.step()
+            if self.stop:
+                return False
+        return False
+
+    def run_frames(self, frames: int, *, wait_pc: int = 0x80805C,
+                   budget: int = 2_000_000) -> int:
+        """Run whole frames at the game's own pacing.
+
+        The main loop clears the vblank flag and spins at `wait_pc` until NMI
+        sets it, so one frame is: fire NMI from the spin, then run until the
+        spin is reached again.  That is exactly one simulation step per
+        vblank, which is what 60.0988 Hz means here.
+        """
+        if not self.run_to(wait_pc, budget):
+            return 0
+        done = 0
+        for _ in range(frames):
+            self.bus.vblank = True
+            self.nmi()
+            ok = self.run_to(wait_pc, budget)
+            self.bus.vblank = False
+            if not ok:
+                break
+            done += 1
+        return done
 
     # ---- run -----------------------------------------------------------
     SENTINEL = 0xFFFF00
