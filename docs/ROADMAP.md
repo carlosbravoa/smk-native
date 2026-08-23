@@ -52,12 +52,14 @@ re-investigating.
 |---|---|---|---|---|
 | S1 | `src/main.c` `FEEL`, `step_camera` | invented accel/steer constants, exponential speed lag | its own fixed-point kart physics, undecoded | P3 |
 | S2 | `src/assets.c` `smk_track_guess_start` | longest-road-run heuristic for the start position | per-track start line + grid layout, undecoded | P2 |
-| S3 | `src/main.c` (`tileset 1` everywhere) | one 192-tile set for all 24 tracks | per-course theme binding, undecoded | P1 |
 | S4 | `src/mode7.c` camera (`height 15, horizon 0.36, fov 0.55`) | hand-tuned to look right | M7A–D matrix + HDMA table computed per frame by the game | P3 |
 | S5 | `src/mode7.c` `sky_colour` | invented vertical gradient from palette entries 1–2 | BG2 backdrop / per-track horizon graphics | P5 |
 | S6 | everywhere | no collision — camera flies over walls | surface-behaviour table per tile, undecoded | P1 |
 | S7 | renderer | full-resolution smooth perspective | 256×224, per-scanline integer matrix | keep — named divergence, this is the point of a PC port. `--pixel` restores chunk. |
 | S8 | no audio | silence | SPC700 + S-DSP running its own program | P7 |
+
+*Resolved:* **S3** (per-course theme) — the ROM's own table `$81EC2F` is now
+used; C output is byte-identical to the game's loader on all 24 courses.
 
 ---
 
@@ -67,7 +69,7 @@ Ordered so that each unlocks the next, and the scary unknowns are probed
 early (see "Risks probed" lines — a risk we discover in phase 6 that
 invalidates phase 3 work is the failure mode to avoid).
 
-### P0 — Verification infrastructure (the oracle)
+### P0 — Verification infrastructure (the oracle)  ✅ DONE
 *Do this before any behaviour work.*
 
 - Minimal 65816 interpreter over the ROM image + a flat RAM array: enough to
@@ -82,7 +84,7 @@ invalidates phase 3 work is the failure mode to avoid).
 **Risks probed:** whether oracle-based verification is viable at all; DSP-1
 call frequency (R1).
 
-### P1 — The track, completely
+### P1 — The track, completely  (theme binding ✅, surface table next)
 - **Surface-behaviour table**: which tile index is road / offroad / wall /
   boost / jump / pit. Approach: the physics reads it every frame — find who
   indexes RAM with `(y>>3)*128 + (x>>3)`-shaped math, or who reads the

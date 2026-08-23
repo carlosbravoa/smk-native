@@ -41,7 +41,7 @@ int main(int argc, char **argv)
     static smk_track a, b;
     for (int t = 0; t < SMK_TRACK_COUNT; t++) {
         static smk_track trk;
-        if (smk_track_load(&rom, t, 1, 0, &trk, err, sizeof err)) good++;
+        if (smk_track_load(&rom, t, -1, &trk, err, sizeof err)) good++;
         else printf("       track %d: %s\n", t, err);
         if (t == 0) memcpy(&a, &trk, sizeof a);
         if (t == 1) memcpy(&b, &trk, sizeof b);

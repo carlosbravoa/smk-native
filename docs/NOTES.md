@@ -66,4 +66,38 @@ has to be matched bit-for-bit — that is what the oracle is for.
 
 ---
 
-*(next entry: 009)*
+**009** — Course→theme binding found (kills ledger S3). Two adjacent tables:
+
+* `$81EC1B`, 20 bytes — cup/course → track index. Index is
+  `$0150*5 + $0152`, i.e. cup*5 + course. Cup order:
+  `[7,19,16,17,15] [18,1,2,3,0] [13,10,12,9,14] [11,6,8,4,5] [2,0,4,12,8]`
+  (the fifth row is Special Cup reusing earlier courses).
+* `$81EC2F`, 24 bytes — track → **theme*2** (routine `$81EC5E` stores it to
+  `$0126`, whose consumer multiplies by 1.5 to index a stride-3 table).
+
+8 themes, distribution: 0→{1,8,16} 1→{0,7,14,15,21} 2→{2,11,19,22}
+3→{10,18} 4→{4,12,20} 5→{6,13,23} 6→{3,9,17} 7→{5}.
+
+**010** — Asset loads are **not independent**, and a strict decoder gets the
+wrong answer. `$81E67A` runs `$EC5E` (theme) → `$E745` (tilemap) → `$E6D4`
+(tileset) → `$E72E` (palette), and every decompression stages through
+`$7F:C000`. Theme 6's tileset stream contains back-references that reach
+before its own start; on hardware those read what the *tilemap* load left
+there. Decoded standalone it looks malformed.
+
+Two further hardware details the C port initially got wrong, both found by
+diffing against the oracle:
+
+* the write cursor (`$0E`) and the absolute back-reference pointer (`$04`)
+  are **16-bit and wrap inside the 64 KB bank** — `sta $7F0000,x`;
+* the expander always processes 192 tiles no matter how much the stream
+  produced, reading past the end into whatever WRAM held. Several themes
+  rely on this; refusing to over-read loses real tiles.
+
+The port now models one 64 KB WRAM bank and performs the loads in the game's
+order. Result: C tilemaps, tilesets and palettes are byte-identical to the
+game's own code for all 24 tracks, checked in `tools/test.py`.
+
+---
+
+*(next entry: 011)*

@@ -19,6 +19,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BASE = os.path.join(ROOT, "rom", "smk_usa.sfc")
 
 PASS, FAIL = [], []
+A_TRACKS = 24
 
 
 def check(name, cond, detail=""):
@@ -113,6 +114,42 @@ def main():
         if len(p) != 512 or any(p[i] & 0x80 for i in range(1, 512, 2)):
             ok = False
     check("all palettes are 512 bytes of valid BGR555", ok)
+
+    print("\nnative pipeline vs the game's own code")
+    native = os.path.join(ROOT, "build-native", "smk")
+    if not os.path.exists(native):
+        check("C pipeline cross-check", True, "skipped: run `make game` first")
+    else:
+        import struct
+        with tempfile.TemporaryDirectory() as td:
+            m_ok = t_ok = p_ok = 0
+            for tr in range(A_TRACKS):
+                dp = os.path.join(td, f"{tr}.bin")
+                rc = subprocess.run([native, "--rom", BASE, "--track", str(tr),
+                                     "--dump", dp], capture_output=True)
+                if rc.returncode != 0:
+                    continue
+                d = open(dp, "rb").read()
+                c_map, c_tiles = d[:16384], d[16384:16384 + 12288]
+                c_pal = struct.unpack("<256I", d[16384 + 12288:16384 + 12288 + 1024])
+                res = o.call(0x81E67A, long_call=False,
+                             wram={0x7E0124: bytes([tr, 0])}, db=0x81)
+                g_map = res.wram(0x7F0000, 16384)
+                g_tiles = res.wram(0x7F4000, 12288)
+                raw = res.wram(0x7E3A80, 512)
+
+                def bgr(v):
+                    rr, gg, bb = v & 0x1F, (v >> 5) & 0x1F, (v >> 10) & 0x1F
+                    f = lambda c: (c * 255 + 15) // 31
+                    return (f(rr) << 16) | (f(gg) << 8) | f(bb)
+
+                g_pal = tuple(bgr(raw[i * 2] | raw[i * 2 + 1] << 8) for i in range(256))
+                m_ok += c_map == g_map
+                t_ok += c_tiles == g_tiles
+                p_ok += c_pal == g_pal
+            check("C tilemaps match the game's own loader", m_ok == A_TRACKS, f"{m_ok}/{A_TRACKS}")
+            check("C tilesets match the game's own loader", t_ok == A_TRACKS, f"{t_ok}/{A_TRACKS}")
+            check("C palettes match the game's own loader", p_ok == A_TRACKS, f"{p_ok}/{A_TRACKS}")
 
     print("\nbuild pipeline")
     with tempfile.TemporaryDirectory() as tmp:

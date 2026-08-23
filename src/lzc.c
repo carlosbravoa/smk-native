@@ -14,10 +14,35 @@
 enum { CMD_LITERAL, CMD_BYTE_FILL, CMD_WORD_FILL, CMD_INC_FILL,
        CMD_COPY_ABS, CMD_COPY_ABS_INV, CMD_COPY_REL, CMD_COPY_REL_INV };
 
-long smk_decompress(const uint8_t *src, size_t srclen, size_t off,
-                    uint8_t *out, size_t outcap, size_t *consumed)
+/* Core decoder.
+ *
+ * `wrap` selects the memory model:
+ *
+ *   wrap == 0   standalone buffer.  Every access is bounds-checked and a
+ *               stream that reaches outside its own output is an error.
+ *
+ *   wrap != 0   the hardware model, and `wrap` is the bank size minus one.
+ *               The game keeps its source and destination pointers in 16-bit
+ *               registers ($0E and $04) and addresses WRAM as `$7F0000,x`, so
+ *               both the write cursor and back-references wrap within the
+ *               64 KB bank, and a back-reference may legitimately read bytes
+ *               an *earlier* load left behind.  At least one tileset (theme
+ *               6, used by tracks 3/9/17) depends on both behaviours: decoded
+ *               in isolation it looks malformed, decoded into the live WRAM
+ *               image it is exactly right.
+ */
+static long decode(const uint8_t *src, size_t srclen, size_t off,
+                   uint8_t *buf, size_t bufsize, size_t dest,
+                   size_t wrap, size_t *consumed)
 {
     size_t p = off, n = 0;
+
+    #define PUT(i, v)  do {                                                   \
+        size_t _a = wrap ? ((dest + (i)) & wrap) : (dest + (i));               \
+        if (!wrap && _a >= bufsize) return -1;                                 \
+        buf[_a] = (uint8_t)(v);                                               \
+    } while (0)
+    #define GET(a)     (buf[wrap ? ((a) & wrap) : (a)])
 
     for (;;) {
         if (p >= srclen) return -1;
@@ -35,54 +60,56 @@ long smk_decompress(const uint8_t *src, size_t srclen, size_t off,
             len = ((((unsigned)b0 & 3u) << 8) | src[p + 1]) + 1u;
             p += 2;
         }
-        if (n + len > outcap) return -1;
+        if (!wrap && dest + n + len > bufsize) return -1;
 
         switch (cmd) {
         case CMD_LITERAL:
             if (p + len > srclen) return -1;
-            for (unsigned i = 0; i < len; i++) out[n + i] = src[p + i];
+            for (unsigned i = 0; i < len; i++) PUT(n + i, src[p + i]);
             p += len;
             break;
 
         case CMD_BYTE_FILL: {
             if (p >= srclen) return -1;
             uint8_t v = src[p++];
-            for (unsigned i = 0; i < len; i++) out[n + i] = v;
+            for (unsigned i = 0; i < len; i++) PUT(n + i, v);
             break;
         }
         case CMD_WORD_FILL: {
             if (p + 1 >= srclen) return -1;
             uint8_t a = src[p], b = src[p + 1];
             p += 2;
-            for (unsigned i = 0; i < len; i++) out[n + i] = (i & 1) ? b : a;
+            for (unsigned i = 0; i < len; i++) PUT(n + i, (i & 1) ? b : a);
             break;
         }
         case CMD_INC_FILL: {
             if (p >= srclen) return -1;
             uint8_t v = src[p++];
-            for (unsigned i = 0; i < len; i++) out[n + i] = (uint8_t)(v + i);
+            for (unsigned i = 0; i < len; i++) PUT(n + i, (uint8_t)(v + i));
             break;
         }
         case CMD_COPY_ABS:
         case CMD_COPY_ABS_INV: {
             if (p + 1 >= srclen) return -1;
-            size_t s = (size_t)src[p] | ((size_t)src[p + 1] << 8);
+            /* the game adds the stream's origin to a 16-bit offset */
+            size_t s = dest + ((size_t)src[p] | ((size_t)src[p + 1] << 8));
             p += 2;
-            if (s >= n) return -1;            /* would read uninitialised output */
+            if (!wrap && (s + len > bufsize || s >= dest + n)) return -1;
             uint8_t mask = (cmd == CMD_COPY_ABS_INV) ? 0xFF : 0x00;
             /* byte at a time: an overlapping run repeats, and the game
              * depends on that */
-            for (unsigned i = 0; i < len; i++) out[n + i] = out[s + i] ^ mask;
+            for (unsigned i = 0; i < len; i++) PUT(n + i, GET(s + i) ^ mask);
             break;
         }
         case CMD_COPY_REL:
         case CMD_COPY_REL_INV: {
             if (p >= srclen) return -1;
             size_t dist = src[p++];
-            if (dist == 0 || dist > n) return -1;
-            size_t s = n - dist;
+            if (dist == 0) return -1;
+            if (!wrap && dist > n) return -1;
+            size_t s = dest + n - dist;
             uint8_t mask = (cmd == CMD_COPY_REL_INV) ? 0xFF : 0x00;
-            for (unsigned i = 0; i < len; i++) out[n + i] = out[s + i] ^ mask;
+            for (unsigned i = 0; i < len; i++) PUT(n + i, GET(s + i) ^ mask);
             break;
         }
         default:
@@ -91,6 +118,23 @@ long smk_decompress(const uint8_t *src, size_t srclen, size_t off,
         n += len;
     }
 
+    #undef PUT
+    #undef GET
+
     if (consumed) *consumed = p - off;
     return (long)n;
+}
+
+long smk_decompress_into(const uint8_t *src, size_t srclen, size_t off,
+                         uint8_t *buf, size_t bufsize, size_t dest,
+                         size_t *consumed)
+{
+    /* bufsize must be a power of two: it models one 64 KB WRAM bank */
+    return decode(src, srclen, off, buf, bufsize, dest, bufsize - 1, consumed);
+}
+
+long smk_decompress(const uint8_t *src, size_t srclen, size_t off,
+                    uint8_t *out, size_t outcap, size_t *consumed)
+{
+    return decode(src, srclen, off, out, outcap, 0, 0, consumed);
 }

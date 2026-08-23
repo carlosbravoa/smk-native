@@ -7,8 +7,16 @@
 #define TBL_TILEMAP  0x81EB5Bu   /* 24 entries, DOUBLY compressed          */
 #define TBL_TILESET  0x81EBA3u   /* packed 4bpp tiles + palette-base table */
 #define TBL_PALETTE  0x81EBBBu   /* 256 colours, BGR555                    */
+#define TBL_THEME    0x81EC2Fu   /* 24 bytes, track -> theme*2 ($81EC5E)   */
 
-#define SCRATCH  0x20000u
+/* We mirror WRAM bank $7F, because the game's loads are not independent:
+ * each decompresses through the staging area at $7F:C000 and the next one
+ * can reference what the last left behind.  Same buffer, same order, same
+ * result - see $81E67A. */
+#define WRAM_SIZE     0x10000u
+#define STAGE_OFF     0xC000u    /* where loads are decompressed to first  */
+#define MAP_OFF       0x0000u    /* final tilemap                          */
+#define TILES_OFF     0x4000u    /* expanded Mode 7 tiles                  */
 
 static uint32_t table_ptr(const smk_rom *rom, uint32_t table, int index)
 {
@@ -18,11 +26,12 @@ static uint32_t table_ptr(const smk_rom *rom, uint32_t table, int index)
          |  (uint32_t)rom->data[pc];
 }
 
-static long load_blob(const smk_rom *rom, uint32_t table, int index,
-                      uint8_t *out, size_t outcap)
+int smk_track_theme(const smk_rom *rom, int track)
 {
-    uint32_t pc = smk_snes_to_pc(rom, table_ptr(rom, table, index));
-    return smk_decompress(rom->data, rom->size, pc, out, outcap, NULL);
+    if (track < 0 || track >= SMK_TRACK_COUNT) return 0;
+    /* the ROM stores theme*2, because the caller uses it as a *1.5 index
+     * into a three-byte-per-entry table */
+    return rom->data[smk_snes_to_pc(rom, TBL_THEME) + track] >> 1;
 }
 
 /* The tile expander at $84E3C7.
@@ -37,7 +46,6 @@ static bool expand_tiles(const uint8_t *packed, size_t packedlen,
 {
     size_t need = 0x100u + (size_t)count * 32u;
     if (packedlen < need) return false;
-
     size_t o = 0;
     for (int t = 0; t < count; t++) {
         uint8_t base = packed[t];
@@ -60,47 +68,68 @@ static uint32_t bgr555(uint16_t v)
     return (r << 16) | (g << 8) | b;
 }
 
-bool smk_track_load(const smk_rom *rom, int track, int tileset, int palette,
+/* Decompress table[index] into the WRAM image at `dest`. */
+static long load_into(const smk_rom *rom, uint32_t table, int index,
+                      uint8_t *wram, size_t dest)
+{
+    uint32_t pc = smk_snes_to_pc(rom, table_ptr(rom, table, index));
+    return smk_decompress_into(rom->data, rom->size, pc,
+                               wram, WRAM_SIZE, dest, NULL);
+}
+
+bool smk_track_load(const smk_rom *rom, int track, int theme,
                     smk_track *out, char *err, size_t errsz)
 {
-    static uint8_t stage[SCRATCH];
-    static uint8_t packed[SCRATCH];
+    static uint8_t wram[WRAM_SIZE];
 
     if (track < 0 || track >= SMK_TRACK_COUNT) {
         snprintf(err, errsz, "track %d out of range 0..%d",
                  track, SMK_TRACK_COUNT - 1);
         return false;
     }
-    memset(out, 0, sizeof *out);
-    out->track = track;
+    if (theme < 0) theme = smk_track_theme(rom, track);
+    if (theme >= SMK_THEME_COUNT) theme %= SMK_THEME_COUNT;
 
-    /* Tilemap: compressed twice.  The first pass yields another stream. */
-    long n = load_blob(rom, TBL_TILEMAP, track, stage, sizeof stage);
-    if (n < 0) { snprintf(err, errsz, "track %d: outer stream is bad", track); return false; }
-    n = smk_decompress(stage, (size_t)n, 0, out->map, sizeof out->map, NULL);
+    memset(out, 0, sizeof *out);
+    memset(wram, 0, sizeof wram);
+    out->track = track;
+    out->theme = theme;
+
+    /* --- tilemap, in the same two steps as $81E745 ------------------- */
+    if (load_into(rom, TBL_TILEMAP, track, wram, STAGE_OFF) < 0) {
+        snprintf(err, errsz, "track %d: outer tilemap stream is bad", track);
+        return false;
+    }
+    long n = smk_decompress_into(wram + STAGE_OFF, WRAM_SIZE - STAGE_OFF, 0,
+                                 wram, WRAM_SIZE, MAP_OFF, NULL);
     if (n != SMK_MAP_BYTES) {
         snprintf(err, errsz, "track %d: tilemap is %ld bytes, expected %d",
                  track, n, SMK_MAP_BYTES);
         return false;
     }
+    memcpy(out->map, wram + MAP_OFF, SMK_MAP_BYTES);
 
-    /* Tileset. */
-    long pn = load_blob(rom, TBL_TILESET, tileset, packed, sizeof packed);
-    if (pn < 0 || !expand_tiles(packed, (size_t)pn, out->tiles, SMK_TILE_COUNT)) {
-        snprintf(err, errsz, "tileset %d: cannot expand %ld bytes into %d tiles",
-                 tileset, pn, SMK_TILE_COUNT);
+    /* --- tileset, staged over the same area, as $81E6D4 does ---------- */
+    if (load_into(rom, TBL_TILESET, theme, wram, STAGE_OFF) < 0) {
+        snprintf(err, errsz, "theme %d: tileset stream is bad", theme);
         return false;
     }
+    /* The game always expands 192 tiles regardless of how much the stream
+     * produced, reading past the end into whatever WRAM held.  Reproduce
+     * that rather than refusing - several themes depend on it. */
+    expand_tiles(wram + STAGE_OFF, WRAM_SIZE - STAGE_OFF,
+                 out->tiles, SMK_TILE_COUNT);
 
-    /* Palette. */
-    long qn = load_blob(rom, TBL_PALETTE, palette, stage, sizeof stage);
+    /* --- palette ----------------------------------------------------- */
+    long qn = load_into(rom, TBL_PALETTE, theme, wram, STAGE_OFF);
     if (qn != 512) {
-        snprintf(err, errsz, "palette %d: %ld bytes, expected 512", palette, qn);
+        snprintf(err, errsz, "theme %d: palette is %ld bytes, expected 512",
+                 theme, qn);
         return false;
     }
     for (int i = 0; i < 256; i++)
-        out->palette[i] = bgr555((uint16_t)(stage[i * 2] | stage[i * 2 + 1] << 8));
-
+        out->palette[i] = bgr555((uint16_t)(wram[STAGE_OFF + i * 2]
+                                          | wram[STAGE_OFF + i * 2 + 1] << 8));
     return true;
 }
 

@@ -35,9 +35,20 @@ uint32_t smk_snes_to_pc(const smk_rom *rom, uint32_t snes);
 long smk_decompress(const uint8_t *src, size_t srclen, size_t off,
                     uint8_t *out, size_t outcap, size_t *consumed);
 
+/* Decompress into `buf` at `dest`, resolving back-references against the
+ * whole buffer.  Needed to reproduce assets whose streams reference bytes an
+ * earlier load left in WRAM. */
+long smk_decompress_into(const uint8_t *src, size_t srclen, size_t off,
+                         uint8_t *buf, size_t bufsize, size_t dest,
+                         size_t *consumed);
+
 /* ---- track assets ----------------------------------------------------- */
 
 #define SMK_TRACK_COUNT   24          /* 20 GP courses + 4 battle courses */
+#define SMK_THEME_COUNT    8          /* Mario Circuit, Ghost Valley, ...     */
+
+/* Theme (tileset + palette) for a course, from the ROM's own table $81EC2F. */
+int smk_track_theme(const smk_rom *rom, int track);
 #define SMK_MAP_DIM       128         /* tiles per side */
 #define SMK_MAP_BYTES     (SMK_MAP_DIM * SMK_MAP_DIM)
 #define SMK_TILE_PX       8
@@ -50,9 +61,11 @@ typedef struct {
     uint8_t  tiles[SMK_TILE_COUNT * SMK_TILE_BYTES];/* expanded 8bpp pixels  */
     uint32_t palette[256];                          /* 0xRRGGBB              */
     int      track;
+    int      theme;
 } smk_track;
 
-bool smk_track_load(const smk_rom *rom, int track, int tileset, int palette,
+/* Load a course.  `theme` < 0 means "use the ROM's own binding". */
+bool smk_track_load(const smk_rom *rom, int track, int theme,
                     smk_track *out, char *err, size_t errsz);
 
 /* A drivable spot to start from.  Placeholder until the real start line is

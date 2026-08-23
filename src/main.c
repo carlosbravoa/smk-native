@@ -21,13 +21,13 @@ typedef struct {
     bool up, down, left, right, shift;
     bool quit;
     /* sticky edges: set by events, cleared only when a tick consumes them */
-    bool next_track, prev_track, next_pal, prev_pal, next_tiles, toggle_filter;
+    bool next_track, prev_track, next_pal, prev_pal, toggle_filter;
 } input_state;
 
 static void input_edges_clear(input_state *in)
 {
     in->next_track = in->prev_track = false;
-    in->next_pal = in->prev_pal = in->next_tiles = in->toggle_filter = false;
+    in->next_pal = in->prev_pal = in->toggle_filter = false;
 }
 
 static void pump(input_state *in)
@@ -44,7 +44,6 @@ static void pump(input_state *in)
             case SDLK_LEFTBRACKET:  in->prev_track = true; break;
             case SDLK_p: in->next_pal = true; break;
             case SDLK_o: in->prev_pal = true; break;
-            case SDLK_t: in->next_tiles = true; break;
             case SDLK_f: in->toggle_filter = true; break;
             default: break;
             }
@@ -99,28 +98,29 @@ static void usage(const char *argv0)
     printf("usage: %s [options]\n"
            "  --rom PATH      Super Mario Kart (USA) ROM   [rom/smk_usa.sfc]\n"
            "  --track N       0..23  (20 courses + 4 battle arenas)\n"
-           "  --tileset N     Mode 7 tileset index         [1]\n"
-           "  --palette N     palette index                [0]\n"
+           "  --theme N       override the course theme    [from ROM]\n"
            "  --width W       window width                 [1024]\n"
            "  --height H      window height                [896]\n"
            "  --pixel N       render at 1/N resolution     [2]\n"
            "  --fullscreen\n"
            "  --frames N      run N frames then exit (benchmark)\n"
            "  --shot PATH     render one frame to a BMP and exit\n"
+           "  --dump PATH     write map+tiles+palette and exit (verification)\n"
            "  --at X Y DEG    camera placement for --shot\n"
            "  --height-cam H  eye height above the plane   [15]\n"
            "  --horizon F     horizon row, 0..1            [0.36]\n"
            "  --fov F         focal length scale           [0.55]\n\n"
            "  arrows/WASD steer and accelerate, shift = boost\n"
-           "  [ ] change track, o p change palette, t change tileset\n"
+           "  [ ] change track, o p override the theme\n"
            "  f toggles linear filtering, esc quits\n", argv0);
 }
 
 int main(int argc, char **argv)
 {
     const char *rom_path = "rom/smk_usa.sfc";
-    int track = 0, tileset = 1, palette = 0;
+    int track = 0, theme = -1;   /* -1 = use the ROM's own binding */
     int win_w = 1024, win_h = 896, pixel = 2, fullscreen = 0;
+    const char *dump = NULL;          /* write raw track data and exit      */
     const char *shot = NULL;          /* render one frame to a BMP and exit */
     float shot_x = 512, shot_y = 512, shot_a = 0;
     int have_at = 0;
@@ -131,11 +131,12 @@ int main(int argc, char **argv)
         const char *a = argv[i];
         #define ARG(name, var) if (!strcmp(a, name) && i + 1 < argc) { var = atoi(argv[++i]); continue; }
         if (!strcmp(a, "--rom") && i + 1 < argc) { rom_path = argv[++i]; continue; }
-        ARG("--track", track) ARG("--tileset", tileset) ARG("--palette", palette)
+        ARG("--track", track) ARG("--theme", theme)
         ARG("--width", win_w) ARG("--height", win_h) ARG("--pixel", pixel)
         if (!strcmp(a, "--fullscreen")) { fullscreen = 1; continue; }
         if (!strcmp(a, "--frames") && i + 1 < argc) { max_frames = atol(argv[++i]); continue; }
         if (!strcmp(a, "--shot") && i + 1 < argc) { shot = argv[++i]; continue; }
+        if (!strcmp(a, "--dump") && i + 1 < argc) { dump = argv[++i]; continue; }
         #define FARG(name, var) if (!strcmp(a, name) && i + 1 < argc) { var = (float)atof(argv[++i]); continue; }
         FARG("--height-cam", cam_height) FARG("--horizon", cam_horizon) FARG("--fov", cam_fov)
         #undef FARG
@@ -168,14 +169,29 @@ int main(int argc, char **argv)
         fprintf(stderr, "warning: %s\ncontinuing anyway; assets may be wrong.\n\n", err);
 
     static smk_track trk;
-    if (!smk_track_load(&rom, track, tileset, palette, &trk, err, sizeof err)) {
+    if (!smk_track_load(&rom, track, theme, &trk, err, sizeof err)) {
         fprintf(stderr, "error: %s\n", err);
         smk_rom_free(&rom);
         return 1;
     }
     if (!have_at) smk_track_guess_start(&trk, &shot_x, &shot_y, &shot_a);
     printf("loaded \"%s\"\n", rom.title);
-    printf("track %d, tileset %d, palette %d\n", track, tileset, palette);
+    printf("track %d, theme %d (from the ROM's own table)\n", track, trk.theme);
+
+    /* Raw asset dump, so the C pipeline can be diffed against the oracle
+     * running the game's own 65816 code.  Layout: 16384 map, 12288 tiles,
+     * 1024 palette (256 x uint32 little-endian). */
+    if (dump) {
+        FILE *f = fopen(dump, "wb");
+        if (!f) { fprintf(stderr, "cannot write %s\n", dump); return 1; }
+        fwrite(trk.map, 1, sizeof trk.map, f);
+        fwrite(trk.tiles, 1, sizeof trk.tiles, f);
+        fwrite(trk.palette, 4, 256, f);
+        fclose(f);
+        printf("track %d theme %d -> %s\n", track, trk.theme, dump);
+        smk_rom_free(&rom);
+        return 0;
+    }
 
     /* Headless single-frame render: no window, no event loop.  Also the
      * cheapest way to eyeball the renderer from a script. */
@@ -266,22 +282,19 @@ int main(int argc, char **argv)
             accum -= TICK_DT;
             stepped = true;
 
-            if (in.next_track || in.prev_track || in.next_pal || in.prev_pal
-                || in.next_tiles) {
-                int nt = track, np = palette, ns = tileset;
-                if (in.next_track) nt = (track + 1) % SMK_TRACK_COUNT;
-                if (in.prev_track) nt = (track + SMK_TRACK_COUNT - 1) % SMK_TRACK_COUNT;
-                if (in.next_pal)   np = (palette + 1) & 7;
-                if (in.prev_pal)   np = (palette + 7) & 7;
-                if (in.next_tiles) ns = (tileset + 1) & 7;
-                if (smk_track_load(&rom, nt, ns, np, &trk, err, sizeof err)) {
-                    track = nt; palette = np; tileset = ns;
+            if (in.next_track || in.prev_track || in.next_pal || in.prev_pal) {
+                int nt = track, nth = theme;
+                if (in.next_track) { nt = (track + 1) % SMK_TRACK_COUNT; nth = -1; }
+                if (in.prev_track) { nt = (track + SMK_TRACK_COUNT - 1) % SMK_TRACK_COUNT; nth = -1; }
+                if (in.next_pal)   nth = (trk.theme + 1) % SMK_THEME_COUNT;
+                if (in.prev_pal)   nth = (trk.theme + SMK_THEME_COUNT - 1) % SMK_THEME_COUNT;
+                if (smk_track_load(&rom, nt, nth, &trk, err, sizeof err)) {
+                    track = nt; theme = nth;
                     smk_track_guess_start(&trk, &cam.x, &cam.y, &cam.angle);
                     vel = 0;
                 } else {
                     fprintf(stderr, "skipped: %s\n", err);
-                    /* restore whatever was last good */
-                    smk_track_load(&rom, track, tileset, palette, &trk, err, sizeof err);
+                    smk_track_load(&rom, track, theme, &trk, err, sizeof err);
                 }
             }
             if (in.toggle_filter) {
@@ -311,8 +324,8 @@ int main(int argc, char **argv)
             double secs = (double)(t1 - fps_t0) / (double)freq;
             char title[192];
             snprintf(title, sizeof title,
-                     "Super Mario Kart  -  track %d  tileset %d  palette %d  -  "
-                     "%dx%d  %.0f fps", track, tileset, palette, rw, rh,
+                     "Super Mario Kart  -  track %d  theme %d  -  "
+                     "%dx%d  %.0f fps", track, trk.theme, rw, rh,
                      frames / secs);
             SDL_SetWindowTitle(win, title);
             frames = 0; fps_t0 = t1;
