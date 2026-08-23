@@ -43,4 +43,27 @@ per-course binding not yet traced (roadmap P1).
 
 ---
 
-*(next entry: 008)*
+**008** — RISK R1 RESOLVED (scoped, not eliminated). The DSP-1 *is* used by
+gameplay code, at DR `$6000` with status `$7000`. Four commands only, each
+identified from the write/read counts around the command byte:
+
+| cmd | site | shape | operation |
+|---|---|---|---|
+| `$00` | `$81B043` | 2 params → 1 result | signed multiply |
+| `$04` | `$84FE3F` | angle, radius → 2 results | sin/cos |
+| `$0C` | `$81B2C1` | angle, dx, dy → 2 results | 2D rotate |
+| `$28` | `$81B2F3` | 3 params → results | vector length |
+
+Confirmed by use, not by assumption: `$84FE3F` writes `tya` (angle) then a
+pulled radius and stores result 1 and its two's complement to `$02,x`/`$04,x`
+— textbook sin/cos. `$81B2C1` writes an angle from `$9C,x` then a dx and dy
+built by subtraction, and reads two results — textbook 2D rotate.
+
+Consequence for the roadmap: P3 does **not** need a general DSP-1
+reimplementation, only these four, and all four are ordinary fixed-point
+maths. The oracle emulates them directly. Their exact output scaling still
+has to be matched bit-for-bit — that is what the oracle is for.
+
+---
+
+*(next entry: 009)*

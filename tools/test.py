@@ -93,6 +93,18 @@ def main():
     check("consumed length predicts the next blob's address", adj > 20,
           f"{adj} adjacencies")
 
+    print("\noracle (the game's own code)")
+    from smktool.oracle import Oracle
+    o = Oracle(rom)
+    agree = 0
+    for name, e in blobs:
+        want = A.table(rom, name).read(e.index)
+        res = o.call(0x84E09E, a=(e.src >> 16) & 0xFF, y=e.src & 0xFFFF, x=0)
+        if res.wram(0x7F0000, len(want)) == want:
+            agree += 1
+    check("the game's own decompressor agrees with ours on every asset",
+          agree == len(blobs), f"{agree}/{len(blobs)}")
+
     print("\npalettes")
     pt = A.table(rom, "palette")
     ok = True
