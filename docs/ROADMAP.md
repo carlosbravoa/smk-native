@@ -86,11 +86,16 @@ Already working: APU IPL handshake stub, RDNMI/HVBJOY, NMI dispatch, and
 `run_frames()` at the game's own vblank pacing. The game boots and runs
 ~1200 frames in 0.1 s.
 
-Missing, and the reason it idles in mode 13: **H/V IRQ** (`NMITIMEN` is
-`$B1`, so the game expects it). Needed:
-  - a scanline/dot counter driving `$213C`/`$213D`
-  - `$4207-$420A` HTIME/VTIME compare and IRQ dispatch via `$00:FFEE`
-  - `$4211` TIMEUP (read clears)
+Done since: scanline counter, HTIME/VTIME compare, IRQ dispatch via
+`$00:FFEE`, `$4211` TIMEUP, and an interrupt nesting guard. With IRQ the
+game advances **mode 13 -> mode 0** (NOTES 019).
+
+Now blocked on the **SPC700**, not on timing: the game disables NMI/IRQ and
+spins on the APU handshake at `$81F510` a second time, expecting real
+replies rather than the IPL echo. Needed:
+  - an SPC700 CPU interpreter (small, well documented, same shape as the
+    65816 one already written); a stub S-DSP is fine at first
+  - upload the game's own driver the way the IPL does
   - then HDMA (`$420C`), which is how the Mode 7 matrix reaches the PPU
 
 Acceptance: drive the attract mode with synthetic input and reach the race
@@ -165,7 +170,11 @@ The largest decode. Sub-order:
   with the object lists in P1). Rubber-banding parameters. Items later;
   plain driving opponents first.
 
-### P7 — Audio
+### P7 — Audio  ⬅ **MOVED UP: the SPC700 blocks P0.5, so it blocks P2-P6**
+
+The 65816 blocks on the sound CPU (NOTES 019), so "no audio for now" is not
+an option that leaves the rest reachable. The SPC700 *core* is needed early;
+the S-DSP (actual sound output) can still come late.
 - Faithful = run the game's own SPC700 program on an emulated SPC700+S-DSP
   core, uploaded from the ROM exactly as the game does, and speak to it
   through the 4 APU ports with the same command protocol the 65816 side
@@ -205,7 +214,11 @@ which commands race mode issues. DSP-1 commands are publicly documented
 maths (multiply, inverse, rotate, project) — reimplementable — but we must
 know *which* and *where* before P3 planning, not during.
 
-**R2 — No reference emulator in the loop yet.  [NOW BEING BUILT]**
+**R2 — No reference emulator in the loop yet.  [BEING BUILT; SPC700 is the
+critical path]** The oracle boots the game, runs scanline-accurate-enough
+frames and dispatches NMI and IRQ. It stops because the game waits on the
+sound CPU. An SPC700 interpreter is now the single highest-value piece of
+work in the project: it unblocks observing everything else.
 The whole-frame question the original note said to wait for has arrived
 (NOTES 018). The oracle boots the game and runs frames; it needs IRQ and
 HDMA to progress. Original note follows.

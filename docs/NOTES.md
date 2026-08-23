@@ -312,4 +312,43 @@ question has now appeared.
 
 ---
 
-*(next entry: 019)*
+**019** — Scanline timing and IRQ added; the game advances, then hits the
+real wall: **it needs a working SPC700.**
+
+Added: an H/V counter, `$4207-$420A` HTIME/VTIME compare, IRQ dispatch via
+`$00:FFEE`, `$4211` TIMEUP (clears on read), `$213C`/`$213D` counters, and a
+nesting guard so an interrupt is never re-entered.
+
+With IRQ the game *does* progress: **mode 13 -> mode 0 at frame 41**, which
+is real progress the NMI-only build never made. Mode 0's handler is a bare
+`rts`, so mode 0 is a legitimate idle state.
+
+Then it stops, and the reason is unambiguous:
+
+* `NMITIMEN` is back to `$00` — the game deliberately disabled NMI and IRQ;
+* execution is spinning at `$81F510`, `cpx $2140` — **the APU handshake
+  again**.
+
+So this is not a timing bug. Having finished its first phase the game talks
+to the sound driver a second time, and now expects specific replies rather
+than the IPL echo. Our stub answers the *boot* protocol only.
+
+**Consequence for the roadmap: audio is not an optional late phase.** The
+SPC700 is on the critical path for making the game *run at all*, because
+the 65816 blocks on it. P7 has to move up, or at least the SPC700 core does.
+Two options, and the first is almost certainly right:
+
+1. **Emulate the SPC700 + S-DSP properly** and upload the game's own driver.
+   The SPC700 is a small, well-documented 8-bit CPU; the DSP is harder but
+   is only needed for *sound*, not for the handshake. A CPU-only SPC700 with
+   a stub DSP would unblock the 65816 immediately and give real audio later.
+2. Reverse engineer SMK's specific 65816<->SPC700 command protocol and fake
+   the replies. Cheaper now, wrong later, and it has to be redone for audio.
+
+Recommend option 1: an SPC700 interpreter is a day's work with the same
+shape as the 65816 one already written, and it converts a permanent
+blocker into a solved problem.
+
+---
+
+*(next entry: 020)*

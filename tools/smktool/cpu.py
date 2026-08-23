@@ -52,6 +52,9 @@ class Bus:
         # $4212 HVBJOY: bit 7 vblank, bit 0 joypad busy.
         self.nmi_flag = False
         self.vblank = False
+        self.irq_flag = False        # $4211 TIMEUP, cleared on read
+        self.vcount = 0
+        self.hcount = 0
 
     # ---- classification ----
     def _rom_pc(self, bank: int, addr: int) -> int:
@@ -73,8 +76,16 @@ class Bus:
                 v = 0x42 | (0x80 if self.nmi_flag else 0)
                 self.nmi_flag = False
                 return v
+            if addr == 0x4211:
+                v = 0x80 if self.irq_flag else 0
+                self.irq_flag = False
+                return v
             if addr == 0x4212:
                 return (0x80 if self.vblank else 0)
+            if addr == 0x213C:                     # OPHCT, latched H
+                return self.hcount & 0xFF
+            if addr == 0x213D:                     # OPVCT, latched V
+                return self.vcount & 0xFF
             if addr < 0x6000:
                 return self.reg_reads.get(addr, 0)
             if addr < 0x8000:
@@ -138,6 +149,7 @@ class CPU:
         self.stop = False
         self.trace: list[int] = []
         self.trace_enabled = False
+        self.int_depth = 0        # nesting guard: do not re-enter a handler
 
     # ---- flag helpers ----
     @property
@@ -319,9 +331,68 @@ class CPU:
         self.setflag(C_, a >= (v & mask))
         self.set_zn(r, eight)
 
+    # ---- scanline timing ------------------------------------------------
+    #
+    # Not cycle accurate, and does not need to be.  What the game needs is
+    # that IRQs land on the scanlines it asked for, in order, at the game's
+    # frame rate.  Instructions per line is an average; the SNES CPU runs
+    # about 59_600 cycles per frame over 262 lines at roughly 4 cycles an
+    # instruction.
+    LINES_PER_FRAME = 262
+    VBLANK_LINE = 225
+    INSTR_PER_LINE = 57
+
+    def _irq_due(self) -> bool:
+        """Does the IRQ configured in NMITIMEN fire on this line/dot?"""
+        en = self.bus.regs.get(0x4200, 0)
+        mode = en & 0x30
+        if mode == 0:
+            return False
+        htime = (self.bus.regs.get(0x4207, 0)
+                 | (self.bus.regs.get(0x4208, 0) & 1) << 8)
+        vtime = (self.bus.regs.get(0x4209, 0)
+                 | (self.bus.regs.get(0x420A, 0) & 1) << 8)
+        if mode == 0x10:                       # H only, every line
+            return True
+        if mode == 0x20:                       # V only
+            return self.bus.vcount == vtime
+        return self.bus.vcount == vtime and htime < 340   # H and V
+
+    def irq(self) -> None:
+        self.int_depth += 1
+        self.push8(self.PB)
+        self.push16(self.PC)
+        self.push8(self.P)
+        self.P |= I_
+        self.P &= ~D_
+        self.bus.irq_flag = True
+        vec = self.bus.read(0, 0xFFEE) | self.bus.read(0, 0xFFEF) << 8
+        self.PB, self.PC = 0, vec
+
+    def run_frame(self) -> None:
+        """One video frame: 262 scanlines, with NMI at vblank and IRQ where
+        the game asked for it."""
+        for line in range(self.LINES_PER_FRAME):
+            self.bus.vcount = line
+            self.bus.vblank = line >= self.VBLANK_LINE
+
+            # Never re-enter: on hardware the handler returns long before
+            # the next event, and nesting here only corrupts the stack.
+            if self.int_depth == 0:
+                if line == self.VBLANK_LINE and (self.bus.regs.get(0x4200, 0) & 0x80):
+                    self.nmi()
+                elif self._irq_due() and not (self.P & I_):
+                    self.irq()
+
+            for _ in range(self.INSTR_PER_LINE):
+                self.step()
+                if self.stop:
+                    return
+
     # ---- interrupts -----------------------------------------------------
     def nmi(self) -> None:
         """Dispatch a native-mode NMI, as the hardware does at vblank."""
+        self.int_depth += 1
         self.push8(self.PB)
         self.push16(self.PC)
         self.push8(self.P)
@@ -340,6 +411,14 @@ class CPU:
             if self.stop:
                 return False
         return False
+
+    def run_frames_scanline(self, frames: int) -> int:
+        """Frames driven by the scanline model (NMI + IRQ)."""
+        for f in range(frames):
+            self.run_frame()
+            if self.stop:
+                return f
+        return frames
 
     def run_frames(self, frames: int, *, wait_pc: int = 0x80805C,
                    budget: int = 2_000_000) -> int:
@@ -568,6 +647,8 @@ class CPU:
             self.PC = self.pull16()
             self.PB = self.pull8()
             self._fix_index_width()
+            if self.int_depth:
+                self.int_depth -= 1
 
         # --- stack ---
         elif mnem == "PHA":
