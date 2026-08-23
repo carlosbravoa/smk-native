@@ -1,0 +1,15 @@
+# ---------------------------------------------------------------------------
+# NEVER commit game data.  This project ships tools and analysis only.
+# ---------------------------------------------------------------------------
+rom/*
+!rom/README.md
+build/
+assets/extracted/
+vendor/asar/
+vendor/asar-build/
+*.sfc
+*.smc
+*.srm
+*.bin
+__pycache__/
+*.pyc

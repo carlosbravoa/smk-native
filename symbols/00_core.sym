@@ -1,0 +1,32 @@
+; ---------------------------------------------------------------------------
+; Super Mario Kart (USA) - core structure
+; Derived by tracing the ROM's own control flow.  Addresses only; no game data.
+; ---------------------------------------------------------------------------
+
+; --- entry points ----------------------------------------------------------
+label   $80FF70  Reset
+label   $80803A  Boot_Init
+label   $808000  NMI_Handler
+label   $80801F  IRQ_Handler
+label   $808056  MainLoop
+label   $80805C  MainLoop_WaitVBlank
+
+; --- dispatch tables -------------------------------------------------------
+; The main loop reads the game-mode variable and calls through these.
+label   $808197  GameModeTable_Main
+label   $8081BF  GameModeTable_NMI
+label   $808B12  IrqHandlerTable
+
+jumptab $808197  15 abs  GameModeTable_Main  M=0 X=0
+jumptab $8081BF  15 abs  GameModeTable_NMI   M=0 X=0
+jumptab $808B12   6 abs  IrqHandlerTable     M=1 X=1
+
+data    $808197  30 GameModeTable_Main ptr16
+data    $8081BF  30 GameModeTable_NMI  ptr16
+data    $808B12  12 IrqHandlerTable    ptr16
+
+; --- RAM / direct page -----------------------------------------------------
+ram     $34  Frame_Counter        ; incremented every NMI (16-bit)
+ram     $36  Game_Mode            ; mode index * 2, indexes both mode tables
+ram     $44  VBlank_Flag          ; set by NMI, spun on by the main loop
+ram     $D0  Irq_Index            ; index * 2 into IrqHandlerTable
