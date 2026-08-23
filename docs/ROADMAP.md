@@ -105,7 +105,12 @@ call frequency (R1).
 - Acceptance: our lap counter agrees with the checkpoint data on a hand-driven
   path around each track.
 
-### P3 — Kart physics (the core of "feel")
+### P3 — Kart physics (the core of "feel")   [BLOCKED on S9; recon done]
+Reconnaissance is in NOTES 016: the motion primitive, the RAM fields and all
+the units are identified. Two blockers before any porting:
+  1. **S9** — DSP-1 output scaling is unverified (NOTES 015).
+  2. the fractional position accumulator is not confirmed.
+
 The largest decode. Sub-order:
 1. Locate the per-frame kart update in race mode (mode 6 handlers; the kart
    state block in RAM — position, velocity, angle — is findable by watching

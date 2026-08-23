@@ -183,4 +183,50 @@ DSP-1 result is compared to a known constant. Neither is in hand yet.
 
 ---
 
-*(next entry: 016)*
+**016** — P3 reconnaissance: the kart motion model, and its units.
+
+The DSP-1 sin/cos wrapper at `$80F8CF` is the movement primitive:
+
+```
+lda #$04 / sta DR        ; cmd 4 = sin/cos
+lda $2A,x / sta DR       ; angle
+pla       / sta DR       ; radius  <- this is the kart's SPEED
+poll SR, then
+lda DR / sta $22,x       ; result 1  -> velocity component
+lda DR / eor #$FFFF / inc A / sta $24,x   ; -result 2 -> the other component
+```
+
+That settles two things the DSP-1 model could only assume:
+
+* **result order is sin then cos** — confirmed by the sibling routine at
+  `$84FE3F`, which lays the two results out as `[r1, -r1, r2, r2]`, i.e. the
+  `[sin, -sin, cos, cos]` of a rotation matrix;
+* **the radius argument is speed**, so `$22,x`/`$24,x` are the velocity
+  vector, not a matrix.
+
+Units, all cross-checked against code that constrains them:
+
+| quantity | where | unit |
+|---|---|---|
+| angle | `$2A,x` | 65536 = full circle. `$80F79D` adds `#$0400` for a 1/64 turn |
+| position | `$18,x`, `$1C,x` | whole pixels 0..1023 (`cmp #$0400` bounds them at `$80FA65`) |
+| velocity | `$22,x`, `$24,x` | 8.8 fixed point, pixels/frame — floor of `±$0100` (= 1.0 px) at `$80F9C1` |
+| friction | `$80FA4A`, `$80FA52` | 8.8 multipliers: `$0080` = 0.5, `$00F0` = 0.9375 |
+
+`$80F9A7` clamps: if `|$22,x|` and `|$24,x|` are both under `$00C0` the
+velocity snaps to `±$0100`. Above that it multiplies each component by a
+factor from the two 4-word tables indexed by `$56,x` (a wall/edge index) via
+the helper at `$80FC74`.
+
+Position is integer pixels while velocity is 8.8, so there is a fractional
+accumulator somewhere — probably the words just below (`$16,x`/`$1A,x`).
+Not yet confirmed; do not port the integration until it is.
+
+**Deliberately NOT ported yet.** Two things are missing: the fractional
+position accumulator, and DSP-1 output scaling (NOTES 015). Porting now
+would bake both guesses into the core. The native game keeps its clearly
+labelled placeholder motion (ledger S1) until they are settled.
+
+---
+
+*(next entry: 017)*
