@@ -148,4 +148,39 @@ clean regions that follow road, grass, walls, water and Rainbow Road's void.
 
 ---
 
-*(next entry: 012)*
+**012** — Text encoding. Table `$81DC7F` is a string table:
+`letter = byte - $0A` with `A = 0`, and `$FF` terminates. `16 0A 1B 12 18 FF`
+= MARIO; LUIGI, BOWSER, PRINCESS follow. Bytes `$00-$09` are presumably the
+digits and `$24+` punctuation (`$29`/`$2C` appear around "BEST"). Needed for
+P8 (menus/HUD), not before.
+
+**013** — `$81DBB1`'s `track*20` is **SRAM save data**, not track geometry.
+`sta $306660,x` writes bank `$30:$6660`, which is the cart's 2 KB SRAM
+(HiROM maps SRAM at `$20-$3F:$6000-$7FFF`). `$81DB94` initialises six
+three-byte BCD records per track with `$99 $59 $0A` — the 9'59"0A "no
+record" time. So the layout is 6 best times x 3 bytes + 2 = 20 bytes per
+track. Ruled out as a source of start positions.
+
+**014** — RULED OUT: the Mode 7 matrix is *not* written by direct stores.
+No traced instruction touches `$211B-$211E`. The perspective matrix is
+built in RAM and pushed by HDMA per scanline, which is what risk R2
+anticipated. Any attempt to read camera parameters out of stores to the PPU
+will find nothing; the HDMA table builder is the thing to decode.
+
+**015** — HONESTY ITEM: the DSP-1 model in `tools/smktool/dsp1.py` is an
+**assumption, not a decode**. The four commands were identified from their
+call shapes (entry 008), and the maths implemented from the documented
+DSP-1 behaviour — sin/cos with a 65536-unit circle, multiply returning
+`(a*b)>>15`. None of the output *scalings* has been verified against
+anything. The oracle therefore verifies routines that do not touch the
+DSP-1, and only those.
+
+This blocks P3: porting kart physics on top of an unverified DSP-1 would
+bake a guess into the core of the game, which is exactly what the roadmap's
+principle 1 forbids. Confirming it needs either a reference DSP-1
+implementation to diff against, or a place in the game's own code where a
+DSP-1 result is compared to a known constant. Neither is in hand yet.
+
+---
+
+*(next entry: 016)*

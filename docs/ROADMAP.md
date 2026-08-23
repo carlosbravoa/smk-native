@@ -57,6 +57,7 @@ re-investigating.
 | S6 | `src/main.c` `move_blocked` | refuse the move, slide per axis | `$80F8C0`: enters a collision state (`$42,x`=$8000, `$26,x`=$80) with its own recovery | P3 |
 | S7 | renderer | full-resolution smooth perspective | 256×224, per-scanline integer matrix | keep — named divergence, this is the point of a PC port. `--pixel` restores chunk. |
 | S8 | no audio | silence | SPC700 + S-DSP running its own program | P7 |
+| S9 | `tools/smktool/dsp1.py` | DSP-1 maths implemented from documented behaviour; **output scalings unverified** | the real DSP-1 | blocks P3 — see NOTES 015 |
 
 *Resolved:* **S3** (per-course theme) — the ROM's own table `$81EC2F` is now
 used; C output is byte-identical to the game's loader on all 24 courses.
@@ -153,7 +154,18 @@ The largest decode. Sub-order:
 
 ## Risks — what could bite us
 
-**R1 — The DSP-1 coprocessor sits inside the physics.**
+**Status: R1 scoped (NOTES 008) but not closed (NOTES 015). R2 confirmed real
+— the Mode 7 matrix is HDMA-driven, so there are no PPU stores to read
+(NOTES 014).**
+
+**R1 — The DSP-1 coprocessor sits inside the physics.  [SCOPED, NOT CLOSED]**
+Confirmed used, and narrowed to four commands (NOTES 008): multiply, sin/cos,
+2D rotate, vector length. The remaining risk is *scaling*: our
+implementations are from documented behaviour, not measured (NOTES 015, S9).
+Until that is settled, anything ported on top of a DSP-1 result is a guess
+wearing a decoded routine's clothes. Settle it before P3, not during.
+
+Original note follows.
 The cart has a DSP-1 (cart type `$05`), used for Mode 7 maths — likely
 raster→world projection and possibly kart position/rotation maths. If the
 physics calls into it, "decode the physics" includes "decode which DSP-1
