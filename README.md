@@ -34,25 +34,43 @@ so resolution is not a constraint.
 
 ## What works
 
-- All **24 tracks** (20 GP courses + 4 battle arenas) decoded from the ROM
-- Real Mode 7 tiles and palettes, with the game's own per-tile palette-base
-  remapping
-- A resolution-independent perspective ground plane — the same projection the
-  SNES builds with per-scanline HDMA, minus the 256×224 quantisation
-- Fixed **60.0988 Hz** simulation tick, the SNES NTSC vblank rate that every
-  duration in the original is counted in
-- Free driving around any course
+- All **24 tracks** (20 GP courses + 4 battle arenas), each in **its own
+  theme** — tileset, palette and surface data from the ROM's own tables
+- Real Mode 7 tiles with the game's per-tile palette-base remapping
+- **Solid walls**: the surface-behaviour table is the ROM's, and the test for
+  "is this tile solid" is literally the one the game's collision path uses
+- Kart **kinematics in the ROM's own arithmetic** — 16.16 position, 8.8
+  velocity, 65536-unit angle, and the exact integration from `$80879D`
+- A resolution-independent perspective ground plane
+- Fixed **60.0988 Hz** tick, the SNES NTSC vblank rate
+
+Everything asset-side is verified byte-for-byte against the game's own
+65816 code, executed in an interpreter (see below).
 
 ## What does not work yet
 
-Being explicit, because the gap is large:
+Being explicit, because the gap is still large:
 
-- **No karts, no items, no laps, no collision.** The camera flies over the
-  track. Kart physics live in the ROM's own routines and have not been decoded.
-- **No sound.** The SPC700 audio engine is untouched.
-- **One tileset for every track.** All 24 tilemaps decode, but the per-course
-  theme selection has not been traced, so every course renders with tileset 1.
-- No sprites, no HUD, no menus.
+- **No opponents, items, laps or lap timing.** Start lines and checkpoints
+  are not decoded; the start position is a heuristic.
+- **The feel is not the game's.** The kinematics are exact, but how input
+  drives speed and steering is invented and clearly labelled — the ROM's
+  acceleration curve, drift, hop and per-surface response are undecoded.
+- **No sound, no sprites, no HUD, no menus.**
+
+Every shortcut is listed in the ledger in [`docs/ROADMAP.md`](docs/ROADMAP.md).
+
+## The oracle
+
+`tools/smktool/` contains a 65816 interpreter that **runs the game's own
+code**, which is how the port is verified: the C loader's output is diffed
+against the ROM's actual loader rather than against expectations.
+
+It currently boots Super Mario Kart and runs frames at the game's own vblank
+pacing, with NMI, IRQ and scanline timing. It stalls when the game waits on
+the SPC700 sound CPU — which turns out to be on the critical path for
+observing *any* runtime behaviour, so an SPC700 core is the next piece of
+work. See `docs/NOTES.md` entries 018-019.
 
 The plan to close the gap — phases, risks, and an explicit ledger of every
 shortcut currently in the code — is [`docs/ROADMAP.md`](docs/ROADMAP.md).
