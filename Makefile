@@ -75,4 +75,5 @@ distclean: clean
 	rm -rf vendor/asar vendor/asar-build
 
 help:
-	@grep -B1 -E '^[a-z-]+:' Makefile | grep -E '^##|^[a-z-]+:' | sed 's/^## /  /'
+	@awk '/^## /{d=substr($$0,4); next} \
+	      /^[a-z][a-z-]*:/{if(d!=""){split($$0,a,":"); printf "  %-12s %s\n", a[1], d; d=""}}' Makefile
