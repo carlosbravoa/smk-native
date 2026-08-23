@@ -9,6 +9,7 @@ import argparse, os, shutil, subprocess, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from smktool.rom import Rom
+from smktool import assets as A
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ASAR = os.path.join(ROOT, "vendor", "asar-build", "asar", "bin", "asar")
@@ -45,6 +46,7 @@ def main():
     ap.add_argument("--out", default=os.path.join(ROOT, "build", "smk.sfc"))
     ap.add_argument("--asm", default=os.path.join(ROOT, "src", "main.asm"))
     ap.add_argument("--symfile", default=os.path.join(ROOT, "build", "smk.sym"))
+    ap.add_argument("--assets", default=os.path.join(ROOT, "assets", "import"))
     ap.add_argument("-q", "--quiet", action="store_true")
     a = ap.parse_args()
 
@@ -70,12 +72,39 @@ def main():
         sys.exit("asar failed")
 
     out = Rom.load(a.out)
+
+    # --- asset re-import -------------------------------------------------
+    # Any file assets/import/<table>_<index>.bin holds the DECOMPRESSED bytes
+    # of that asset.  It is re-compressed and written back, in place when it
+    # fits and relocated into free space otherwise.
+    imported = []
+    if os.path.isdir(a.assets):
+        free = A.FreeSpace(out)
+        for fn in sorted(os.listdir(a.assets)):
+            if not fn.endswith(".bin"):
+                continue
+            stem = fn[:-4]
+            name, _, idx = stem.rpartition("_")
+            if name not in A.REGISTRY or not idx.isdigit():
+                print(f"! skipping {fn}: expected <table>_<index>.bin", file=sys.stderr)
+                continue
+            data = open(os.path.join(a.assets, fn), "rb").read()
+            res = A.repack(out, A.table(out, name), int(idx), data, free)
+            res["file"] = fn
+            imported.append(res)
+
     runs = diff_report(base, out)
     total = sum(n for _, n in runs)
     old, new = out.fix_checksum()
     out.save(a.out)
 
     if not a.quiet:
+        if imported:
+            print("\nassets re-imported:")
+            for r in imported:
+                extra = (f" -> ${r['new_src']:06X}" if r["action"] == "relocated" else "")
+                print(f"   {r['file']:<24} {r['action']:<10} "
+                      f"{r['was']} -> {r['now']} bytes{extra}")
         print(f"\nbase   {a.base}\n       sha1 {info['sha1']}  ({info['name']})")
         print(f"out    {a.out}\n       sha1 {Rom.load(a.out).sha1}")
         print(f"\n{len(runs)} changed region(s), {total} bytes:")

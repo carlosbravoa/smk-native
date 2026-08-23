@@ -9,7 +9,7 @@ BASE    := rom/smk_usa.sfc
 OUT     := build/smk.sfc
 ASAR    := vendor/asar-build/asar/bin/asar
 
-.PHONY: all build verify info trace dis jumptables health roundtrip tools clean distclean help
+.PHONY: all build verify info trace dis jumptables health roundtrip test extract tools clean distclean help
 
 all: build
 
@@ -40,6 +40,14 @@ jumptables: $(BASE)
 ## trace-quality metrics
 health: $(BASE)
 	@$(SMK) health
+
+## full regression suite (ROM identity, disassembly, codec, build)
+test: $(ASAR) $(BASE)
+	@$(PY) tools/test.py
+
+## export every known compressed asset to assets/extracted/
+extract: $(BASE)
+	@$(SMK) assets export-all
 
 ## prove the disassembler round-trips byte-exactly
 roundtrip: $(ASAR) $(BASE)

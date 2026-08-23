@@ -1,0 +1,146 @@
+; ---------------------------------------------------------------------------
+; SNES hardware registers (public console documentation, not game data)
+; ---------------------------------------------------------------------------
+
+; --- PPU write ---
+ram $2100 INIDISP
+ram $2101 OBSEL
+ram $2102 OAMADDL
+ram $2103 OAMADDH
+ram $2104 OAMDATA
+ram $2105 BGMODE
+ram $2106 MOSAIC
+ram $2107 BG1SC
+ram $2108 BG2SC
+ram $2109 BG3SC
+ram $210A BG4SC
+ram $210B BG12NBA
+ram $210C BG34NBA
+ram $210D BG1HOFS
+ram $210E BG1VOFS
+ram $210F BG2HOFS
+ram $2110 BG2VOFS
+ram $2111 BG3HOFS
+ram $2112 BG3VOFS
+ram $2113 BG4HOFS
+ram $2114 BG4VOFS
+ram $2115 VMAIN
+ram $2116 VMADDL
+ram $2117 VMADDH
+ram $2118 VMDATAL
+ram $2119 VMDATAH
+ram $211A M7SEL
+ram $211B M7A
+ram $211C M7B
+ram $211D M7C
+ram $211E M7D
+ram $211F M7X
+ram $2120 M7Y
+ram $2121 CGADD
+ram $2122 CGDATA
+ram $2123 W12SEL
+ram $2124 W34SEL
+ram $2125 WOBJSEL
+ram $2126 WH0
+ram $2127 WH1
+ram $2128 WH2
+ram $2129 WH3
+ram $212A WBGLOG
+ram $212B WOBJLOG
+ram $212C TM
+ram $212D TS
+ram $212E TMW
+ram $212F TSW
+ram $2130 CGWSEL
+ram $2131 CGADSUB
+ram $2132 COLDATA
+ram $2133 SETINI
+
+; --- PPU read ---
+ram $2134 MPYL
+ram $2135 MPYM
+ram $2136 MPYH
+ram $2137 SLHV
+ram $2138 OAMDATAREAD
+ram $2139 VMDATALREAD
+ram $213A VMDATAHREAD
+ram $213B CGDATAREAD
+ram $213C OPHCT
+ram $213D OPVCT
+ram $213E STAT77
+ram $213F STAT78
+
+; --- APU / WRAM ports ---
+ram $2140 APUIO0
+ram $2141 APUIO1
+ram $2142 APUIO2
+ram $2143 APUIO3
+ram $2180 WMDATA
+ram $2181 WMADDL
+ram $2182 WMADDM
+ram $2183 WMADDH
+
+; --- CPU ---
+ram $4016 JOYSER0
+ram $4017 JOYSER1
+ram $4200 NMITIMEN
+ram $4201 WRIO
+ram $4202 WRMPYA
+ram $4203 WRMPYB
+ram $4204 WRDIVL
+ram $4205 WRDIVH
+ram $4206 WRDIVB
+ram $4207 HTIMEL
+ram $4208 HTIMEH
+ram $4209 VTIMEL
+ram $420A VTIMEH
+ram $420B MDMAEN
+ram $420C HDMAEN
+ram $420D MEMSEL
+ram $4210 RDNMI
+ram $4211 TIMEUP
+ram $4212 HVBJOY
+ram $4213 RDIO
+ram $4214 RDDIVL
+ram $4215 RDDIVH
+ram $4216 RDMPYL
+ram $4217 RDMPYH
+ram $4218 JOY1L
+ram $4219 JOY1H
+ram $421A JOY2L
+ram $421B JOY2H
+ram $421C JOY3L
+ram $421D JOY3H
+ram $421E JOY4L
+ram $421F JOY4H
+
+; --- DMA channel 0 (other channels are $43n0 with n = channel) ---
+ram $4300 DMAP0
+ram $4301 BBAD0
+ram $4302 A1T0L
+ram $4303 A1T0H
+ram $4304 A1B0
+ram $4305 DAS0L
+ram $4306 DAS0H
+ram $4307 DASB0
+ram $4308 A2A0L
+ram $4309 A2A0H
+ram $430A NTRL0
+ram $4310 DMAP1
+ram $4311 BBAD1
+ram $4312 A1T1L
+ram $4313 A1T1H
+ram $4314 A1B1
+ram $4315 DAS1L
+ram $4316 DAS1H
+ram $4320 DMAP2
+ram $4321 BBAD2
+ram $4322 A1T2L
+ram $4323 A1T2H
+ram $4324 A1B2
+ram $4325 DAS2L
+ram $4326 DAS2H
+
+; --- DSP-1 (Mode 7 maths coprocessor) ---
+ram $6000 DSP1_DR
+ram $7000 DSP1_SR

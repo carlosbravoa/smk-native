@@ -9,6 +9,9 @@ from smktool.symbols import Symbols
 from smktool.disasm import Tracer
 from smktool.listing import Formatter
 from smktool.tables import discover, health, emit_sym
+from smktool import assets as A
+from smktool.compress import decompress, compress
+from smktool import gfx as G
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEF_ROM = os.path.join(ROOT, "rom", "smk_usa.sfc")
@@ -143,6 +146,79 @@ def cmd_hex(args):
               "".join(chr(b) if 32 <= b < 127 else "." for b in row)))
 
 
+def cmd_assets(args):
+    rom, _ = load(args)
+    if args.action == "list":
+        print(json.dumps(A.manifest(rom), indent=2))
+        return
+    t = A.table(rom, args.table)
+    if args.action == "export":
+        data = t.read(args.index)
+        out = args.out or f"assets/extracted/{args.table}_{args.index}.bin"
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+        open(out, "wb").write(data)
+        print(f"{args.table}[{args.index}] -> {out} ({len(data)} bytes)")
+    elif args.action == "export-all":
+        root = args.out or "assets/extracted"
+        os.makedirs(root, exist_ok=True)
+        n = 0
+        for name in A.REGISTRY:
+            tt = A.table(rom, name)
+            for e in tt.entries():
+                p = os.path.join(root, f"{name}_{e.index}.bin")
+                open(p, "wb").write(tt.read(e.index))
+                n += 1
+        open(os.path.join(root, "manifest.json"), "w").write(
+            json.dumps(A.manifest(rom), indent=2))
+        print(f"exported {n} assets to {root}/")
+
+
+def cmd_gfx(args):
+    rom, _ = load(args)
+    t = A.table(rom, args.table)
+    data = t.read(args.index)
+    if args.identify:
+        for nm, sc, n in G.identify_format(data):
+            print("  %-18s score %.4f  (%d tiles)" % (nm, sc, n))
+        return
+    pal = G.grey_palette(256)
+    if args.palette is not None:
+        pal = G.read_palette(A.table(rom, "palette").read(args.palette), 0, 256)
+    fmt = args.format or G.identify_format(data)[0][0]
+    buf = G.deinterleave(data, 1) if "odd" in fmt else (
+        G.deinterleave(data, 0) if "even" in fmt else data)
+    kw = dict(mode7=True) if fmt.startswith("mode7") else (
+        dict(bpp=4) if "4bpp" in fmt else dict(bpp=2))
+    tiles = G.decode_tiles(buf, **kw)
+    w, h, rgb = G.tilesheet(tiles, pal, args.per_row)
+    out = args.out or f"assets/extracted/{args.table}_{args.index}.png"
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    G.write_png(out, w, h, rgb, scale=args.scale)
+    print(f"{args.table}[{args.index}] as {fmt}: {len(tiles)} tiles -> {out}")
+
+
+def cmd_expand(args):
+    rom, _ = load(args)
+    size = {"512k": 0x80000, "1m": 0x100000, "2m": 0x200000}[args.size.lower()]
+    before = len(rom.data)
+    A.expand(rom, size)
+    rom.fix_checksum()
+    out = args.out or args.rom
+    rom.save(out)
+    print(f"{before} -> {len(rom.data)} bytes, wrote {out}")
+
+
+def cmd_freespace(args):
+    rom, _ = load(args)
+    runs = A.free_runs(rom, args.min)
+    total = sum(n for _, n, _ in runs)
+    print(f"{len(runs)} runs >= {args.min} bytes, {total} bytes total "
+          f"({100*total/len(rom.data):.2f}% of ROM)")
+    for s_, n, f in sorted(runs, key=lambda r: -r[1])[:args.top]:
+        print("   file $%05X  $%06X  %6d bytes  fill=$%02X"
+              % (s_, rom.pc_to_snes(s_), n, f))
+
+
 def cmd_checksum(args):
     rom, _ = load(args)
     ok = rom.checksum_ok()
@@ -199,6 +275,33 @@ def main():
     s = sub.add_parser("hex", help="hex dump at a snes address or file offset")
     s.add_argument("addr"); s.add_argument("-n", "--len", default="0x100")
     s.set_defaults(fn=cmd_hex)
+
+    s = sub.add_parser("assets", help="list / export compressed assets")
+    s.add_argument("action", choices=["list", "export", "export-all"])
+    s.add_argument("table", nargs="?", default="palette")
+    s.add_argument("index", nargs="?", type=int, default=0)
+    s.add_argument("-o", "--out")
+    s.set_defaults(fn=cmd_assets)
+
+    s = sub.add_parser("gfx", help="render an asset to PNG")
+    s.add_argument("table"); s.add_argument("index", type=int)
+    s.add_argument("-p", "--palette", type=int)
+    s.add_argument("-f", "--format")
+    s.add_argument("--identify", action="store_true")
+    s.add_argument("--per-row", type=int, default=16)
+    s.add_argument("--scale", type=int, default=3)
+    s.add_argument("-o", "--out")
+    s.set_defaults(fn=cmd_gfx)
+
+    s = sub.add_parser("expand", help="grow the ROM image (more free space)")
+    s.add_argument("--size", default="1m", choices=["512k", "1m", "2m"])
+    s.add_argument("-o", "--out")
+    s.set_defaults(fn=cmd_expand)
+
+    s = sub.add_parser("freespace", help="report unused ROM space")
+    s.add_argument("--min", type=int, default=32)
+    s.add_argument("--top", type=int, default=20)
+    s.set_defaults(fn=cmd_freespace)
 
     s = sub.add_parser("checksum", help="verify / fix the ROM checksum")
     s.add_argument("-w", "--write", action="store_true")
