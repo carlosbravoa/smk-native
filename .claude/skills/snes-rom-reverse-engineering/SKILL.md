@@ -1,6 +1,6 @@
 ---
 name: snes-rom-reverse-engineering
-description: Reverse engineer a SNES/65816 ROM into a state where changes can be made and the ROM rebuilt reliably. Covers cartridge mapping and mirrors, a tracing disassembler with context-sensitive M/X flag propagation, jump-table discovery (the thing that actually gates coverage), byte-exact round-trip verification with asar, finding and proving a graphics decompressor, asset pointer tables, palettes, tile-format identification, and a base-ROM-plus-patches build that never redistributes game data. Use when starting or continuing a SNES romhack or disassembly, when a 65816 disassembly desynchronises, when hunting a game's compression format, or when setting up a reproducible ROM build.
+description: Reverse engineer a SNES/65816 ROM, either to rebuild a patched ROM or to reimplement the game natively on SDL2 with no emulator. Covers cartridge mapping and mirrors, a tracing disassembler with context-sensitive M/X flag propagation, jump-table discovery (the thing that actually gates coverage), byte-exact round-trip verification with asar, finding and proving a graphics decompressor, locating assets by their DMA upload size, Mode 7 tilemaps and tile expansion, palettes, and a native port that reads the user's own ROM at runtime so no game data is ever redistributed. Use when starting or continuing a SNES romhack, disassembly, or native port, when a 65816 disassembly desynchronises, when hunting a game's compression or asset format, or when building an SDL host for a console game.
 ---
 
 # Reverse engineering a SNES ROM to a rebuildable state
@@ -328,6 +328,143 @@ Give the tracer a `flags $addr M=0 X=1` directive. When one routine defeats
 the flag inference, asserting the answer is a one-line fix, and the assertion
 documents a real fact about the game.
 
+## Step 9: find assets by the size of their DMA
+
+This is the highest-yield trick for a console game and it is easy to miss.
+
+A console has to *upload* every asset, and the upload records the asset's
+exact shape: the destination register says what kind of thing it is, and the
+transfer length says how big. Scan for the DMA size register write and read
+back the immediate that precedes it:
+
+```
+grep for `sta $4305` (DAS0L); look back a few bytes for `lda #imm16`
+```
+
+On Super Mario Kart, 36 such sites produced exactly two large ones, and both
+were the answer:
+
+| size | B-bus target | meaning |
+|---|---|---|
+| `$4000` (16384) | `$18` VMDATAL, **low bytes only** | the 128×128 Mode 7 tilemap |
+| `$3000` (12288) | `$19` VMDATAH, **high bytes only** | 192 Mode 7 tiles |
+
+Mode 7 VRAM interleaves the tilemap into the low byte of each word and tile
+pixels into the high byte, so a DMA writing *only* one half of each word is a
+positive identification, not a guess. From those two routines, one xref hop
+reached the loader and the per-track pointer table.
+
+Read the DMA setup fully — `DMAP` (transfer pattern), `BBAD` (destination
+register), `A1T`/`A1B` (source), `DAS` (length), `VMAIN` (increment mode). It
+is a complete, machine-checkable description of an asset.
+
+## Step 10: expect assets to be compressed more than once
+
+A ROM-wide scan for streams decompressing to the tilemap size found *one*
+candidate in the whole 512 KB, and it was not a tilemap. The reason:
+
+```
+ldx #$C000
+jsl Decompress        ; ROM      -> $7F:C000   (still compressed!)
+ldy #$C000 / lda #$007F / ldx #$0000
+jsl Decompress        ; $7F:C000 -> $7F:0000   (now the real 16384 bytes)
+```
+
+The same decompressor, called twice, the second time with WRAM as its source.
+If a scan for "streams of the size you expect" comes up empty while the
+loader clearly produces that size, **try decompressing the output again**
+before doubting the codec.
+
+## Step 11: tiles are usually packed tighter than the hardware format
+
+Hardware wants Mode 7 tiles as linear 8bpp, 64 bytes each. Almost no game
+stores them that way — it would be twice the size. Look for an expander
+between the decompressor and the upload buffer.
+
+The Super Mario Kart one is worth knowing because the shape is common:
+
+```
++$000   one palette-base byte per tile
++$100   32 bytes per tile: two 4-bit pixels per byte, LOW nibble first
+
+pixel = nibble ? (nibble | palette_base[tile]) : 0
+```
+
+Two details decide whether the output is right:
+
+- **Zero is never remapped.** It is the backdrop/transparent index; OR-ing the
+  base into it shifts the whole image into the wrong palette band.
+- **Low nibble first.** Getting the order wrong mirrors every tile
+  horizontally in 2-pixel pairs, which reads as "slightly wrong texture"
+  rather than obviously broken.
+
+`0x100 + tiles*32` should exactly equal the decompressed blob size. That
+equation is your confirmation.
+
+## Step 12: reimplementing natively
+
+### The ROM is a runtime dependency, not a build input
+
+Ship code that **loads the user's own ROM at startup** and decompresses in
+process. This is the only distributable arrangement, and it is also the best
+engineering: there is no intermediate asset file to drift out of date, and
+the game exercises your decoders every run. Verify the dump on load and say
+plainly what is expected when it does not match.
+
+### Get the tick rate right before anything else
+
+SNES NTSC vblank is **60.0988 Hz** (PAL 50.007). If the game's main loop
+spins on a flag set by NMI — most do — then that is exactly one simulation
+step per frame, and every duration in the game is a count of those steps.
+Run a fixed timestep at that rate with an accumulator; do not tie simulation
+to the host's refresh.
+
+### Mode 7 without the PPU
+
+The SNES builds perspective by rewriting the M7A–M7D affine matrix every
+scanline via HDMA. Natively you do not need the matrix at all — compute the
+ground plane directly, and you get resolution independence for free:
+
+```
+z       = height * focal / (screen_y - horizon)     // ground distance
+centre  = camera + forward * z
+step    = right * (z / focal)                       // world units per screen pixel
+sample along the row from centre - step * (w/2)
+```
+
+That is the entire renderer. It is scale-invariant, so the same camera
+parameters look right at 256×224 and at 4K, and a software implementation
+still runs at ~100 fps at 1080p single-threaded. Keep a `--pixel N` divisor so
+the chunky original look is still available.
+
+### Two implementations that check each other
+
+Keep the exploratory toolkit (a scripting language, fast to iterate) *and* the
+runtime (C, what ships), implement the codec and asset layout in both, and
+test both. They cannot silently drift, and a disagreement is a real bug
+found for free. The C side gets a headless self-test that loads a real ROM
+and asserts the same facts.
+
+### Look at the output constantly
+
+Decode errors are far more obvious to an eye than to an assertion. Render a
+**contact sheet of every track / level / sprite** at once — all 24 Super Mario
+Kart courses in one image immediately confirmed the tilemap, the tile
+expander and the palette in a single glance, and would have shown a wrong
+palette base or a mirrored tile just as fast. Automate it; run it after every
+format change.
+
+Corollary: greyscale-by-index is not a substitute. Get the real palette first
+(§7) or you will misjudge correct output as noise.
+
+### Be explicit about what is not the original
+
+A native port accumulates behaviour the ROM never had: a camera height, a
+steering feel, a start position. Every one of those must be **named as a
+placeholder in a comment**, with a note on what would replace it. Otherwise
+six months later it is indistinguishable from a decoded fact — which is the
+prime directive in §0 turned inside out.
+
 ## Order of work
 
 1. Identify the ROM; get mapping and mirrors right. Add a hash check.
@@ -343,6 +480,9 @@ documents a real fact about the game.
    then prove it three ways.
 8. Write the encoder. Now assets are editable.
 9. Name things as you learn them; keep the symbol database growing.
+10. For a native port: find the asset uploads by DMA size (§9), decode the
+    asset formats (§10, §11), then build the SDL host around a correct tick
+    rate and a directly-computed renderer (§12).
 
 ## What not to do
 
@@ -354,3 +494,6 @@ documents a real fact about the game.
 - Do not commit the ROM, extracted assets, or a build output.
 - Do not claim a routine "is" something from its shape alone — say what the
   evidence is, and mark the rest as unverified.
+- Do not bake extracted assets into the port. Read the user's ROM at runtime.
+- Do not tie the simulation to the host refresh rate; use the console's.
+- Do not let a placeholder constant lose its comment.
