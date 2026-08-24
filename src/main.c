@@ -473,8 +473,8 @@ static void usage(const char *argv0)
            "  --height-cam H  eye height above the plane   [15]\n"
            "  --horizon F     horizon row, 0..1            [0.36]\n"
            "  --fov F         focal length scale           [0.55]\n\n"
-           "  arrows/WASD steer and accelerate, shift = boost
-  space = hop; hold it through a turn to power slide\n"
+           "  arrows/WASD steer and accelerate, shift = boost\n"
+           "  space = hop; hold it through a turn to power slide\n"
            "  [ ] change track, o p override the theme\n"
            "  f toggles linear filtering, esc quits\n", argv0);
 }
