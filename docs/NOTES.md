@@ -900,4 +900,36 @@ look, it does not identify *what* is wrong.
 
 ---
 
-*(next entry: 035)*
+**035** — Mode 1 *is* the demo race after all; it just takes longer than I
+was waiting.
+
+Following the attract sequence without stopping: mode 13 -> 0 -> 2 (title,
+~28 s) -> 0 -> 1, karts on the grid at speed 0 for a long stretch, and then
+**karts 2 and 3 start moving** (speeds 44, 48). Earlier runs sampled only
+karts 0 and 1, or gave up before the countdown finished — both mistakes,
+and both mine.
+
+So NOTES 034's guess that mode 1 is the course intro is wrong too. It is the
+demo race, and the sequence is: karts placed on the grid, a long hold, then
+they are released one after another.
+
+What remains true from 034: the per-kart dispatcher does not run *while the
+karts are held*, and `$AC,x` is 0 throughout. So the hold is implemented
+somewhere above the dispatcher, not by parking karts in an idle state.
+
+Still no kart sprite DMA even while they drive. That reframes the sprite
+question usefully: the graphics are evidently uploaded in bulk before the
+race rather than streamed per frame, so the frame the game picks shows up in
+the **OAM tile number**, not in a DMA source. Which is easier to read, not
+harder.
+
+Two lessons, both cheap to have avoided:
+* when watching for "something happens", watch **all** the actors, not the
+  first one;
+* an attract sequence has its own pacing — a wait that feels generous in
+  wall-clock terms can still be short in game time when the simulation runs
+  at a fraction of real speed.
+
+---
+
+*(next entry: 036)*
