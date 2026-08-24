@@ -152,6 +152,25 @@ void smk_kart_move(smk_kart *k, const smk_track *t)
     bool bx = smk_surface_solid(smk_track_surface(t, smk_kart_px(nx), smk_kart_px(k->y)));
     bool by = smk_surface_solid(smk_track_surface(t, smk_kart_px(k->x), smk_kart_px(ny)));
     if (bx || by) {
+        /* Jumpable barriers: solid classes of type 1-2 ($22/$24 family)
+         * are the gap fields the game vaults - the landing code even
+         * remaps $22 to $4C on touchdown ($80B1F2).  Hitting one at speed
+         * is driving off the ramp edge: launch and fly (the flight path
+         * ignores non-type-0 solids).  Launch velocity is a labelled
+         * placeholder; slow karts stop at the edge as before. */
+        {
+            uint8_t jw = bx
+                ? smk_track_surface(t, smk_kart_px(nx), smk_kart_px(k->y))
+                : smk_track_surface(t, smk_kart_px(k->x), smk_kart_px(ny));
+            int jt = smk_surface_type(jw);
+            if (smk_surface_solid(jw) && (jt == 1 || jt == 2)
+                && k->speed >= 500 && !k->airborne) {
+                smk_kart_launch(k, 0x0140);
+                k->x = nx;
+                k->y = ny;
+                return;
+            }
+        }
         /* Wall contact (user playtest, NOTES 055).  SMK1 walls are sticky:
          * a hit kills the into-wall component and most of the speed, with
          * no launch - the launch + $1000 along-wall fling measured in

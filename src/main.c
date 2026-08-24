@@ -75,7 +75,9 @@ typedef struct {
     int      lap;
     int      progress_max;  /* $F8,x: max of (lap<<8)|sector, monotonic */
     int      slow_frames;   /* stuck-at-a-wall recovery counter         */
-    int      probe;         /* rotates the recovery direction           */
+    int      escape;        /* frames left of hold-heading wall escape  */
+    int      was_fast;      /* escape only after the kart has driven    */
+    int      last_px, last_py, still;   /* position-stagnation detector  */
     int      lap_cool;      /* one lap event per strip transit          */
 } smk_racer;
 
@@ -145,34 +147,73 @@ static void racer_step(smk_racer *r, const smk_track *trk,
      * angle is the flow field byte for its cell - atan2 to a waypoint is
      * only the OFF-COURSE recovery path in the ROM, and treating it as the
      * main rule was why our karts clipped corners into walls. */
-    int cell = ((smk_kart_px(r->k.y) >> 4) & 63) * 64
-             + ((smk_kart_px(r->k.x) >> 4) & 63);
-    int fsec = crs->map[cell] & SMK_SECT_OFF;
+    int fcell = ((smk_kart_px(r->k.y) >> 4) & 63) * 64
+              + ((smk_kart_px(r->k.x) >> 4) & 63);
+    int fsec = crs->map[fcell] & SMK_SECT_OFF;
     uint16_t want;
-    if (fsec != SMK_SECT_OFF && crs->map[cell] != 0) {
-        want = (uint16_t)(crs->flow[cell] << 8);
+    if (fsec != SMK_SECT_OFF && crs->map[fcell] != 0) {
+        want = (uint16_t)(crs->flow[fcell] << 8);
     } else {
         int next = r->sector + 1;
         if (next >= crs->sectors) next = 0;
         want = heading_to(&r->k, crs->wx[next], crs->wy[next]);
     }
-    /* Stuck against a sticky wall: with no fling to free them, the AI
-     * needs the real game's visible recovery - realign toward the
-     * waypoint and pull away.  Labelled AI behaviour, not a decode. */
-    if (r->k.speed < 100) {
-        if (++r->slow_frames > 45) {
-            /* alternate probe angles so successive retries feel their way
-             * around the obstruction instead of re-driving into it */
-            r->probe = (r->probe + 1) % 6;
-            static const int16_t OFF[6] = { 0, 0x2000, -0x2000,
-                                            -0x8000, 0x6000, -0x6000 };
-            r->k.angle = (uint16_t)(want + OFF[r->probe]);
-            r->k.speed = 220;
-            r->slow_frames = 20;   /* retry sooner while still slow */
+    /* Stuck against a sticky wall (labelled AI behaviour, not a decode):
+     * the ROM's karts bounce free, ours stop - so scan eight compass
+     * directions for the most open ground, take it, and HOLD it briefly;
+     * without the hold the slew dragged the kart straight back into the
+     * wall before it could move (NOTES 057). */
+    if (r->k.speed > 300) r->was_fast = 1;
+    /* a kart pinned nearly square against a wall keeps its speed (the
+     * proportional graze loss is ~0) while its position only crawls
+     * sub-pixel - so stagnation, not low speed, is the reliable trigger */
+    {
+        int px = smk_kart_px(r->k.x), py = smk_kart_px(r->k.y);
+        if (px == r->last_px && py == r->last_py) r->still++;
+        else { r->still = 0; r->last_px = px; r->last_py = py; }
+    }
+    if (r->escape > 0) {
+        r->escape--;
+    } else if (((r->k.speed < 100 && r->was_fast) || r->still > 40)) {
+        r->slow_frames += (r->still > 40) ? 31 : 1;
+        if (r->slow_frames > 30) {
+            int best_d = -1, best_score = -1000;
+            for (int d = 0; d < 8; d++) {
+                float a = (float)d * (float)M_PI / 4.0f;
+                int open = 0;
+                static const int STEPS[7] = { 2, 4, 8, 16, 24, 32, 40 };
+                for (int si = 0; si < 7; si++) {
+                    int step = STEPS[si];
+                    int sx = smk_kart_px(r->k.x) + (int)(sinf(a) * step);
+                    int sy = smk_kart_px(r->k.y) - (int)(cosf(a) * step);
+                    if (smk_surface_solid(smk_track_surface(trk, sx, sy)))
+                        break;
+                    open++;
+                }
+                /* prefer open ground, break ties toward the flow direction
+                 * so the escape makes forward progress */
+                int16_t da = (int16_t)((uint16_t)(d * 0x2000) - want);
+                int align = 4 - (abs((int)da) >> 12);       /* 4..-4 */
+                int score = open * 8 + align;
+                if (score > best_score) { best_score = score; best_d = d; }
+            }
+            r->k.angle = (uint16_t)(best_d * 0x2000);
+            r->k.speed = 300;
+            r->escape = 25;
+            r->slow_frames = 0;
+            if (r->still > 120) {
+                /* wedged in a concave notch: no heading can move it, so
+                 * step the position out directly (labelled last resort) */
+                float ea = (float)best_d * (float)M_PI / 4.0f;
+                r->k.x += (int32_t)(sinf(ea) * 3.0f * SMK_POS_ONE);
+                r->k.y -= (int32_t)(cosf(ea) * 3.0f * SMK_POS_ONE);
+                r->still = 0;
+            }
         }
     } else
         r->slow_frames = 0;
     int16_t diff = (int16_t)(want - r->k.angle);
+    if (r->escape > 0) diff = 0;             /* hold the escape heading */
     if (diff > AI_SNAP || diff < -AI_SNAP) {
         uint16_t err = (uint16_t)(diff > 0 ? diff : -diff);
         /* DECODED ($80AFF9): turn amount from the physics blob's words 32+,
