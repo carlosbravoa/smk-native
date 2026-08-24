@@ -1839,4 +1839,27 @@ race), per-type grip values stay labelled placeholders.
 
 ---
 
-*(next entry: 062)*
+**062** — Playtest: dust still inert, grip still total.  Both were OUR
+wiring, and the cap-read trap came back empty.
+
+* The `$80A707` cap read **never executes during demo racing** (400 trap
+  attempts, zero hits) - that whole path belongs to some other state, so
+  neither my "physics-blob row" theory nor the earlier scratch-table
+  reading describes the live off-road mechanism.  Still undecoded.
+* Meanwhile the felt bugs were in our own 16-type tables: types 9/10 -
+  Mario Circuit's dust `$52/$54` - were classified road-like (uncapped,
+  grip 0.95/0.90) from the ice-theme reasoning.  Dust now caps at 360/330
+  with grip 0.70/0.65.  Only true roads (0, 1, 8) and ice roads (11, 12)
+  run free.
+* Grip convergence was too fast to see: 0.35/frame aligns velocity with
+  heading in ~3 frames.  Now 0.03-0.14 at speed (visible wide-running),
+  0.15-0.50 mid-speed, full grip below 300, plus a breakaway: past ~20
+  degrees of slip the convergence halves, so oversteering actually slides.
+
+All feel constants remain labelled ours.  The honest sources stay the
+same two undecoded pieces: whatever applies off-road physics live (not
+`$80A707`), and the `$AA/$C2` slip machine.
+
+---
+
+*(next entry: 063)*
