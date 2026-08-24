@@ -1862,4 +1862,31 @@ same two undecoded pieces: whatever applies off-road physics live (not
 
 ---
 
-*(next entry: 063)*
+**063** — Three playtest bugs, and the reason the last two rounds changed
+nothing: my surface-cap edits had silently failed.
+
+* **The silent edit.**  `smk_surface_cap` was still the ORIGINAL 8-entry
+  table - indexed by the new 16-type values, i.e. reading past the array -
+  because two successive patches used `str.replace` against a stale
+  pattern with no assertion: both no-opped, and I shipped, announced, and
+  the user tested builds that never contained the change.  The fix landed
+  only after adding asserts AND verifying the rebuilt binary's live output
+  (a class histogram now prints type and cap straight from the library).
+  Rule going forward: every scripted source edit asserts its match, and
+  behavioural claims are checked against the built artifact.
+* **Diagonal tunneling** ("cannot hit barriers - I go inside and get
+  stuck"): the mover tested the X-step and Y-step cells but never the
+  diagonal destination, so a fast kart slips between two solid cells into
+  the interior where everything blocks.  The diagonal is now tested, and a
+  kart already embedded is allowed to move out.
+* **The infinite plane**: the ROM's world is one 1024x1024 plane - beyond
+  it, `$80FAAE` sets the off-course flag and clamps.  Our lookup WRAPPED
+  coordinates, tiling the plane forever.  Outside is now solid wall.
+* Track 0 ground truth (from the new histogram): road `$40`, dust
+  `$26`(type 3) and `$54`(type 10) with a thin `$52`, plus a `$00` VOID
+  band between dust and the `$20` barriers - the "area you get stuck in".
+  `$00` now crawls (cap 160, grip 0.45) pending its real semantics.
+
+---
+
+*(next entry: 064)*

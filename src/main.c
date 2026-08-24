@@ -377,7 +377,8 @@ static void step_kart(smk_kart *k, const smk_track *trk,
             1.00f, 0.95f, 0.80f, 0.80f, 0.75f, 0.75f, 0.70f, 0.70f,
             1.00f, 0.70f, 0.65f, 0.35f, 0.30f, 0.75f, 0.70f, 0.65f,
         };
-        float surf_grip = GRIP[smk_surface_type(surf)];
+        float surf_grip = (surf == 0x00) ? 0.45f
+                          : GRIP[smk_surface_type(surf) & 15];
         /* Convergence tuned for a VISIBLE slide (playtest: 0.35 aligned
          * velocity in ~3 frames - imperceptible).  At speed, even tarmac
          * lets the kart run wide; oversteer past ~20 degrees of slip
@@ -812,8 +813,15 @@ int main(int argc, char **argv)
             char title[192];
             snprintf(title, sizeof title,
                      "Super Mario Kart  -  track %d  lap %d  sector %d/%d  -  "
-                     "%dx%d  %.0f fps", track, me->lap + 1,
-                     me->sector, crs.sectors, rw, rh, frames / secs);
+                     "surf $%02X type %d cap %d  -  %dx%d  %.0f fps",
+                     track, me->lap + 1, me->sector, crs.sectors,
+                     smk_track_surface(&trk, smk_kart_px(kart.x),
+                                       smk_kart_px(kart.y)),
+                     smk_surface_type(smk_track_surface(&trk,
+                         smk_kart_px(kart.x), smk_kart_px(kart.y))),
+                     smk_surface_cap(smk_track_surface(&trk,
+                         smk_kart_px(kart.x), smk_kart_px(kart.y))),
+                     rw, rh, frames / secs);
             SDL_SetWindowTitle(win, title);
             frames = 0; fps_t0 = t1;
         }

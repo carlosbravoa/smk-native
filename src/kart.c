@@ -167,6 +167,14 @@ void smk_kart_move(smk_kart *k, const smk_track *t)
      * per-class differences are not decoded. */
     bool bx = smk_surface_solid(smk_track_surface(t, smk_kart_px(nx), smk_kart_px(k->y)));
     bool by = smk_surface_solid(smk_track_surface(t, smk_kart_px(k->x), smk_kart_px(ny)));
+    /* the DIAGONAL destination must be tested too, or a fast kart slips
+     * between two solid cells into the interior (playtest, NOTES 063) */
+    if (!bx && !by
+        && smk_surface_solid(smk_track_surface(t, smk_kart_px(nx), smk_kart_px(ny))))
+        bx = by = true;
+    /* already embedded (legacy positions, teleports): let it move OUT */
+    if (smk_surface_solid(smk_track_surface(t, smk_kart_px(k->x), smk_kart_px(k->y))))
+        bx = by = false;
     if (bx || by) {
         /* Wall contact (user playtest, NOTES 055).  SMK1 walls are sticky:
          * a hit kills the into-wall component and most of the speed, with

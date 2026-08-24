@@ -167,8 +167,12 @@ bool smk_track_load(const smk_rom *rom, int track, int theme,
 
 uint8_t smk_track_surface(const smk_track *t, int wx, int wy)
 {
-    wx &= (SMK_WORLD_PX - 1);
-    wy &= (SMK_WORLD_PX - 1);
+    /* The ROM's world is a single 1024x1024 plane: coordinates beyond it
+     * set the off-course flag and clamp ($80FAAE) - they do NOT wrap.
+     * Wrapping here tiled the plane infinitely (playtest, NOTES 063).
+     * Outside the world everything is solid wall. */
+    if (wx < 0 || wx >= SMK_WORLD_PX || wy < 0 || wy >= SMK_WORLD_PX)
+        return SMK_SURF_SOLID;
     unsigned tile = t->map[(wy >> 3) * SMK_MAP_DIM + (wx >> 3)];
     return tile < SMK_TILE_COUNT ? t->surface[tile] : 0;
 }

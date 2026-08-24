@@ -98,8 +98,15 @@ int16_t smk_surface_overcap_decel(int type)
  * (NOTES 053); revisit when player input reaches a kart in the oracle. */
 int16_t smk_surface_cap(uint8_t surf)
 {
-    /* SMK off-road roughly halves you; ours were too high to feel
-     * (playtest, NOTES 058).  Still placeholders pending measurement. */
-    static const int16_t CAP[8] = { 0, 0, 384, 352, 320, 288, 256, 224 };
-    return CAP[smk_surface_type(surf)];
+    /* 16-type caps (playtest-corrected, NOTES 063).  Class $00 is the
+     * void band between the dust and the barriers - crawl speed.  Types
+     * 9/10 are the road themes' dust ($52/$54).  Ice roads (11/12) and
+     * true roads run free.  Labelled placeholders pending measurement.
+     * (The previous two edits of this table silently failed and it was
+     * still 8 entries indexed by 16 types - reading past the array.) */
+    static const int16_t CAP[16] = { 0, 0, 384, 352, 320, 288, 256, 224,
+                                     0, 360, 330, 0, 0, 320, 288, 256 };
+    if (surf == 0x00)
+        return 160;
+    return CAP[smk_surface_type(surf) & 15];
 }

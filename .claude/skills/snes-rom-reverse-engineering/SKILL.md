@@ -720,6 +720,22 @@ Rules that fall out of this:
   disabled, then all together) took minutes and cleared the new code;
   everything after that pointed at the harness.
 
+## Step 23: a scripted edit that doesn't assert is a lie waiting to ship
+
+Two successive patches to the same function silently no-opped - each used a
+string replacement whose pattern no longer matched the file, Python's
+`str.replace` does nothing on a miss, the build stayed green (the OLD code
+still compiled), the suites stayed green (they tested other things), and
+two user-facing releases were announced with a fix they did not contain.
+The failure was only caught by instrumentation that printed the live
+values out of the running binary.
+
+Rules: every scripted source edit asserts its pattern matched and asserts
+the result is present afterward; and a claim about changed behaviour is
+checked against the BUILT ARTIFACT's output, not against the editor having
+run.  A test suite that passes proves only what it measures - if the
+change is behavioural, print the behaviour.
+
 ## Order of work
 
 1. Identify the ROM; get mapping and mirrors right. Add a hash check.
