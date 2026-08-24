@@ -69,6 +69,8 @@ static void pump(input_state *in)
 /* Solid sprite obstacles: the pipes (object kinds >= $C0).  Cylinder
  * collision - push the kart out and scrub speed, sticky-wall style. */
 static const smk_course *course_for_step;
+static int player_slip_deg;
+static int player_height_px;
 
 static void collide_objects(smk_kart *k, const smk_course *crs)
 {
@@ -479,10 +481,25 @@ static void step_kart(smk_kart *k, const smk_track *trk,
 
     if (k->speed > target && target > 0) { k->speed = (int16_t)target; }
 
+    /* slip, computed up front: it gates steering authority (measured:
+     * in a plow the ROM's turn rate collapses from ~307 to ~20/frame) */
+    float slip_now;
+    {
+        float va0 = atan2f((float)k->vx, -(float)k->vy);
+        float ha0 = (float)k->angle * (float)(2.0 * M_PI) / 65536.0f;
+        slip_now = va0 - ha0;
+        while (slip_now >  (float)M_PI) slip_now -= 2.0f * (float)M_PI;
+        while (slip_now < -(float)M_PI) slip_now += 2.0f * (float)M_PI;
+    }
+    float slip_u0 = fabsf(slip_now) * 65536.0f / (2.0f * (float)M_PI);
+    player_slip_deg = (int)(fabsf(slip_now) * 180.0f / (float)M_PI);
+
     /* steering authority falls off as the kart slows, as it must */
     int auth = (k->speed < 0 ? -k->speed : k->speed);
     if (auth > top) auth = top;
     int turn = top ? FEEL_TURN * auth / top : 0;
+    if (slip_u0 > 4000.0f)
+        turn = turn * 6 / 100;               /* measured plow: ~-20 vs -307 */
     if (in->left)  k->angle -= (uint16_t)turn;
     if (in->right) k->angle += (uint16_t)turn;
 
@@ -545,7 +562,10 @@ static void step_kart(smk_kart *k, const smk_track *trk,
         else if (in->hop_held && k->speed > 300)
             g = 0.10f;                        /* held slide (drift)       */
         else if (lateral > limit || slip_u > 4000.0f)
-            g = 0.08f;                        /* past the limit: plow     */
+            g = 0.02f;                        /* plow: slip grows, as
+                                                 measured (+130/frame) -
+                                                 0.08 equilibrated and felt
+                                                 like grip (playtest) */
         else
             g = 0.50f * class_grip;           /* measured convergence     */
         k->vx = (int16_t)(k->vx + (float)(tvx - k->vx) * g);
@@ -553,6 +573,7 @@ static void step_kart(smk_kart *k, const smk_track *trk,
     }
     smk_kart_move(k, trk);       /* the ROM's position += velocity << 8 */
     if (course_for_step) collide_objects(k, course_for_step);
+    player_height_px = smk_kart_height_px(k);
 }
 
 /* The ROM's angle is 0 = -Y increasing clockwise; the renderer wants
@@ -662,8 +683,10 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
         int scale = rw / 256;                 /* the SNES 32px proportion */
         if (scale < 1) scale = 1;
         bool hf = frame < 0;
+        /* the hop lifts the sprite; the shadow stays on the ground */
+        int lift = player_height_px * scale;
         smk_draw_sprite(karts, hf ? -frame : frame, trk->palette, drv->pal,
-                        rw / 2, rh - rh / 12, scale, hf, fb, rw, rh, rw);
+                        rw / 2, rh - rh / 12 - lift, scale, hf, fb, rw, rh, rw);
     }
 }
 
@@ -676,23 +699,21 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
  * steering input.  Encoded as negative-for-hflip in one int. */
 static int frame_for(const input_state *in, float *lean)
 {
-    /* MEASURED player frames (NOTES 072): the ROM shows the driven kart
-     * with exactly TWO rear-view frames - 1 (centred) and 47 (the deep
-     * lean from the extended sheet) - flipped for direction.  Brief taps
-     * produce no change (measured: no upload); the lean engages on a
-     * sustained hold or slide.  `lean` accumulates hold time. */
+    /* Player frames (measured + visual identification, NOTES 073):
+     * frame 2 is the straight rear view (frame 1 is visibly turned - the
+     * "starts turning right" report), frame 1/hflip the normal steering
+     * pose, and 47/hflip the slide/oversteer pose the uploads showed. */
     float want = (in->left ? -1.0f : 0.0f) + (in->right ? 1.0f : 0.0f);
-    if (want != 0.0f && ((*lean < 0) == (want < 0) || *lean == 0.0f))
-        *lean += want * 0.08f;
+    if (want != 0.0f)
+        *lean += (want - *lean) * 0.2f;
     else
-        *lean = want * 0.08f;
-    if (*lean > 1.0f) *lean = 1.0f;
-    if (*lean < -1.0f) *lean = -1.0f;
-    if (in->hop_held && want != 0.0f)
-        return want < 0 ? -47 : 47;          /* slide: full lean at once */
-    if (*lean <= -0.5f) return -47;
-    if (*lean >= 0.5f) return 47;
-    return 1;
+        *lean *= 0.7f;
+    bool sliding = in->hop_held && want != 0.0f;
+    if (sliding || player_slip_deg > 12)
+        return (*lean < 0 || (want < 0)) ? -47 : 47;
+    if (*lean <= -0.4f) return -1;
+    if (*lean >= 0.4f) return 1;
+    return 2;
 }
 
 /* ------------------------------------------------------------------ */

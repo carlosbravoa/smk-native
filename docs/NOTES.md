@@ -2136,4 +2136,29 @@ the scaling truth.
 
 ---
 
-*(next entry: 073)*
+**073** — Playtest round: the centred frame, the missing plow, and the
+visible hop.
+
+* **"Starts turning right"**: frame 1 - my "centred" pick from the
+  rotation measurement - is visibly a turned pose; the straight rear view
+  is **frame 2** (visual identification against the sheet).  The rotation
+  rule's frame-1-at-centre (NOTES 041) numbers the AI rotation set, which
+  is offset from the visual centre.  Player mapping now: 2 straight,
+  1/hflip steering, 47/hflip slide.
+* **"Slide detected but nothing happens"**: correct - I had ported the
+  breakaway TRIGGER but not its consequences.  g=0.08 EQUILIBRATES against
+  the turn rate at ~26 deg and the steering kept full authority, so the
+  kart just cornered harder.  The measurement says: authority collapses
+  (~307 -> ~20/frame) and slip GROWS unbounded.  Ported: past 4000 slip
+  units the turn rate drops to 6% and g falls to 0.02.  Speed loss in a
+  plow is NOT the OG behaviour (measured: 791 -> 801 held), so none is
+  added.
+* **Slide sprite**: >12 deg of slip or hop-slide now shows frame 47, so
+  oversteer LOOKS different from steering.
+* **The hop was invisible**: physics existed, the player sprite never
+  lifted.  It now rises with kart height (shadow grounded), making
+  hop-into-slide testable by eye.
+
+---
+
+*(next entry: 074)*
