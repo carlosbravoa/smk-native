@@ -1814,4 +1814,29 @@ accelerates but ignores the d-pad, so turn/frame reads zero).
 
 ---
 
-*(next entry: 061)*
+**061** — The player-input steering gate: hunted, not found.  Thread
+parked with exact coordinates.
+
+Chasing the dormant input-steering (the blocker for measured grip, drift
+states, and the camera), the dispatch at `$80A354/$80A3B7` decodes as:
+per kart, `$10,x` == 0 → inactive; bit 15 CLEAR → `$80AD8E`/`$80AD5E`
+(the AI/flow paths - what our forced state runs, which is why the woken
+kart accelerates but ignores the d-pad); bit 15 SET → `$809E29` +
+`$80B112`.
+
+But `$809E29` is NOT input handling: it is the **wrong-way detector** -
+flow-field direction minus heading, thresholds `$3000/$7000`, gated on
+submode `$2C < 6`, `$10` bit `$0400` selecting the strict variant.  With
+bit 15 set and no other life, the kart simply parks (verified: accel 0,
+turn 0 under held B+Left).
+
+So the input→steering translation is NOT selected by `$10` bit 15 and
+remains unlocated.  Candidates for whoever resumes: the `cpx #$1100`
+pattern (`$808A03`) suggests player-kart special-casing by BLOCK ADDRESS,
+not flags; and the countdown/start state (`$2C`, `$0E50`) gates several
+paths.  Until the real handler wakes (or the menu walk reaches an actual
+race), per-type grip values stay labelled placeholders.
+
+---
+
+*(next entry: 062)*
