@@ -682,4 +682,41 @@ the frames and their layout are the ROM's.
 
 ---
 
-*(next entry: 029)*
+**029** — The attract loop reaches a **demo race**, and it corrects two
+earlier entries.
+
+Leaving the game running with no input: mode 13 -> 0 -> 2 (title, ~28 s of
+game time) -> 0 -> **mode 1**, with 43 sprites in OAM and eight karts sitting
+on a starting grid at speed 0. Mode 1's handler at `$808067` is nearly the
+same routine chain as mode 6's — `$84ECC0`, `$877B`, `$8621`, `$81856D`,
+`$8E91`, `$861A`, `$8E60`, `$818587`, `$84D56F` — so **mode 1 is the demo
+race** and mode 6 the played one. Waiting for mode 6 was looking for the
+wrong thing.
+
+**Correction to 024 and 028.** The demo race runs on **track 7**, not 14,
+and all eight karts start on surface `$40` (road):
+
+```
+kart 0 (952,756)   kart 1 (920,732)   kart 2 (952,708)   kart 3 (920,684)
+kart 4 (952,660)   kart 5 (920,636)   kart 6 (952,612)   kart 7 (920,588)
+```
+
+Those are within a pixel of what forcing mode 6 produced, so that grid is
+**genuine**, not a default — NOTES 024 was too pessimistic. What remains true
+is that the same grid lands on solid ground for 5 of 24 courses, so those
+must place their karts differently. Two staggered columns 32 px apart, 24 px
+between rows.
+
+**Kart sprites in OAM.** A kart is **four 16x16 sprites** forming a 32x32
+block, tiles `N, N+2, N+32, N+34` (the 16-tile VRAM row stride), and each
+kart has its own tile slot: `$C0`, `$C4`, `$C8`, `$CC` … four tiles apart,
+with its own palette (0,1,2,3 …).
+
+That is the important part: the game **streams the chosen frame into a fixed
+per-kart VRAM slot** every frame, in 128-byte quarters. So the frame the game
+picked is recoverable from the **DMA source address**, which makes the
+frame-selection rule measurable rather than guessable.
+
+---
+
+*(next entry: 030)*

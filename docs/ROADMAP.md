@@ -64,6 +64,9 @@ NOTES 017; movement no longer rests on a guess. The kinematics (velocity
 construction and position integration) are now the ROM's own, in
 `src/kart.c`.
 
+*Partly resolved:* **S2** (start positions) — the grid is real and confirmed
+against the demo race on track 7; 5 of 24 courses still need their own.
+
 *Resolved:* **S3** (per-course theme) — the ROM's own table `$81EC2F` is now
 used; C output is byte-identical to the game's loader on all 24 courses.
 
