@@ -72,6 +72,8 @@ class Bus:
         self.en_wramport = _os.environ.get("SMK_NO_WRAMPORT") != "1"
         self.en_hdma = _os.environ.get("SMK_NO_HDMA") != "1"
         self.wmadd = 0                  # $2181-$2183 WRAM port address
+        self.joy_strobe = 0             # $4016 serial joypad
+        self.joy_shift = [0, 0]
         self.mpya = 0                   # $4202-$4206 CPU math unit
         self.dividend = 0
         self.mul_r = 0
@@ -107,6 +109,13 @@ class Bus:
                 return self.wram[addr]
             if 0x2140 <= addr <= 0x2143:
                 return self.apu.read(addr)
+            if addr in (0x4016, 0x4017):
+                pad = addr - 0x4016
+                if self.joy_strobe & 1:      # strobed: live B button
+                    return (self.reg_reads.get(0x4219 + pad * 2, 0) >> 7) & 1
+                bit = (self.joy_shift[pad] >> 15) & 1
+                self.joy_shift[pad] = ((self.joy_shift[pad] << 1) | 1) & 0xFFFF
+                return bit
             if addr == 0x4210:
                 v = 0x42 | (0x80 if self.nmi_flag else 0)
                 self.nmi_flag = False
@@ -161,6 +170,17 @@ class Bus:
                 return
             if addr < 0x6000:
                 self.regs[addr] = val
+                if addr == 0x4016:
+                    # strobe: on 1->0, latch the same buttons that back the
+                    # auto-read registers ($4218/$4219) into shifters, in
+                    # hardware order B,Y,Sel,St,U,D,L,R,A,X,L,R
+                    if self.joy_strobe & 1 and not (val & 1):
+                        for pad, (lo_r, hi_r) in enumerate(((0x4218, 0x4219),
+                                                            (0x421A, 0x421B))):
+                            lo = self.reg_reads.get(lo_r, 0)
+                            hi = self.reg_reads.get(hi_r, 0)
+                            self.joy_shift[pad] = (hi << 8) | lo
+                    self.joy_strobe = val
                 if 0x4202 <= addr <= 0x4206 and self.en_math:
                     self._cpu_math(addr, val)
                 if (0x2100 <= addr <= 0x213F or 0x2180 <= addr <= 0x2183
