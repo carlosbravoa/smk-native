@@ -124,6 +124,11 @@ typedef struct {
     int32_t  x, y;          /* $16/$18 and $1A/$1C - 16.16 position     */
     int16_t  vx, vy;        /* $22 / $24 - 8.8 velocity, px per frame   */
     uint16_t angle;         /* $2A - 65536 = a turn, 0 = -Y, clockwise  */
+    /* wall-bounce state, measured from the running game (NOTES 044):
+     * on impact the into-wall velocity reflects, then ~8 frames of a
+     * fixed $1000 (16 px/frame) knockback with speed preserved. */
+    int8_t   bounce_t;
+    int16_t  bvx, bvy;
     /* Speed and acceleration are both 32-bit, split across two words,
      * and the *high* word is the 8.8 value handed to DSP-1 as the radius. */
     int16_t  speed;         /* $EA */

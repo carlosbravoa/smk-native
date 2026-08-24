@@ -54,7 +54,7 @@ re-investigating.
 | S2 | `src/assets.c` `smk_track_guess_start` | longest-road-run heuristic for the start position | per-track start line + grid layout, undecoded | P2 |
 | S4 | `src/mode7.c` camera (`height 15, horizon 0.36, fov 0.55`) | hand-tuned to look right | M7A–D matrix + HDMA table computed per frame by the game | P3 |
 | S5 | `src/mode7.c` `sky_colour` | invented vertical gradient from palette entries 1–2 | BG2 backdrop / per-track horizon graphics | P5 |
-| S6 | `src/main.c` `move_blocked` | refuse the move, slide per axis | `$80F8C0`: enters a collision state (`$42,x`=$8000, `$26,x`=$80) with its own recovery | P3 |
+| S6 | `src/kart.c` bounce | **measured shape**: reflect + 8-frame `$1000` knockback, speed preserved (NOTES 044) | per-class differences and the exact direction rule | P3 residual |
 | S7 | renderer | full-resolution smooth perspective | 256×224, per-scanline integer matrix | keep — named divergence, this is the point of a PC port. `--pixel` restores chunk. |
 | S8 | no audio | silence | SPC700 + S-DSP running its own program | P7 |
 | S9 | `tools/smktool/dsp1.py` | full command set implemented; stream never desyncs; camera model verified against the game's own usage. Residual: gyrate is a passthrough, and raster/`$08`/`$18` scalings are unchecked | the real chip's exact fixed-point pipeline | largely closed (NOTES 039); residuals logged on first contact |
@@ -83,7 +83,7 @@ used; C output is byte-identical to the game's loader on all 24 courses.
 | P3 physics | **part** — kinematics, speed model and the ROM's acceleration tables are in and verified; steering policy and per-surface response are not |
 | P4 sprites | **mostly** — sheets, projection, and the **measured frame-selection rule** (NOTES 041); residuals: tier boundaries assumed shared, hflip side unverified, player rel synthesised |
 | P5 race furniture | not started (the course container is decoded; object records were not part of it — still to locate) |
-| P6 opponents | **part** — racing lines, speed classes, turn-rate law, and the >90° turnaround all decoded/measured; opponents drive at realistic pace; full laps on 6/20 tracks. Blocker is the wall-collision response (S6/`$80F8C0`) and jumps (no Z axis), not the controller |
+| P6 opponents | **part** — racing lines, speed classes, turn-rate law, >90° turnaround, and the wall bounce all decoded/measured; full laps on 7/20 tracks. Remaining: jump segments (no Z axis) and unmeasured behaviours on the stubborn courses |
 | P7 audio | **decided** — pre-recorded; `smk spc` dumps the driver, rendering not wired up |
 | P8 modes / menus | not started |
 

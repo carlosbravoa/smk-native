@@ -61,17 +61,45 @@ static int32_t advance(int32_t pos, int16_t vel)
     return pos;
 }
 
+#define BOUNCE_FRAMES 8
+#define BOUNCE_VEL    0x1000      /* 16 px per frame, as measured */
+
 void smk_kart_move(smk_kart *k, const smk_track *t)
 {
+    /* Knockback in progress: the measured response is ~8 frames of a fixed
+     * $1000 velocity with the speed value untouched. */
+    if (k->bounce_t > 0) {
+        k->bounce_t--;
+        int32_t nx = advance(k->x, k->bvx);
+        int32_t ny = advance(k->y, k->bvy);
+        if (!smk_surface_solid(smk_track_surface(t, smk_kart_px(nx), smk_kart_px(ny)))) {
+            k->x = nx;
+            k->y = ny;
+        }
+        return;
+    }
+
     int32_t nx = advance(k->x, k->vx);
     int32_t ny = advance(k->y, k->vy);
 
-    /* PLACEHOLDER wall response - see ledger S6.  The ROM enters a collision
-     * state at $80F8C0 ($42,x = $8000, $26,x = $80) with its own recovery;
-     * until that is decoded we refuse the blocked axis so a graze slides. */
+    /* Wall response, ported from measurement (NOTES 044): reflect the
+     * into-wall component and kick away for a few frames.  MEASURED on one
+     * surface class in the demo; applied to every solid here - the ROM's
+     * per-class differences are not decoded. */
     bool bx = smk_surface_solid(smk_track_surface(t, smk_kart_px(nx), smk_kart_px(k->y)));
     bool by = smk_surface_solid(smk_track_surface(t, smk_kart_px(k->x), smk_kart_px(ny)));
-    if (!bx) k->x = nx;
-    if (!by) k->y = ny;
-    if (bx && by) k->speed = (int16_t)(k->speed / 4);
+    if (bx || by) {
+        k->bounce_t = BOUNCE_FRAMES;
+        if (bx) { k->vx = (int16_t)-k->vx; }
+        if (by) { k->vy = (int16_t)-k->vy; }
+        int16_t mag_x = k->vx >= 0 ? BOUNCE_VEL : -BOUNCE_VEL;
+        int16_t mag_y = k->vy >= 0 ? BOUNCE_VEL : -BOUNCE_VEL;
+        k->bvx = bx ? mag_x : 0;
+        k->bvy = by ? mag_y : 0;
+        if (!bx) k->x = nx;
+        if (!by) k->y = ny;
+        return;
+    }
+    k->x = nx;
+    k->y = ny;
 }

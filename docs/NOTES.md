@@ -1214,4 +1214,41 @@ ledger S6.
 
 ---
 
-*(next entry: 044)*
+**044** — The wall response, measured — after three capture attempts that
+each taught a method lesson.
+
+Attempt 1 sampled `$B4` for the player kart and got a non-kart block
+mid-loop; attempt 2 identified the player by input response but steering
+blind never touched a wall in 900 frames; attempt 3 aimed at a known solid
+cell but wrote the heading every frame, and the *fourth* run showed why the
+one-shot aim also fails — under player control the game rewrites the target
+angle `$FA` every frame from input. The data finally came from attempt 3's
+own tape, which had recorded repeated impacts I initially dismissed.
+
+**The response, read off the trace** (surface class `$80`, track 7):
+
+```
+f48  v=(-770,-42)  $10=$2000        approaching the wall
+f49  v=(+770,-42)  $10=$6000        impact: into-wall component REFLECTED
+f50+ v=(0,+4096)   $10=$7000        ~8 frames of a fixed $1000 knockback
+f58  v=(-106,-760) $10=$2000        state clears, normal driving resumes
+```
+
+Speed (`$EA`) is preserved through the whole event. Flags: `$4000` marks
+the impact, `$1000` the knockback phase. Notably this wall's surface byte
+is `$80` (the bit-7 "special" class), not the `$20` solid bit — the classes
+respond differently and only this one is measured.
+
+Ported to `smk_kart_move()` as: reflect the blocked component, then an
+8-frame `$1000` kick away from the wall with speed kept — replacing the
+old refuse-and-slide placeholder (ledger S6 upgraded from invented to
+measured-shape). AI lap completion moved 6/20 → 7/20.
+
+**Still open on the same thread:** the remaining stuck tracks are the jump
+segments (no Z axis) and courses where the AI needs behaviour we have not
+measured; the per-class wall differences; and the knockback direction rule
+(observed along one axis, our port picks the blocked axis).
+
+---
+
+*(next entry: 045)*
