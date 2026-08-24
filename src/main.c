@@ -131,7 +131,8 @@ static void usage(const char *argv0)
            "  --track N       0..23  (20 courses + 4 battle arenas)\n"
            "  --theme N       override the course theme    [from ROM]\n"
            "  --class N       engine class 0/1/2 (50/100/150cc)  [0]\n"
-           "  --character N   sprite palette 1=Mario 2=Luigi 3=Peach [1]\n"
+           "  --character N   0 Mario 1 Luigi 2 Bowser 3 Peach 4 Koopa\n"
+           "                  5 Yoshi 6 DK Jr 7 Toad              [0]\n"
            "  --no-kart       hide the kart sprite\n"
            "  --width W       window width                 [1024]\n"
            "  --height H      window height                [896]\n"
@@ -154,7 +155,7 @@ int main(int argc, char **argv)
     const char *rom_path = "rom/smk_usa.sfc";
     int track = 0, theme = -1;   /* -1 = use the ROM's own binding */
     int engine_class = 0;        /* 0 = 50cc, 1 = 100cc, 2 = 150cc  */
-    int character = 1;           /* sprite palette: 1 Mario, 2 Luigi, 3 Peach */
+    int character = 0;           /* index into SMK_DRIVERS */
     int show_kart = 1;
     int win_w = 1024, win_h = 896, pixel = 2, fullscreen = 0;
     const char *dump = NULL;          /* write raw track data and exit      */
@@ -207,8 +208,10 @@ int main(int argc, char **argv)
     if (!rom.recognised)
         fprintf(stderr, "warning: %s\ncontinuing anyway; assets may be wrong.\n\n", err);
 
+    if (character < 0 || character >= SMK_CHARACTERS) character = 0;
+    const smk_driver *drv = &SMK_DRIVERS[character];
     static smk_sprites karts;
-    if (!smk_sprites_load(&rom, 0, &karts))
+    if (!smk_sprites_load(&rom, drv->sheet, &karts))
         fprintf(stderr, "warning: kart sprites did not load\n");
 
     static smk_physics phys;
@@ -226,6 +229,8 @@ int main(int argc, char **argv)
     printf("loaded \"%s\"\n", rom.title);
     printf("track %d, theme %d (from the ROM's own table), class %d\n",
            track, trk.theme, engine_class);
+    printf("driver: %s (sheet $%06X, palette $%02X)\n",
+           drv->name, drv->sheet, drv->pal);
     printf("acceleration curve and target speeds read from the ROM\n");
 
     /* Raw asset dump, so the C pipeline can be diffed against the oracle
@@ -255,8 +260,7 @@ int main(int argc, char **argv)
         if (show_kart && karts.frames) {
             int scale = sh / 112;
             if (scale < 1) scale = 1;
-            smk_draw_sprite(&karts, SMK_SPR_REAR, trk.palette,
-                            0x80 + character * 16,
+            smk_draw_sprite(&karts, SMK_SPR_REAR, trk.palette, drv->pal,
                             sw / 2, sh - sh / 12, scale, px, sw, sh, sw);
         }
         if (SDL_Init(SDL_INIT_VIDEO) != 0 && SDL_Init(0) != 0) {
@@ -390,7 +394,7 @@ int main(int argc, char **argv)
                 int frame = smk_sprite_frame(SMK_SPR_TIER0, lean);
                 int scale = rh / 112;            /* kart ~2/7 of screen height */
                 if (scale < 1) scale = 1;
-                smk_draw_sprite(&karts, frame, trk.palette, 0x80 + character * 16,
+                smk_draw_sprite(&karts, frame, trk.palette, drv->pal,
                                 rw / 2, rh - rh / 12, scale, fb, rw, rh, rw);
             }
             SDL_UpdateTexture(tex, NULL, fb, rw * (int)sizeof *fb);

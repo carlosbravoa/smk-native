@@ -202,6 +202,13 @@ typedef struct {
 /* `base` is a SNES address; 0 selects the default kart sheet. */
 bool smk_sprites_load(const smk_rom *rom, uint32_t base, smk_sprites *out);
 
+/* The eight drivers.  Seven sprite sheets at $C0-$C6:$2000 cover them,
+ * because Mario and Luigi share one and differ only by palette - which is
+ * also how the game does it.  Sprite palettes are CGRAM $80 + n*16. */
+#define SMK_CHARACTERS 8
+typedef struct { const char *name; uint32_t sheet; int pal; } smk_driver;
+extern const smk_driver SMK_DRIVERS[SMK_CHARACTERS];
+
 /* ---- Mode 7 camera and renderer --------------------------------------- */
 
 typedef struct {
