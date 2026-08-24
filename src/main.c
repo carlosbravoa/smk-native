@@ -367,11 +367,22 @@ static void step_kart(smk_kart *k, const smk_track *trk,
                                      / 65536.0f) * (float)k->speed);
         int32_t tvy = (int32_t)(-cosf((float)k->angle * (float)(2.0 * M_PI)
                                       / 65536.0f) * (float)k->speed);
+        /* Per-surface grip by 16-type (NOTES 060).  The COMPOSITION is the
+         * ROM's - per-theme class arrays select the type - and the ice
+         * types (11/12: classes $56/$58, the ice-theme roads) are the ones
+         * its decel table singles out as near-frictionless.  The grip
+         * VALUES are labelled placeholders pending the $AA slip-machine
+         * decode: road full grip, ice low, off-road in between. */
+        static const float GRIP[16] = {
+            1.00f, 0.95f, 0.80f, 0.80f, 0.75f, 0.75f, 0.70f, 0.70f,
+            1.00f, 0.95f, 0.90f, 0.35f, 0.30f, 0.75f, 0.70f, 0.65f,
+        };
+        float surf_grip = GRIP[smk_surface_type(surf)];
         float g;
         if (k->airborne)           g = 0.04f;   /* mid-hop: keep momentum */
-        else if (in->hop_held)     g = 0.10f;   /* power slide            */
-        else if (k->speed > 550)   g = 0.28f;   /* natural high-speed slip */
-        else                       g = 1.00f;   /* low speed: full grip   */
+        else if (in->hop_held)     g = 0.10f * surf_grip + 0.02f;
+        else if (k->speed > 550)   g = 0.05f + 0.30f * surf_grip;
+        else                       g = 0.25f + 0.75f * surf_grip;
         k->vx = (int16_t)(k->vx + (float)(tvx - k->vx) * g);
         k->vy = (int16_t)(k->vy + (float)(tvy - k->vy) * g);
     }

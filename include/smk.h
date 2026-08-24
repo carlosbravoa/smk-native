@@ -104,7 +104,11 @@ static inline bool smk_surface_solid(uint8_t s) { return (s & SMK_SURF_SOLID) !=
  *   $80A701: the cap test - `speed > cap[type]` selects the decel row
  * The cap values themselves are computed per kart into scratch; ours are
  * MEASURED plateaus from a driving AI kart (NOTES 053) and labelled so. */
-static inline int smk_surface_type(uint8_t s) { return (s >> 1) & 7; }
+/* 16 types, not 8: the class low nibble is (s>>1)&$0F, and $80A65D is one
+ * 16-entry per-type table (its "second row" is types 8-15 - the ice road
+ * classes $56/$58 are types 11/12 with gentle -12/-28 decel, which IS the
+ * ice feel).  The old &7 fold aliased 8-15 onto 0-7 (NOTES 060). */
+static inline int smk_surface_type(uint8_t s) { return (s >> 1) & 0x0F; }
 int16_t smk_surface_drag(int type);          /* $80A590 row */
 int16_t smk_surface_overcap_decel(int type); /* $80A65D row 0 */
 int16_t smk_surface_cap(uint8_t surf);       /* 0 = uncapped */

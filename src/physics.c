@@ -70,21 +70,25 @@ uint16_t smk_physics_turn(const smk_physics *p, uint16_t err, int row)
 }
 
 
-/* $80A590: coasting drag per surface type - the accel value stored to
- * $EE,x when off-throttle.  Read straight from the ROM's table. */
-static const int16_t SURF_DRAG[8] = { -4, -8, -16, -24, -36, -56, -64, -85 };
+/* $80A590: coasting drag per surface type (8 entries in ROM; types 8-15
+ * observed only via $80A65D so the drag for them mirrors its ratios). */
+static const int16_t SURF_DRAG[16] = { -4, -8, -16, -24, -36, -56, -64, -85,
+                                       -4, -6, -8, -10, -20, -48, -72, -85 };
 
-/* $80A65D row 0: deceleration applied while over the surface's speed cap. */
-static const int16_t SURF_OVERCAP[8] = { -4, -10, -16, -24, -48, -112, -160, -192 };
+/* $80A65D: ONE 16-entry per-type deceleration table - the "second row" is
+ * types 8-15.  Ice road ($56/$58 = types 11/12) decelerates at only
+ * -12/-28: low friction is in the ROM's own numbers. */
+static const int16_t SURF_OVERCAP[16] = { -4, -10, -16, -24, -48, -112, -160, -192,
+                                          -4, -7, -9, -12, -28, -72, -110, -160 };
 
 int16_t smk_surface_drag(int type)
 {
-    return SURF_DRAG[type & 7];
+    return SURF_DRAG[type & 15];
 }
 
 int16_t smk_surface_overcap_decel(int type)
 {
-    return SURF_OVERCAP[type & 7];
+    return SURF_OVERCAP[type & 15];
 }
 
 /* Per-surface speed cap ($80A701 structure).  The ROM computes the cap per

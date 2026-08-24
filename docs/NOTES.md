@@ -1788,4 +1788,30 @@ tags results by the track that ACTUALLY loaded.
 
 ---
 
-*(next entry: 060)*
+**060** — The 16-type surface system, and per-track feel shipped the way
+the ROM composes it.
+
+The key correction: surface TYPES are the class low nibble - **(s>>1) &
+$0F, sixteen types** - and `$80A65D` is ONE 16-entry per-type decel table,
+not two rows of eight.  Its "second row" is types 8-15, where the ice-theme
+road classes `$56/$58` (types 11/12) sit at only -12/-28: the ROM's own
+numbers mark ice as near-frictionless.  Our old `&7` fold aliased types
+8-15 onto 0-7, which is why every theme felt the same.
+
+Now in the game: type extraction fixed to 16 types; drag/decel tables
+extended accordingly (types 8-15 drag mirrors the decel ratios, labelled);
+caps keyed by 16 types with ice roads uncapped; and the player's grip is a
+16-type table - road 1.0, ice 0.35/0.30, off-road 0.65-0.80 - so Vanilla
+Lake slides while Mario Circuit bites, composed per track exactly as the
+ROM does it: theme class array (read from ROM) x per-type behaviour.
+
+Still labelled as ours: the grip VALUES (the honest source is the
+`$AA`/`$C2` slip machine - slip angle with thresholds $0C00/$1800 flipping
+`$E2` drift bits, decay from the record table at `$80AC38+` whose index
+derivation is still undecoded) and the caps.  Measurement via a driven
+kart stays blocked on the dormant input-steering dispatch (the woken kart
+accelerates but ignores the d-pad, so turn/frame reads zero).
+
+---
+
+*(next entry: 061)*
