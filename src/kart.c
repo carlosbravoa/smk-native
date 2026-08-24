@@ -39,7 +39,20 @@ void smk_kart_accelerate(smk_kart *k)
  * radius*sin and radius*cos unshifted; the unit analysis in NOTES 017
  * confirms that scaling - it is the only one for which the 8.8 velocity
  * feeding a 16.16 position works out. */
+static void smk_kart_face_real(smk_kart *k);
+
 void smk_kart_face(smk_kart *k)
+{
+    /* during the measured 10-frame bounce window ($42 countdown) the kart
+     * is ballistic: velocity persists, steering and thrust do not apply */
+    if (k->bounce_cool > 0) {
+        k->bounce_cool--;
+        return;
+    }
+    smk_kart_face_real(k);
+}
+
+static void smk_kart_face_real(smk_kart *k)
 {
     double a = (double)k->angle * (2.0 * M_PI / (double)SMK_ANGLE_TURN);
     k->vx = (int16_t)lrint(sin(a) * (double)k->speed);
@@ -176,50 +189,28 @@ void smk_kart_move(smk_kart *k, const smk_track *t)
     if (smk_surface_solid(smk_track_surface(t, smk_kart_px(k->x), smk_kart_px(k->y))))
         bx = by = false;
     if (bx || by) {
-        /* Wall contact (user playtest, NOTES 055).  SMK1 walls are sticky:
-         * a hit kills the into-wall component and most of the speed, with
-         * no launch - the launch + $1000 along-wall fling measured in
-         * NOTES 044 belongs to bit-7 SPECIAL surfaces only (that is where
-         * it was measured) and applying it to plain walls produced the
-         * reported eternal ping-pong.  Plain-wall numbers are a labelled
-         * feel model, not a decode. */
-        uint8_t wallv = bx
-            ? smk_track_surface(t, smk_kart_px(nx), smk_kart_px(k->y))
-            : smk_track_surface(t, smk_kart_px(k->x), smk_kart_px(ny));
-        if (0) {   /* the old on-block fling: superseded by the jump bar below */
-            k->bounce_cool = 30;
-            k->speed = (int16_t)(k->speed - k->speed / 4);
-            smk_kart_launch(k, SMK_HOP_VEL);
-            if (bx && by) {
-                k->bvx = (int16_t)(k->vx > 0 ? -BOUNCE_VEL / 2 : BOUNCE_VEL / 2);
-                k->bvy = (int16_t)(k->vy > 0 ? -BOUNCE_VEL / 2 : BOUNCE_VEL / 2);
-                k->vx = k->vy = 0;
-            } else if (bx) {
-                k->vx = 0; k->bvx = 0;
-                k->bvy = (int16_t)(k->vy >= 0 ? BOUNCE_VEL : -BOUNCE_VEL);
+        /* Wall contact - the MEASURED $20-wall response (NOTES 071):
+         * head-on at 791 rebounds at exactly 791 - the bounce is a pure
+         * velocity ROTATION with zero speed loss - and $42,x counts down
+         * from 10, a ballistic window with no steering or thrust.  No
+         * vertical launch on plain walls ($26 stays 0; the hop belongs to
+         * the bit-7 bars, NOTES 044).  Port: reflect the blocked
+         * component, keep the magnitude, run the 10-frame window. */
+        {
+            uint8_t wv = bx
+                ? smk_track_surface(t, smk_kart_px(nx), smk_kart_px(k->y))
+                : smk_track_surface(t, smk_kart_px(k->x), smk_kart_px(ny));
+            if (wv & 0x80) {                 /* jump bar: measured launch */
+                smk_kart_launch(k, SMK_HOP_VEL);
+                if (bx) { k->vx = (int16_t)-k->vx; }
+                if (by) { k->vy = (int16_t)-k->vy; }
             } else {
-                k->vy = 0; k->bvy = 0;
-                k->bvx = (int16_t)(k->vx >= 0 ? BOUNCE_VEL : -BOUNCE_VEL);
+                if (bx) k->vx = (int16_t)-k->vx;
+                if (by) k->vy = (int16_t)-k->vy;
+                if (bx && by) { k->vx = (int16_t)-k->vx; } /* corner: full back */
+                k->bounce_cool = 10;         /* the $42 ballistic window */
             }
-        } else {
-            /* sticky wall, angle-dependent: a graze scrubs a little, a
-             * head-on hit takes nearly everything.  Loss is proportional
-             * to the blocked share of the velocity. */
-            int into  = bx ? (k->vx < 0 ? -k->vx : k->vx)
-                           : (k->vy < 0 ? -k->vy : k->vy);
-            int along = bx ? (k->vy < 0 ? -k->vy : k->vy)
-                           : (k->vx < 0 ? -k->vx : k->vx);
-            if (bx && by) {
-                k->speed = 0;
-            } else if (into + along > 0) {
-                k->speed = (int16_t)((int32_t)k->speed * along
-                                     / (into + along));
-            }
-            if (bx) k->vx = 0;
-            if (by) k->vy = 0;
         }
-        if (!bx) k->x = nx;
-        if (!by) k->y = ny;
         return;
     }
     k->x = nx;

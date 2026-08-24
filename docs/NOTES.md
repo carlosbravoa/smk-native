@@ -2080,4 +2080,32 @@ graphics stream is the open decode (VRAM slots 192-255 DMA trace running).
 
 ---
 
-*(next entry: 071)*
+**071** — The real wall crash, measured head-on and ported.  SMK walls
+REBOUND at full speed.
+
+Crash lab (the rig driving into a `$20` wall at 791):
+
+* The bounce is a pure velocity ROTATION: in (0,+791), out (-644,-460) -
+  magnitude exactly preserved (791 -> 791).  My "sticky walls" eyeball
+  model (NOTES 055) is wrong for real walls and is now replaced.
+* **`$42,x` is a countdown, not a flag**: $0A -> $01, a 10-frame ballistic
+  window - no steering, no thrust - during which the velocity vector curves
+  and the kart clears the wall.
+* No vertical launch on plain walls (`$26` stays 0): the hop belongs to
+  the bit-7 bars alone, closing that loop from NOTES 044/058.
+* `$10` bits seen on contact: `$0400` while touching, `$4000` variant on
+  the graze - the touching-wall flags.
+
+Ported: solid contact reflects the blocked velocity component with the
+magnitude kept, and `bounce_cool` now models the $42 window - 10 frames of
+ballistic flight-out with face()/thrust suspended.  Bars keep their
+measured launch.  All gates green (make check, AI 20/20, corner settles).
+
+Open: the angle-dependence runs sampled at creep speed (the placement
+zeroed velocity) - re-run with speed injection to see whether shallow
+angles deflect rather than rebound.  Pipe (sprite-object) crash response
+is the next lab target; sprite tier thresholds sweeping now.
+
+---
+
+*(next entry: 072)*
