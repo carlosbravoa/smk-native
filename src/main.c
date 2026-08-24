@@ -131,6 +131,8 @@ static void usage(const char *argv0)
            "  --track N       0..23  (20 courses + 4 battle arenas)\n"
            "  --theme N       override the course theme    [from ROM]\n"
            "  --class N       engine class 0/1/2 (50/100/150cc)  [0]\n"
+           "  --character N   sprite palette 1=Mario 2=Luigi 3=Peach [1]\n"
+           "  --no-kart       hide the kart sprite\n"
            "  --width W       window width                 [1024]\n"
            "  --height H      window height                [896]\n"
            "  --pixel N       render at 1/N resolution     [2]\n"
@@ -152,6 +154,8 @@ int main(int argc, char **argv)
     const char *rom_path = "rom/smk_usa.sfc";
     int track = 0, theme = -1;   /* -1 = use the ROM's own binding */
     int engine_class = 0;        /* 0 = 50cc, 1 = 100cc, 2 = 150cc  */
+    int character = 1;           /* sprite palette: 1 Mario, 2 Luigi, 3 Peach */
+    int show_kart = 1;
     int win_w = 1024, win_h = 896, pixel = 2, fullscreen = 0;
     const char *dump = NULL;          /* write raw track data and exit      */
     const char *shot = NULL;          /* render one frame to a BMP and exit */
@@ -165,6 +169,8 @@ int main(int argc, char **argv)
         #define ARG(name, var) if (!strcmp(a, name) && i + 1 < argc) { var = atoi(argv[++i]); continue; }
         if (!strcmp(a, "--rom") && i + 1 < argc) { rom_path = argv[++i]; continue; }
         ARG("--track", track) ARG("--theme", theme) ARG("--class", engine_class)
+        ARG("--character", character)
+        if (!strcmp(a, "--no-kart")) { show_kart = 0; continue; }
         ARG("--width", win_w) ARG("--height", win_h) ARG("--pixel", pixel)
         if (!strcmp(a, "--fullscreen")) { fullscreen = 1; continue; }
         if (!strcmp(a, "--frames") && i + 1 < argc) { max_frames = atol(argv[++i]); continue; }
@@ -200,6 +206,10 @@ int main(int argc, char **argv)
     }
     if (!rom.recognised)
         fprintf(stderr, "warning: %s\ncontinuing anyway; assets may be wrong.\n\n", err);
+
+    static smk_sprites karts;
+    if (!smk_sprites_load(&rom, 0, &karts))
+        fprintf(stderr, "warning: kart sprites did not load\n");
 
     static smk_physics phys;
     if (!smk_physics_load(&rom, engine_class, &phys)) {
@@ -242,6 +252,13 @@ int main(int argc, char **argv)
                          .height = cam_height, .horizon = cam_horizon,
                          .fov = cam_fov };
         smk_render_mode7(&trk, &c, px, sw, sh, sw);
+        if (show_kart && karts.frames) {
+            int scale = sh / 112;
+            if (scale < 1) scale = 1;
+            smk_draw_sprite(&karts, SMK_SPR_REAR, trk.palette,
+                            0x80 + character * 16,
+                            sw / 2, sh - sh / 12, scale, px, sw, sh, sw);
+        }
         if (SDL_Init(SDL_INIT_VIDEO) != 0 && SDL_Init(0) != 0) {
             fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
             return 1;
@@ -360,6 +377,19 @@ int main(int argc, char **argv)
 
         if (tex && fb) {
             smk_render_mode7(&trk, &cam, fb, rw, rh, rw);
+            if (show_kart && karts.frames) {
+                /* PLACEHOLDER frame choice: the ROM picks the sprite from
+                 * the kart's heading relative to the camera and its steering
+                 * state; we only lean with the steering input.  The frames
+                 * themselves and their layout are the ROM's. */
+                int frame = SMK_SPR_REAR;
+                if (in.left)  frame = SMK_SPR_REAR - 2;
+                if (in.right) frame = SMK_SPR_REAR + 2;
+                int scale = rh / 112;            /* kart ~2/7 of screen height */
+                if (scale < 1) scale = 1;
+                smk_draw_sprite(&karts, frame, trk.palette, 0x80 + character * 16,
+                                rw / 2, rh - rh / 12, scale, fb, rw, rh, rw);
+            }
             SDL_UpdateTexture(tex, NULL, fb, rw * (int)sizeof *fb);
             SDL_RenderClear(ren);
             SDL_RenderCopy(ren, tex, NULL, NULL);

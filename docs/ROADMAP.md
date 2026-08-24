@@ -167,7 +167,10 @@ The largest decode. Sub-order:
 - Acceptance: oracle diff = 0 over the swept state space for each ported
   routine; then a human lap of Mario Circuit 1 that feels right.
 
-### P4 — Sprites: karts and objects on the plane
+### P4 — Sprites: karts and objects on the plane  (kart frames ✅)
+Done: kart sprite frames located and read from the ROM at runtime, and the
+player's kart is drawn (NOTES 028). Remaining: the frame-selection rule,
+other characters' sheets, and object sprites.
 - Kart sprite sheets (many rotation frames), character palettes, the
   world→screen projection for sprites (scale by distance — the game has a
   table for it), sprite sorting against the ground plane.

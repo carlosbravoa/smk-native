@@ -644,4 +644,42 @@ per-track data is located.
 
 ---
 
-*(next entry: 028)*
+**028** — PPU model added, and with it the kart sprites.
+
+The oracle now models **DMA, VRAM, CGRAM and OAM**. That is not an attempt
+at a PPU; it exists so asset formats can be *read out of the machine*
+instead of inferred. It paid for itself immediately.
+
+**Verification of the Mode 7 pipeline, end to end:**
+
+| | |
+|---|---|
+| Mode 7 tiles, our expander vs VRAM | **12288/12288 identical (100%)** |
+| Mode 7 tilemap, our extraction vs VRAM | **16306/16384 identical (99.5%)** |
+
+The 0.5% residual is genuine: the game edits the tilemap at runtime
+(`$81B797` writes 2x2 blocks when item boxes and coins are used).
+
+That comparison also caught a mistake in my own harness: VRAM matched
+**track 14**, not track 0. Writing `$0124` before forcing mode 6 is a no-op,
+so every observation I have made through `boot_into_race(track=N)` was
+actually on track 14. That also explains NOTES 024's identical start grids.
+
+**Kart sprites.** Logging DMA during a race showed 128-byte transfers from
+banks `$C0/$C2/$C4/$C5` at addresses `$200` apart. So a frame is **512 bytes
+= 16 tiles = 32x32 pixels**, uncompressed 4bpp, stored in PPU order: a 4x4
+sprite with a **16-tile row stride**, frames advancing 4 tiles across then
+64 tiles down.
+
+Colours need no extra work: CGRAM arrives in one 512-byte DMA from
+`$7E:3A80`, which is the same palette blob the track uses. Sprite palettes
+sit at `$90` (Mario), `$A0` (Luigi), `$B0` (Peach).
+
+`src/sprite.c` reads them from the ROM at runtime and the native game now
+draws the player's kart. The frame *choice* is a placeholder — the ROM picks
+it from heading relative to the camera plus steering state, undecoded — but
+the frames and their layout are the ROM's.
+
+---
+
+*(next entry: 029)*

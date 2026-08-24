@@ -53,6 +53,21 @@ class Bus:
         # $4212 HVBJOY: bit 7 vblank, bit 0 joypad busy.
         self.nmi_flag = False
         self.vblank = False
+
+        # --- PPU memories -------------------------------------------
+        # Enough of the PPU to see what the game uploads.  There is no
+        # rendering here; the point is to capture VRAM/CGRAM/OAM so asset
+        # formats can be read out of the machine rather than guessed at.
+        self.vram = bytearray(0x10000)
+        self.cgram = bytearray(0x200)
+        self.oam = bytearray(0x220)
+        self.vmadd = 0          # $2116/$2117, in words
+        self.vmain = 0          # $2115
+        self.cgadd = 0          # $2121, in bytes
+        self.oamadd = 0         # $2102/$2103, in bytes
+        self.dma_bytes = 0
+        self.dma_log: list[tuple[int, int, int, int]] = []   # (srcbank,src,bbad,count)
+        self.log_dma = False
         self.irq_flag = False        # $4211 TIMEUP, cleared on read
         self.hblank = False
         self.vcount = 0
@@ -117,6 +132,8 @@ class Bus:
                 return
             if addr < 0x6000:
                 self.regs[addr] = val
+                if 0x2100 <= addr <= 0x213F or addr == 0x420B:
+                    self._ppu_write(addr, val)
                 if 0x2140 <= addr <= 0x2143:
                     self.apu.write(addr, val)
                     self.apu_writes += 1
@@ -127,6 +144,72 @@ class Bus:
                 self.dsp.write(addr, val)
                 return
         # writes to ROM are ignored, as on hardware
+
+    # ---- PPU ------------------------------------------------------
+    def _vram_step(self) -> int:
+        return {0: 1, 1: 32, 2: 128, 3: 128}[self.vmain & 3]
+
+    def _ppu_write(self, addr: int, val: int) -> None:
+        if addr == 0x2115:
+            self.vmain = val
+        elif addr == 0x2116:
+            self.vmadd = (self.vmadd & 0xFF00) | val
+        elif addr == 0x2117:
+            self.vmadd = (self.vmadd & 0x00FF) | (val << 8)
+        elif addr == 0x2118:                      # low byte of the word
+            self.vram[(self.vmadd * 2) & 0xFFFF] = val
+            if not (self.vmain & 0x80):
+                self.vmadd = (self.vmadd + self._vram_step()) & 0xFFFF
+        elif addr == 0x2119:                      # high byte
+            self.vram[(self.vmadd * 2 + 1) & 0xFFFF] = val
+            if self.vmain & 0x80:
+                self.vmadd = (self.vmadd + self._vram_step()) & 0xFFFF
+        elif addr == 0x2121:
+            self.cgadd = val * 2
+        elif addr == 0x2122:
+            self.cgram[self.cgadd & 0x1FF] = val
+            self.cgadd = (self.cgadd + 1) & 0x1FF
+        elif addr == 0x2102:
+            self.oamadd = (self.oamadd & 0x100) | val * 2
+        elif addr == 0x2103:
+            self.oamadd = (self.oamadd & 0xFF) | ((val & 1) << 8)
+        elif addr == 0x2104:
+            self.oam[self.oamadd % len(self.oam)] = val
+            self.oamadd = (self.oamadd + 1) % len(self.oam)
+        elif addr == 0x420B:
+            self._run_dma(val)
+
+    def _run_dma(self, mask: int) -> None:
+        """General-purpose DMA.  This is how nearly every asset reaches the
+        PPU, so without it VRAM stays empty and nothing can be read back."""
+        for ch in range(8):
+            if not (mask & (1 << ch)):
+                continue
+            base = 0x4300 + ch * 0x10
+            dmap = self.regs.get(base + 0, 0)
+            bbad = self.regs.get(base + 1, 0)
+            src = (self.regs.get(base + 2, 0)
+                   | self.regs.get(base + 3, 0) << 8)
+            srcbank = self.regs.get(base + 4, 0)
+            count = (self.regs.get(base + 5, 0)
+                     | self.regs.get(base + 6, 0) << 8)
+            if count == 0:
+                count = 0x10000
+            step = 0 if (dmap & 0x08) else (-1 if (dmap & 0x10) else 1)
+            mode = dmap & 7
+            # byte offsets applied to $21xx for each transfer mode
+            pattern = {0: (0,), 1: (0, 1), 2: (0, 0), 3: (0, 0, 1, 1),
+                       4: (0, 1, 2, 3), 5: (0, 1, 0, 1),
+                       6: (0, 0), 7: (0, 0, 1, 1)}[mode]
+            for i in range(count):
+                b = self.read(srcbank, src)
+                self._ppu_write(0x2100 | ((bbad + pattern[i % len(pattern)]) & 0xFF), b)
+                src = (src + step) & 0xFFFF
+            self.dma_bytes += count
+            if self.log_dma:
+                self.dma_log.append((srcbank, (self.regs.get(base + 2, 0)
+                                     | self.regs.get(base + 3, 0) << 8),
+                                     bbad, count))
 
     # convenience
     def read16(self, bank: int, addr: int) -> int:

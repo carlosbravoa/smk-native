@@ -68,6 +68,22 @@ int main(int argc, char **argv)
     for (int i = 0; i < 256; i++) if (a.palette[i] > 0xFFFFFF) inrange = 0;
     check("256 colours in range", inrange, NULL);
 
+    printf("\nsprites\n");
+    static smk_sprites spr;
+    int sprok = smk_sprites_load(&rom, 0, &spr);
+    snprintf(det, sizeof det, "%d frames", spr.frames);
+    check("kart sprite frames load", sprok && spr.frames == SMK_SPR_FRAMES, det);
+    int filled = 0;
+    for (int f = 0; f < spr.frames; f++) {
+        int nz = 0;
+        for (int i = 0; i < SMK_SPR_PX * SMK_SPR_PX; i++)
+            if (spr.px[f][i]) nz++;
+        /* a real 32x32 kart covers a good part of its box but not all of it */
+        if (nz > 200 && nz < 900) filled++;
+    }
+    snprintf(det, sizeof det, "%d/%d frames look like a kart", filled, spr.frames);
+    check("frames are sprites, not noise or blanks", filled >= spr.frames - 4, det);
+
     printf("\ncodec\n");
     /* Every command exercised through a stream we build by hand. */
     static const uint8_t stream[] = {

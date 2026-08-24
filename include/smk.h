@@ -152,6 +152,33 @@ void smk_kart_face(smk_kart *k);
 void smk_kart_move(smk_kart *k, const smk_track *t);
 static inline int smk_kart_px(int32_t v) { return (int)(v >> SMK_POS_SHIFT); }
 
+/* ---- Kart sprites ------------------------------------------------------
+ *
+ * Uncompressed 4bpp in ROM, laid out exactly as the PPU wants them: a 32x32
+ * sprite is 4x4 tiles with a **16-tile row stride**, and frames sit side by
+ * side, so frame f begins at tile (f%4)*4 + (f/4)*64.  Each frame is 512
+ * bytes, which is why the game streams them to VRAM in 128-byte quarters.
+ *
+ * Colours come from the same 256-entry palette as the track (CGRAM is
+ * uploaded in one 512-byte transfer), with the sprite palettes at $90, $A0,
+ * $B0 ... - $90 is Mario, $A0 Luigi, $B0 Peach.
+ */
+#define SMK_SPR_PX      32
+#define SMK_SPR_FRAMES  32
+#define SMK_SPR_BYTES   512
+/* Frame 4 is the straight-from-behind pose; neighbours lean left/right.
+ * PLACEHOLDER: the ROM chooses the frame from the kart's heading relative
+ * to the camera plus its steering state, which is not decoded. */
+#define SMK_SPR_REAR    4
+
+typedef struct {
+    uint8_t px[SMK_SPR_FRAMES][SMK_SPR_PX * SMK_SPR_PX];  /* palette indices */
+    int frames;
+} smk_sprites;
+
+/* `base` is a SNES address; 0 selects the default kart sheet. */
+bool smk_sprites_load(const smk_rom *rom, uint32_t base, smk_sprites *out);
+
 /* ---- Mode 7 camera and renderer --------------------------------------- */
 
 typedef struct {
@@ -164,5 +191,10 @@ typedef struct {
 
 void smk_render_mode7(const smk_track *t, const smk_camera *cam,
                       uint32_t *pixels, int w, int h, int pitch_px);
+
+/* Blit one sprite frame, nearest-neighbour, index 0 transparent. */
+void smk_draw_sprite(const smk_sprites *s, int frame, const uint32_t *palette,
+                     int pal_base, int cx, int cy, int scale,
+                     uint32_t *pixels, int w, int h, int pitch_px);
 
 #endif /* SMK_H */
