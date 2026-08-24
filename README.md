@@ -85,13 +85,16 @@ pacing. That is how the physics above was verified: `make verify-physics`
 drives the real game and checks our integration against it, currently 0
 mismatches over hundreds of steps.
 
-It also models DMA, VRAM, CGRAM and OAM — not to render, but so asset
-formats can be read out of the machine. That verified the Mode 7 pipeline
-end to end (tiles 100% identical to VRAM, tilemap 99.5%, the rest being the
-game's own runtime edits) and located the kart sprites.
+It also models DMA, VRAM, CGRAM, OAM and — as of NOTES 039 — the **full
+DSP-1 coprocessor**, with its command stream verified to never desync
+through boot and racing. That verified the Mode 7 pipeline end to end
+(tiles 100% identical to VRAM, tilemap 99.5%), located the kart sprites,
+and now lets the game **draw its own race**: Lakitu, karts, shadows and HUD
+all appear in OAM, which a small compositor can render for inspection.
 
-It is not a general emulator — there is no picture, no SPC700 and no HDMA.
-It exists to answer questions about behaviour. See `docs/NOTES.md` 018-028.
+It is not a general emulator — there is no background rendering, no SPC700
+and no HDMA. It exists to answer questions about behaviour. See
+`docs/NOTES.md` 018-039.
 
 The plan to close the gap — phases, risks, and an explicit ledger of every
 shortcut currently in the code — is [`docs/ROADMAP.md`](docs/ROADMAP.md).
