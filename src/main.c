@@ -68,12 +68,16 @@ static void pump(input_state *in)
  * more.  They are in the game's units so that decoding them later is a
  * substitution, not a rewrite.
  */
-#define FEEL_TOP_SPEED   (3 * SMK_VEL_ONE)      /* 3.0 px/frame          */
-#define FEEL_BOOST        (5 * SMK_VEL_ONE / 2) /* x2.5 at the top       */
-#define FEEL_ACCEL        6                     /* 8.8 units per frame   */
-#define FEEL_BRAKE       14
-#define FEEL_DRAG         2
-#define FEEL_TURN        420                    /* angle units per frame */
+/* Measured from the game running in the oracle: holding accelerate takes a
+ * kart from rest to about $0280 (2.5 px/frame), and the per-frame gain
+ * tapers as it approaches that.  These constants reproduce that shape; what
+ * the ROM actually writes into $EC/$EE, and when, is still undecoded. */
+#define FEEL_TOP_SPEED   (0x0280)               /* ~2.5 px/frame, measured */
+#define FEEL_BOOST       (0x03A0)
+#define FEEL_ACCEL       (0x0C00)               /* into the 32-bit accel   */
+#define FEEL_BRAKE       (0x2000)
+#define FEEL_DRAG        (0x0400)
+#define FEEL_TURN        420                    /* angle units per frame   */
 
 static void step_kart(smk_kart *k, const smk_track *trk, const input_state *in)
 {
@@ -81,8 +85,18 @@ static void step_kart(smk_kart *k, const smk_track *trk, const input_state *in)
     if (in->up)   target = in->shift ? FEEL_BOOST : FEEL_TOP_SPEED;
     if (in->down) target = -FEEL_TOP_SPEED / 2;
 
-    if (k->speed < target)      k->speed += FEEL_ACCEL;
-    else if (k->speed > target) k->speed -= (target == 0 ? FEEL_DRAG : FEEL_BRAKE);
+    /* Drive the ROM's acceleration fields rather than speed directly, so
+     * that when $EC/$EE are decoded this becomes a one-line substitution. */
+    int32_t accel;
+    if (k->speed < target)      accel =  FEEL_ACCEL;
+    else if (k->speed > target) accel = -(target == 0 ? FEEL_DRAG : FEEL_BRAKE);
+    else                        accel = 0;
+    k->accel      = (int16_t)(accel >> 16);
+    k->accel_frac = (uint16_t)(accel & 0xFFFF);
+
+    smk_kart_accelerate(k);      /* the ROM's 32-bit speed integration */
+
+    if (k->speed > FEEL_BOOST) { k->speed = FEEL_BOOST; k->speed_frac = 0; }
 
     /* steering authority falls off as the kart slows, as it must */
     int auth = (k->speed < 0 ? -k->speed : k->speed);

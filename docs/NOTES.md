@@ -461,4 +461,61 @@ the user's ROM every time, so no captured game data is committed.
 
 ---
 
-*(next entry: 023)*
+**023** — Player control, the kart array, and the whole motion core.
+
+**`$0E32` is the demo flag.** With it set the karts are AI-driven and the
+joypad does nothing; clearing it hands control to the player. That is why
+"input reaches the game but nothing responds" — both were true. With it
+cleared, holding accelerate takes the kart from 194 to 646 with a tapering
+per-frame gain, which is a real acceleration curve.
+
+**The kart array is at WRAM `$1000`, eight karts, stride `$100`.** `$B4`
+holds the base of the kart currently being processed. Every `$18,x` style
+field in the physics is relative to that, which is why chasing absolute
+`$0018` gave nonsense.
+
+**The motion core, `$80A4E1`** — this is the whole chain:
+
+```
+clc
+lda ...   / adc $EC,x / sta $E8,x   ; speed fraction += accel fraction
+lda $EA,x / adc $EE,x / sta $EA,x   ; speed          += accel + carry
+bpl +
+lda #$0000 / sta $E8,x / sta $EA,x  ; negative speed clamps to zero
++   sta $6000                        ; DSP-1 sin/cos, radius = speed
+    lda $6000 / sta $22,x            ; vx =  sin * speed
+    lda $6000 / eor #$FFFF / inc A / sta $24,x   ; vy = -cos * speed
+```
+
+So speed and acceleration are **both 32-bit**, split across two words, and
+the *high* word is the 8.8 value handed to the DSP-1 as its radius:
+
+| field | meaning |
+|---|---|
+| `$E8,x` / `$EA,x` | speed fraction / speed (8.8) |
+| `$EC,x` / `$EE,x` | acceleration fraction / acceleration |
+
+This also confirms the DSP-1 result order independently for a third time:
+first result is sin (into `$22`), second is cos, negated into `$24`.
+
+Ported to `src/kart.c` as `smk_kart_accelerate()`, mirroring the ROM's
+field layout. What is still invented is only *what writes `$EC`/`$EE`* —
+the input and state logic that decides acceleration.
+
+**024** — NEGATIVE RESULT, and worth keeping. Forcing race mode with
+`$32 = 12` gives every track the same starting grid:
+`(951,755) (919,731) (951,708) (919,683) ...` — eight karts in two staggered
+columns. Tempting to read as "the start grid is fixed in world space".
+
+It is not. Checking that grid against each course's own surface table puts
+**5 of 24 tracks starting inside solid geometry** (tracks 1, 3, 5, 9, 16).
+So this is a default position left over from skipping the real race setup,
+not the game's per-track start. Ledger S2 stands.
+
+The lesson is the cheap check: a start position that lands in a wall is
+obviously wrong, and testing it took one query. Any observed value from a
+forced state needs a plausibility test before it is believed.
+
+---
+
+*(next entry: 025)*

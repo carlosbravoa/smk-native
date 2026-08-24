@@ -108,12 +108,22 @@ static inline bool smk_surface_solid(uint8_t s) { return (s & SMK_SURF_SOLID) !=
 #define SMK_VEL_ONE     (1 << SMK_VEL_SHIFT)    /* 1 pixel per frame */
 #define SMK_ANGLE_TURN  65536
 
+/* Field names carry the ROM offsets they mirror, because the layout is the
+ * ROM's: the kart array lives at WRAM $1000, eight karts, stride $100. */
 typedef struct {
-    int32_t  x, y;      /* 16.16 position                          */
-    int16_t  vx, vy;    /* 8.8 velocity, pixels per frame          */
-    uint16_t angle;     /* 65536 = full turn, 0 = -Y, clockwise    */
-    int16_t  speed;     /* 8.8, the radius handed to DSP-1 sin/cos */
+    int32_t  x, y;          /* $16/$18 and $1A/$1C - 16.16 position     */
+    int16_t  vx, vy;        /* $22 / $24 - 8.8 velocity, px per frame   */
+    uint16_t angle;         /* $2A - 65536 = a turn, 0 = -Y, clockwise  */
+    /* Speed and acceleration are both 32-bit, split across two words,
+     * and the *high* word is the 8.8 value handed to DSP-1 as the radius. */
+    int16_t  speed;         /* $EA */
+    uint16_t speed_frac;    /* $E8 */
+    int16_t  accel;         /* $EE */
+    uint16_t accel_frac;    /* $EC */
 } smk_kart;
+
+/* $80A4E1: speed += acceleration as one 32-bit add, then clamp at zero. */
+void smk_kart_accelerate(smk_kart *k);
 
 /* Velocity from angle and speed, the way $80F8CF does it. */
 void smk_kart_face(smk_kart *k);

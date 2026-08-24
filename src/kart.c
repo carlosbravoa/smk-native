@@ -13,6 +13,28 @@
 #include "smk.h"
 #include <math.h>
 
+/* $80A4E1, the speed update:
+ *
+ *      clc
+ *      lda ...   / adc $EC,x / sta $E8,x    ; fraction += accel fraction
+ *      lda $EA,x / adc $EE,x / sta $EA,x    ; speed    += accel  + carry
+ *      bpl +
+ *      lda #$0000 / sta $E8,x / sta $EA,x   ; a negative speed clamps to 0
+ *
+ * i.e. one 32-bit add with a floor at zero.  It is written as two 16-bit
+ * adds only because the CPU is 16-bit.
+ */
+void smk_kart_accelerate(smk_kart *k)
+{
+    int32_t speed = ((int32_t)k->speed << 16) | k->speed_frac;
+    int32_t accel = ((int32_t)k->accel << 16) | k->accel_frac;
+    speed += accel;
+    if (speed < 0)
+        speed = 0;                       /* the ROM zeroes both words */
+    k->speed      = (int16_t)(speed >> 16);
+    k->speed_frac = (uint16_t)(speed & 0xFFFF);
+}
+
 /* The DSP-1 sin/cos the game calls with (angle, speed).  Our model returns
  * radius*sin and radius*cos unshifted; the unit analysis in NOTES 017
  * confirms that scaling - it is the only one for which the 8.8 velocity
