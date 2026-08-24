@@ -124,10 +124,14 @@ typedef struct {
     int32_t  x, y;          /* $16/$18 and $1A/$1C - 16.16 position     */
     int16_t  vx, vy;        /* $22 / $24 - 8.8 velocity, px per frame   */
     uint16_t angle;         /* $2A - 65536 = a turn, 0 = -Y, clockwise  */
-    /* wall-bounce state, measured from the running game (NOTES 044):
-     * on impact the into-wall velocity reflects, then ~8 frames of a
-     * fixed $1000 (16 px/frame) knockback with speed preserved. */
-    int8_t   bounce_t;
+    /* Height.  DECODED at $80B1D6, the ROM's only `sbc #$001A` (NOTES 045):
+     * z is a 24-bit fixed-point value in the block at $1E..$20, and the
+     * per-frame update adds the velocity to the WORD at $1F - i.e.
+     * z += zvel << 8 - after subtracting gravity.  Pixel height is z >> 16. */
+    int32_t  z;             /* $1E..$20 - 24-bit, px in the top byte     */
+    int16_t  zvel;          /* $26 - added as << 8 each frame            */
+    bool     airborne;      /* $E2 bit 15                                */
+    /* horizontal knockback while bouncing off a wall (NOTES 044/045)    */
     int16_t  bvx, bvy;
     /* Speed and acceleration are both 32-bit, split across two words,
      * and the *high* word is the 8.8 value handed to DSP-1 as the radius. */
@@ -170,7 +174,19 @@ uint16_t smk_physics_turn(const smk_physics *p, uint16_t err, int row);
 void smk_kart_face(smk_kart *k);
 /* One frame of motion: the integration at $80879D, with wall blocking. */
 void smk_kart_move(smk_kart *k, const smk_track *t);
+
+/* Height, decoded at $80B1D6 (NOTES 045).  Gravity is 26 units per frame;
+ * a second mode at $80DFED uses 18.  Landing clears height, velocity and
+ * the airborne flag. */
+#define SMK_GRAVITY      26         /* $001A */
+#define SMK_GRAVITY_ALT  18         /* $0012 - the $80DFED mode */
+#define SMK_HOP_VEL      0x0080     /* $80B6A5 hop, and $80F8C0 wall bounce */
+
+void smk_kart_gravity(smk_kart *k);
+void smk_kart_launch(smk_kart *k, int16_t zvel);
+
 static inline int smk_kart_px(int32_t v) { return (int)(v >> SMK_POS_SHIFT); }
+static inline int smk_kart_height_px(const smk_kart *k) { return (int)(k->z >> 16); }
 
 /* ---- Kart sprites ------------------------------------------------------
  *

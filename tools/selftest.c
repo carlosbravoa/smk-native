@@ -68,6 +68,44 @@ int main(int argc, char **argv)
     for (int i = 0; i < 256; i++) if (a.palette[i] > 0xFFFFFF) inrange = 0;
     check("256 colours in range", inrange, NULL);
 
+    printf("\nheight and gravity\n");
+    {
+        /* the exact arc captured from the running game (NOTES 045):
+         * launch $0080 from z=$0100 peaks at z=64768 and lands on frame 8 */
+        static const int32_t ARC[] = { 26368, 45824, 58624, 64768,
+                                       64256, 57088, 43264, 22784, 0 };
+        smk_kart k;
+        memset(&k, 0, sizeof k);
+        k.z = 0x0100;
+        smk_kart_launch(&k, SMK_HOP_VEL);
+        int ok = 1, landed_at = -1;
+        for (int i = 0; i < (int)(sizeof ARC / sizeof *ARC); i++) {
+            smk_kart_gravity(&k);
+            if (k.z != ARC[i]) ok = 0;
+            if (!k.airborne && landed_at < 0) landed_at = i;
+        }
+        snprintf(det, sizeof det, "landed frame %d", landed_at);
+        check("gravity reproduces the game's arc exactly ($0080 launch)",
+              ok && landed_at == 8, det);
+
+        /* the taller arc: $0180 peaks at 10.34 px, landing on frame 29 (the
+         * capture logged 31 rows because it ran on past the landing) */
+        memset(&k, 0, sizeof k);
+        k.z = 0x0100;
+        smk_kart_launch(&k, 0x0180);
+        int32_t peak = 0;
+        int frames = 0;
+        while (k.airborne && frames < 200) {
+            smk_kart_gravity(&k);
+            if (k.z > peak) peak = k.z;
+            frames++;
+        }
+        snprintf(det, sizeof det, "peak %d (%.2f px) over %d frames",
+                 (int)peak, peak / 65536.0, frames);
+        check("the taller arc matches too ($0180 launch)",
+              peak == 677632 && frames == 29, det);
+    }
+
     printf("\ncourse data\n");
     {
         int good = 0, wp_total = 0;

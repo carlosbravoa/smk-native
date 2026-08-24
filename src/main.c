@@ -143,6 +143,7 @@ static void racer_step(smk_racer *r, const smk_track *trk,
     smk_kart_accelerate(&r->k);
     if (r->k.speed > target) r->k.speed = (int16_t)target;
     smk_kart_face(&r->k);
+    smk_kart_gravity(&r->k);
     smk_kart_move(&r->k, trk);
 }
 
@@ -242,6 +243,8 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
             bool hf = false;
             uint16_t rel = (uint16_t)(racers[k].k.angle - cam_heading);
             int f = smk_sprite_for_heading(tier, rel, &hf);
+            /* height lifts the sprite on screen, scaled like everything else */
+            py -= (float)smk_kart_height_px(&racers[k].k) * sc;
             smk_draw_sprite(&other[k], f, trk->palette,
                             d2->pal, (int)px, (int)py, scale, hf, fb, rw, rh, rw);
         }

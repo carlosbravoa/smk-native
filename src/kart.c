@@ -61,21 +61,52 @@ static int32_t advance(int32_t pos, int16_t vel)
     return pos;
 }
 
-#define BOUNCE_FRAMES 8
 #define BOUNCE_VEL    0x1000      /* 16 px per frame, as measured */
+
+/* $80B1D6 - the ROM's only `sbc #$001A`, so this integrator is unambiguous:
+ *
+ *      lda $26,x / sec / sbc #$001A / sta $26,x     velocity -= gravity
+ *      clc / adc $1F,x                             height word += velocity
+ *      bpl still-airborne
+ *      stz $1F,x / stz $26,x                       landed: clear both
+ *      lda $E2,x / and #$7FFF / sta $E2,x          clear the airborne flag
+ *
+ * Adding the velocity to the word at $1F is `z += zvel << 8` on the 24-bit
+ * value, and the landing test is the sign of that word.  Verified frame by
+ * frame against the running game: with zvel $0080 the arc peaks at 0.99 px
+ * and lands on frame 8; with $0180 it peaks at 10.34 px and lands on 31.
+ */
+void smk_kart_gravity(smk_kart *k)
+{
+    if (!k->airborne) return;
+    k->zvel = (int16_t)(k->zvel - SMK_GRAVITY);
+    int32_t nz = k->z + ((int32_t)k->zvel << 8);
+    if ((int16_t)(nz >> 8) < 0) {          /* the game's `bpl` test */
+        k->z = 0;
+        k->zvel = 0;
+        k->airborne = false;
+        k->bvx = k->bvy = 0;
+        return;
+    }
+    k->z = nz;
+}
+
+void smk_kart_launch(smk_kart *k, int16_t zvel)
+{
+    k->zvel = zvel;
+    k->airborne = true;
+}
 
 void smk_kart_move(smk_kart *k, const smk_track *t)
 {
-    /* Knockback in progress: the measured response is ~8 frames of a fixed
-     * $1000 velocity with the speed value untouched. */
-    if (k->bounce_t > 0) {
-        k->bounce_t--;
-        int32_t nx = advance(k->x, k->bvx);
-        int32_t ny = advance(k->y, k->bvy);
-        if (!smk_surface_solid(smk_track_surface(t, smk_kart_px(nx), smk_kart_px(ny)))) {
-            k->x = nx;
-            k->y = ny;
-        }
+    /* Airborne: the kart flies.  Solid cells are not tested - that is what
+     * makes jumps and the wall bounce work, and it matches the collision
+     * routine being gated off at $80F897 (`bit $12,x / bpl` skips the whole
+     * check).  INFERRED: we have not pinned which bit that gate is, only
+     * that a gate exists and that flight must ignore walls. */
+    if (k->airborne) {
+        k->x = advance(k->x, k->bvx ? k->bvx : k->vx);
+        k->y = advance(k->y, k->bvy ? k->bvy : k->vy);
         return;
     }
 
@@ -89,13 +120,15 @@ void smk_kart_move(smk_kart *k, const smk_track *t)
     bool bx = smk_surface_solid(smk_track_surface(t, smk_kart_px(nx), smk_kart_px(k->y)));
     bool by = smk_surface_solid(smk_track_surface(t, smk_kart_px(k->x), smk_kart_px(ny)));
     if (bx || by) {
-        k->bounce_t = BOUNCE_FRAMES;
-        if (bx) { k->vx = (int16_t)-k->vx; }
-        if (by) { k->vy = (int16_t)-k->vy; }
-        int16_t mag_x = k->vx >= 0 ? BOUNCE_VEL : -BOUNCE_VEL;
-        int16_t mag_y = k->vy >= 0 ? BOUNCE_VEL : -BOUNCE_VEL;
-        k->bvx = bx ? mag_x : 0;
-        k->bvy = by ? mag_y : 0;
+        /* $80F8C0: a wall hit sets $42,x = $8000 AND $26,x = $0080 - the
+         * kart is launched, so the bounce lasts exactly as long as the
+         * ballistic flight (NOTES 045).  The 8-frame duration measured in
+         * NOTES 044 was that flight time, not a constant. */
+        smk_kart_launch(k, SMK_HOP_VEL);
+        if (bx) k->vx = (int16_t)-k->vx;
+        if (by) k->vy = (int16_t)-k->vy;
+        k->bvx = bx ? (k->vx >= 0 ? BOUNCE_VEL : -BOUNCE_VEL) : 0;
+        k->bvy = by ? (k->vy >= 0 ? BOUNCE_VEL : -BOUNCE_VEL) : 0;
         if (!bx) k->x = nx;
         if (!by) k->y = ny;
         return;

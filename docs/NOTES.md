@@ -1251,4 +1251,54 @@ measured; the per-class wall differences; and the knockback direction rule
 
 ---
 
-*(next entry: 045)*
+**045** — The Z axis, decoded exactly. And NOTES 044's "magic constant"
+explained away.
+
+**Finding it.** Two copy routines (`$80E6E0`, `$80FD9D`) move `$16/$18`,
+`$1A/$1C`, `$1E/$20` between blocks as one group — X, Y and **Z**, all the
+same 3-word shape. `$80FDBC` then clamps `$1F/$20` to zero when the value
+goes negative: a ground clamp. An empirical sweep for ballistic signatures
+in 1800 frames of demo racing found *nothing*, because track 7 has no
+jumps — the useful move was to inject height into the running game and let
+its own code integrate it.
+
+**The law, from the ROM's only `sbc #$001A`** (`$80B1D6` — a unique
+instruction, so the identification is not a guess):
+
+```
+lda $26,x / sec / sbc #$001A / sta $26,x   velocity -= 26
+clc / adc $1F,x                            height word += velocity
+bpl still-airborne
+stz $1F,x / stz $26,x                      landed: clear both
+lda $E2,x / and #$7FFF / sta $E2,x         clear the airborne flag
+```
+
+Z is a 24-bit value at `$1E..$20`; adding the velocity to the *word at
+`$1F`* is `z += zvel << 8`, and the landing test is that word's sign.
+Pixel height is `z >> 16`. Verified frame by frame against the game: launch
+`$0080` peaks at 0.99 px and lands on frame 8; `$0180` peaks at 10.34 px
+(z = 677632) and lands on frame 29. Both are now pinned in the selftest.
+
+A second mode at `$80DFED` uses gravity **18** (`$0012`) instead of 26.
+Ramp launches read their velocity straight from the DSP-1 (`$80B7D6`:
+`lda $006000` → `$26,x`, then `$E2 |= $8000`) — another reason the DSP-1
+had to be right first.
+
+**NOTES 044 corrected.** `$80F8C0` sets `$42,x = $8000` **and
+`$26,x = $0080`** — a wall hit *launches the kart*, using the same velocity
+as a hop. So the "8-frame knockback" measured there was never a constant:
+it is exactly the ballistic flight time of velocity 128 under gravity 26.
+The port now expresses it that way, and the invented `BOUNCE_FRAMES`
+constant is gone.
+
+**Effect.** AI lap completion went 5/20 → **10/20** once flight ignored
+solid cells and bounces resolved ballistically — several of the rest are
+now near-misses (44/46, 30/35, 24/29 sectors) rather than hard stops.
+
+Still labelled as inferred: that flight skips the solid check. A gate
+exists (`$80F897`: `bit $12,x / bpl` skips the whole collision routine) but
+which bit it tests is not pinned; jumps cannot work without it.
+
+---
+
+*(next entry: 046)*
