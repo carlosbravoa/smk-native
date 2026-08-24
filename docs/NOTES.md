@@ -1752,4 +1752,40 @@ Three reports, three corrections:
 
 ---
 
-*(next entry: 059)*
+**059** — Per-track surface feel: how the ROM actually composes it.
+(Decode complete; measurement in progress.)
+
+The user's request - "different tracks have different friction; read it
+from the ROM, not a guessed common metric" - led through the surface
+plumbing.  What the code says:
+
+* **There is no per-track friction table.**  Per-track feel is composed:
+  each THEME assigns surface CLASSES to its tiles (the class array is
+  copied live to WRAM `$0B00`, read per tile - `bit $0AFF,x` tests the
+  jump-bar bit), and one GLOBAL set of per-type tables gives each class
+  its behaviour.  Ice feel exists because the ice theme's *road* is class
+  `$4C/$4E` (types 6-7) where Mario Circuit's is `$40` (type 0) - same
+  tables, different assignment.  Our loader already reads the class arrays
+  from ROM, so per-track feel falls out once per-TYPE behaviour is right.
+* **The slide-energy machine** (`$80B12F-$80B180`): `$C2,x` charges toward
+  cap `$0E20` at rates `$0E22/$0E24`, decays at `$0E26-$0E2A`, gated by
+  surface type < 10 and state bit `$E2.2`; thresholds `$2000/$2DC0/$2E80/
+  $3000/$30C0` flip drift-state bits in `$E0/$E2`, and the hop path drains
+  `$70` per frame above `$2000`.  The six parameters load from
+  **`$81:EFE7`** - two sets (cap `$3FFF` rates `$120/$80` vs cap `$5FFF`
+  rates `$200/$40`), selected by `$0030` - per MODE, not per track.
+* Known per-type tables so far: coasting drag `$80A590`, over-cap decel
+  `$80A65D` (both ported); the per-type grip/handling is being MEASURED
+  from the running game across themes rather than guessed.
+
+Process trap, re-hit: the first grip sweep returned bit-identical results
+on seven "different tracks" because it forced `$0124` - which mode entry
+recomputes from `$0150/$0152` (`$81EC47`: `$0124 = map[$0150*5+$0152]`,
+map at `$81EC1B`, store at `$81EC5D`).  NOTES 028 documented this trap;
+I walked into it again.  Negative results are load-bearing - reread them
+before reusing a state-forcing trick.  The sweep now sets cup/course and
+tags results by the track that ACTUALLY loaded.
+
+---
+
+*(next entry: 060)*
