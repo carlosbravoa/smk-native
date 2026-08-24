@@ -174,7 +174,10 @@ static inline int smk_kart_px(int32_t v) { return (int)(v >> SMK_POS_SHIFT); }
  * $B0 ... - $90 is Mario, $A0 Luigi, $B0 Peach.
  */
 #define SMK_SPR_PX      32
-#define SMK_SPR_FRAMES  32
+/* The sheet region is $2000-$8000 per bank: 48 frames.  0-31 are the three
+ * size tiers of rotation steps (NOTES 030); 32-47 are spin/tumble poses,
+ * far-tier variants and specials (NOTES 040). */
+#define SMK_SPR_FRAMES  48
 #define SMK_SPR_BYTES   512
 /* The sheet is three size tiers of about eleven rotation steps each - the
  * silhouette heights fall into bands of ~30, ~27 and ~24 pixels, which is
