@@ -72,6 +72,21 @@ used; C output is byte-identical to the game's loader on all 24 courses.
 
 ---
 
+## Status at a glance
+
+| phase | state |
+|---|---|
+| P0 oracle | **done** — 65816 interpreter, verified against the game's own decompressor |
+| P0.5 running machine | **mostly** — boots, uploads sound, runs races; no PPU picture, no SPC700, no HDMA |
+| P1 the track | **done** — themes, tilemaps, tilesets, palettes, surface table, all verified against VRAM |
+| P2 start / laps | **part** — the real starting grid is in; checkpoints and lap logic are not |
+| P3 physics | **part** — kinematics, speed model and the ROM's acceleration tables are in and verified; steering policy and per-surface response are not |
+| P4 sprites | **part** — all eight drivers' sheets read from ROM and drawn, world-space projection works; the frame-selection rule is not decoded |
+| P5 race furniture | not started |
+| P6 opponents | not started (AI shape known: steer toward waypoints via atan2) |
+| P7 audio | **decided** — pre-recorded; `smk spc` dumps the driver, rendering not wired up |
+| P8 modes / menus | not started |
+
 ## Phases
 
 Ordered so that each unlocks the next, and the scary unknowns are probed
