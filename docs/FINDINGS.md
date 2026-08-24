@@ -180,19 +180,116 @@ tile's palette base, which is how a 16-colour tile reaches anywhere in the
 256-colour Mode 7 palette. Zero is the backdrop index and is left alone.
 `0x100 + 192*32 = 6400` — exactly the size of the tileset blob.
 
+## Game modes
+
+The main loop dispatches on `$36` (mode × 2). Mode changes go through a
+**pending-mode** variable `$32`: `$81E09A` copies it into `$36`, clears it,
+and re-enables NMI/IRQ. Writing `$32` runs the game's own setup; writing
+`$36` skips it.
+
+| mode | handler | what it is |
+|---|---|---|
+| 0 | `$808096` | bare `rts` — idle |
+| 1 | `$808067` | the attract-mode demo race |
+| 2 | `$8080BA` | title screen (~28 s, then advances) |
+| 3 | `$8080CA` | a menu screen (bank `$85` routine chain) |
+| 6 | `$808136` | the played race |
+| 13 | — | boot / initial mode, set by `$81E02D` |
+
+## Kart state
+
+Eight karts at WRAM **`$1000`, stride `$100`**. `$B4` holds the base of the
+kart currently being processed, so every `$18,x`-style field is relative to
+it. Fields established so far:
+
+| offset | meaning |
+|---|---|
+| `$10` | flags; bit 0 = off the map |
+| `$16` / `$18` | X position, 16.16 (fraction / integer, 0..1023 px) |
+| `$1A` / `$1C` | Y position, 16.16 |
+| `$1E` / `$20` | Z position |
+| `$22` / `$24` | velocity X / Y, 8.8 px per frame |
+| `$2A` | heading, 65536 = one turn, 0 = −Y, clockwise |
+| `$42` | collision state |
+| `$58` | current tilemap index |
+| `$68` | current surface byte |
+| `$A2` | current steering angle |
+| `$AC` | **state index** into the jump table at `$80AD76` |
+| `$C0` | character / stat index |
+| `$E8` / `$EA` | speed, 32-bit; `$EA` is the 8.8 value |
+| `$EC` / `$EE` | acceleration, 32-bit |
+| `$FA` | target steering angle |
+
+## Motion — **verified**
+
+```
+speed32 += accel32                      $80A4E1, clamped at zero
+(vx, vy) = DSP1_sincos(angle, speed)    $80A4F6 - sin, then -cos
+position32 += velocity << 8             $80879D
+```
+
+Checked against the running game: the position step is exact over hundreds
+of frames, and it settles the update order — velocity is computed *before*
+position is integrated.
+
+Acceleration is a table lookup on current speed (`$80A7E1`) toward a target
+speed (`$80B074`); deceleration is a four-entry table at `$80B064`. Both
+tables live in WRAM at `$0690` and `$06B0`, filled by **`$81FEB6`** from a
+ROM source: `$81FED5` holds one pointer per engine class to a **64-byte**
+table, each byte widened to a word by `<< 4`. Three classes, 64 bytes apart.
+
+Kart states, dispatched by `$80AD6F` through `$80AD76[$AC,x]`: state 0
+drives, 1 coasts, 10 brakes, 4 is the boost/brake check.
+
+## DSP-1
+
+Used by gameplay, at DR `$6000` / SR `$7000`. Commands seen: `$00` multiply,
+`$04` sin/cos, `$0C` 2D rotate, `$28` vector length, `$80` (status). The
+sin/cos scaling is pinned by unit analysis — it returns `radius * sin`
+unshifted — and its result order (sin then cos) is confirmed three ways.
+`$81F638` is an **atan2** helper used by the AI.
+
+## Kart sprites
+
+Uncompressed 4bpp, in PPU order: a 32×32 sprite is 4×4 tiles with a
+**16-tile row stride**, frames advancing 4 tiles across then 64 down. Each
+frame is 512 bytes. The sheet holds **three size tiers** of ~11 rotation
+steps (a distance LOD).
+
+Seven sheets at `$C0`–`$C6`:`$2000` cover eight drivers — Mario and Luigi
+share one and differ only by palette. In OAM a kart is four 16×16 sprites
+with its own tile slot, four tiles apart.
+
+Sprite palettes come from the same 256-colour blob as the track, and are
+**theme-dependent**: 37–53 of the 256 bytes change between themes, so
+drivers are re-tinted per course.
+
+## Other
+
+* **Text**: `letter = byte − $0A` with `A = 0`, `$FF` terminates. String
+  table at `$81DC7F`.
+* **SRAM** at `$30:$6600`: six 3-byte BCD best times per track, 20 bytes per
+  track; `$81DB94` initialises them to `$99 $59 $0A` (9'59"0A).
+* **Cup order**: `$81EC1B`, 20 bytes, indexed `cup*5 + course`.
+
 ## Not yet established
 
 - The pixel layout of each graphics blob class. `smk gfx --identify` scores
   the candidates, and palettes decode correctly, but the per-asset tile
   format has not been confirmed against the game's own upload code for every
   table. Treat rendered PNGs as provisional.
-- **Which tileset and palette belong to each track.** All 24 tilemaps decode,
-  but only entry 1 of `$81EBA3` is a full 192-tile set, so the renderer
-  currently uses it for every course. The per-course theme selection is set
-  somewhere in the race-mode setup and has not been traced.
-- **The start line, and the surface-behaviour table** that says which tile is
-  road, grass, wall or boost. Both are needed before collision or lap logic.
-- Kart physics, item behaviour, and the AI racing lines.
+- **Lap counting and checkpoints.** No per-track checkpoint data located.
+- **Per-course start lines.** The grid at (952,756) stepping down by 24 is
+  real and verified on track 7, but lands on solid ground for 5 of 24
+  courses, so those place their karts some other way.
+- **The sprite frame-selection rule** — which frame is shown for a given
+  heading. Recoverable from OAM tile numbers during a race; not yet read.
+- **The game's character table** binding a driver to a sheet and palette.
+- **Item behaviour and the AI racing lines.** The AI's steering is known in
+  shape (`$80B0B1` steers toward a waypoint from `$0900`/`$0A00` via atan2),
+  but the per-track waypoint data has not been located.
+- **Audio.** The SPC700 is not emulated; `smk spc` dumps the driver the game
+  uploads, which is the intended route to pre-rendered music.
 - The audio engine, object/kart behaviour tables, and text encoding.
 - 8% of the ROM is traced as code. The remainder is a mix of data and code
   reachable only through dispatch paths not yet resolved (52 indirect sites
