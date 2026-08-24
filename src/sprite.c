@@ -100,6 +100,40 @@ void smk_draw_sprite(const smk_sprites *s, int frame, const uint32_t *palette,
 }
 
 
+/* Far karts: the game COMPOSES a ~16px sprite at runtime (the small art
+ * is in no ROM bank - a software minifier builds it in WRAM, NOTES 076).
+ * Until that composer is decoded, sample the full frame 2:1 - a labelled
+ * approximation of the real minifier, sizes and switch depth measured. */
+void smk_draw_sprite_mini(const smk_sprites *s, int frame,
+                          const uint32_t *palette, int pal_base,
+                          int cx, int cy, int scale, bool hflip,
+                          uint32_t *pixels, int w, int h, int pitch_px)
+{
+    if (frame < 0 || frame >= s->frames || scale < 1) return;
+    const uint8_t *src = s->px[frame];
+    int size = (SMK_SPR_PX / 2) * scale;
+    int x0 = cx - size / 2, y0 = cy - size;
+
+    for (int y = 0; y < size; y++) {
+        int sy = y0 + y;
+        if (sy < 0 || sy >= h) continue;
+        const uint8_t *row = src + ((y / scale) * 2) * SMK_SPR_PX;
+        uint32_t *dst = pixels + (size_t)sy * (size_t)pitch_px;
+        for (int x = 0; x < size; x++) {
+            int sx = x0 + x;
+            if (sx < 0 || sx >= w) continue;
+            int col = (x / scale) * 2;
+            uint8_t v = row[hflip ? SMK_SPR_PX - 1 - col : col];
+            if (v == 0) {          /* keep the outline: check the partner */
+                uint8_t v2 = row[hflip ? SMK_SPR_PX - 2 - col : col + 1];
+                if (v2 == 0) continue;
+                v = v2;
+            }
+            dst[sx] = palette[(pal_base + v) & 0xFF];
+        }
+    }
+}
+
 /* The measured frame-selection rule (NOTES 041).
  *
  * Obtained by force-spinning a kart in the running game and logging the

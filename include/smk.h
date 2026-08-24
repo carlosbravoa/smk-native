@@ -346,4 +346,11 @@ void smk_draw_sprite(const smk_sprites *s, int frame, const uint32_t *palette,
                      int pal_base, int cx, int cy, int scale, bool hflip,
                      uint32_t *pixels, int w, int h, int pitch_px);
 
+/* Half-size kart sprite for the far range (see sprite.c - the game
+ * composes this at runtime; ours is a labelled 2:1 approximation). */
+void smk_draw_sprite_mini(const smk_sprites *s, int frame,
+                          const uint32_t *palette, int pal_base,
+                          int cx, int cy, int scale, bool hflip,
+                          uint32_t *pixels, int w, int h, int pitch_px);
+
 #endif /* SMK_H */

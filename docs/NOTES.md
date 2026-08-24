@@ -2244,4 +2244,21 @@ produced convincing-looking wrong data before the natural-motion run.
 
 ---
 
-*(next entry: 077)*
+**077** — The measured binary scaling, ported.  Far art is COMPOSED at
+runtime - not stored.
+
+Searching the ROM for the far sprites' VRAM tile bytes finds NOTHING:
+the ~16px far kart is built at runtime by a software minifier (the small
+shapes carry a black outline the sheet does not have at that size).
+Decoding that composer is on the backlog; until then the port samples
+the full frame 2:1 and keeps outline pixels (smk_draw_sprite_mini,
+labelled approximation - correct measured SIZE, approximate pixels).
+
+Renderer now: near karts (depth <= 84) draw the full 32x32 art at the
+constant 1/8-screen canvas; far karts draw the 16px mini, same rotation
+rule; no distance cull.  The tier stepping and 320 cull are gone.
+Verified visually: the grid field at depths 94-260 renders as minis.
+
+---
+
+*(next entry: 078)*

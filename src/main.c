@@ -628,33 +628,35 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
             float gx = (float)smk_kart_px(racers[k].k.x);
             float gy = (float)smk_kart_px(racers[k].k.y);
             if (!smk_project(cam, gx, gy, rw, rh, &px, &py, &sc)) continue;
-            /* MEASURED scaling (NOTES 072): the original never scales the
-             * sprite continuously - the OAM canvas stays 32x32 (1/8 of
-             * screen width) across the whole near/mid range, apparent size
-             * stepping through the ART TIERS inside that canvas, with one
-             * switch to 16x16 far out and a cull beyond.  Depth thresholds
-             * for the tier steps are estimates pending richer upload data
-             * (labelled); the constant-canvas behaviour is the measured
-             * part. */
+            /* MEASURED scaling (NOTES 076): the law is BINARY.  Near
+             * range: the FULL 32x32 art at constant canvas (1/8 screen
+             * width) - no shrinking at all.  Far range: a ~16px sprite
+             * the game composes at runtime.  No intermediate steps, and
+             * NO distance cull - karts render past depth 470.  The
+             * switch was bracketed to (72, 96]; 84 until pinned.  The
+             * sheet's rows 1-2 (27/24px art) are NOT depth tiers - the
+             * old 96/160/224/320 stepping was wrong. */
             float a2 = (float)cam_heading * (float)(2.0 * M_PI) / 65536.0f;
             float depth = (gx - cam->x) * sinf(a2)
                         + (gy - cam->y) * -cosf(a2);
-            if (depth > 320.0f) continue;                 /* cull        */
             int scale = rw / 256;
             if (scale < 1) scale = 1;
-            if (depth > 224.0f) scale = (scale + 1) / 2; /* 16px switch */
             const smk_driver *d2 = &SMK_DRIVERS[k];
             if (!loaded[k]) loaded[k] = smk_sprites_load(rom, d2->sheet, &other[k]);
             if (!loaded[k]) continue;
-            int tier = depth < 96.0f  ? SMK_SPR_TIER0
-                     : depth < 160.0f ? SMK_SPR_TIER1 : SMK_SPR_TIER2;
             bool hf = false;
             uint16_t rel = (uint16_t)(racers[k].k.angle - cam_heading);
-            int f = smk_sprite_for_heading(tier, rel, &hf);
+            int f = smk_sprite_for_heading(SMK_SPR_TIER0, rel, &hf);
             /* height lifts the sprite on screen, scaled like everything else */
             py -= (float)smk_kart_height_px(&racers[k].k) * sc;
-            smk_draw_sprite(&other[k], f, trk->palette,
-                            d2->pal, (int)px, (int)py, scale, hf, fb, rw, rh, rw);
+            if (depth > 84.0f)
+                smk_draw_sprite_mini(&other[k], f, trk->palette,
+                                     d2->pal, (int)px, (int)py, scale, hf,
+                                     fb, rw, rh, rw);
+            else
+                smk_draw_sprite(&other[k], f, trk->palette,
+                                d2->pal, (int)px, (int)py, scale, hf,
+                                fb, rw, rh, rw);
         }
     }
     if (show_kart && karts->frames) {
