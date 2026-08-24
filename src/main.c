@@ -66,6 +66,26 @@ static void pump(input_state *in)
     in->hop_held = k[SDL_SCANCODE_SPACE];
 }
 
+/* Solid sprite obstacles: the pipes (object kinds >= $C0).  Cylinder
+ * collision - push the kart out and scrub speed, sticky-wall style. */
+static const smk_course *course_for_step;
+
+static void collide_objects(smk_kart *k, const smk_course *crs)
+{
+    int kx = smk_kart_px(k->x), ky = smk_kart_px(k->y);
+    for (int i = 0; i < crs->nobj; i++) {
+        if (!(crs->obj[i].kind & 0xC0)) continue;
+        int dx = kx - (int)crs->obj[i].x, dy = ky - (int)crs->obj[i].y;
+        int d2 = dx * dx + dy * dy;
+        if (d2 >= 12 * 12 || d2 == 0) continue;
+        float d = sqrtf((float)d2);
+        float push = (12.0f - d) + 1.0f;
+        k->x += (int32_t)((float)dx / d * push * SMK_POS_ONE);
+        k->y += (int32_t)((float)dy / d * push * SMK_POS_ONE);
+        k->speed = (int16_t)(k->speed / 2);
+    }
+}
+
 /* ------------------------------------------------------------------ */
 /* Debug HUD: a speedometer drawn straight into the framebuffer.
  * 4x6 digit font, plus the letters needed for its labels. */
@@ -383,6 +403,7 @@ static void racer_step(smk_racer *r, const smk_track *trk,
     smk_kart_face(&r->k);
     smk_kart_gravity(&r->k);
     smk_kart_move(&r->k, trk);
+    collide_objects(&r->k, crs);
 }
 
 /* ------------------------------------------------------------------ */
@@ -517,6 +538,7 @@ static void step_kart(smk_kart *k, const smk_track *trk,
         k->vy = (int16_t)(k->vy + (float)(tvy - k->vy) * g);
     }
     smk_kart_move(k, trk);       /* the ROM's position += velocity << 8 */
+    if (course_for_step) collide_objects(k, course_for_step);
 }
 
 /* The ROM's angle is 0 = -Y increasing clockwise; the renderer wants
@@ -539,24 +561,47 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
                        uint16_t cam_heading, const smk_racer *racers,
                        const smk_course *course)
 {
-    /* track objects: PLACEHOLDER visuals (the stamp tile graphics are
-     * animated VRAM streams, not yet decoded) - item boxes draw as small
-     * gold blocks, larger stamps as green, at their true ROM positions */
+    /* Track objects (NOTES 070).  Two families per the decoded lists:
+     * kinds < $C0 are FLAT GROUND DECALS (item boxes, coins - non-solid,
+     * surface classes $14/$16 on their stamped tiles), drawn small and
+     * ground-scaled; kinds >= $C0 are SPRITE OBSTACLES (the pipes) -
+     * billboards that scale with distance, with real collision in
+     * step_kart.  Both keep placeholder pixels until the object graphics
+     * stream is decoded. */
     if (course) {
         for (int i = 0; i < course->nobj; i++) {
             float px, py, sc;
             if (!smk_project(cam, (float)course->obj[i].x,
                              (float)course->obj[i].y, rw, rh, &px, &py, &sc))
                 continue;
-            int half = (int)(6.0f * sc) + 1;
-            uint32_t col = (course->obj[i].kind & 0xC0) ? 0xFF2E8B2E : 0xFFE0B830;
-            for (int dy = -half; dy <= half; dy++) {
-                int yy = (int)py + dy;
-                if (yy < 0 || yy >= rh) continue;
-                for (int dx = -half; dx <= half; dx++) {
-                    int xx = (int)px + dx;
-                    if (xx < 0 || xx >= rw) continue;
-                    fb[yy * rw + xx] = col;
+            if (course->obj[i].kind & 0xC0) {
+                /* pipe: a vertical billboard, wheels-anchored like karts */
+                int bw = (int)(10.0f * sc) + 1, bh = (int)(16.0f * sc) + 1;
+                for (int dy = 0; dy < bh; dy++) {
+                    int yy = (int)py - dy;
+                    if (yy < 0 || yy >= rh) continue;
+                    for (int dx = -bw / 2; dx <= bw / 2; dx++) {
+                        int xx = (int)px + dx;
+                        if (xx < 0 || xx >= rw) continue;
+                        int edge = (dx < -bw / 2 + 1 || dx > bw / 2 - 1);
+                        int lip = (dy > bh - 3);
+                        fb[yy * rw + xx] = lip ? 0xFF77E077
+                                        : edge ? 0xFF1E6B1E : 0xFF2E9B2E;
+                    }
+                }
+            } else {
+                /* flat decal on the ground: a small ground-scaled diamond */
+                int half = (int)(4.0f * sc) + 1;
+                uint32_t col = 0xFFE0B830;
+                for (int dy = -half / 2; dy <= half / 2; dy++) {
+                    int yy = (int)py + dy;
+                    if (yy < 0 || yy >= rh) continue;
+                    int wdt = half - (dy < 0 ? -dy : dy) * 2;
+                    for (int dx = -wdt; dx <= wdt; dx++) {
+                        int xx = (int)px + dx;
+                        if (xx < 0 || xx >= rw) continue;
+                        fb[yy * rw + xx] = col;
+                    }
                 }
             }
         }
@@ -819,6 +864,7 @@ int main(int argc, char **argv)
 
     smk_camera cam = { .height = cam_height, .horizon = cam_horizon,
                        .fov = cam_fov };
+    course_for_step = &crs;
     static smk_racer racers[SMK_CHARACTERS];
     for (int i = 0; i < SMK_CHARACTERS; i++)
         racer_start(&racers[i], &crs, i);

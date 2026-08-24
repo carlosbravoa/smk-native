@@ -2054,4 +2054,30 @@ SLIP readout in degrees (gray planted, orange sliding, red spinning).
 
 ---
 
-*(next entry: 070)*
+**070** — Objects are two families; the pipes are sprites, not tiles.
+(Playtest: "internal barriers are traspassable; objects are big squares.")
+
+The probe settles the object system's shape:
+
+* **Tiles 192-255 have surface classes** - the live table at `$0BC0`
+  continues past 192: stamped item-box tiles are class `$14`, coins `$16`
+  (both non-solid: you drive THROUGH them to collect - the `$81B797`
+  collector fires on contact), plus `$40/$80/$10/$18/$1A` bands.
+* **Stamp graphics are overlapping 4-byte-stride windows** into one tile
+  ramp (`$C0..`), sized by kind bits 6-7.
+* **The pipes are NOT ground tiles at all** - object kinds >= `$C0`
+  (`$DC/$E4/$E8/$EC` on the pipe tracks) are SPRITE OBSTACLES, the extra
+  object blocks ($1840/$18C0/$1C00 seen in `$B4` long ago).  They scale
+  with distance like karts and carry their own collision - which is
+  exactly the "internal barriers" a kart could drive through in our build,
+  because they had no substance at all.
+
+Ported: kind >= `$C0` objects now have cylinder collision (12 px, push-out
+plus speed halving - sticky-style, labelled) for player AND AI, and render
+as distance-scaled billboards; kinds < `$C0` render as small flat
+ground-scaled decals.  Pixels for both remain placeholders - the object
+graphics stream is the open decode (VRAM slots 192-255 DMA trace running).
+
+---
+
+*(next entry: 071)*
