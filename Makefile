@@ -112,3 +112,11 @@ distclean: clean
 help:
 	@awk '/^## /{d=substr($$0,4); next} \
 	      /^[a-z][a-z-]*:/{if(d!=""){split($$0,a,":"); printf "  %-12s %s\n", a[1], d; d=""}}' Makefile
+
+## the one command that proves the tree: FULL build (fails loudly), both
+## suites, and a headless smoke run of the actual game binary
+check: $(BASE)
+	@cmake --build build-native -j$$(nproc)
+	@./build-native/smk_selftest rom/smk_usa.sfc | tail -1
+	@$(PY) tools/test.py | tail -1
+	@SDL_VIDEODRIVER=dummy ./build-native/smk --frames 60 >/dev/null && echo "smoke: game binary runs"

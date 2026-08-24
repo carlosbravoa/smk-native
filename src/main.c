@@ -63,6 +63,79 @@ static void pump(input_state *in)
 }
 
 /* ------------------------------------------------------------------ */
+/* Debug HUD: a speedometer drawn straight into the framebuffer.
+ * 4x6 digit font, plus the letters needed for its labels. */
+static const uint8_t FONT4x6[16][6] = {
+    {0x6,0x9,0x9,0x9,0x9,0x6},{0x2,0x6,0x2,0x2,0x2,0x7},   /* 0 1 */
+    {0x6,0x9,0x1,0x2,0x4,0xF},{0x6,0x9,0x2,0x1,0x9,0x6},   /* 2 3 */
+    {0x1,0x3,0x5,0x9,0xF,0x1},{0xF,0x8,0xE,0x1,0x9,0x6},   /* 4 5 */
+    {0x6,0x8,0xE,0x9,0x9,0x6},{0xF,0x1,0x2,0x2,0x4,0x4},   /* 6 7 */
+    {0x6,0x9,0x6,0x9,0x9,0x6},{0x6,0x9,0x9,0x7,0x1,0x6},   /* 8 9 */
+    {0x6,0x9,0xF,0x9,0x9,0x9},{0xE,0x9,0xE,0x9,0x9,0xE},   /* A B */
+    {0x6,0x9,0x8,0x8,0x9,0x6},{0xE,0x9,0x9,0x9,0x9,0xE},   /* C D */
+    {0xF,0x8,0xE,0x8,0x8,0xF},{0xF,0x8,0xE,0x8,0x8,0x8},   /* E F */
+};
+
+static void hud_glyph(uint32_t *fb, int rw, int rh, int x, int y,
+                      int g, uint32_t col, int sc)
+{
+    if (g < 0 || g > 15) return;
+    for (int r = 0; r < 6; r++)
+        for (int c2 = 0; c2 < 4; c2++)
+            if (FONT4x6[g][r] & (8 >> c2))
+                for (int dy = 0; dy < sc; dy++)
+                    for (int dx = 0; dx < sc; dx++) {
+                        int px = x + c2 * sc + dx, py = y + r * sc + dy;
+                        if (px >= 0 && px < rw && py >= 0 && py < rh)
+                            fb[py * rw + px] = col;
+                    }
+}
+
+static void hud_number(uint32_t *fb, int rw, int rh, int x, int y,
+                       int v, int digits, uint32_t col, int sc)
+{
+    for (int i = digits - 1; i >= 0; i--) {
+        hud_glyph(fb, rw, rh, x + i * 5 * sc, y, v % 10, col, sc);
+        v /= 10;
+    }
+}
+
+static void hud_hex2(uint32_t *fb, int rw, int rh, int x, int y,
+                     int v, uint32_t col, int sc)
+{
+    hud_glyph(fb, rw, rh, x, y, (v >> 4) & 15, col, sc);
+    hud_glyph(fb, rw, rh, x + 5 * sc, y, v & 15, col, sc);
+}
+
+static void draw_speedo(uint32_t *fb, int rw, int rh,
+                        const smk_kart *k, uint8_t surf, int top)
+{
+    int sc = rw >= 640 ? 2 : 1;
+    int x = 8, y = rh - 10 * sc - 8;
+    int frac = smk_surface_cap_frac(surf);
+    int cap = frac >= 1000 ? top : (top * frac) / 1000;
+    bool capped = k->speed >= cap - 8 && frac < 1000;
+    uint32_t col = capped ? 0xFFFFA030 : 0xFFFFFFFF;
+
+    hud_number(fb, rw, rh, x, y, k->speed < 0 ? 0 : k->speed, 4, col, sc);
+    hud_hex2(fb, rw, rh, x + 24 * sc, y, surf, 0xFF90C8FF, sc);
+
+    /* bar: speed vs this class's top, cap marked */
+    int bx = x, by = y + 7 * sc, bw = 60 * sc, bh = 3 * sc;
+    for (int i = 0; i < bw; i++) {
+        int filled = (k->speed > 0) && (i * top < k->speed * bw);
+        uint32_t c2 = filled ? col : 0xFF404048;
+        for (int j = 0; j < bh; j++)
+            if (by + j < rh && bx + i < rw)
+                fb[(by + j) * rw + bx + i] = c2;
+    }
+    int capx = bx + (cap * bw) / (top ? top : 1);
+    for (int j = -1; j < bh + 1; j++)
+        if (by + j >= 0 && by + j < rh && capx < rw)
+            fb[(by + j) * rw + capx] = 0xFFFF5050;
+}
+
+/* ------------------------------------------------------------------ */
 /* Opponents: drive the game's own racing line.
  *
  * The DATA is the ROM's - sector map, waypoints, acceleration tables - and
@@ -335,10 +408,8 @@ static void step_kart(smk_kart *k, const smk_track *trk,
     /* MEASURED cap (NOTES 066): fraction of road speed, scaled by this
      * engine class's own top so 50/100/150cc keep the ROM's ratios */
     int frac = smk_surface_cap_frac(surf);
-    if (frac < 1000) {
-        int cap = (top * frac) / 1000;
-        if (target > cap) target = cap;
-    }
+    int cap = (frac < 1000) ? (top * frac) / 1000 : 0;
+    if (cap && target > cap) target = cap;
     int32_t accel;
     if (k->speed < target)
         accel = (int32_t)smk_physics_accel(phys, k->speed) << 8;   /* $80B043 */
@@ -670,6 +741,12 @@ int main(int argc, char **argv)
             draw_scene(&rom, &trk, &karts, drv, &c, px, sw, sh,
                        show_grid, show_kart, frame_for(&none, &lz),
                        heading, shot_racers, &crs);
+            {
+                smk_kart shotk = { .speed = 583 };   /* sample readout */
+                draw_speedo(px, sw, sh, &shotk,
+                            smk_track_surface(&trk, (int)shot_x, (int)shot_y),
+                            672);
+            }
         }
         if (SDL_Init(SDL_INIT_VIDEO) != 0 && SDL_Init(0) != 0) {
             fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
@@ -833,6 +910,10 @@ int main(int argc, char **argv)
             draw_scene(&rom, &trk, &karts, drv, &cam, fb, rw, rh,
                        show_grid, show_kart, frame_for(&in, &lean),
                        kart.angle, racers, &crs);
+            draw_speedo(fb, rw, rh, &kart,
+                        smk_track_surface(&trk, smk_kart_px(kart.x),
+                                          smk_kart_px(kart.y)),
+                        (int16_t)phys.w[SMK_PHYS_TARGET + FEEL_TARGET_IDX]);
             SDL_UpdateTexture(tex, NULL, fb, rw * (int)sizeof *fb);
             SDL_RenderClear(ren);
             SDL_RenderCopy(ren, tex, NULL, NULL);
