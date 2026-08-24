@@ -1518,4 +1518,40 @@ surrogate. That is the next lap/checkpoint item.
 
 ---
 
-*(next entry: 052)*
+**052** — The lap system decoded (`$808994`), and the parked-kart mystery
+finally closed for real.
+
+**The crossing routine**, called exactly when a finish-strip cell is
+accepted:
+
+* The **lap is the high byte of `$C0,x`**: a forward crossing does
+  `adc #$0100 / and #$FF00` — lap +1, sector byte cleared; a backward
+  crossing (`$8089ED`) does `sbc #$0100`. So `$C0,x` is a single progress
+  word, `(lap << 8) | sector`.
+* **`$F8,x` is the monotonic guard**: the new progress must exceed it to
+  count (`cmp $F8,x / bcc,beq skip / sta $F8,x`). That is what prevents
+  double-counting and line-farming — no coverage heuristics anywhere.
+* Crossing **direction** comes from comparing the kart's cell against the
+  per-track word `$014A` (params table `$81:80D4`); the race-over test is
+  `sbc $014C` against the total-laps value.
+* Flag `$04` in `$10,x` marks the crossing; the final-lap path sets
+  `$0100` in `$D4,x` and calls `$8A89` (finish handling).
+
+Ported: racer and player progress now use the decoded shape — lap ±1 on
+sector wrap with the monotonic guard — replacing both of the harness's
+surrogate criteria (NOTES 051's "best > half" and the coverage
+percentage).
+
+**And the bonus that closes NOTES 047/049:** `$808A03` does `cpx #$1100` —
+the routine special-cases kart blocks `$1000` and `$1100`. **Slots 0-1 are
+the two PLAYER karts; slots 2-7 are the AI.** The "parked pair" in every
+demo measurement was the two players waiting for input that never comes in
+attract mode. Not a model bug, not a scripted scene: just players with no
+controller. (Why the real attract demo drives them — recorded input
+playback — is still unexamined; our forced `$4218 = 0` may be overriding
+it. That is the remaining camera-measurement blocker, now precisely
+located.)
+
+---
+
+*(next entry: 053)*

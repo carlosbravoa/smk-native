@@ -72,8 +72,8 @@ static void pump(input_state *in)
 typedef struct {
     smk_kart k;
     int      sector;        /* last on-course sector                    */
-    int      best;          /* furthest sector reached this lap         */
     int      lap;
+    int      progress_max;  /* $F8,x: max of (lap<<8)|sector, monotonic */
 } smk_racer;
 
 static void racer_start(smk_racer *r, const smk_track *trk, int slot)
@@ -106,15 +106,20 @@ static void racer_step(smk_racer *r, const smk_track *trk,
      * while airborne reject sectors whose waypoint attribute has bit 7 set
      * - the anti-shortcut rule for jump zones. */
     if (sec != SMK_SECT_OFF && sec < crs->sectors
-        && !(r->k.airborne && (crs->wattr[sec] & 0x80)))
+        && !(r->k.airborne && (crs->wattr[sec] & 0x80))) {
+        /* DECODED ($8089B6/$8089ED): the lap lives in the high byte of the
+         * kart's progress word - crossing the line forward does
+         * `+$0100, and #$FF00`; crossing backward subtracts it; and $F8,x
+         * keeps the maximum progress so a lap only counts when it exceeds
+         * everything seen before.  We keep lap and sector as fields and
+         * apply the same wrap and guard. */
+        if (r->sector >= crs->sectors - 2 && sec <= 1)
+            r->lap++;
+        else if (sec >= crs->sectors - 2 && r->sector <= 1)
+            r->lap--;
         r->sector = sec;
-
-    /* lap: on the finish strip after coming around the back half */
-    if (r->sector > r->best) r->best = r->sector;
-    if ((cell & SMK_SECT_FINISH) && r->best > crs->sectors / 2
-        && r->sector <= 1) {
-        r->lap++;
-        r->best = 0;
+        int prog = (r->lap << 8) | sec;
+        if (prog > r->progress_max) r->progress_max = prog;
     }
 
     int next = r->sector + 1;
@@ -480,7 +485,6 @@ int main(int argc, char **argv)
     for (int i = 0; i < SMK_CHARACTERS; i++)
         racer_start(&racers[i], &trk, i);
     smk_racer *me = &racers[0];
-    int my_best = 0, my_lap = 0;
 
     float lean = 0.0f;
     smk_kart kart = {
@@ -546,7 +550,6 @@ int main(int argc, char **argv)
                                        .angle = 0 };
                     for (int i = 0; i < SMK_CHARACTERS; i++)
                         racer_start(&racers[i], &trk, i);
-                    my_best = 0; my_lap = 0;
                     camera_from_kart(&cam, &kart);
                 } else {
                     fprintf(stderr, "skipped: %s\n", err);
@@ -567,17 +570,18 @@ int main(int argc, char **argv)
             for (int i = 1; i < SMK_CHARACTERS; i++)
                 racer_step(&racers[i], &trk, &crs, &phys);
 
-            /* player lap counting - same logic as racer_step's */
+            /* player lap counting - the decoded rule via racer state */
             {
                 uint8_t cell = smk_course_cell(&crs, smk_kart_px(kart.x),
                                                smk_kart_px(kart.y));
                 int sec = cell & SMK_SECT_OFF;
-                if (sec != SMK_SECT_OFF && sec < crs.sectors && sec > my_best)
-                    my_best = sec;
-                if ((cell & SMK_SECT_FINISH) && my_best > crs.sectors / 2
-                    && sec <= 1) {
-                    my_lap++;
-                    my_best = 0;
+                if (sec != SMK_SECT_OFF && sec < crs.sectors
+                    && !(kart.airborne && (crs.wattr[sec] & 0x80))) {
+                    if (me->sector >= crs.sectors - 2 && sec <= 1)
+                        me->lap++;
+                    else if (sec >= crs.sectors - 2 && me->sector <= 1)
+                        me->lap--;
+                    me->sector = sec;
                 }
             }
         }
@@ -603,10 +607,8 @@ int main(int argc, char **argv)
             char title[192];
             snprintf(title, sizeof title,
                      "Super Mario Kart  -  track %d  lap %d  sector %d/%d  -  "
-                     "%dx%d  %.0f fps", track, my_lap + 1,
-                     smk_course_cell(&crs, smk_kart_px(kart.x),
-                                     smk_kart_px(kart.y)) & SMK_SECT_OFF,
-                     crs.sectors, rw, rh, frames / secs);
+                     "%dx%d  %.0f fps", track, me->lap + 1,
+                     me->sector, crs.sectors, rw, rh, frames / secs);
             SDL_SetWindowTitle(win, title);
             frames = 0; fps_t0 = t1;
         }
