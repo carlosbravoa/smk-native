@@ -631,6 +631,62 @@ index was already correct. The dispatcher simply was not being reached. Cost:
 one wrong entry in the log. Test the cheap consequence of an inference before
 building on it.
 
+## Step 19: know what your model cannot see
+
+An oracle that runs the game is only as honest as its hardware coverage,
+and the gaps are invisible until they bite. Three that cost real time here:
+
+**HDMA.** Anything a Mode 7 game does per-scanline — the matrix, the
+horizon, gradient skies — arrives by HDMA, not by CPU writes. Before it was
+modelled, a search for the camera angle came back empty four different
+ways: not in the coprocessor's parameters, not in any RAM global at any
+lag, not in the trigonometry call stream, and only one frame in nine
+hundred wrote the matrix registers directly. Every one of those negatives
+was true and none of them was the answer. **When a value must exist and
+four searches miss it, suspect the model, not the value.**
+
+**A command that only runs in the mode you did not capture.** The
+coprocessor's raster command is issued 129 times during boot and *never*
+during a race — the in-race matrix is built on the CPU instead. Sampling
+only gameplay would have left it looking dead; sampling only boot would
+have made it look central.
+
+**State that only exists in a state.** Injecting a height value and running
+frames showed gravity doing nothing, because gravity only runs while an
+airborne flag is set. The fix is to reproduce the game's own entry
+conditions — set the state the way its own launch routine does — and then
+measure. "I set the variable and nothing happened" usually means you set
+one of several variables the behaviour needs.
+
+The general rule: write down what your machine models and what it does not,
+and re-read that list whenever a measurement comes back empty.
+
+## Step 20: a unique instruction is a free identification
+
+Grep the whole image for the constant you think a rule uses. If there is
+exactly one site — `sbc #$001A` appeared once in a 512 KB ROM — the
+identification needs no further argument, and the surrounding six
+instructions are the whole rule. This is the cheapest high-confidence move
+available and it costs one command.
+
+The same trick works for structure: three consecutive 16-bit copies of
+`$16/$18`, `$1A/$1C`, `$1E/$20` between two blocks identify a position
+triple without reading a single line of the code that uses it.
+
+## Step 21: a measured constant may be a derived quantity
+
+A wall bounce measured as "about eight frames of knockback" was recorded as
+a constant, ported, and worked. It was wrong. The collision routine sets a
+*vertical velocity*, and eight frames is simply how long that velocity
+takes to fall back to the ground under the game's gravity. The constant was
+an artefact of measuring one instance of something dynamic.
+
+Ask of every constant you measure: *what would make this value change?* If
+you cannot answer, you have probably found a symptom rather than a rule.
+Constants that fall out of an already-decoded law are trustworthy;
+constants that stand alone deserve one more experiment at a different
+input.
+
 ## Order of work
 
 1. Identify the ROM; get mapping and mirrors right. Add a hash check.

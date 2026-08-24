@@ -70,6 +70,8 @@ class Bus:
         self.m7 = [0, 0, 0, 0]          # $211B-$211E latches (8.8)
         self.m7_lines: list[tuple[int, int, int, int, int]] = []   # per-scanline
         self.log_m7 = False
+        self.log_m7_raw = False
+        self.m7_raw: list[tuple[int, int, int]] = []
         self.hdma: dict[int, dict] = {}
         self.hdma_bytes = 0
         self.log_dma = False
@@ -159,6 +161,8 @@ class Bus:
             # each is a write-twice 8.8 latch (low byte then high)
             i = addr - 0x211B
             self.m7[i] = ((self.m7[i] << 8) | val) & 0xFFFF
+            if self.log_m7_raw:
+                self.m7_raw.append((self.vcount, addr, val))
             return
         if addr == 0x2115:
             self.vmain = val
