@@ -67,6 +67,10 @@ class Bus:
         self.oamadd = 0         # $2102/$2103, in bytes
         self.dma_bytes = 0
         self.dma_log: list[tuple[int, int, int, int]] = []   # (srcbank,src,bbad,count)
+        import os as _os
+        self.en_math = _os.environ.get("SMK_NO_MATH") != "1"
+        self.en_wramport = _os.environ.get("SMK_NO_WRAMPORT") != "1"
+        self.en_hdma = _os.environ.get("SMK_NO_HDMA") != "1"
         self.wmadd = 0                  # $2181-$2183 WRAM port address
         self.mpya = 0                   # $4202-$4206 CPU math unit
         self.dividend = 0
@@ -157,7 +161,7 @@ class Bus:
                 return
             if addr < 0x6000:
                 self.regs[addr] = val
-                if 0x4202 <= addr <= 0x4206:
+                if 0x4202 <= addr <= 0x4206 and self.en_math:
                     self._cpu_math(addr, val)
                 if (0x2100 <= addr <= 0x213F or 0x2180 <= addr <= 0x2183
                         or addr == 0x420B):
@@ -203,7 +207,8 @@ class Bus:
         # which is how a game moves a computed table into RAM without the CPU
         # touching it - miss this and such tables stay empty forever.
         if addr == 0x2180:
-            self.wram[self.wmadd & 0x1FFFF] = val
+            if self.en_wramport:
+                self.wram[self.wmadd & 0x1FFFF] = val
             self.wmadd = (self.wmadd + 1) & 0x1FFFF
             return
         if addr == 0x2181:
@@ -283,6 +288,8 @@ class Bus:
 
     def hdma_line(self) -> None:
         """One scanline of HDMA for every active channel."""
+        if not self.en_hdma:
+            return
         for ch, st in self.hdma.items():
             if st["done"]:
                 continue

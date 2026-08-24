@@ -1437,4 +1437,47 @@ The slot confusion was confined to this camera thread.
 
 ---
 
-*(next entry: 050)*
+**050** — The physics verification was testing the wrong object. Now fixed,
+and the result is finally real: **1428 exact, 0 differ** across six driving
+karts.
+
+The chain, in order:
+
+1. After the register-census fixes, `make verify-physics` FAILED (119
+   exact / 119 differ, constant 2.0 px error). First instinct — my new
+   hardware code broke something — was wrong: an A/B bisect with each fix
+   disabled, and with **all three** disabled, failed identically. The
+   regression predated the day's work.
+2. The real faults were in the verifier itself, compounding:
+   * It forced race mode by writing `$32`, which reaches a race **scene**
+     where every kart sits at speed 0 forever — no start signal is given.
+     (In that scripted scene the game also writes 7 into every kart's
+     `$20,x` via `$80B239` under flag `$2000`; in a real race driving karts
+     read 0 there, so NOTES 045's field layout stands.)
+   * It then chose its "kart" with `w($B4)` — the current-object pointer
+     (NOTES 049). It verified the motion of whatever object the game
+     happened to be processing. That object obeyed `pos += v<<8`, so the
+     check *passed* — for years of session time, for the wrong reason.
+   * 150 settle frames landed inside the countdown, where positions are
+     scripted, producing the constant "+2 px with zero velocity" residue
+     that finally exposed it.
+3. The rewrite: reach the game's own attract-demo race (karts genuinely
+   drive), sample **all eight** kart slots by address, compare only
+   kart-frames in free motion — moving, grounded, velocity consistent with
+   the kart's own heading per `$80F8CF` — and report skipped frames.  A
+   window with no freely-driving kart is INCONCLUSIVE, not a pass.
+
+Result on the corrected machine: karts 2-7 each 238/238 exact, worst error
+0.0000 px; karts 0-1 (parked in the demo) correctly skipped. The
+`position += velocity << 8` rule is now verified **on karts**, which the
+old "478 predictions, 0 mismatches" never actually established.
+
+Method note for the skill: a verification harness is subject to the same
+model-blindness as the machine itself. This one had unstated preconditions
+(kart is driving, pointer names a kart) that silently stopped holding.
+The INCONCLUSIVE outcome — refusing to report success when the
+preconditions fail — is what was missing.
+
+---
+
+*(next entry: 051)*
