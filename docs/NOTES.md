@@ -613,4 +613,35 @@ ledger S1.
 
 ---
 
-*(next entry: 027)*
+**027** — Steering architecture, and `$81F638` identified as atan2.
+
+`$80AFBE` is the *applier*: `$FA,x` is a target angle and `$A2,x` the
+current steering angle; within `±$0200` the angle snaps to the target,
+otherwise it eases toward it. So steering is a slew-rate-limited follow, not
+a direct write — which is why the kart's heading lags the stick.
+
+`$80B0B1` is the **AI's** target-angle producer, and it reads plainly:
+
+```
+lda $10,x / and #$0003 / beq (player branch)
+lda $C0,x / asl / tay          ; this kart's waypoint index
+lda $0A00,y / sec / sbc $1C,x  ; waypoint Y - kart Y
+pha
+lda $0900,y / sec / sbc $18,x  ; waypoint X - kart X
+jsl $81F638                    ; -> angle
+```
+
+So `$0900`/`$0A00` are the AI waypoint X/Y tables in RAM, and **`$81F638` is
+atan2** — which explains the earlier confusion when its magnitude-comparison
+loop showed up as a hot spot and looked like a stall. It is just the
+normalisation step of an arctangent.
+
+The player's steering is the `$10,x & 3 == 0` branch, not yet followed.
+
+Note the shape here for P6: opponent AI is "steer toward the next waypoint",
+with the waypoint list per track. That is a small, tractable decode once the
+per-track data is located.
+
+---
+
+*(next entry: 028)*

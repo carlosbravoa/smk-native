@@ -39,8 +39,11 @@ so resolution is not a constraint.
 - Real Mode 7 tiles with the game's per-tile palette-base remapping
 - **Solid walls**: the surface-behaviour table is the ROM's, and the test for
   "is this tile solid" is literally the one the game's collision path uses
-- Kart **kinematics in the ROM's own arithmetic** — 16.16 position, 8.8
-  velocity, 65536-unit angle, and the exact integration from `$80879D`
+- Kart **physics in the ROM's own arithmetic**: 16.16 position, 8.8
+  velocity, 65536-unit angle, the exact integration from `$80879D`, the
+  32-bit speed/acceleration model from `$80A4E1`, and the ROM's own
+  **acceleration curve and target speeds** read at runtime (`--class`
+  selects 50/100/150cc)
 - A resolution-independent perspective ground plane
 - Fixed **60.0988 Hz** tick, the SNES NTSC vblank rate
 
@@ -53,9 +56,10 @@ Being explicit, because the gap is still large:
 
 - **No opponents, items, laps or lap timing.** Start lines and checkpoints
   are not decoded; the start position is a heuristic.
-- **The feel is not the game's.** The kinematics are exact, but how input
-  drives speed and steering is invented and clearly labelled — the ROM's
-  acceleration curve, drift, hop and per-surface response are undecoded.
+- **The feel is only partly the game's.** Kinematics, the speed model and
+  the acceleration curve are exact. What is still invented is *policy*:
+  which target speed the player's input selects, the braking rate, and the
+  steering rate. Drift, hop and per-surface response are undecoded.
 - **No sound, no sprites, no HUD, no menus.**
 
 Every shortcut is listed in the ledger in [`docs/ROADMAP.md`](docs/ROADMAP.md).
@@ -66,11 +70,14 @@ Every shortcut is listed in the ledger in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 code**, which is how the port is verified: the C loader's output is diffed
 against the ROM's actual loader rather than against expectations.
 
-It currently boots Super Mario Kart and runs frames at the game's own vblank
-pacing, with NMI, IRQ and scanline timing. It stalls when the game waits on
-the SPC700 sound CPU — which turns out to be on the critical path for
-observing *any* runtime behaviour, so an SPC700 core is the next piece of
-work. See `docs/NOTES.md` entries 018-019.
+It **boots the ROM, uploads its sound driver, and runs a race** — with NMI,
+IRQ, scanline timing and an APU handshake stub, at the game's own vblank
+pacing. That is how the physics above was verified: `make verify-physics`
+drives the real game and checks our integration against it, currently 0
+mismatches over hundreds of steps.
+
+It is not a general emulator — there is no PPU, no SPC700 and no HDMA. It
+exists to answer questions about behaviour. See `docs/NOTES.md` 018-027.
 
 The plan to close the gap — phases, risks, and an explicit ledger of every
 shortcut currently in the code — is [`docs/ROADMAP.md`](docs/ROADMAP.md).
