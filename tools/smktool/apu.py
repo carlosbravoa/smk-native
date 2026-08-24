@@ -43,6 +43,11 @@ class APU:
         self.uploads = 0
         self.pending_ready = False
         self.commands: list[tuple[int, int]] = []   # (port1, port0) sent to the driver
+        self.reads_since_write = 0
+        # How many consecutive reads of port 0 with no intervening write we
+        # take to mean "the game is waiting for the IPL to say it is ready
+        # again", i.e. it wants to upload another bank.
+        self.ready_after_reads = 64
         # The upload is the game's own sound driver and music data.  We are
         # not running it, but we can record exactly what it would have been
         # written into, which is the whole content of an .spc dump.
@@ -69,6 +74,11 @@ class APU:
         v = self.port[p]
         if self.trace:
             self.log.append(("r", p, v))
+        if p == 0 and self.state == self.IDLE and self.driver_running:
+            self.reads_since_write += 1
+            if self.reads_since_write > self.ready_after_reads:
+                # a long poll means it is waiting for $AA/$BB, not an ack
+                self.port[0], self.port[1] = 0xAA, 0xBB
         if self.pending_ready and p == 0:
             # the CPU has now seen the echo that ended the last block; on
             # hardware the IPL would have jumped to the driver.  We have no
@@ -81,6 +91,7 @@ class APU:
         p = addr & 3
         val &= 0xFF
         self.inp[p] = val
+        self.reads_since_write = 0
         if self.trace:
             self.log.append(("w", p, val))
 
@@ -107,8 +118,13 @@ class APU:
                 self.ram[self.addr] = self.inp[1]
                 self.addr = (self.addr + 1) & 0xFFFF
             else:
+                # A command to the running driver.  The driver acknowledges
+                # by echoing, and the 65816 waits for that - a race start is
+                # sequenced against the sound driver, so refusing to
+                # acknowledge leaves the countdown hanging.
                 self.commands.append((self.inp[1], val))
-                self.port[0], self.port[1] = 0xAA, 0xBB
+                self.port[0] = val
+                self.reads_since_write = 0
             return
 
         # inside a block every write to port 0 is echoed; that is the handshake

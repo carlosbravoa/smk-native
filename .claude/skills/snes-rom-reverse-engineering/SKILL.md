@@ -465,6 +465,143 @@ placeholder in a comment**, with a note on what would replace it. Otherwise
 six months later it is indistinguishable from a decoded fact — which is the
 prime directive in §0 turned inside out.
 
+## Step 13: when static reading runs out, build a minimal machine
+
+Static disassembly has a **structural ceiling**, not an incidental one. Count
+the dispatches whose target is already in a register:
+
+```
+jmp ($0000,x)    177 sites
+jsr ($0000,x)     81 sites
+```
+
+Each takes its pointer from a state-machine record, so no amount of reading
+resolves them. Past that point, behaviour has to be **observed**.
+
+The good news is that the machine you need is small, because you are not
+rendering anything. In rough order of what unblocks what:
+
+1. **APU handshake.** The 65816 blocks on the sound CPU long before anything
+   interesting happens, and it is pure control flow — no audio required. The
+   IPL protocol is fixed hardware behaviour and can be reimplemented exactly.
+   Three details cost a day between them:
+   - the byte written to port 1 *before* the `$CC` kick is **the first data
+     byte**, doubling as the "data follows" flag, so it must be non-zero;
+   - the end-of-block test belongs at **block boundaries**, not per byte —
+     port 1 carries data during a transfer and is frequently zero;
+   - the final block's **echo must survive**: the CPU is still waiting to
+     read back the value it wrote, so advertising "ready" immediately
+     destroys the reply it is spinning on.
+   Afterwards the game talks to *its own* driver. Echo those commands — a
+   race start is sequenced against the sound driver, and refusing to
+   acknowledge leaves the game waiting forever.
+2. **NMI**, dispatched from the main loop's vblank spin. One simulation step
+   per vblank is the game's own pacing.
+3. **IRQ and a scanline counter.** If `NMITIMEN` has bits 4-5 set the game
+   expects H/V IRQ, and anything sequenced from it silently never happens.
+4. **`$4212` bit 6 — HBlank.** Games spin on `bit $4212 / beq`. With no dot
+   counter, alternate the flag on each read; every such wait then terminates
+   in a couple of iterations, which is all the game wants from it. Missing
+   this is a two-instruction infinite loop that looks like a crash.
+5. **DMA, VRAM, CGRAM, OAM.** Not to draw — so that asset formats can be read
+   *out of the machine* rather than inferred (§15).
+
+Cost: a few hundred lines on top of the CPU. Payoff: every remaining
+question becomes measurable.
+
+## Step 14: the two techniques that find everything
+
+**Instrument writes to find who owns a field.** This was the single most
+productive move. Watch a memory address while the game runs and record the
+PC of whatever writes it:
+
+```
+watch $0690..$06CF during race setup   -> exactly one writer, $81FEB6
+watch the kart's acceleration field    -> $80B048, and its target, $80B074
+watch the steering angle               -> $80AFCE, fed from $80AD68
+```
+
+One query each, no searching. It also finds things a static trace covering
+8% of the ROM will never reach.
+
+**Change state directly instead of navigating to it.** Games have a
+*pending-mode* variable that a transition routine copies into the live one
+(`lda $32 / sta $36 / stz $32`, then re-enable interrupts). Writing the
+pending mode runs the game's own setup; writing the live mode skips it and
+gives a half-initialised state. Find that routine early — it turns "get
+through four menus" into one poke.
+
+Know the limits of the shortcut, though: a forced mode can leave a state
+that runs its simulation but never renders, or renders but never starts.
+Check that the thing you actually want is happening before trusting numbers
+taken from it.
+
+## Step 15: verify against the running game, not against expectations
+
+Once the machine runs, stop arguing about behaviour and diff it.
+
+Reimplementing the position integration, two candidate readings differed
+only in *which frame's velocity applied*:
+
+| prediction | result |
+|---|---|
+| using the earlier frame's velocity | 190 exact, 288 differ |
+| using the later frame's velocity | **478 exact, 0 differ, error exactly 0** |
+
+That settles the arithmetic *and* the update order inside a frame — which
+matters, because order decides observable behaviour. No amount of reading
+the disassembly would have been as convincing.
+
+The same trick verifies asset pipelines end to end: run the game, then
+compare your extraction against what it actually put in VRAM. Ours came
+back 12288/12288 identical on tiles and 16306/16384 on the tilemap — and the
+0.5% gap was real, the game edits its own tilemap when item boxes are taken.
+
+That comparison also caught a bug in the *harness*: VRAM held a different
+track than the one requested, because the track index was being written to a
+variable the forced entry ignored. Every measurement taken through that
+harness was on the wrong course. **Check what the machine actually loaded,
+not what you asked it to load.**
+
+## Step 16: find streamed assets by their DMA source
+
+Assets uploaded once are found by their DMA size (§9). Assets streamed
+*per frame* are found by their DMA **source address**:
+
+```
+128-byte transfers from banks $C0/$C2/$C4/$C5, addresses $200 apart
+    -> a frame is 512 bytes = 16 tiles = 32x32 pixels
+    -> $200 spacing means frames are contiguous
+    -> different banks mean one sheet per character
+```
+
+That is the sprite format handed to you without decoding a single
+instruction. And because the game re-uploads the chosen frame every frame,
+the source address *is* the frame it picked — so a selection rule that would
+otherwise need a decode becomes a measurement, provided you can reach a
+state where the thing is actually being drawn.
+
+Sprite layout gotcha: console sprite sheets are usually stored in **PPU
+order**, not as a picture. A 32x32 sprite is 4x4 tiles with a **16-tile row
+stride**, so rendering the raw data 16 tiles wide shows clean sprites while
+"row-major within each frame" shows vertical shredding. Try the hardware
+layout first.
+
+## Step 17: sanity-check every observed value
+
+Values read out of a running game feel authoritative. They are not, if the
+state you forced is not the state the game normally reaches.
+
+A forced race gave every course the same starting grid — a tidy result that
+looked like "the grid is fixed in world space". Checking those coordinates
+against each course's own surface table put **5 of 24 starts inside solid
+geometry**. The grid was real for the course actually loaded and a leftover
+default for the rest.
+
+The check took one query and cost nothing. Whenever a measurement comes from
+a state you constructed rather than one the game walked into, ask what it
+would look like if it were wrong, and test that.
+
 ## Order of work
 
 1. Identify the ROM; get mapping and mirrors right. Add a hash check.
@@ -483,6 +620,10 @@ prime directive in §0 turned inside out.
 10. For a native port: find the asset uploads by DMA size (§9), decode the
     asset formats (§10, §11), then build the SDL host around a correct tick
     rate and a directly-computed renderer (§12).
+11. When static reading stops paying (§13), build the minimal machine —
+    APU handshake, NMI, IRQ, HBlank, DMA/VRAM — and switch to instrumenting
+    and diffing (§14-§17). Everything after the asset layer is easier to
+    measure than to read.
 
 ## What not to do
 
@@ -497,3 +638,6 @@ prime directive in §0 turned inside out.
 - Do not bake extracted assets into the port. Read the user's ROM at runtime.
 - Do not tie the simulation to the host refresh rate; use the console's.
 - Do not let a placeholder constant lose its comment.
+- Do not report absence from a partial trace ("nothing writes X") as a fact.
+- Do not trust a measurement taken from a state you forced without checking
+  the game actually reached the situation you think it did.
