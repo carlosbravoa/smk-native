@@ -176,10 +176,23 @@ static inline int smk_kart_px(int32_t v) { return (int)(v >> SMK_POS_SHIFT); }
 #define SMK_SPR_PX      32
 #define SMK_SPR_FRAMES  32
 #define SMK_SPR_BYTES   512
-/* Frame 4 is the straight-from-behind pose; neighbours lean left/right.
- * PLACEHOLDER: the ROM chooses the frame from the kart's heading relative
- * to the camera plus its steering state, which is not decoded. */
-#define SMK_SPR_REAR    4
+/* The sheet is three size tiers of about eleven rotation steps each - the
+ * silhouette heights fall into bands of ~30, ~27 and ~24 pixels, which is
+ * SMK drawing distant karts smaller.  Tier 0 is the nearest.
+ *
+ * INFERRED, not decoded: the tiers and their extents come from measuring the
+ * sheet, and the mapping from heading to frame within a tier is our own.
+ * The ROM picks its frame from the kart's heading relative to the camera,
+ * and that rule has not been read out of the code - reaching a race with
+ * karts actually drawn is still open (docs/NOTES.md 030). */
+#define SMK_SPR_TIER0     0     /* nearest: frames 0..10  */
+#define SMK_SPR_TIER1    11     /* middle:  frames 11..21 */
+#define SMK_SPR_TIER2    22     /* far:     frames 22..31 */
+#define SMK_SPR_TIER_LEN 11
+#define SMK_SPR_REAR      4     /* the straight-from-behind pose in tier 0 */
+
+/* Frame for a heading offset in [-1,1], clamped inside one tier. */
+int smk_sprite_frame(int tier, float lean);
 
 typedef struct {
     uint8_t px[SMK_SPR_FRAMES][SMK_SPR_PX * SMK_SPR_PX];  /* palette indices */

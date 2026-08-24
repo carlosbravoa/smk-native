@@ -77,3 +77,25 @@ void smk_draw_sprite(const smk_sprites *s, int frame, const uint32_t *palette,
         }
     }
 }
+
+
+/* Pick a rotation frame within a size tier.
+ *
+ * INFERRED.  The sheet is three tiers of ~11 rotation steps; we centre on
+ * the straight-from-behind pose and lean either side of it.  The ROM's own
+ * rule is a function of heading relative to the camera and has not been
+ * decoded - see the header.
+ */
+int smk_sprite_frame(int tier, float lean)
+{
+    if (lean < -1.0f) lean = -1.0f;
+    if (lean >  1.0f) lean =  1.0f;
+    int span = 3;                                   /* frames either side */
+    int f = SMK_SPR_REAR + (int)(lean * (float)span + (lean < 0 ? -0.5f : 0.5f));
+    int lo = tier, hi = tier + SMK_SPR_TIER_LEN - 1;
+    f += tier;
+    if (f < lo) f = lo;
+    if (f > hi) f = hi;
+    if (f >= SMK_SPR_FRAMES) f = SMK_SPR_FRAMES - 1;
+    return f;
+}

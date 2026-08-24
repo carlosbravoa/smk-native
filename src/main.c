@@ -297,6 +297,7 @@ int main(int argc, char **argv)
 
     smk_camera cam = { .height = cam_height, .horizon = cam_horizon,
                        .fov = cam_fov };
+    float lean = 0.0f;
     smk_kart kart = {
         .x = (int32_t)(shot_x * SMK_POS_ONE),
         .y = (int32_t)(shot_y * SMK_POS_ONE),
@@ -382,9 +383,11 @@ int main(int argc, char **argv)
                  * the kart's heading relative to the camera and its steering
                  * state; we only lean with the steering input.  The frames
                  * themselves and their layout are the ROM's. */
-                int frame = SMK_SPR_REAR;
-                if (in.left)  frame = SMK_SPR_REAR - 2;
-                if (in.right) frame = SMK_SPR_REAR + 2;
+                /* lean tracks the steering input, eased so the kart does
+                 * not snap between frames */
+                float want = (in.left ? -1.0f : 0.0f) + (in.right ? 1.0f : 0.0f);
+                lean += (want - lean) * 0.25f;
+                int frame = smk_sprite_frame(SMK_SPR_TIER0, lean);
                 int scale = rh / 112;            /* kart ~2/7 of screen height */
                 if (scale < 1) scale = 1;
                 smk_draw_sprite(&karts, frame, trk.palette, 0x80 + character * 16,

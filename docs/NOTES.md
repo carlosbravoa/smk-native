@@ -719,4 +719,38 @@ frame-selection rule measurable rather than guessable.
 
 ---
 
-*(next entry: 030)*
+**030** — Sprite sheet structure, and the demo race's limit.
+
+Measuring each frame's silhouette shows the sheet is **three size tiers**,
+not one rotation sequence: heights fall into bands of ~30 px (frames 0-10),
+~27 px (11-21) and ~24 px (22-31), with fill counts dropping the same way.
+That is SMK drawing distant karts smaller — a distance LOD, about eleven
+rotation steps per tier. Frames 0, 11 and 22 are outliers (centroid ~18
+against ~14.5), so each tier's first slot is something other than a plain
+rotation step.
+
+The native game now uses tier 0 and leans through neighbouring frames with
+the steering input. **This is inferred from the sheet, not decoded** — the
+ROM picks its frame from the kart's heading relative to the camera and that
+rule has not been read out of the code.
+
+**Why it is not decoded yet.** The frame the game chooses is recoverable
+from the DMA source address (NOTES 029), but only while karts are actually
+being drawn, and neither route reaches that state:
+
+* the demo race (mode 1) puts eight karts on the grid at speed 0 and then
+  **ends** — the frame counter resets to 33 and the attract cycle restarts —
+  without the countdown ever releasing them. No kart sprite DMA occurs.
+* forcing mode 6 gives moving, AI-driven karts and working physics, but the
+  game never draws them: the only per-frame VRAM traffic is 128 bytes from
+  `$7F`, nothing from the `$C0-$C7` sprite banks.
+
+So both paths give *half* a race: one initialises properly but never starts,
+the other runs but never renders. The countdown is the thing to chase; the
+likely candidate is that it is gated on the sound driver, since the APU
+stub answers the handshake but nothing else, and a race start in this game
+is music-synced.
+
+---
+
+*(next entry: 031)*

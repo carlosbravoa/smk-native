@@ -171,9 +171,16 @@ The largest decode. Sub-order:
   routine; then a human lap of Mario Circuit 1 that feels right.
 
 ### P4 — Sprites: karts and objects on the plane  (kart frames ✅)
-Done: kart sprite frames located and read from the ROM at runtime, and the
-player's kart is drawn (NOTES 028). Remaining: the frame-selection rule,
-other characters' sheets, and object sprites.
+Done: kart sprite frames located and read from the ROM at runtime, the
+player's kart is drawn (NOTES 028), and the sheet's three size tiers are
+identified (NOTES 030).
+
+Blocked: the frame-selection rule. It is recoverable from the DMA source
+address, but only while karts are drawn, and neither the demo race (starts
+correctly, never releases the countdown) nor a forced race (runs, never
+renders karts) reaches that state. Chase the countdown first — most likely
+gated on the sound driver, which our APU stub answers only far enough to
+boot.
 - Kart sprite sheets (many rotation frames), character palettes, the
   world→screen projection for sprites (scale by distance — the game has a
   table for it), sprite sorting against the ground plane.
