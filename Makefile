@@ -42,6 +42,10 @@ shots: game $(BASE)
 selftest: game $(BASE)
 	@$(NATIVE)/smk_selftest $(BASE)
 
+## verify the ported kinematics against the game running in the oracle (slow)
+verify-physics: $(BASE)
+	@$(PY) tools/verify_physics.py 120
+
 ## full Python regression suite (ROM identity, disassembly, codec)
 test: $(ASAR) $(BASE)
 	@$(PY) tools/test.py

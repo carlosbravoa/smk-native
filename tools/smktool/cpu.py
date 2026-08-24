@@ -54,6 +54,7 @@ class Bus:
         self.nmi_flag = False
         self.vblank = False
         self.irq_flag = False        # $4211 TIMEUP, cleared on read
+        self.hblank = False
         self.vcount = 0
         self.hcount = 0
 
@@ -82,7 +83,13 @@ class Bus:
                 self.irq_flag = False
                 return v
             if addr == 0x4212:
-                return (0x80 if self.vblank else 0)
+                # bit 7 vblank, bit 6 hblank, bit 0 auto-joypad busy.
+                # We have no dot counter, so hblank alternates per read:
+                # every `bit $4212 / beq` wait terminates in a couple of
+                # iterations, which is what the game needs from it.
+                # ($808B3C waits on bit 6 and hangs forever without this.)
+                self.hblank = not self.hblank
+                return (0x80 if self.vblank else 0) | (0x40 if self.hblank else 0)
             if addr == 0x213C:                     # OPHCT, latched H
                 return self.hcount & 0xFF
             if addr == 0x213D:                     # OPVCT, latched V

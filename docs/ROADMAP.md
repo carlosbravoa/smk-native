@@ -93,8 +93,12 @@ game advances **mode 13 -> mode 0** (NOTES 019).
 APU handshake solved without an SPC700 (NOTES 020) — the game uploads its
 55 KB driver and progresses **mode 13 → 0 → 2 → 0 → 3**, reading the joypad.
 
-Remaining to reach a race and observe physics:
-  - menu navigation: find the input pattern the title/menu screens accept
+**Race mode reached and physics observed (NOTES 022).** Needed `$4212` bit 6
+(HBlank), mode changes through the pending-mode variable `$32`, and knowing
+the kart block is based at `$B4` = `$1000`.
+
+Remaining for fuller runtime fidelity:
+  - menu navigation (not needed for observation; `$32` gets us into a race)
   - HDMA (`$420C`), which is how the Mode 7 matrix reaches the PPU
 
 Acceptance: drive the attract mode with synthetic input and reach the race
@@ -148,6 +152,8 @@ The largest decode. Sub-order:
    (needs P1), wall response, jump/ramp physics.
 3. Port to C in the same fixed-point. Verify each sub-routine against the
    P0 oracle over swept input states, not by feel.
+   **Kinematics done and verified: `make verify-physics` shows 0 mismatches
+   over hundreds of steps against the running game (NOTES 022).**
 4. Only after the oracle agrees: replace S1, derive the camera from the kart
    state the way the game computes its matrix (kills S4).
 - Acceptance: oracle diff = 0 over the swept state space for each ported

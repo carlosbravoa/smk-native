@@ -409,4 +409,56 @@ in this environment to test against.
 
 ---
 
-*(next entry: 022)*
+**022** — **The game runs a race, and the ported kinematics are verified
+against it.** This is the P3 acceptance criterion met.
+
+Three fixes got there, each found by watching where it hung:
+
+1. **`$4212` bit 6 is HBlank, and the game waits on it.** `$808B3C` is
+   `bit $4212 / beq` — a two-instruction infinite loop when bit 6 never
+   sets. We have no dot counter, so the flag alternates on each read; every
+   such wait then terminates in a couple of iterations, which is all the
+   game needs from it.
+2. **Mode changes go through `$32`, not `$36`.** `$81E09A` does
+   `lda $32 / sta $36 / stz $32`, then `cli` and `sta $4200 = $B1`. Writing
+   the *pending* mode is the game's own transition path and it performs the
+   setup; writing `$36` directly skips it. Setting `$32 = 12` enters race
+   mode cleanly.
+3. **The kart state is not in the direct page.** `$B4` holds a 16-bit base
+   — `$1000` — and every `$18,x` style field is relative to it. Chasing
+   `$0018` absolute gives nonsense.
+
+With those, race mode runs: the frame counter advances, the joypad reaches
+the game, and the kart drives.
+
+Field confirmed by measurement: **`+$EA` is speed**, the magnitude of the
+velocity vector — which matches the static read of `$80F9DF`
+(`lda $EA,x / cmp #$0500`).
+
+### The verification
+
+Captured the real kart state for 240 frames and checked the rule in
+`src/kart.c` against it:
+
+| prediction | result |
+|---|---|
+| `pos += velocity<<8` using the **earlier** frame's velocity | 190 exact, 288 differ (worst 0.074 px) |
+| `pos += velocity<<8` using the **later** frame's velocity | **478 exact, 0 differ, error exactly 0** |
+
+So the integration is exactly right, *and* the ordering question is settled:
+**within a frame the game updates velocity first, then integrates position
+with the new value.** `src/kart.c` already does `smk_kart_face()` then
+`smk_kart_move()`, which is that order.
+
+Also confirms, from live data, three things previously derived only by
+argument: angle 0 really does point along -Y (the kart drove with
+`ang = 0` and only Y decreasing), position really is whole pixels 0..1023,
+and velocity really is 8.8 (`vy = -589` gave -2.30 px/frame, and Y moved
+526 -> 512 over six frames).
+
+`make verify-physics` runs this end to end. It regenerates the trace from
+the user's ROM every time, so no captured game data is committed.
+
+---
+
+*(next entry: 023)*
