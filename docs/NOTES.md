@@ -1944,4 +1944,44 @@ turn) and per-engine-class scaling.
 
 ---
 
-*(next entry: 066)*
+**066** — Longitudinal surface physics MEASURED from the ROM.  The
+calibration the project owed.
+
+Method (all on the live player from NOTES 065's un-demo hook):
+
+1. Flow-steer the player through the real pad - bang-bang Left/Right
+   toward the game's own `$7F:4000` direction byte - so it laps
+   indefinitely.  (The unsteered first attempt crash-looped into walls
+   and produced noise; the AI-karts route was already dead because the
+   original's AI ignores surfaces - its rubber-band cheat, NOTES 057.)
+2. Swap every driveable entry of the live WRAM surface table (`$0B00`) to
+   class X: the whole road becomes X while the kart keeps lapping.
+3. Record the terminal speed; slow classes re-measured behind a recovery
+   gate (pace ≥ 650 on the restored road first) after the first pass
+   showed wreckage contaminating successive rows.
+
+Results (fraction of road `$40` = 951): `$42` .81, `$44` .92, `$46` .94,
+`$48` .97, `$4A` .89, `$4C` .88, `$4E` .94, `$50` .85, `$52` .66,
+**`$54` .615** (Mario Circuit dust - a firm drag, not a crawl; my
+placeholder was too harsh), `$56` .30 (the true heavy class), `$58` .57,
+`$5A` .60, `$5C` .60, `$5E` .68, **`$26` 0.00** (full-stop hazard -
+deep water).  Entry curves are clean monotone decays (e.g. `$54`:
+788→700→620→580 plateau).
+
+Ported as `smk_surface_cap_frac()` - thousandths of road speed, scaled by
+the engine class's own top at runtime so 50/100/150cc keep the ROM's
+ratios.  Player uses it directly; the AI gets a softened version
+(labelled: the real AI ignores surfaces, ours stays honest but
+competitive).  Unmeasured residuals, marked: the void band `$00` (crawl
+guess), classes absent from the demo theme (nibble-neighbour fallback),
+and lateral grip - the next measurement on the same rig.
+
+And Step 23 bit within the hour of writing it: the first port spliced
+physics.c mid-function, the library failed to build, and the suites
+"passed" against the stale binary - caught only because the histogram
+tool still showed old caps.  Behavioural verification against the built
+artifact is not optional even when you just wrote the rule.
+
+---
+
+*(next entry: 067)*

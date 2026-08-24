@@ -274,8 +274,14 @@ static void racer_step(smk_racer *r, const smk_track *trk,
     {
         uint8_t sv = smk_track_surface(trk, smk_kart_px(r->k.x),
                                        smk_kart_px(r->k.y));
-        int cap = smk_surface_cap(sv);
-        if (cap && target > cap) target = cap;
+        /* the real AI ignores surfaces (rubber-band cheat, NOTES 057);
+         * we apply a softened measured cap so the field stays honest but
+         * competitive - labelled behaviour */
+        int frac = smk_surface_cap_frac(sv);
+        if (frac < 800) {
+            int cap = (int)phys->w[SMK_PHYS_TARGET + 3] * (frac + 200) / 1000;
+            if (target > cap) target = cap;
+        }
     }
     int32_t accel;
     if (r->k.speed < target)
@@ -326,8 +332,13 @@ static void step_kart(smk_kart *k, const smk_track *trk,
      * decel row ($80A65D) and coasting drag ($80A590).  Cap values are the
      * labelled placeholders until measured (NOTES 048/053). */
     uint8_t surf = smk_track_surface(trk, smk_kart_px(k->x), smk_kart_px(k->y));
-    int cap = smk_surface_cap(surf);
-    if (cap && target > cap) target = cap;
+    /* MEASURED cap (NOTES 066): fraction of road speed, scaled by this
+     * engine class's own top so 50/100/150cc keep the ROM's ratios */
+    int frac = smk_surface_cap_frac(surf);
+    if (frac < 1000) {
+        int cap = (top * frac) / 1000;
+        if (target > cap) target = cap;
+    }
     int32_t accel;
     if (k->speed < target)
         accel = (int32_t)smk_physics_accel(phys, k->speed) << 8;   /* $80B043 */

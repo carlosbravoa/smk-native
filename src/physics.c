@@ -96,17 +96,35 @@ int16_t smk_surface_overcap_decel(int type)
  * road-family types uncapped, off-road types capped harder with depth.
  * Measuring the real values is blocked on driving a kart over each class
  * (NOTES 053); revisit when player input reaches a kart in the oracle. */
+int16_t smk_surface_cap_frac(uint8_t surf)
+{
+    /* MEASURED from the ROM (NOTES 066): terminal speed per surface class
+     * as a fraction of the road's, in thousandths.  Captured by driving
+     * the live player kart (un-demo hook, flow-steered) while the WRAM
+     * surface table made the whole road each class in turn; slow classes
+     * re-measured with a recovery gate.  $26 is a full-stop hazard.
+     * Classes not on the demo theme default to their nibble-neighbour. */
+    static const struct { uint8_t cls; uint16_t millifrac; } M[] = {
+        { 0x26,    0 }, { 0x40, 1000 }, { 0x42,  810 }, { 0x44,  920 },
+        { 0x46,  940 }, { 0x48,  970 }, { 0x4A,  891 }, { 0x4C,  875 },
+        { 0x4E,  938 }, { 0x50,  849 }, { 0x52,  661 }, { 0x54,  615 },
+        { 0x56,  304 }, { 0x58,  565 }, { 0x5A,  603 }, { 0x5C,  601 },
+        { 0x5E,  682 },
+    };
+    for (unsigned i = 0; i < sizeof M / sizeof *M; i++)
+        if (M[i].cls == surf) return (int16_t)M[i].millifrac;
+    if (surf == 0x00) return 250;            /* void band: crawl (unmeasured) */
+    if (surf & 0x20) return 0;               /* solid */
+    /* unmeasured class: fall back by type nibble against the measured set */
+    uint8_t near = (uint8_t)(0x40 | (surf & 0x1E));
+    for (unsigned i = 0; i < sizeof M / sizeof *M; i++)
+        if (M[i].cls == near) return (int16_t)M[i].millifrac;
+    return 1000;
+}
+
 int16_t smk_surface_cap(uint8_t surf)
 {
-    /* 16-type caps (playtest-corrected, NOTES 063).  Class $00 is the
-     * void band between the dust and the barriers - crawl speed.  Types
-     * 9/10 are the road themes' dust ($52/$54).  Ice roads (11/12) and
-     * true roads run free.  Labelled placeholders pending measurement.
-     * (The previous two edits of this table silently failed and it was
-     * still 8 entries indexed by 16 types - reading past the array.) */
-    static const int16_t CAP[16] = { 0, 0, 384, 352, 320, 288, 256, 224,
-                                     0, 360, 330, 0, 0, 320, 288, 256 };
-    if (surf == 0x00)
-        return 160;
-    return CAP[smk_surface_type(surf) & 15];
+    /* kept for callers wanting an absolute cap at the legacy scale */
+    int frac = smk_surface_cap_frac(surf);
+    return (int16_t)(frac >= 1000 ? 0 : (951 * frac) / 1000);
 }

@@ -112,6 +112,8 @@ static inline int smk_surface_type(uint8_t s) { return (s >> 1) & 0x0F; }
 int16_t smk_surface_drag(int type);          /* $80A590 row */
 int16_t smk_surface_overcap_decel(int type); /* $80A65D row 0 */
 int16_t smk_surface_cap(uint8_t surf);       /* 0 = uncapped */
+int16_t smk_surface_cap_frac(uint8_t surf);  /* thousandths of road speed,
+                                                MEASURED (NOTES 066) */
 
 /* ---- Kart state, in the game's own arithmetic -------------------------
  *
