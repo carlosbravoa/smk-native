@@ -414,8 +414,10 @@ static void step_kart(smk_kart *k, const smk_track *trk,
     if (k->speed < target)
         accel = (int32_t)smk_physics_accel(phys, k->speed) << 8;   /* $80B043 */
     else if (k->speed > target) {
+        /* over the surface cap: the MEASURED per-class deceleration
+         * (NOTES 067) - a firm drag down to the cap, as the ROM does it */
         int dec = (cap && k->speed > cap)
-                  ? -smk_surface_overcap_decel(smk_surface_type(surf))
+                  ? (int)smk_surface_decel(surf) << 8
                   : (target == 0 ? FEEL_DRAG : FEEL_BRAKE);
         accel = -(int32_t)dec << 8;
     } else

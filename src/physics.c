@@ -122,6 +122,25 @@ int16_t smk_surface_cap_frac(uint8_t surf)
     return 1000;
 }
 
+int16_t smk_surface_decel(uint8_t surf)
+{
+    /* MEASURED (NOTES 067): deceleration toward the surface cap, in speed
+     * units per frame, read from the calibration entry curves - e.g. $54
+     * falls 788->700->620->580 at 5-frame spacing (~18/frame).  The
+     * $80A65D table we used before gave type 10 only -9: playtest
+     * correctly reported the bite as too mild.  $50's curve carried a
+     * crash artefact and $52 decayed after the sample window: both take
+     * the generic measured rate.  $26 collapses to zero within frames. */
+    static const struct { uint8_t cls; uint8_t decel; } M[] = {
+        { 0x54, 18 }, { 0x56, 22 }, { 0x58, 22 },
+        { 0x5A, 16 }, { 0x5C, 16 }, { 0x5E, 22 },
+        { 0x50, 18 }, { 0x52, 18 }, { 0x26, 160 },
+    };
+    for (unsigned i = 0; i < sizeof M / sizeof *M; i++)
+        if (M[i].cls == surf) return M[i].decel;
+    return 18;                       /* generic measured off-road rate */
+}
+
 int16_t smk_surface_cap(uint8_t surf)
 {
     /* kept for callers wanting an absolute cap at the legacy scale */

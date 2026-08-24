@@ -1984,4 +1984,25 @@ artifact is not optional even when you just wrote the rule.
 
 ---
 
-*(next entry: 067)*
+**067** — The off-road bite calibrated too: measured deceleration rates.
+
+Playtest report: leaving the track felt milder than the real game, and the
+real behaviour is a firm deceleration down to the surface's max, not a
+switch.  Correct on both counts: our cap was measured (NOTES 066) but the
+RATE toward it still came from the `$80A65D` table - only 9 units/frame
+for the dust type - while the calibration entry curves record the ROM's
+actual rates: `$54` falls 788→700→620→580 at 5-frame spacing.
+
+Measured per class (speed units per frame): `$54` 18, `$56` 22, `$58` 22,
+`$5A` 16, `$5C` 16, `$5E` 22; `$50/$52` take the generic 18 (one curve
+carried a crash artefact, the other decayed after the sample window);
+`$26` collapses within frames (160).  Ported as `smk_surface_decel()`,
+wired into the player's over-cap branch; verified empirically - 900 →
+dust cap in the expected ~15 frames at 18/frame.
+
+The `$80A65D` interpretation is hereby demoted: whatever that table is,
+it is not the off-road deceleration.
+
+---
+
+*(next entry: 068)*
