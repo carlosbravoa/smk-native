@@ -50,7 +50,7 @@ re-investigating.
 
 | # | where | what we do | what the game does | phase |
 |---|---|---|---|---|
-| S1 | `src/main.c` `FEEL_*`, `step_kart` | invented values written into the ROM's own `$EC`/`$EE` acceleration fields; top speed measured from the running game | whatever the ROM's input/state logic writes there, plus drift, hop and per-surface response | P3 |
+| S1 | `src/main.c` `step_kart` | the acceleration curve and target speeds are now the ROM's, read at runtime; what is invented is the *policy* — which target entry input selects, the braking rate, the steering rate | per-character stats choose the target; steering is a slew toward `$FA,x`; plus drift, hop and per-surface response | P3 |
 | S2 | `src/assets.c` `smk_track_guess_start` | longest-road-run heuristic for the start position | per-track start line + grid layout, undecoded | P2 |
 | S4 | `src/mode7.c` camera (`height 15, horizon 0.36, fov 0.55`) | hand-tuned to look right | M7A–D matrix + HDMA table computed per frame by the game | P3 |
 | S5 | `src/mode7.c` `sky_colour` | invented vertical gradient from palette entries 1–2 | BG2 backdrop / per-track horizon graphics | P5 |
@@ -159,9 +159,9 @@ The largest decode. Sub-order:
    **Acceleration and steering decoded (NOTES 025): acceleration is a table
    lookup on current speed toward a target speed, deceleration a four-entry
    table; steering is a slew-limited follow of a target angle `$FA,x`.
-   Blocked on: both tables live in WRAM, built per character at race setup,
-   so their values are game data. Find their ROM source and read it at
-   runtime — do not bake the numbers in.**
+   **ROM source found and ported (NOTES 026): `$81FED5` holds one pointer
+   per engine class to a 64-byte table, widened `<<4` by `$81FEB6`.
+   `src/physics.c` reads it at runtime; no numbers are baked in.**
 4. Only after the oracle agrees: replace S1, derive the camera from the kart
    state the way the game computes its matrix (kills S4).
 - Acceptance: oracle diff = 0 over the swept state space for each ported

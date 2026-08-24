@@ -570,4 +570,47 @@ redoing carefully when the ROM-side tables are found.
 
 ---
 
-*(next entry: 026)*
+**026** — S1's data dependency closed: the physics tables have a ROM source.
+
+Instrumenting writes into `$0690-$06CF` during race setup found exactly one
+writer, `$81FEB6`:
+
+```
+ldx $0030          ; engine class
+ldy $FED5,x        ; -> source for that class
+ldx #$0000
+-  lda $0000,y / and #$00FF
+   asl A x4        ; the ROM stores BYTES; the game widens each by <<4
+   sta $0690,x
+   iny / inx / inx
+   cpx #$0080      ; 128 bytes written = 64 words
+   bne -
+```
+
+`$81FED5` holds three pointers — `$FEDB`, `$FF1B`, `$FF5B` — exactly 64
+bytes apart: **one 64-byte table per engine class** (50cc/100cc/150cc).
+Storing them as bytes is why every value in RAM is a multiple of 16.
+
+Layout within the 64 words, from the consumers:
+
+| words | meaning | RAM |
+|---|---|---|
+| 0..15 | acceleration, indexed by current speed (`$80A7E1`) | `$0690` |
+| 16..31 | target speed, by character stat and class (`$80B074`) | `$06B0` |
+| 32..63 | further per-class constants, not yet identified | `$06D0` |
+
+Verified: reading the ROM this way reproduces the table the game builds in
+RAM exactly, and 150cc's accelerations are uniformly larger than 50cc's.
+
+Ported as `src/physics.c`. The native game now uses **the ROM's own
+acceleration curve and target speeds**, read at runtime — so no game data is
+compiled in, and `--class 0/1/2` selects the engine class.
+
+What remains invented in `step_kart()` is only *policy*: which target-speed
+entry the player selects (the ROM picks it from undecoded per-character
+stats), the braking rate, and the steering rate. Those are now the whole of
+ledger S1.
+
+---
+
+*(next entry: 027)*

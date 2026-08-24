@@ -125,6 +125,27 @@ typedef struct {
 /* $80A4E1: speed += acceleration as one 32-bit add, then clamp at zero. */
 void smk_kart_accelerate(smk_kart *k);
 
+/* ---- Physics tables ---------------------------------------------------
+ *
+ * The ROM keeps these as 64 BYTES per engine class; the loader at $81FEB6
+ * widens each to a word by shifting left 4 and writes them to WRAM $0690.
+ * We read them from the ROM the same way, so no game data is compiled in.
+ *
+ *   words  0..15   acceleration, indexed by current speed   (WRAM $0690)
+ *   words 16..31   target speed, by character stat and class (WRAM $06B0)
+ *   words 32..63   further per-class constants, not yet identified
+ */
+#define SMK_PHYS_WORDS   64
+#define SMK_PHYS_CLASSES 3          /* 50cc / 100cc / 150cc */
+#define SMK_PHYS_ACCEL   0          /* first index of the acceleration table */
+#define SMK_PHYS_TARGET  16         /* first index of the target-speed table */
+
+typedef struct { uint16_t w[SMK_PHYS_WORDS]; int engine_class; } smk_physics;
+
+bool smk_physics_load(const smk_rom *rom, int engine_class, smk_physics *out);
+/* $80A7E1: acceleration for the current speed. */
+int16_t smk_physics_accel(const smk_physics *p, int16_t speed);
+
 /* Velocity from angle and speed, the way $80F8CF does it. */
 void smk_kart_face(smk_kart *k);
 /* One frame of motion: the integration at $80879D, with wall blocking. */

@@ -151,6 +151,24 @@ def main():
             check("C tilesets match the game's own loader", t_ok == A_TRACKS, f"{t_ok}/{A_TRACKS}")
             check("C palettes match the game's own loader", p_ok == A_TRACKS, f"{p_ok}/{A_TRACKS}")
 
+    print("\nphysics tables")
+    tp = rom.snes_to_pc(0x81FED5)
+    ptrs = [rom.u16(tp + i * 2) for i in range(3)]
+    check("three engine-class pointers at $81FED5",
+          all(0x8000 <= p < 0x10000 for p in ptrs),
+          ", ".join("$%04X" % p for p in ptrs))
+    check("the three tables are 64 bytes apart",
+          ptrs[1] - ptrs[0] == 64 and ptrs[2] - ptrs[1] == 64)
+    tabs = []
+    for p in ptrs:
+        src = rom.snes_to_pc(0x810000 | p)
+        tabs.append([rom.data[src + i] << 4 for i in range(64)])
+    check("every value is a multiple of 16 (the ROM stores bytes, <<4)",
+          all(v % 16 == 0 and v <= 0xFF0 for t in tabs for v in t))
+    check("150cc accelerates harder than 50cc",
+          sum(tabs[2][:16]) > sum(tabs[0][:16]),
+          f"{sum(tabs[2][:16])} vs {sum(tabs[0][:16])}")
+
     print("\nbuild pipeline")
     with tempfile.TemporaryDirectory() as tmp:
         out = os.path.join(tmp, "smk.sfc")

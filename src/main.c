@@ -68,40 +68,44 @@ static void pump(input_state *in)
  * more.  They are in the game's units so that decoding them later is a
  * substitution, not a rewrite.
  */
-/* Measured from the game running in the oracle: holding accelerate takes a
- * kart from rest to about $0280 (2.5 px/frame), and the per-frame gain
- * tapers as it approaches that.  These constants reproduce that shape; what
- * the ROM actually writes into $EC/$EE, and when, is still undecoded. */
-#define FEEL_TOP_SPEED   (0x0280)               /* ~2.5 px/frame, measured */
-#define FEEL_BOOST       (0x03A0)
-#define FEEL_ACCEL       (0x0C00)               /* into the 32-bit accel   */
-#define FEEL_BRAKE       (0x2000)
-#define FEEL_DRAG        (0x0400)
-#define FEEL_TURN        420                    /* angle units per frame   */
+/* The acceleration curve and the target speeds are the ROM's, read from it
+ * at runtime (src/physics.c).  What is still invented, and marked as such
+ * in the ledger, is the *policy*: which target speed the player's input
+ * selects, the braking rate, and the steering rate.  The ROM picks its
+ * target from per-character stats we have not decoded, and its steering is
+ * a slew toward a target angle at $FA,x ($80AFBE). */
+#define FEEL_TARGET_IDX   3        /* which entry of the ROM target table  */
+#define FEEL_BRAKE   (0x2000)
+#define FEEL_DRAG    (0x0400)
+#define FEEL_TURN    420           /* angle units per frame                */
 
-static void step_kart(smk_kart *k, const smk_track *trk, const input_state *in)
+static void step_kart(smk_kart *k, const smk_track *trk,
+                      const smk_physics *phys, const input_state *in)
 {
+    int top = (int16_t)phys->w[SMK_PHYS_TARGET + FEEL_TARGET_IDX];
     int target = 0;
-    if (in->up)   target = in->shift ? FEEL_BOOST : FEEL_TOP_SPEED;
-    if (in->down) target = -FEEL_TOP_SPEED / 2;
+    if (in->up)   target = in->shift ? top + (top >> 2) : top;
+    if (in->down) target = -top / 2;
 
-    /* Drive the ROM's acceleration fields rather than speed directly, so
-     * that when $EC/$EE are decoded this becomes a one-line substitution. */
+    /* Drive the ROM's acceleration fields, not speed directly. */
     int32_t accel;
-    if (k->speed < target)      accel =  FEEL_ACCEL;
-    else if (k->speed > target) accel = -(target == 0 ? FEEL_DRAG : FEEL_BRAKE);
-    else                        accel = 0;
+    if (k->speed < target)
+        accel = (int32_t)smk_physics_accel(phys, k->speed) << 8;   /* $80B043 */
+    else if (k->speed > target)
+        accel = -(int32_t)(target == 0 ? FEEL_DRAG : FEEL_BRAKE) << 8;
+    else
+        accel = 0;
     k->accel      = (int16_t)(accel >> 16);
     k->accel_frac = (uint16_t)(accel & 0xFFFF);
 
     smk_kart_accelerate(k);      /* the ROM's 32-bit speed integration */
 
-    if (k->speed > FEEL_BOOST) { k->speed = FEEL_BOOST; k->speed_frac = 0; }
+    if (k->speed > target && target > 0) { k->speed = (int16_t)target; }
 
     /* steering authority falls off as the kart slows, as it must */
     int auth = (k->speed < 0 ? -k->speed : k->speed);
-    if (auth > FEEL_TOP_SPEED) auth = FEEL_TOP_SPEED;
-    int turn = FEEL_TURN * auth / FEEL_TOP_SPEED;
+    if (auth > top) auth = top;
+    int turn = top ? FEEL_TURN * auth / top : 0;
     if (in->left)  k->angle -= (uint16_t)turn;
     if (in->right) k->angle += (uint16_t)turn;
 
@@ -126,6 +130,7 @@ static void usage(const char *argv0)
            "  --rom PATH      Super Mario Kart (USA) ROM   [rom/smk_usa.sfc]\n"
            "  --track N       0..23  (20 courses + 4 battle arenas)\n"
            "  --theme N       override the course theme    [from ROM]\n"
+           "  --class N       engine class 0/1/2 (50/100/150cc)  [0]\n"
            "  --width W       window width                 [1024]\n"
            "  --height H      window height                [896]\n"
            "  --pixel N       render at 1/N resolution     [2]\n"
@@ -146,6 +151,7 @@ int main(int argc, char **argv)
 {
     const char *rom_path = "rom/smk_usa.sfc";
     int track = 0, theme = -1;   /* -1 = use the ROM's own binding */
+    int engine_class = 0;        /* 0 = 50cc, 1 = 100cc, 2 = 150cc  */
     int win_w = 1024, win_h = 896, pixel = 2, fullscreen = 0;
     const char *dump = NULL;          /* write raw track data and exit      */
     const char *shot = NULL;          /* render one frame to a BMP and exit */
@@ -158,7 +164,7 @@ int main(int argc, char **argv)
         const char *a = argv[i];
         #define ARG(name, var) if (!strcmp(a, name) && i + 1 < argc) { var = atoi(argv[++i]); continue; }
         if (!strcmp(a, "--rom") && i + 1 < argc) { rom_path = argv[++i]; continue; }
-        ARG("--track", track) ARG("--theme", theme)
+        ARG("--track", track) ARG("--theme", theme) ARG("--class", engine_class)
         ARG("--width", win_w) ARG("--height", win_h) ARG("--pixel", pixel)
         if (!strcmp(a, "--fullscreen")) { fullscreen = 1; continue; }
         if (!strcmp(a, "--frames") && i + 1 < argc) { max_frames = atol(argv[++i]); continue; }
@@ -195,6 +201,11 @@ int main(int argc, char **argv)
     if (!rom.recognised)
         fprintf(stderr, "warning: %s\ncontinuing anyway; assets may be wrong.\n\n", err);
 
+    static smk_physics phys;
+    if (!smk_physics_load(&rom, engine_class, &phys)) {
+        fprintf(stderr, "error: cannot load physics tables\n");
+        return 1;
+    }
     static smk_track trk;
     if (!smk_track_load(&rom, track, theme, &trk, err, sizeof err)) {
         fprintf(stderr, "error: %s\n", err);
@@ -203,7 +214,9 @@ int main(int argc, char **argv)
     }
     if (!have_at) smk_track_guess_start(&trk, &shot_x, &shot_y, &shot_a);
     printf("loaded \"%s\"\n", rom.title);
-    printf("track %d, theme %d (from the ROM's own table)\n", track, trk.theme);
+    printf("track %d, theme %d (from the ROM's own table), class %d\n",
+           track, trk.theme, engine_class);
+    printf("acceleration curve and target speeds read from the ROM\n");
 
     /* Raw asset dump, so the C pipeline can be diffed against the oracle
      * running the game's own 65816 code.  Layout: 16384 map, 12288 tiles,
@@ -340,7 +353,7 @@ int main(int argc, char **argv)
             }
             input_edges_clear(&in);
 
-            step_kart(&kart, &trk, &in);
+            step_kart(&kart, &trk, &phys, &in);
             camera_from_kart(&cam, &kart);
         }
         (void)stepped;   /* edges deliberately survive a tickless iteration */
