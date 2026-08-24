@@ -8,6 +8,7 @@
  * the selftest keeps the two implementations agreeing.
  */
 #include "smk.h"
+#include <math.h>
 #include <string.h>
 
 #define TBL_RECORDS   0x81FF9Bu
@@ -91,10 +92,24 @@ bool smk_course_load(const smk_rom *rom, int track, smk_course *out)
     out->fin_cell = (int)cell;
     out->fin_w = (int)w;
     out->fin_h = (int)h;
+
+    /* --- the AI direction field ($81FCFC) --------------------------- */
+    for (int i = 0; i < SMK_SECT_CELLS; i++) {
+        int s2 = out->map[i] & SMK_SECT_OFF;
+        if (s2 == SMK_SECT_OFF || s2 >= sector || out->map[i] == 0)
+            continue;
+        /* cell 0 of sector 0 is indistinguishable from unpainted here;
+         * the ROM skips only $7F, but unpainted cells are never queried */
+        float cx = (float)((i & 63) * SMK_SECT_CELL_PX + 8);
+        float cy = (float)((i >> 6) * SMK_SECT_CELL_PX + 8);
+        float ang = atan2f((float)out->wx[s2] - cx, -((float)out->wy[s2] - cy));
+        unsigned a16 = (unsigned)((int)(ang * 65536.0f / (2.0f * (float)M_PI))
+                                  & 0xFFFF);
+        out->flow[i] = (uint8_t)(((a16 + 0x80) >> 8) & 0xFF);
+    }
     return true;
 }
 
-#include <math.h>
 
 void smk_course_start(const smk_course *c, int slot,
                       float *x, float *y, uint16_t *heading)

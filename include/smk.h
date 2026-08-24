@@ -280,6 +280,11 @@ typedef struct {
     uint16_t lap_word;                 /* $80D4 param, meaning undecoded   */
     /* finish-line rectangle, kept for grid placement */
     int      fin_cell, fin_w, fin_h;
+    /* the AI direction field at $7F:4000 (NOTES 056): per on-course cell,
+     * the high byte of the angle from the cell centre to the cell's own
+     * sector's waypoint.  Verified 95% byte-exact vs the game, 100% within
+     * one step (the ROM's table atan2 rounds differently at boundaries). */
+    uint8_t  flow[SMK_SECT_CELLS];
 } smk_course;
 
 bool smk_course_load(const smk_rom *rom, int track, smk_course *out);

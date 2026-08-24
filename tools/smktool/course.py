@@ -128,6 +128,26 @@ def mark_finish(rom: Rom, track: int, m: bytearray) -> dict:
     return {"lap_word": lap_word, "cell": cell, "w": w, "h": h}
 
 
+def build_flow_map(m: bytes, pts) -> bytearray:
+    """The AI direction field at $7F:4000, exactly as $81FCFC builds it:
+    for every on-course cell, the high byte of the angle from the CELL
+    CENTRE to the cell's own sector's waypoint (docs/NOTES.md 056).  This
+    is why the original AI never steers into walls - the field is derived
+    from the racing line over the painted cells only."""
+    import math
+    flow = bytearray(MAP_CELLS)
+    for cell in range(MAP_CELLS):
+        sec = m[cell] & 0x7F
+        if sec == 0x7F or sec >= len(pts):
+            continue
+        cx = (cell & 63) * CELL_PX + 8
+        cy = (cell >> 6) * CELL_PX + 8
+        ang = math.atan2(pts[sec][0] - cx, -(pts[sec][1] - cy))
+        a16 = int(ang * 65536 / (2 * math.pi)) & 0xFFFF
+        flow[cell] = ((a16 + 0x80) >> 8) & 0xFF      # round to nearest step
+    return flow
+
+
 def sector_at(m: bytes, x: int, y: int) -> int:
     """Low 7 bits are the sector; bit 7 marks the finish strip; $7F means
     off the course entirely ($808931)."""

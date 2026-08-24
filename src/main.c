@@ -141,20 +141,21 @@ static void racer_step(smk_racer *r, const smk_track *trk,
         r->sector = sec;
     }
 
-    int next = r->sector + 1;
-    if (next >= crs->sectors) next = 0;
-    /* lookahead: once near the target waypoint, aim at the one after it -
-     * waiting for the sector paint to change made the AI clip every
-     * corner into the walls (NOTES 055) */
-    {
-        int ddx = crs->wx[next] - smk_kart_px(r->k.x);
-        int ddy = crs->wy[next] - smk_kart_px(r->k.y);
-        if (ddx * ddx + ddy * ddy < 72 * 72) {
-            next++;
-            if (next >= crs->sectors) next = 0;
-        }
+    /* DECODED steering ($80B0B1 / NOTES 056): on course the AI's target
+     * angle is the flow field byte for its cell - atan2 to a waypoint is
+     * only the OFF-COURSE recovery path in the ROM, and treating it as the
+     * main rule was why our karts clipped corners into walls. */
+    int cell = ((smk_kart_px(r->k.y) >> 4) & 63) * 64
+             + ((smk_kart_px(r->k.x) >> 4) & 63);
+    int fsec = crs->map[cell] & SMK_SECT_OFF;
+    uint16_t want;
+    if (fsec != SMK_SECT_OFF && crs->map[cell] != 0) {
+        want = (uint16_t)(crs->flow[cell] << 8);
+    } else {
+        int next = r->sector + 1;
+        if (next >= crs->sectors) next = 0;
+        want = heading_to(&r->k, crs->wx[next], crs->wy[next]);
     }
-    uint16_t want = heading_to(&r->k, crs->wx[next], crs->wy[next]);
     /* Stuck against a sticky wall: with no fling to free them, the AI
      * needs the real game's visible recovery - realign toward the
      * waypoint and pull away.  Labelled AI behaviour, not a decode. */
@@ -185,9 +186,12 @@ static void racer_step(smk_racer *r, const smk_track *trk,
     }
 
     /* DECODED ($80B074): the target speed row is selected by the sector
-     * waypoint attribute's low two bits, offset by the kart's $C8 row -
-     * the demo AI runs at row +4 (measured speeds 700-1050). */
-    int target = (int16_t)phys->w[SMK_PHYS_TARGET + 4 + (crs->wattr[r->sector] & 3)];
+     * waypoint attribute's low two bits, offset by the kart's $C8 row.
+     * The attract demo runs its AI at row +4 (700-1050), which outruns the
+     * player at every engine class (user report) - presumably the demo's
+     * difficulty, with rubber-banding undecoded.  Race AI uses row +0, the
+     * same rows the player's class selects, so 50/100/150cc scale both. */
+    int target = (int16_t)phys->w[SMK_PHYS_TARGET + (crs->wattr[r->sector] & 3)];
     /* DECODED ($80A701 structure): off-road surfaces cap the speed and the
      * over-cap decel row applies.  Cap values are measured (NOTES 053). */
     {

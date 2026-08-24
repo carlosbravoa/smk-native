@@ -83,7 +83,7 @@ used; C output is byte-identical to the game's loader on all 24 courses.
 | P3 physics | **part** — kinematics, speed model and the ROM's acceleration tables are in and verified; steering policy and per-surface response are not |
 | P4 sprites | **mostly** — sheets, projection, and the **measured frame-selection rule** (NOTES 041); residuals: tier boundaries assumed shared, hflip side unverified, player rel synthesised |
 | P5 race furniture | not started (the course container is decoded; object records were not part of it — still to locate) |
-| P6 opponents | **part** — data and rules decoded (lines, speed classes, turn law, turnaround, Z, sector acceptance, crossing).  Wall model now favours the player (sticky; NOTES 055) and the AI's fling-crutch is gone: strict laps 6/20, most karts stalling in lap-2 corners.  Top open: decode the ROM AI's actual cornering inputs so karts stop hitting walls at all |
+| P6 opponents | **mostly** — the real steering decoded: a per-cell flow field at `$7F:4000` built from the racing line (NOTES 056), ported and verified 95% byte-exact.  Strict laps 14/20 with sticky walls and class-fair speeds.  Remaining: six tracks (jumps/off-course fallback), the `$80ABxx` fine adjusters, rubber-banding |
 | P7 audio | **decided** — pre-recorded; `smk spc` dumps the driver, rendering not wired up |
 | P8 modes / menus | not started |
 

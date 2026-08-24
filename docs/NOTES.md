@@ -1642,4 +1642,49 @@ heuristic to tune.  Recorded as the top P6 open.
 
 ---
 
-*(next entry: 056)*
+**056** — The real AI cornering decoded: a flow field at `$7F:4000`.
+The stalls' root cause, and the end of waypoint-chasing.
+
+The path there mattered as much as the answer:
+
+1. `$FA` (the AI target angle) turned out to have its **low byte always
+   zero** - a 256-step quantized direction.
+2. It matches **no waypoint bearing** (86% of frames miss by >8°) and no
+   segment tangent either.  Both aiming models we had were wrong.
+3. Grouping by map cell: **one `$FA` value per cell** (84% of cells) - a
+   per-cell direction field.  A WRAM scan for the table failed - because it
+   required ≤16 distinct values, and the real field is fine-grained.
+4. The reader is explicit at `$80AD62` / `$80B0B1`: **on course,
+   `$FA = byte[$7F:4000 + (py/16)*64 + px/16] << 8`** (a 16-bit read at
+   `$7F:3FFF+idx` whose `and #$FF00` keeps exactly the table byte).
+   `atan2(waypoint - pos)` is only the **off-course recovery branch**
+   (flags `$10` bits 0-1).  Treating it as the main rule was why our karts
+   clipped corners into walls.
+5. The builder at `$81FCFC`:  for every on-course cell,
+   **`flow[cell] = high byte of atan2(waypoint[sector_of_cell] - cell
+   centre)`** - each cell aims at its own sector's waypoint, precomputed at
+   load.  Since waypoints sit at sector exits on the racing line, the field
+   never points into a wall.  (The loop above it fills the odd bytes of the
+   `$0800` attr table with per-waypoint direction bytes.)
+6. A wrinkle: my first live comparison of `flow[cell]<<8` vs `$FA` used
+   angle data captured **before the CPU-divide fix** - on that machine the
+   atan2 could only produce cardinals, which is why the field first looked
+   4-valued.  Stale captures lie; re-measure after machine fixes.
+
+**Verification:** our reimplemented builder matches the game's 4096-byte
+field **95.2% byte-exact, 100% within ±1 step (±1.4°)** - the residual is
+the ROM's table-atan2 rounding at step boundaries.  Live, `$FA` equals the
+field byte in 62% of frames with the rest within a few degrees (the
+`$80ABxx` incremental adjusters add small per-frame offsets on top - not
+yet decoded).
+
+**Effect:** with sticky walls AND class-fair AI speeds (target row +0, so
+50/100/150cc scale player and AI together - the attract demo's row +4 was
+outrunning the player at every class), strict laps went **6 → 14/20**, now
+achieved without the fling crutch.  Chronic failures 1, 8, 14, 18 lap
+cleanly.  Remaining: 3, 9, 11, 15, 16, 17 - mostly jump tracks and
+off-course fallback cases.
+
+---
+
+*(next entry: 057)*
