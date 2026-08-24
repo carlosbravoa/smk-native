@@ -1554,4 +1554,36 @@ located.)
 
 ---
 
-*(next entry: 053)*
+**053** — A driving player kart in the oracle, at last. The gate was four
+state words — and one wrong button.
+
+The full story of why every control attempt failed:
+
+* **Wrong button all along.** SMK accelerates with **B**, which is
+  `$4219` bit 7. Every earlier attempt held `$4218` bit 7 — that is **A**,
+  the item button. (The joypad byte layout: `$4218` = A/X/L/R,
+  `$4219` = B/Y/Select/Start/dpad.)
+* **B alone is not enough.** In the demo, clearing `$0E32` and holding B
+  still left P1 parked: the kart's *state machine* is not in the driving
+  state, and the demo flag does not reset it.
+* **The gate is four kart-block words.** Diffing P1 against a driving AI
+  kart: `$10` = `$8000` vs `$2000`, `$12` = 0 vs `$0002`, `$C4` = 0 vs
+  `$8000`, `$C8` = 0 vs `$0010`. Copying the AI's values (plus B held)
+  had P1 accelerating within 30 frames. Bonus confirmations: `$C8 = $10`
+  is exactly the per-kart row offset measured in NOTES 043 (bytes → row
+  +8 words), and `$12` bit 1 relates to the collision gate `bit $12,x`
+  at `$80F897`.
+
+Also from this stretch: the forced race scene ($32 write) runs Lakitu-style
+placement (position glides to the grid with speed 0) but never a start
+signal, and injected speed is zeroed by the state machine within 1-3
+frames — so the forced scene cannot measure surface behaviour without the
+state constants (test of that pending).
+
+This unblocks, in order: per-surface speed caps measured with a driven
+kart, the in-race camera matrix (finally a moving camera), and the
+drift/hop decode.
+
+---
+
+*(next entry: 054)*
