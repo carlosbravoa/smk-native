@@ -74,11 +74,6 @@ class APU:
         v = self.port[p]
         if self.trace:
             self.log.append(("r", p, v))
-        if p == 0 and self.state == self.IDLE and self.driver_running:
-            self.reads_since_write += 1
-            if self.reads_since_write > self.ready_after_reads:
-                # a long poll means it is waiting for $AA/$BB, not an ack
-                self.port[0], self.port[1] = 0xAA, 0xBB
         if self.pending_ready and p == 0:
             # the CPU has now seen the echo that ended the last block; on
             # hardware the IPL would have jumped to the driver.  We have no
@@ -118,13 +113,17 @@ class APU:
                 self.ram[self.addr] = self.inp[1]
                 self.addr = (self.addr + 1) & 0xFFFF
             else:
-                # A command to the running driver.  The driver acknowledges
-                # by echoing, and the 65816 waits for that - a race start is
-                # sequenced against the sound driver, so refusing to
-                # acknowledge leaves the countdown hanging.
+                # A command to the running driver.  We keep advertising
+                # "ready" rather than echoing.
+                #
+                # Echoing was tried, on the theory that the race countdown is
+                # sequenced against the sound driver and needs an
+                # acknowledgement.  It did NOT release the countdown, and it
+                # broke the re-upload path (one upload of 7 blocks instead of
+                # two of 8), because the game then never sees $AA/$BB when it
+                # wants to send the next sound bank.  See docs/NOTES.md 031.
                 self.commands.append((self.inp[1], val))
-                self.port[0] = val
-                self.reads_since_write = 0
+                self.port[0], self.port[1] = 0xAA, 0xBB
             return
 
         # inside a block every write to port 0 is echoed; that is the handshake

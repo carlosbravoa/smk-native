@@ -753,4 +753,33 @@ is music-synced.
 
 ---
 
-*(next entry: 031)*
+**031** — NEGATIVE RESULT: acknowledging driver commands does not release
+the race countdown.
+
+Hypothesis: the countdown is sequenced against the sound driver, so the APU
+stub's refusal to acknowledge commands leaves it waiting. Tried making the
+stub echo port-0 command writes the way a driver would, with a fallback to
+`$AA`/`$BB` after a long poll.
+
+Outcome: the countdown still never runs — eight karts sit at speed 0 for
+600+ frames — **and it made things worse**. The sound upload dropped from
+two uploads of eight blocks (55825 bytes) to one of seven (54320), because
+with commands echoed the game never sees `$AA`/`$BB` when it wants to send
+the next bank. Reverted.
+
+So the countdown is gated on something else. What is now known about the
+two ways into a race, neither of which is complete:
+
+| | demo race (mode 1) | forced race (mode 6 via `$32`) |
+|---|---|---|
+| karts initialised on the real grid | yes | yes (same coordinates) |
+| physics runs | **no** — speed stays 0 | yes, AI-driven |
+| karts drawn (sprite DMA) | no | no |
+
+The next diagnostic is which of the physics routines actually execute in
+each case — if the speed integration at `$80A4E1` never runs in the demo,
+the gate is upstream of it and can be found by walking back from there.
+
+---
+
+*(next entry: 032)*
