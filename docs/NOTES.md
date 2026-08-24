@@ -1176,4 +1176,42 @@ instrument the ROM's own AI update (`$80AFF9` slew, its brake rule) next.
 
 ---
 
-*(next entry: 043)*
+**043** — The AI controller, measured from the demo race — and a rule that
+does not exist.
+
+Captured 2000 frames of the six AI karts' controller state (heading,
+target angle `$FA`, speed, acceleration) and correlated.
+
+**The brake-on-error rule does not exist.** Mean speed is flat (~700-730)
+across every heading-error bucket from 0 to 60+ degrees. The ROM's AI does
+not slow for corners; it out-turns them. My orbiting theory (NOTES 042) was
+half wrong — the fix is turning harder, not braking. Two controller hacks
+built on that theory made lap completion *worse* and were reverted.
+
+**The turn law, completed.** `$80AFF9` is a table lookup: word index
+`32 + ((min(err,$1FF) >> 6) & 7)` plus the per-kart `$C8` row, into the
+same per-class physics blob (words 32-63 = four turn-rate rows). The
+measured per-frame steps (±352, ±576) match **class 1, row `$C8`=8**
+exactly, and target speeds (700-1050) match the target rows at offset +4 —
+so the demo runs class 1 with the AI on row 8/+4 of each table.
+
+**A turnaround mode.** Steps of exactly `$800`/frame appear 451 times, and
+bucketing by error shows the split cleanly: below ~90° the table rows
+dominate; above ~90° the `$800` step does. Rule: |error| > ~$4000 → turn
+$800/frame (about-face in 16 frames).
+
+All three are in the native AI now (turn table row 8, target row +4,
+turnaround above $4000). Lap completion in the harness: 6/20 GP tracks at
+realistic times (15-28 s/lap).
+
+**The remaining blocker is not the controller.** The stuck tracks fail at
+identical sectors under every controller variant tried. Three cross solid
+cells the game jumps over (no Z axis yet); the rest wall-grind where the
+game's collision state (`$80F8C0`: `$42,x`=$8000, `$26,x`=$80, with its own
+recovery handler selected via `bit $42,x` at `$80F8A0`) would bounce the
+kart free. Decoding that response is the next scoped item, and it is also
+ledger S6.
+
+---
+
+*(next entry: 044)*

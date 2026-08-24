@@ -49,3 +49,22 @@ int16_t smk_physics_accel(const smk_physics *p, int16_t speed)
     if (idx >= SMK_PHYS_WORDS) idx = SMK_PHYS_WORDS - 1;
     return (int16_t)p->w[idx];
 }
+
+
+/* $80AFF9: the slew rate is a table lookup on the heading error.
+ *
+ *      cmp #$0200 / bcc + / lda #$01FF     clamp the error to $1FF
+ *      asl x3 / xba / and #$0E             (err >> 5) & $0E, an even index
+ *      adc $C8,x * 2                       per-kart handling row
+ *      lda $06D0,y                         words 32.. of the physics blob
+ *
+ * i.e. word index = 32 + ((min(err, $1FF) >> 6) & 7) + row.
+ */
+uint16_t smk_physics_turn(const smk_physics *p, uint16_t err, int row)
+{
+    unsigned e = err;
+    if (e > 0x1FF) e = 0x1FF;
+    unsigned idx = SMK_PHYS_TURN + ((e >> 6) & 7) + (unsigned)row;
+    if (idx >= SMK_PHYS_WORDS) idx = SMK_PHYS_WORDS - 1;
+    return p->w[idx];
+}

@@ -149,12 +149,17 @@ void smk_kart_accelerate(smk_kart *k);
 #define SMK_PHYS_CLASSES 3          /* 50cc / 100cc / 150cc */
 #define SMK_PHYS_ACCEL   0          /* first index of the acceleration table */
 #define SMK_PHYS_TARGET  16         /* first index of the target-speed table */
+#define SMK_PHYS_TURN    32         /* turn-rate by heading error ($80AFF9)  */
 
 typedef struct { uint16_t w[SMK_PHYS_WORDS]; int engine_class; } smk_physics;
 
 bool smk_physics_load(const smk_rom *rom, int engine_class, smk_physics *out);
 /* $80A7E1: acceleration for the current speed. */
 int16_t smk_physics_accel(const smk_physics *p, int16_t speed);
+
+/* $80AFF9: per-frame turn amount for a heading error.  `row` is the
+ * per-kart $C8 offset in words (0 for the base handling row). */
+uint16_t smk_physics_turn(const smk_physics *p, uint16_t err, int row);
 
 /* Velocity from angle and speed, the way $80F8CF does it. */
 void smk_kart_face(smk_kart *k);

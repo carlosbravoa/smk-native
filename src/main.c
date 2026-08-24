@@ -95,7 +95,6 @@ static uint16_t heading_to(const smk_kart *k, int tx, int ty)
                       / (2.0f * (float)M_PI));
 }
 
-#define AI_SLEW      0x0180      /* PLACEHOLDER: heading units per frame */
 #define AI_SNAP      0x0200      /* $80AFBE snaps inside this            */
 
 static void racer_step(smk_racer *r, const smk_track *trk,
@@ -119,14 +118,21 @@ static void racer_step(smk_racer *r, const smk_track *trk,
     uint16_t want = heading_to(&r->k, crs->wx[next], crs->wy[next]);
     int16_t diff = (int16_t)(want - r->k.angle);
     if (diff > AI_SNAP || diff < -AI_SNAP) {
-        r->k.angle += (uint16_t)(diff > 0 ? AI_SLEW : -AI_SLEW);
+        uint16_t err = (uint16_t)(diff > 0 ? diff : -diff);
+        /* DECODED ($80AFF9): turn amount from the physics blob's words 32+,
+         * indexed by heading error; the demo AI uses row 8 ($C8 = 8).
+         * MEASURED (NOTES 043): above ~90 degrees of error the AI turns at
+         * $800 per frame - a fast turnaround, not a table step. */
+        uint16_t step = err > 0x4000 ? 0x800 : smk_physics_turn(phys, err, 8);
+        r->k.angle += (uint16_t)(diff > 0 ? step : -(int)step);
     } else {
         r->k.angle = want;
     }
 
     /* DECODED ($80B074): the target speed row is selected by the sector
-     * waypoint attribute's low two bits - 0 slow through 3 fast. */
-    int target = (int16_t)phys->w[SMK_PHYS_TARGET + (crs->wattr[r->sector] & 3)];
+     * waypoint attribute's low two bits, offset by the kart's $C8 row -
+     * the demo AI runs at row +4 (measured speeds 700-1050). */
+    int target = (int16_t)phys->w[SMK_PHYS_TARGET + 4 + (crs->wattr[r->sector] & 3)];
     int32_t accel;
     if (r->k.speed < target)
         accel = (int32_t)smk_physics_accel(phys, r->k.speed) << 8;

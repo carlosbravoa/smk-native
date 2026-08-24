@@ -83,7 +83,7 @@ used; C output is byte-identical to the game's loader on all 24 courses.
 | P3 physics | **part** — kinematics, speed model and the ROM's acceleration tables are in and verified; steering policy and per-surface response are not |
 | P4 sprites | **mostly** — sheets, projection, and the **measured frame-selection rule** (NOTES 041); residuals: tier boundaries assumed shared, hflip side unverified, player rel synthesised |
 | P5 race furniture | not started (the course container is decoded; object records were not part of it — still to locate) |
-| P6 opponents | **part** — racing lines + speed classes decoded and verified; opponents drive; controller (slew/brake/recovery) still a placeholder, laps complete on ~5/20 tracks |
+| P6 opponents | **part** — racing lines, speed classes, turn-rate law, and the >90° turnaround all decoded/measured; opponents drive at realistic pace; full laps on 6/20 tracks. Blocker is the wall-collision response (S6/`$80F8C0`) and jumps (no Z axis), not the controller |
 | P7 audio | **decided** — pre-recorded; `smk spc` dumps the driver, rendering not wired up |
 | P8 modes / menus | not started |
 
