@@ -67,6 +67,11 @@ class Bus:
         self.oamadd = 0         # $2102/$2103, in bytes
         self.dma_bytes = 0
         self.dma_log: list[tuple[int, int, int, int]] = []   # (srcbank,src,bbad,count)
+        self.m7 = [0, 0, 0, 0]          # $211B-$211E latches (8.8)
+        self.m7_lines: list[tuple[int, int, int, int, int]] = []   # per-scanline
+        self.log_m7 = False
+        self.hdma: dict[int, dict] = {}
+        self.hdma_bytes = 0
         self.log_dma = False
         self.irq_flag = False        # $4211 TIMEUP, cleared on read
         self.hblank = False
@@ -150,6 +155,11 @@ class Bus:
         return {0: 1, 1: 32, 2: 128, 3: 128}[self.vmain & 3]
 
     def _ppu_write(self, addr: int, val: int) -> None:
+        if 0x211B <= addr <= 0x211E:
+            # each is a write-twice 8.8 latch (low byte then high)
+            i = addr - 0x211B
+            self.m7[i] = ((self.m7[i] << 8) | val) & 0xFFFF
+            return
         if addr == 0x2115:
             self.vmain = val
         elif addr == 0x2116:
@@ -178,6 +188,69 @@ class Bus:
             self.oamadd = (self.oamadd + 1) % len(self.oam)
         elif addr == 0x420B:
             self._run_dma(val)
+
+    # ---- HDMA -----------------------------------------------------
+    # Per-scanline transfers.  The in-race Mode 7 matrix arrives this way and
+    # no other (NOTES 046: only 1 frame in 900 writes $211B directly), so
+    # without this the camera is invisible to the oracle.
+    DMA_PATTERN = {0: (0,), 1: (0, 1), 2: (0, 0), 3: (0, 0, 1, 1),
+                   4: (0, 1, 2, 3), 5: (0, 1, 0, 1),
+                   6: (0, 0), 7: (0, 0, 1, 1)}
+
+    def hdma_init(self) -> None:
+        """Start of frame: reload each enabled channel's table pointer."""
+        self.hdma = {}
+        en = self.regs.get(0x420C, 0)
+        for ch in range(8):
+            if not (en >> ch) & 1:
+                continue
+            base = 0x4300 + ch * 0x10
+            self.hdma[ch] = {
+                "addr": self.regs.get(base + 2, 0) | self.regs.get(base + 3, 0) << 8,
+                "lines": 0, "repeat": False, "first": False,
+                "ind": 0, "done": False,
+            }
+
+    def hdma_line(self) -> None:
+        """One scanline of HDMA for every active channel."""
+        for ch, st in self.hdma.items():
+            if st["done"]:
+                continue
+            base = 0x4300 + ch * 0x10
+            dmap = self.regs.get(base + 0, 0)
+            bbad = self.regs.get(base + 1, 0)
+            bank = self.regs.get(base + 4, 0)
+            indbank = self.regs.get(base + 7, 0)
+            indirect = bool(dmap & 0x40)
+
+            if st["lines"] == 0:                       # next table entry
+                cnt = self.read(bank, st["addr"])
+                st["addr"] = (st["addr"] + 1) & 0xFFFF
+                if cnt == 0:
+                    st["done"] = True
+                    continue
+                st["repeat"] = bool(cnt & 0x80)
+                st["lines"] = cnt & 0x7F
+                st["first"] = True
+                if indirect:
+                    lo = self.read(bank, st["addr"])
+                    hi = self.read(bank, (st["addr"] + 1) & 0xFFFF)
+                    st["addr"] = (st["addr"] + 2) & 0xFFFF
+                    st["ind"] = lo | hi << 8
+
+            if st["repeat"] or st["first"]:
+                pattern = self.DMA_PATTERN[dmap & 7]
+                for off in pattern:
+                    if indirect:
+                        b = self.read(indbank, st["ind"])
+                        st["ind"] = (st["ind"] + 1) & 0xFFFF
+                    else:
+                        b = self.read(bank, st["addr"])
+                        st["addr"] = (st["addr"] + 1) & 0xFFFF
+                    self._ppu_write(0x2100 | ((bbad + off) & 0xFF), b)
+                self.hdma_bytes += len(pattern)
+            st["first"] = False
+            st["lines"] -= 1
 
     def _run_dma(self, mask: int) -> None:
         """General-purpose DMA.  This is how nearly every asset reaches the
@@ -465,6 +538,12 @@ class CPU:
         for line in range(self.LINES_PER_FRAME):
             self.bus.vcount = line
             self.bus.vblank = line >= self.VBLANK_LINE
+            if line == 0:
+                self.bus.hdma_init()
+            if line < self.VBLANK_LINE:
+                self.bus.hdma_line()
+                if self.bus.log_m7:
+                    self.bus.m7_lines.append((line, *self.bus.m7))
 
             # Never re-enter: on hardware the handler returns long before
             # the next event, and nesting here only corrupts the stack.
