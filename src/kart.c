@@ -145,6 +145,22 @@ void smk_kart_move(smk_kart *k, const smk_track *t)
     int32_t nx = advance(k->x, k->vx);
     int32_t ny = advance(k->y, k->vy);
 
+    /* Jump bars: the bit-7 surface classes ($80/$82/$84) are the ramps.
+     * Driving onto one launches the kart - the class-$80 response measured
+     * in NOTES 044 - and the flight carries it over the $22/$24 gap
+     * beyond.  Correction from playtest (NOTES 058): the gaps themselves
+     * are NOT self-vaulting; without a bar you stop at the edge, and rails
+     * ($22 on Ghost Valley) block driving entirely. */
+    {
+        uint8_t here = smk_track_surface(t, smk_kart_px(nx), smk_kart_px(ny));
+        if ((here & 0x80) && !k->airborne && k->speed >= 200) {
+            smk_kart_launch(k, 0x0140);
+            k->x = nx;
+            k->y = ny;
+            return;
+        }
+    }
+
     /* Wall response, ported from measurement (NOTES 044): reflect the
      * into-wall component and kick away for a few frames.  MEASURED on one
      * surface class in the demo; applied to every solid here - the ROM's
@@ -152,25 +168,6 @@ void smk_kart_move(smk_kart *k, const smk_track *t)
     bool bx = smk_surface_solid(smk_track_surface(t, smk_kart_px(nx), smk_kart_px(k->y)));
     bool by = smk_surface_solid(smk_track_surface(t, smk_kart_px(k->x), smk_kart_px(ny)));
     if (bx || by) {
-        /* Jumpable barriers: solid classes of type 1-2 ($22/$24 family)
-         * are the gap fields the game vaults - the landing code even
-         * remaps $22 to $4C on touchdown ($80B1F2).  Hitting one at speed
-         * is driving off the ramp edge: launch and fly (the flight path
-         * ignores non-type-0 solids).  Launch velocity is a labelled
-         * placeholder; slow karts stop at the edge as before. */
-        {
-            uint8_t jw = bx
-                ? smk_track_surface(t, smk_kart_px(nx), smk_kart_px(k->y))
-                : smk_track_surface(t, smk_kart_px(k->x), smk_kart_px(ny));
-            int jt = smk_surface_type(jw);
-            if (smk_surface_solid(jw) && (jt == 1 || jt == 2)
-                && k->speed >= 500 && !k->airborne) {
-                smk_kart_launch(k, 0x0140);
-                k->x = nx;
-                k->y = ny;
-                return;
-            }
-        }
         /* Wall contact (user playtest, NOTES 055).  SMK1 walls are sticky:
          * a hit kills the into-wall component and most of the speed, with
          * no launch - the launch + $1000 along-wall fling measured in
@@ -181,7 +178,7 @@ void smk_kart_move(smk_kart *k, const smk_track *t)
         uint8_t wallv = bx
             ? smk_track_surface(t, smk_kart_px(nx), smk_kart_px(k->y))
             : smk_track_surface(t, smk_kart_px(k->x), smk_kart_px(ny));
-        if ((wallv & 0x80) && k->bounce_cool == 0) {
+        if (0) {   /* the old on-block fling: superseded by the jump bar below */
             k->bounce_cool = 30;
             k->speed = (int16_t)(k->speed - k->speed / 4);
             smk_kart_launch(k, SMK_HOP_VEL);

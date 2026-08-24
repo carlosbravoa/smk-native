@@ -1724,4 +1724,32 @@ rubber-banding, and Lakitu is a teleport without his animation.
 
 ---
 
-*(next entry: 058)*
+**058** — Playtest round two: barriers, off-road, and grip.
+
+Three reports, three corrections:
+
+* **"Barriers are passable."**  My own NOTES-057 ramp rule was the bug: it
+  vaulted ANY type-1/2 solid, but `$22` is Ghost Valley's RAILS - the
+  `$22 → $4C` landing remap exists for feather jumps OVER them, not for
+  driving through.  Restructured to the decoded shape: the bit-7 classes
+  (`$80/$82/$84`) are the JUMP BARS, and driving onto one launches (the
+  class-$80 response measured in NOTES 044 - which also finally explains
+  what that measurement was: a jump bar, not a wall).  All solids stay
+  sticky; gaps without a bar stop you at the edge.  AI still 20/20 (bars +
+  Lakitu cover the gap tracks).
+* **"Off-road doesn't slow me."**  True: the placeholder caps sat just
+  under the 50cc top speed (grass 640 vs top 672 - a 5% drop).  Lowered to
+  a felt range (384..224 by type), still labelled placeholders pending a
+  driven-kart measurement.
+* **"Drifting is absent - 100% grip."**  Correct: `smk_kart_face()` snaps
+  velocity to the heading every frame, which IS full grip.  The player now
+  blends velocity toward the facing direction: full grip at low speed,
+  slight slip above 550, strong slide while the hop button is held, and
+  near-ballistic mid-hop.  Space hops (the decoded $80B69D launch, zvel
+  `$0080`, needs speed) and hop-into-a-held-turn power slides.  Grip
+  constants are labelled placeholders; the ROM's drift state machine
+  ($E2 bits) remains the honest decode target.
+
+---
+
+*(next entry: 059)*

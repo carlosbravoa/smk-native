@@ -19,15 +19,18 @@
 
 typedef struct {
     bool up, down, left, right, shift;
+    bool hop_held;
     bool quit;
     /* sticky edges: set by events, cleared only when a tick consumes them */
     bool next_track, prev_track, next_pal, prev_pal, toggle_filter;
+    bool hop;
 } input_state;
 
 static void input_edges_clear(input_state *in)
 {
     in->next_track = in->prev_track = false;
     in->next_pal = in->prev_pal = in->toggle_filter = false;
+    in->hop = false;
 }
 
 static void pump(input_state *in)
@@ -45,6 +48,7 @@ static void pump(input_state *in)
             case SDLK_p: in->next_pal = true; break;
             case SDLK_o: in->prev_pal = true; break;
             case SDLK_f: in->toggle_filter = true; break;
+            case SDLK_SPACE: in->hop = true; break;
             default: break;
             }
         }
@@ -55,6 +59,7 @@ static void pump(input_state *in)
     in->left  = k[SDL_SCANCODE_LEFT]  || k[SDL_SCANCODE_A];
     in->right = k[SDL_SCANCODE_RIGHT] || k[SDL_SCANCODE_D];
     in->shift = k[SDL_SCANCODE_LSHIFT] || k[SDL_SCANCODE_RSHIFT];
+    in->hop_held = k[SDL_SCANCODE_SPACE];
 }
 
 /* ------------------------------------------------------------------ */
@@ -347,7 +352,29 @@ static void step_kart(smk_kart *k, const smk_track *trk,
     if (in->left)  k->angle -= (uint16_t)turn;
     if (in->right) k->angle += (uint16_t)turn;
 
-    smk_kart_face(k);            /* the ROM's (sin, -cos) * speed */
+    /* Hop: the decoded launch ($80B69D - zvel $0080, needs speed).  A hop
+     * into a held turn starts a power slide. */
+    if (in->hop && !k->airborne && k->speed >= 0x100)
+        smk_kart_launch(k, SMK_HOP_VEL);
+
+    /* Grip.  smk_kart_face() gives the ROM's (sin,-cos)*speed - full grip.
+     * The real kart's velocity LAGS its heading (the drift measurement in
+     * NOTES 055 showed ~13 degrees of slip with the shoulder held), so
+     * blend toward the facing direction instead of snapping: PLACEHOLDER
+     * grip constants, labelled, pending the drift-state decode. */
+    {
+        int32_t tvx = (int32_t)(sinf((float)k->angle * (float)(2.0 * M_PI)
+                                     / 65536.0f) * (float)k->speed);
+        int32_t tvy = (int32_t)(-cosf((float)k->angle * (float)(2.0 * M_PI)
+                                      / 65536.0f) * (float)k->speed);
+        float g;
+        if (k->airborne)           g = 0.04f;   /* mid-hop: keep momentum */
+        else if (in->hop_held)     g = 0.10f;   /* power slide            */
+        else if (k->speed > 550)   g = 0.28f;   /* natural high-speed slip */
+        else                       g = 1.00f;   /* low speed: full grip   */
+        k->vx = (int16_t)(k->vx + (float)(tvx - k->vx) * g);
+        k->vy = (int16_t)(k->vy + (float)(tvy - k->vy) * g);
+    }
     smk_kart_move(k, trk);       /* the ROM's position += velocity << 8 */
 }
 
@@ -446,7 +473,8 @@ static void usage(const char *argv0)
            "  --height-cam H  eye height above the plane   [15]\n"
            "  --horizon F     horizon row, 0..1            [0.36]\n"
            "  --fov F         focal length scale           [0.55]\n\n"
-           "  arrows/WASD steer and accelerate, shift = boost\n"
+           "  arrows/WASD steer and accelerate, shift = boost
+  space = hop; hold it through a turn to power slide\n"
            "  [ ] change track, o p override the theme\n"
            "  f toggles linear filtering, esc quits\n", argv0);
 }

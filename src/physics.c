@@ -94,6 +94,8 @@ int16_t smk_surface_overcap_decel(int type)
  * (NOTES 053); revisit when player input reaches a kart in the oracle. */
 int16_t smk_surface_cap(uint8_t surf)
 {
-    static const int16_t CAP[8] = { 0, 0, 640, 512, 448, 384, 320, 256 };
+    /* SMK off-road roughly halves you; ours were too high to feel
+     * (playtest, NOTES 058).  Still placeholders pending measurement. */
+    static const int16_t CAP[8] = { 0, 0, 384, 352, 320, 288, 256, 224 };
     return CAP[smk_surface_type(surf)];
 }
