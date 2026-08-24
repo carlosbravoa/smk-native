@@ -97,6 +97,18 @@ uint32_t smk_track_texel(const smk_track *t, int wx, int wy);
 uint8_t smk_track_surface(const smk_track *t, int wx, int wy);
 static inline bool smk_surface_solid(uint8_t s) { return (s & SMK_SURF_SOLID) != 0; }
 
+/* The surface byte's low nibble is a TYPE index (even values, so type =
+ * (s >> 1) & 7 for the drag rows).  DECODED:
+ *   $80A590: coasting drag per type       (accel when off-throttle)
+ *   $80A65D: over-cap deceleration per type, two rows of 8
+ *   $80A701: the cap test - `speed > cap[type]` selects the decel row
+ * The cap values themselves are computed per kart into scratch; ours are
+ * MEASURED plateaus from a driving AI kart (NOTES 053) and labelled so. */
+static inline int smk_surface_type(uint8_t s) { return (s >> 1) & 7; }
+int16_t smk_surface_drag(int type);          /* $80A590 row */
+int16_t smk_surface_overcap_decel(int type); /* $80A65D row 0 */
+int16_t smk_surface_cap(uint8_t surf);       /* 0 = uncapped */
+
 /* ---- Kart state, in the game's own arithmetic -------------------------
  *
  * These are the ROM's units, not convenient ones.  See docs/NOTES.md 016-017.

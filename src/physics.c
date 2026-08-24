@@ -68,3 +68,32 @@ uint16_t smk_physics_turn(const smk_physics *p, uint16_t err, int row)
     if (idx >= SMK_PHYS_WORDS) idx = SMK_PHYS_WORDS - 1;
     return p->w[idx];
 }
+
+
+/* $80A590: coasting drag per surface type - the accel value stored to
+ * $EE,x when off-throttle.  Read straight from the ROM's table. */
+static const int16_t SURF_DRAG[8] = { -4, -8, -16, -24, -36, -56, -64, -85 };
+
+/* $80A65D row 0: deceleration applied while over the surface's speed cap. */
+static const int16_t SURF_OVERCAP[8] = { -4, -10, -16, -24, -48, -112, -160, -192 };
+
+int16_t smk_surface_drag(int type)
+{
+    return SURF_DRAG[type & 7];
+}
+
+int16_t smk_surface_overcap_decel(int type)
+{
+    return SURF_OVERCAP[type & 7];
+}
+
+/* Per-surface speed cap ($80A701 structure).  The ROM computes the cap per
+ * kart into scratch; these are PLACEHOLDER defaults scaled by drag type -
+ * road-family types uncapped, off-road types capped harder with depth.
+ * Measuring the real values is blocked on driving a kart over each class
+ * (NOTES 053); revisit when player input reaches a kart in the oracle. */
+int16_t smk_surface_cap(uint8_t surf)
+{
+    static const int16_t CAP[8] = { 0, 0, 640, 512, 448, 384, 320, 256 };
+    return CAP[smk_surface_type(surf)];
+}

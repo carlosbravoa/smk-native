@@ -142,6 +142,14 @@ static void racer_step(smk_racer *r, const smk_track *trk,
      * waypoint attribute's low two bits, offset by the kart's $C8 row -
      * the demo AI runs at row +4 (measured speeds 700-1050). */
     int target = (int16_t)phys->w[SMK_PHYS_TARGET + 4 + (crs->wattr[r->sector] & 3)];
+    /* DECODED ($80A701 structure): off-road surfaces cap the speed and the
+     * over-cap decel row applies.  Cap values are measured (NOTES 053). */
+    {
+        uint8_t sv = smk_track_surface(trk, smk_kart_px(r->k.x),
+                                       smk_kart_px(r->k.y));
+        int cap = smk_surface_cap(sv);
+        if (cap && target > cap) target = cap;
+    }
     int32_t accel;
     if (r->k.speed < target)
         accel = (int32_t)smk_physics_accel(phys, r->k.speed) << 8;
