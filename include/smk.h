@@ -75,8 +75,18 @@ typedef struct {
 bool smk_track_load(const smk_rom *rom, int track, int theme,
                     smk_track *out, char *err, size_t errsz);
 
-/* A drivable spot to start from.  Placeholder until the real start line is
- * decoded; see the comment on the implementation. */
+/* The starting grid, read off the game itself (docs/NOTES.md 029): eight
+ * karts in two staggered columns, x alternating 952/920, y stepping down by
+ * 24 from 756, all facing angle 0 (-Y).  Confirmed against the demo race.
+ * Falls back to a road-finding heuristic on the few courses where that grid
+ * is not on drivable ground. */
+#define SMK_GRID_X_ODD   920
+#define SMK_GRID_X_EVEN  952
+#define SMK_GRID_Y0      756
+#define SMK_GRID_DY      24
+void smk_track_start(const smk_track *t, int kart, float *x, float *y, float *angle);
+
+/* The fallback: longest run of a non-solid tile. */
 void smk_track_guess_start(const smk_track *t, float *x, float *y, float *angle);
 
 /* Colour of a world pixel, wrapping at the 1024x1024 edge. */

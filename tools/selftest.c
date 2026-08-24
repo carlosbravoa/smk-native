@@ -68,6 +68,22 @@ int main(int argc, char **argv)
     for (int i = 0; i < 256; i++) if (a.palette[i] > 0xFFFFFF) inrange = 0;
     check("256 colours in range", inrange, NULL);
 
+    printf("\nstarting grid\n");
+    {
+        int on_road = 0;
+        for (int tr = 0; tr < SMK_TRACK_COUNT; tr++) {
+            static smk_track tt;
+            if (!smk_track_load(&rom, tr, -1, &tt, err, sizeof err)) continue;
+            float sx, sy, sa;
+            smk_track_start(&tt, 0, &sx, &sy, &sa);
+            if (!smk_surface_solid(smk_track_surface(&tt, (int)sx, (int)sy)))
+                on_road++;
+        }
+        snprintf(det, sizeof det, "%d/%d", on_road, SMK_TRACK_COUNT);
+        check("every course starts on drivable ground",
+              on_road == SMK_TRACK_COUNT, det);
+    }
+
     printf("\nsprites\n");
     static smk_sprites spr;
     int sprok = smk_sprites_load(&rom, 0, &spr);

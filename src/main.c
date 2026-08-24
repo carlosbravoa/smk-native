@@ -222,7 +222,7 @@ int main(int argc, char **argv)
         smk_rom_free(&rom);
         return 1;
     }
-    if (!have_at) smk_track_guess_start(&trk, &shot_x, &shot_y, &shot_a);
+    if (!have_at) smk_track_start(&trk, 0, &shot_x, &shot_y, &shot_a);
     printf("loaded \"%s\"\n", rom.title);
     printf("track %d, theme %d (from the ROM's own table), class %d\n",
            track, trk.theme, engine_class);
@@ -353,7 +353,7 @@ int main(int argc, char **argv)
                 if (smk_track_load(&rom, nt, nth, &trk, err, sizeof err)) {
                     float sx, sy, sa;
                     track = nt; theme = nth;
-                    smk_track_guess_start(&trk, &sx, &sy, &sa);
+                    smk_track_start(&trk, 0, &sx, &sy, &sa);
                     kart = (smk_kart){ .x = (int32_t)(sx * SMK_POS_ONE),
                                        .y = (int32_t)(sy * SMK_POS_ONE),
                                        .angle = (uint16_t)(SMK_ANGLE_TURN / 4) };

@@ -190,6 +190,27 @@ uint32_t smk_track_texel(const smk_track *t, int wx, int wy)
  * (4..24 tiles) and start in the middle of it, facing along the run.  That
  * lands on drivable ground on every one of the 24 maps.
  */
+/* The real starting grid, as observed in the game's own demo race.  Eight
+ * karts, two staggered columns, all facing -Y.  Verified on track 7, where
+ * every position sits on road ($40).  On five of the 24 courses the same
+ * grid lands on solid geometry, so those must place their karts some other
+ * way - until that is decoded we fall back to the road heuristic there. */
+void smk_track_start(const smk_track *t, int kart, float *x, float *y, float *angle)
+{
+    if (kart < 0) kart = 0;
+    int gx = (kart & 1) ? SMK_GRID_X_ODD : SMK_GRID_X_EVEN;
+    int gy = SMK_GRID_Y0 - SMK_GRID_DY * kart;
+    if (gy < 0) gy += SMK_WORLD_PX;
+
+    if (!smk_surface_solid(smk_track_surface(t, gx, gy))) {
+        *x = (float)gx;
+        *y = (float)gy;
+        *angle = 0.0f;
+        return;
+    }
+    smk_track_guess_start(t, x, y, angle);
+}
+
 void smk_track_guess_start(const smk_track *t, float *x, float *y, float *angle)
 {
     int best_len = 0, best_tx = SMK_MAP_DIM / 2, best_ty = SMK_MAP_DIM / 2;
