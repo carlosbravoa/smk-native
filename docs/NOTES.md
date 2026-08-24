@@ -1920,4 +1920,28 @@ are decoded).
 
 ---
 
-*(next entry: 065)*
+**065** — FULL PLAYER CONTROL in the oracle.  The gate, after everything:
+the demo flag is consumed at RACE SETUP, not per frame.
+
+The winning move: a bus hook that makes every read of `$0E32/$0E33`
+return zero, installed **from boot** - the attract flow still launches its
+race, but the setup path configures player 1 as a real player.  Result:
+P1 accelerates under B within 30 frames and steers at the ROM's own rate
+(-37.1 degrees over 45 frames of held Left).
+
+Why every earlier attempt failed, in one line each: wrong button (A vs B);
+kart state forced into the AI dispatch (drives, ignores pads); `$10`
+bit 15 routes to the wrong-way checker, not input; `$0E50` and mid-race
+`$0E32` masking change nothing because the DEMO configuration is baked in
+when the race is set up; pad presses in attract are consumed as the
+demo-exit trigger.
+
+Unblocked and running: the full calibration battery - per-surface-class
+terminal speed, deceleration curve, turn rate, and slip, measured on the
+live player with the surface-table swap ($0B00) so the road itself becomes
+each class in turn.  Next after that: drift-state capture (hop + held
+turn) and per-engine-class scaling.
+
+---
+
+*(next entry: 066)*
