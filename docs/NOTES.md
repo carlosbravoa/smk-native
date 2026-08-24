@@ -1055,4 +1055,33 @@ logged when traffic first touches it.
 
 ---
 
-*(next entry: 040)*
+**040** — Kart sprite streaming, decoded from live DMA with the fixed DSP-1.
+
+With karts actually drawn, their graphics traffic became observable, and it
+settles several structural questions:
+
+* **A frame upload is four 128-byte chunks `$200` apart** — one chunk per
+  tile row, because the sheet is 16 tiles wide (16 × 32 bytes = `$200`).
+  This independently confirms the sheet layout formula from NOTES 028: the
+  chunk-0 source encodes the frame as
+  `src = $2000 + (frame/4)*$800 + (frame%4)*$80`.
+* **Uploads happen only when the displayed frame changes.** Straightline
+  driving produces zero sprite DMA; the earlier conclusion that "the game
+  streams the chosen frame every frame" (NOTES 029) was too strong.
+* **At a race start, every kart's initial frame (frame 7) is uploaded in a
+  burst** across all seven banks — banks `$C0..$C6`, with `$C0` serving two
+  karts (Mario and Luigi), one more confirmation of the shared sheet.
+* **The sheet region runs to 48 frames** (`$2000..$8000`). Frames 32-47 are
+  mixed content: spin/tumble poses, far-tier variants and specials, so "3
+  tiers × ~11 rotation steps" from NOTES 030 describes only frames 0-31.
+* The 2-chunk transfers from `$7C00/$7E00` during the start-line phase are
+  16-px-tall effects (start revving/exhaust), not kart frames.
+
+Rare DSP commands also surfaced once the stream was clean: `$01`, `$0B` and
+`$10` are real but rare (race transitions) — so NOTES 039's "the `$01`
+calls were a mirage" is right about the boot stream and wrong as a general
+claim.  All three decode correctly now.
+
+---
+
+*(next entry: 041)*
