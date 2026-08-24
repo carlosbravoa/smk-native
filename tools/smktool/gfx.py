@@ -162,3 +162,51 @@ def identify_format(data: bytes, max_tiles: int = 128) -> list[tuple[str, float,
         results.append((name, coherence(tiles[:max_tiles], levels), len(tiles)))
     results.sort(key=lambda r: r[1])
     return results
+
+
+# ---------------------------------------------------------------------------
+# Sprite sheets
+#
+# Kart sprites are uncompressed 4bpp stored in PPU order: a 32x32 sprite is
+# 4x4 tiles with a 16-tile row stride, and frames advance four tiles across
+# then sixty-four tiles down.  See docs/NOTES.md 028.
+
+SPRITE_PX = 32
+SPRITE_TILES = 4
+SPRITE_ROW_STRIDE = 16
+
+
+def sprite_frame(data: bytes, base: int, frame: int) -> list[list[int]]:
+    """One 32x32 frame as rows of palette indices."""
+    out = [[0] * SPRITE_PX for _ in range(SPRITE_PX)]
+    n0 = (frame % 4) * SPRITE_TILES + (frame // 4) * (SPRITE_ROW_STRIDE * 4)
+    for tr in range(SPRITE_TILES):
+        for tc in range(SPRITE_TILES):
+            off = base + (n0 + tr * SPRITE_ROW_STRIDE + tc) * 32
+            if off + 32 > len(data):
+                continue
+            px = decode_tile(data, off, 4)
+            for y in range(8):
+                for x in range(8):
+                    out[tr * 8 + y][tc * 8 + x] = px[y][x]
+    return out
+
+
+def sprite_sheet(data: bytes, base: int, frames: int,
+                 palette: list, per_row: int = 8,
+                 bg: tuple = (40, 40, 60)) -> tuple[int, int, bytes]:
+    rows = (frames + per_row - 1) // per_row
+    w, h = per_row * SPRITE_PX, rows * SPRITE_PX
+    buf = bytearray(bytes(bg) * (w * h))
+    for f in range(frames):
+        px = sprite_frame(data, base, f)
+        fx, fy = (f % per_row) * SPRITE_PX, (f // per_row) * SPRITE_PX
+        for y in range(SPRITE_PX):
+            for x in range(SPRITE_PX):
+                v = px[y][x]
+                if v == 0:
+                    continue
+                c = palette[v % len(palette)]
+                p = ((fy + y) * w + fx + x) * 3
+                buf[p:p + 3] = bytes(c)
+    return w, h, bytes(buf)

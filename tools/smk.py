@@ -263,6 +263,27 @@ def cmd_freespace(args):
               % (s_, rom.pc_to_snes(s_), n, f))
 
 
+def cmd_sprites(args):
+    """Export a kart sprite sheet.
+
+    Palettes come from the same 256-colour blob the track uses, so a track
+    index selects the palette set and --pal picks the sprite palette within
+    it ($90 Mario, $A0 Luigi, $B0 Peach).
+    """
+    rom, _ = load(args)
+    from smktool import mode7 as M7
+    pal = G.read_palette(M7.palette(rom, max(args.theme, 0)), 0, 256)
+    base = rom.snes_to_pc(parse_addr(args.base))
+    sub = pal[args.pal:args.pal + 16]
+    w, h, rgb = G.sprite_sheet(bytes(rom.data), base, args.frames, sub,
+                               args.per_row)
+    out = args.out or "assets/extracted/sprites_%06X.png" % parse_addr(args.base)
+    os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+    G.write_png(out, w, h, rgb, scale=args.scale)
+    print("%d frames from $%06X -> %s"
+          % (args.frames, parse_addr(args.base), out))
+
+
 def cmd_spc(args):
     """Boot the ROM in the interpreter and dump the sound driver it uploads.
 
@@ -384,6 +405,16 @@ def main():
     s.add_argument("--min", type=int, default=32)
     s.add_argument("--top", type=int, default=20)
     s.set_defaults(fn=cmd_freespace)
+
+    s = sub.add_parser("sprites", help="export a kart sprite sheet to PNG")
+    s.add_argument("--base", default="$C02000")
+    s.add_argument("-n", "--frames", type=int, default=32)
+    s.add_argument("--pal", type=lambda v: int(v, 0), default=0x90)
+    s.add_argument("--theme", type=int, default=1)
+    s.add_argument("--per-row", type=int, default=8)
+    s.add_argument("--scale", type=int, default=3)
+    s.add_argument("-o", "--out")
+    s.set_defaults(fn=cmd_sprites)
 
     s = sub.add_parser("spc", help="dump the sound driver the ROM uploads (.spc)")
     s.add_argument("-o", "--out")
