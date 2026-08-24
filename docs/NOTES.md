@@ -1084,4 +1084,44 @@ claim.  All three decode correctly now.
 
 ---
 
-*(next entry: 041)*
+**041** — The sprite frame-selection rule, measured.
+
+Method: force-spin a kart in place in the running game (write its `$2A`
+heading each frame, ~1.1°/frame) and log which sheet frame every upload
+came from.  Three full rotations, 473 uploads, transitions repeatable to
+about a degree.
+
+Averaging the two approach directions (the game applies ~±3.6° ≈ `$280` of
+hysteresis at each boundary), the thresholds land exactly on round angle
+units.  For `rel` = kart heading − camera azimuth, folded to `0..180°` with
+the far half mirrored by hflip:
+
+| |rel| below | frame |
+|---|---|
+| `$1000` (22.5°) | 1 — squarely from behind |
+| `$1800` | 2 |
+| `$2000` | 3 |
+| `$2800` | 4 |
+| `$3000` | 5 |
+| `$3800` | 6 |
+| `$4800` (101.25°) | 7 |
+| `$5800` | 8 |
+| `$6800` (146.25°) | 9 |
+| else | 10 — the frontal arc through 180° |
+
+Steps of 11.25° through the rear/side arc, widening to 22.5° toward the
+front.  Frame 1, not 4, is the rear view — the silhouette-based guess in
+NOTES 030 picked the wrong frame.  The heavy hflip usage seen in OAM
+(2973 flipped vs 1875 not) is this rule's mirror half.
+
+Ported to `src/sprite.c` as `smk_sprite_for_heading()` and wired through
+the game: grid karts now show the correct view for the camera angle.
+
+Still assumed, and labelled: tiers 1/2 share these boundaries (measured on
+the near tier only), which side maps to hflip (visual check pending), and
+the *player* kart's `rel` — in the ROM it is real camera lag during turns;
+our camera tracks exactly, so a small lag is synthesised from steering.
+
+---
+
+*(next entry: 042)*

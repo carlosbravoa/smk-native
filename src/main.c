@@ -129,7 +129,8 @@ static void camera_from_kart(smk_camera *cam, const smk_kart *k)
 static void draw_scene(const smk_rom *rom, const smk_track *trk,
                        const smk_sprites *karts, const smk_driver *drv,
                        const smk_camera *cam, uint32_t *fb, int rw, int rh,
-                       int show_grid, int show_kart, int frame)
+                       int show_grid, int show_kart, int frame,
+                       uint16_t cam_heading)
 {
     if (show_grid && karts->frames) {
         static smk_sprites other[SMK_CHARACTERS];
@@ -148,24 +149,39 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
             if (!loaded[k]) continue;
             int tier = scale > 3 ? SMK_SPR_TIER0
                      : scale > 1 ? SMK_SPR_TIER1 : SMK_SPR_TIER2;
-            smk_draw_sprite(&other[k], tier + SMK_SPR_REAR, trk->palette,
-                            d2->pal, (int)px, (int)py, scale, fb, rw, rh, rw);
+            /* grid karts face heading 0; their view angle is the measured
+             * rule applied to (their heading - the camera's) */
+            bool hf = false;
+            uint16_t rel = (uint16_t)(0 - cam_heading);
+            int f = smk_sprite_for_heading(tier, rel, &hf);
+            smk_draw_sprite(&other[k], f, trk->palette,
+                            d2->pal, (int)px, (int)py, scale, hf, fb, rw, rh, rw);
         }
     }
     if (show_kart && karts->frames) {
         int scale = rh / 112;
         if (scale < 1) scale = 1;
-        smk_draw_sprite(karts, frame, trk->palette, drv->pal,
-                        rw / 2, rh - rh / 12, scale, fb, rw, rh, rw);
+        bool hf = frame < 0;
+        smk_draw_sprite(karts, hf ? -frame : frame, trk->palette, drv->pal,
+                        rw / 2, rh - rh / 12, scale, hf, fb, rw, rh, rw);
     }
 }
 
-/* PLACEHOLDER frame choice - see include/smk.h. */
+/* The player's own view angle.
+ *
+ * The frame rule itself is measured (NOTES 041); what is still invented is
+ * the INPUT to it for the player's kart: in the ROM the camera lags the
+ * kart through a turn, and that lag is the relative heading the rule sees.
+ * Our camera tracks the kart exactly, so we synthesise a small lag from the
+ * steering input.  Encoded as negative-for-hflip in one int. */
 static int frame_for(const input_state *in, float *lean)
 {
     float want = (in->left ? -1.0f : 0.0f) + (in->right ? 1.0f : 0.0f);
     *lean += (want - *lean) * 0.25f;
-    return smk_sprite_frame(SMK_SPR_TIER0, *lean);
+    uint16_t rel = (uint16_t)(int)(*lean * (float)0x1C00);
+    bool hf = false;
+    int f = smk_sprite_for_heading(SMK_SPR_TIER0, rel, &hf);
+    return hf ? -f : f;
 }
 
 /* ------------------------------------------------------------------ */
@@ -308,9 +324,15 @@ int main(int argc, char **argv)
         {
             input_state none;
             float lz = 0.0f;
+            /* the kart struct does not exist yet on this path; derive the
+             * heading from the shot camera the same way its init would */
+            uint16_t heading = (uint16_t)(shot_a * (float)SMK_ANGLE_TURN
+                                          / (2.0f * (float)M_PI)
+                                          + SMK_ANGLE_TURN / 4);
             memset(&none, 0, sizeof none);
             draw_scene(&rom, &trk, &karts, drv, &c, px, sw, sh,
-                       show_grid, show_kart, frame_for(&none, &lz));
+                       show_grid, show_kart, frame_for(&none, &lz),
+                       heading);
         }
         if (SDL_Init(SDL_INIT_VIDEO) != 0 && SDL_Init(0) != 0) {
             fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
@@ -432,7 +454,8 @@ int main(int argc, char **argv)
         if (tex && fb) {
             smk_render_mode7(&trk, &cam, fb, rw, rh, rw);
             draw_scene(&rom, &trk, &karts, drv, &cam, fb, rw, rh,
-                       show_grid, show_kart, frame_for(&in, &lean));
+                       show_grid, show_kart, frame_for(&in, &lean),
+                       kart.angle);
             SDL_UpdateTexture(tex, NULL, fb, rw * (int)sizeof *fb);
             SDL_RenderClear(ren);
             SDL_RenderCopy(ren, tex, NULL, NULL);

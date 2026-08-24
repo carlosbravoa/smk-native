@@ -75,7 +75,7 @@ bool smk_sprites_load(const smk_rom *rom, uint32_t base, smk_sprites *out)
 }
 
 void smk_draw_sprite(const smk_sprites *s, int frame, const uint32_t *palette,
-                     int pal_base, int cx, int cy, int scale,
+                     int pal_base, int cx, int cy, int scale, bool hflip,
                      uint32_t *pixels, int w, int h, int pitch_px)
 {
     if (frame < 0 || frame >= s->frames || scale < 1) return;
@@ -91,7 +91,8 @@ void smk_draw_sprite(const smk_sprites *s, int frame, const uint32_t *palette,
         for (int x = 0; x < size; x++) {
             int sx = x0 + x;
             if (sx < 0 || sx >= w) continue;
-            uint8_t v = row[x / scale];
+            int col = x / scale;
+            uint8_t v = row[hflip ? SMK_SPR_PX - 1 - col : col];
             if (v == 0) continue;                /* index 0 is transparent */
             dst[sx] = palette[(pal_base + v) & 0xFF];
         }
@@ -99,23 +100,44 @@ void smk_draw_sprite(const smk_sprites *s, int frame, const uint32_t *palette,
 }
 
 
-/* Pick a rotation frame within a size tier.
+/* The measured frame-selection rule (NOTES 041).
  *
- * INFERRED.  The sheet is three tiers of ~11 rotation steps; we centre on
- * the straight-from-behind pose and lean either side of it.  The ROM's own
- * rule is a function of heading relative to the camera and has not been
- * decoded - see the header.
+ * Obtained by force-spinning a kart in the running game and logging the
+ * frame each upload came from: boundaries sit at 22.5 + 11.25n degrees for
+ * frames 1..7 and 22.5-degree steps beyond, frame 10 covering the frontal
+ * arc.  In angle units ($10000 = full turn):
+ *
+ *     |rel| <  $1000  frame 1   (squarely from behind)
+ *           <  $1800  frame 2
+ *           <  $2000  frame 3
+ *           <  $2800  frame 4
+ *           <  $3000  frame 5
+ *           <  $3800  frame 6
+ *           <  $4800  frame 7
+ *           <  $5800  frame 8
+ *           <  $6800  frame 9
+ *           else      frame 10  (front, through 180 degrees)
+ *
+ * The other half of the circle is the same frames mirrored.  The game adds
+ * about $280 of hysteresis per boundary, omitted here.
  */
-int smk_sprite_frame(int tier, float lean)
+static const uint16_t FRAME_BOUNDS[] = {
+    0x1000, 0x1800, 0x2000, 0x2800, 0x3000, 0x3800, 0x4800, 0x5800, 0x6800,
+};
+
+int smk_sprite_for_heading(int tier, uint16_t rel, bool *hflip)
 {
-    if (lean < -1.0f) lean = -1.0f;
-    if (lean >  1.0f) lean =  1.0f;
-    int span = 3;                                   /* frames either side */
-    int f = SMK_SPR_REAR + (int)(lean * (float)span + (lean < 0 ? -0.5f : 0.5f));
-    int lo = tier, hi = tier + SMK_SPR_TIER_LEN - 1;
+    unsigned r = rel;
+    bool mirror = r > 0x8000;
+    if (mirror)
+        r = 0x10000 - r;
+    if (hflip)
+        *hflip = mirror;
+    int f = 1;
+    for (size_t i = 0; i < sizeof FRAME_BOUNDS / sizeof *FRAME_BOUNDS; i++)
+        if (r >= FRAME_BOUNDS[i])
+            f = (int)i + 2;
     f += tier;
-    if (f < lo) f = lo;
-    if (f > hi) f = hi;
     if (f >= SMK_SPR_FRAMES) f = SMK_SPR_FRAMES - 1;
     return f;
 }

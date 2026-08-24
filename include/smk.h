@@ -179,23 +179,28 @@ static inline int smk_kart_px(int32_t v) { return (int)(v >> SMK_POS_SHIFT); }
  * far-tier variants and specials (NOTES 040). */
 #define SMK_SPR_FRAMES  48
 #define SMK_SPR_BYTES   512
-/* The sheet is three size tiers of about eleven rotation steps each - the
- * silhouette heights fall into bands of ~30, ~27 and ~24 pixels, which is
- * SMK drawing distant karts smaller.  Tier 0 is the nearest.
+/* Three size tiers of eleven rotation steps (frames 0..10, 11..21, 22..31;
+ * NOTES 030), with 32..47 holding spin/tumble poses and specials.
  *
- * INFERRED, not decoded: the tiers and their extents come from measuring the
- * sheet, and the mapping from heading to frame within a tier is our own.
- * The ROM picks its frame from the kart's heading relative to the camera,
- * and that rule has not been read out of the code - reaching a race with
- * karts actually drawn is still open (docs/NOTES.md 030). */
-#define SMK_SPR_TIER0     0     /* nearest: frames 0..10  */
-#define SMK_SPR_TIER1    11     /* middle:  frames 11..21 */
-#define SMK_SPR_TIER2    22     /* far:     frames 22..31 */
+ * The rotation rule is MEASURED, not guessed (NOTES 041): spinning a kart in
+ * place in the running game and logging which frame it uploads gives
+ * boundaries at 22.5 deg + 11.25 deg steps for frames 1..7, then 22.5 deg
+ * steps to frame 10, which spans the frontal arc through 180 deg.  The far
+ * side of the circle is the same frames hflipped.  Frame 1 is the
+ * straight-from-behind view.  The game also applies ~3.6 deg of hysteresis
+ * at each boundary; we omit that for now.
+ *
+ * Still assumed: tiers 1 and 2 use the same angular boundaries (measured
+ * only on the near tier), and which side maps to hflip. */
+#define SMK_SPR_TIER0     0
+#define SMK_SPR_TIER1    11
+#define SMK_SPR_TIER2    22
 #define SMK_SPR_TIER_LEN 11
-#define SMK_SPR_REAR      4     /* the straight-from-behind pose in tier 0 */
+#define SMK_SPR_REAR      1     /* measured: the straight-from-behind pose */
 
-/* Frame for a heading offset in [-1,1], clamped inside one tier. */
-int smk_sprite_frame(int tier, float lean);
+/* The measured rule: frame index and hflip for a heading relative to the
+ * camera (angle units, 65536 = full turn; 0 = seen squarely from behind). */
+int smk_sprite_for_heading(int tier, uint16_t rel, bool *hflip);
 
 typedef struct {
     uint8_t px[SMK_SPR_FRAMES][SMK_SPR_PX * SMK_SPR_PX];  /* palette indices */
@@ -231,9 +236,11 @@ void smk_render_mode7(const smk_track *t, const smk_camera *cam,
 bool smk_project(const smk_camera *cam, float wx, float wy,
                  int w, int h, float *sx, float *sy, float *scale);
 
-/* Blit one sprite frame, nearest-neighbour, index 0 transparent. */
+/* Blit one sprite frame, nearest-neighbour, index 0 transparent.
+ * `hflip` mirrors horizontally - the game draws the far half of the
+ * rotation circle this way. */
 void smk_draw_sprite(const smk_sprites *s, int frame, const uint32_t *palette,
-                     int pal_base, int cx, int cy, int scale,
+                     int pal_base, int cx, int cy, int scale, bool hflip,
                      uint32_t *pixels, int w, int h, int pitch_px);
 
 #endif /* SMK_H */
