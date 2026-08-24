@@ -44,6 +44,8 @@ so resolution is not a constraint.
   32-bit speed/acceleration model from `$80A4E1`, and the ROM's own
   **acceleration curve and target speeds** read at runtime (`--class`
   selects 50/100/150cc)
+- The **player's kart drawn from the ROM's own sprite frames** — 32x32 4bpp,
+  read at runtime, with `--character` selecting Mario/Luigi/Peach
 - A resolution-independent perspective ground plane
 - Fixed **60.0988 Hz** tick, the SNES NTSC vblank rate
 
@@ -56,6 +58,8 @@ Being explicit, because the gap is still large:
 
 - **No opponents, items, laps or lap timing.** Start lines and checkpoints
   are not decoded; the start position is a heuristic.
+- **The kart sprite does not turn with the camera.** The frames are the
+  ROM's; which frame to show for a given heading is not decoded.
 - **The feel is only partly the game's.** Kinematics, the speed model and
   the acceleration curve are exact. What is still invented is *policy*:
   which target speed the player's input selects, the braking rate, and the
@@ -76,8 +80,13 @@ pacing. That is how the physics above was verified: `make verify-physics`
 drives the real game and checks our integration against it, currently 0
 mismatches over hundreds of steps.
 
-It is not a general emulator — there is no PPU, no SPC700 and no HDMA. It
-exists to answer questions about behaviour. See `docs/NOTES.md` 018-027.
+It also models DMA, VRAM, CGRAM and OAM — not to render, but so asset
+formats can be read out of the machine. That verified the Mode 7 pipeline
+end to end (tiles 100% identical to VRAM, tilemap 99.5%, the rest being the
+game's own runtime edits) and located the kart sprites.
+
+It is not a general emulator — there is no picture, no SPC700 and no HDMA.
+It exists to answer questions about behaviour. See `docs/NOTES.md` 018-028.
 
 The plan to close the gap — phases, risks, and an explicit ledger of every
 shortcut currently in the code — is [`docs/ROADMAP.md`](docs/ROADMAP.md).
