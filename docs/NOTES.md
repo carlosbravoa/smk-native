@@ -1301,4 +1301,39 @@ which bit it tests is not pinned; jumps cannot work without it.
 
 ---
 
-*(next entry: 046)*
+**046** — Camera lag: a bounded negative, not an answer. Plus where the
+surface effects live.
+
+I set out to measure how far the ROM's camera yaw lags the kart's heading,
+because that lag is the input to the sprite frame rule (NOTES 041). Four
+searches, all negative:
+
+* **Not a DSP-1 parameter.** Both of `$02`'s angles are *constant* through
+  a whole race — `Aas` = 192, `Azs` = 13312 (495 frames, one distinct value
+  each). The camera does not yaw through the DSP.
+* **Not a global.** Correlating every word of `$0000-$07FF` against all
+  eight kart headings at eight lags (900 frames) found nothing above
+  R = 0.97.
+* **Not in the `$04` stream.** The sin/cos inputs during a race are exactly
+  the eight kart headings — that is `smk_kart_face`, not a camera.
+* **Not visible at the PPU.** Only 1 frame in 900 writes `$211B` directly;
+  during racing the Mode 7 matrix arrives by **HDMA**, which the oracle
+  does not model. Racing also issues *no* `$0A` raster calls at all — the
+  raster command is a boot/menu path, and the in-race matrix is built on
+  the CPU.
+
+So the honest position: measuring the camera requires modelling HDMA first,
+and that is the prerequisite for this item rather than a detail of it. Our
+native camera keeps yaw = kart heading with no lag; that remains an
+**assumption**, now explicitly bounded rather than vaguely open. The
+player's turning lean stays synthesised from steering input, as labelled in
+`frame_for()`.
+
+Also located, for whoever picks up surface handling: the per-class surface
+dispatch is at **`$80E09D`** (`lda $68,x`, special-cases class `$4C`, then
+`jmp ($0000,x)` through the pointer table at `$80E0B4`), with a second
+entry at `$80E1D2`. Not decoded.
+
+---
+
+*(next entry: 047)*
