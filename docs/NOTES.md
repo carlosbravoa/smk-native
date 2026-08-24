@@ -858,12 +858,46 @@ Beyond 11 the table is not a table. Also nearby: `$80A64F` sets
 `accel = -$10` and `$80A656` sets `-$08`, so the deceleration rates are
 plain constants in their handlers.
 
-This is the gate found in NOTES 032: in the demo race `$80B035` never
-executes, so `$AC,x` is not 0 for any kart — they are parked in a
-non-driving state and something is meant to move them to state 0 when the
-countdown ends. `$AC,x` is written from a dozen sites (`$80A10B`, `$80A633`,
-`$80A643`, `$80AAA4`, `$80B49A`, … ) which is the next thread to pull.
+~~This is the gate: in the demo race `$80B035` never executes, so `$AC,x`
+is not 0.~~ **WRONG, and disproved by the next measurement** — see 034. The
+state table above is correct; the inference from it was not.
 
 ---
 
-*(next entry: 034)*
+**034** — Correcting 033, and what mode 1 actually is.
+
+Forcing the karts into the driving state was a one-line test of 033's
+inference, and it failed for an instructive reason: **`$AC,x` was already 0
+for all eight karts.** State 0 — drive — was selected the whole time, yet
+`$80B035` never executed. So the karts are not parked in an idle state; the
+per-kart dispatcher at `$80AD6F` is not being reached at all.
+
+That points upstream, to the mode handler. Comparing the two call chains:
+
+```
+mode 1 ($808067):  $84ECC0 $877B $8621 $81856D  $80FC  $8E91 $861A $8E60
+                   $818587  $80EC  $A120  $84D56F
+mode 6 ($808136):  $84ECC0 $877B $8621 $81856D $83F37F $8E91 $861A $8E60
+                   $818587 $83F360 $9C3D $84D56F
+```
+
+They share most of the frame, but mode 6 calls `$83F37F` and `$83F360`
+where mode 1 calls `$80FC`, `$80EC` and `$A120`. Those two `jsl`s into bank
+`$83` are the likely kart-update entry.
+
+Which also means **mode 1 is probably not the demo race**. Eight karts sitting
+on the grid, 43 sprites, nothing moving, and a different per-frame chain
+reads much more like the pre-race course intro — the camera pass over the
+starting line before a race begins. The real attract-mode race is then a
+further mode we have not reached, and the user's note that the game "goes
+into demo/attract mode after a few seconds" is consistent with a sequence we
+are only part-way through.
+
+Lesson recorded because it nearly cost more: 033 stated a conclusion drawn
+from a table plus an absence, and the cheapest possible test contradicted it
+within minutes. An absence ("routine X never runs") constrains *where* to
+look, it does not identify *what* is wrong.
+
+---
+
+*(next entry: 035)*

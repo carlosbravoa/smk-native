@@ -175,12 +175,16 @@ Done: kart sprite frames located and read from the ROM at runtime, the
 player's kart is drawn (NOTES 028), and the sheet's three size tiers are
 identified (NOTES 030).
 
-Blocked: the frame-selection rule. It is recoverable from the DMA source
-address, but only while karts are drawn, and neither the demo race (starts
-correctly, never releases the countdown) nor a forced race (runs, never
-renders karts) reaches that state. Chase the countdown first — most likely
-gated on the sound driver, which our APU stub answers only far enough to
-boot.
+Blocked: the frame-selection rule, which needs a state where karts are
+actually drawn. Current understanding (NOTES 032-034):
+
+* mode 1 is most likely the **pre-race course intro**, not the demo race —
+  karts sit on the grid and the per-kart dispatcher never runs;
+* a forced mode 6 runs the kart updates but never draws them;
+* the difference between the two mode handlers is `$83F37F`/`$83F360`
+  (mode 6) against `$80FC`/`$80EC`/`$A120` (mode 1) — start there;
+* the attract sequence continues past mode 1 and has not been followed to
+  its end.
 - Kart sprite sheets (many rotation frames), character palettes, the
   world→screen projection for sprites (scale by distance — the game has a
   table for it), sprite sorting against the ground plane.
