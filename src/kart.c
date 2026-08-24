@@ -78,7 +78,10 @@ static int32_t advance(int32_t pos, int16_t vel)
  */
 void smk_kart_gravity(smk_kart *k)
 {
-    if (!k->airborne) return;
+    if (!k->airborne) {
+        if (k->bounce_cool > 0) k->bounce_cool--;
+        return;
+    }
     k->zvel = (int16_t)(k->zvel - SMK_GRAVITY);
     int32_t nz = k->z + ((int32_t)k->zvel << 8);
     if ((int16_t)(nz >> 8) < 0) {          /* the game's `bpl` test */
@@ -141,14 +144,20 @@ void smk_kart_move(smk_kart *k, const smk_track *t)
     bool by = smk_surface_solid(smk_track_surface(t, smk_kart_px(k->x), smk_kart_px(ny)));
     if (bx || by) {
         /* $80F8C0: a wall hit sets $42,x = $8000 AND $26,x = $0080 - the
-         * kart is launched, so the bounce lasts exactly as long as the
-         * ballistic flight (NOTES 045).  The measured horizontal knockback
-         * (NOTES 044: approach -X into a wall, knockback (0,+$1000)) runs
-         * ALONG the wall, not back the way the kart came - reflecting the
-         * velocity drove karts ~144px into earlier sectors and looped the
-         * AI forever (NOTES 051).  So: kill the into-wall component, slide
-         * along the tangent at the measured $1000. */
+         * kart is launched, and the measured knockback runs ALONG the wall
+         * (NOTES 044/051).  Two additions against the "eternal ping-pong"
+         * a player feels when holding into the wall (user report):
+         * a bounce costs half the speed (PLACEHOLDER - the ROM's collision
+         * handler is only partly decoded), and a fresh bounce cannot start
+         * for a few frames after landing - repeated contact just blocks. */
+        if (k->bounce_cool > 0) {
+            if (!bx) k->x = nx;
+            if (!by) k->y = ny;
+            return;
+        }
         smk_kart_launch(k, SMK_HOP_VEL);
+        k->speed = (int16_t)(k->speed / 2);
+        k->bounce_cool = 20;
         if (bx) {
             k->vx = 0;
             k->bvx = 0;

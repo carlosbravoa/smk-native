@@ -88,5 +88,34 @@ bool smk_course_load(const smk_rom *rom, int track, smk_course *out)
     for (unsigned row = 0; row < h; row++)
         for (unsigned i = 0; i < w; i++)
             out->map[(cell + row * SMK_SECT_W + i) & (SMK_SECT_CELLS - 1)] |= SMK_SECT_FINISH;
+    out->fin_cell = (int)cell;
+    out->fin_w = (int)w;
+    out->fin_h = (int)h;
     return true;
+}
+
+#include <math.h>
+
+void smk_course_start(const smk_course *c, int slot,
+                      float *x, float *y, uint16_t *heading)
+{
+    /* travel direction across the line: last waypoint toward the first */
+    float dx = (float)c->wx[0] - (float)c->wx[c->sectors - 1];
+    float dy = (float)c->wy[0] - (float)c->wy[c->sectors - 1];
+    float len = sqrtf(dx * dx + dy * dy);
+    if (len < 1.0f) { dx = 0.0f; dy = -1.0f; len = 1.0f; }
+    dx /= len; dy /= len;
+    float px = -dy, py = dx;                  /* perpendicular */
+
+    float cx = ((float)(c->fin_cell % SMK_SECT_W) + c->fin_w * 0.5f)
+               * SMK_SECT_CELL_PX;
+    float cy = ((float)(c->fin_cell / SMK_SECT_W) + c->fin_h * 0.5f)
+               * SMK_SECT_CELL_PX;
+
+    /* two columns, rows going backward from the strip, like the game */
+    float back = 24.0f + 24.0f * (float)(slot / 2);
+    float side = (slot & 1) ? 14.0f : -14.0f;
+    *x = cx - dx * back + px * side;
+    *y = cy - dy * back + py * side;
+    *heading = (uint16_t)(atan2f(dx, -dy) * 65536.0f / (2.0f * (float)M_PI));
 }

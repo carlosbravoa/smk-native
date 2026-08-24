@@ -76,14 +76,16 @@ typedef struct {
     int      progress_max;  /* $F8,x: max of (lap<<8)|sector, monotonic */
 } smk_racer;
 
-static void racer_start(smk_racer *r, const smk_track *trk, int slot)
+static void racer_start(smk_racer *r, const smk_course *crs, int slot)
 {
-    float x, y, a;
+    float x, y;
+    uint16_t heading;
     memset(r, 0, sizeof *r);
-    smk_track_start(trk, slot, &x, &y, &a);
+    smk_course_start(crs, slot, &x, &y, &heading);
     r->k.x = (int32_t)(x * SMK_POS_ONE);
     r->k.y = (int32_t)(y * SMK_POS_ONE);
-    r->k.angle = 0;
+    r->k.angle = heading;
+    r->sector = crs->sectors - 1;         /* the grid sits in the last sector */
 }
 
 static uint16_t heading_to(const smk_kart *k, int tx, int ty)
@@ -202,12 +204,21 @@ static void step_kart(smk_kart *k, const smk_track *trk,
     if (in->down) target = -top / 2;
 
     /* Drive the ROM's acceleration fields, not speed directly. */
+    /* off-track slows the kart: per-surface cap with the ROM's over-cap
+     * decel row ($80A65D) and coasting drag ($80A590).  Cap values are the
+     * labelled placeholders until measured (NOTES 048/053). */
+    uint8_t surf = smk_track_surface(trk, smk_kart_px(k->x), smk_kart_px(k->y));
+    int cap = smk_surface_cap(surf);
+    if (cap && target > cap) target = cap;
     int32_t accel;
     if (k->speed < target)
         accel = (int32_t)smk_physics_accel(phys, k->speed) << 8;   /* $80B043 */
-    else if (k->speed > target)
-        accel = -(int32_t)(target == 0 ? FEEL_DRAG : FEEL_BRAKE) << 8;
-    else
+    else if (k->speed > target) {
+        int dec = (cap && k->speed > cap)
+                  ? -smk_surface_overcap_decel(smk_surface_type(surf))
+                  : (target == 0 ? FEEL_DRAG : FEEL_BRAKE);
+        accel = -(int32_t)dec << 8;
+    } else
         accel = 0;
     k->accel      = (int16_t)(accel >> 16);
     k->accel_frac = (uint16_t)(accel & 0xFFFF);
@@ -453,7 +464,7 @@ int main(int argc, char **argv)
             memset(&none, 0, sizeof none);
             static smk_racer shot_racers[SMK_CHARACTERS];
             for (int i = 0; i < SMK_CHARACTERS; i++)
-                racer_start(&shot_racers[i], &trk, i);
+                racer_start(&shot_racers[i], &crs, i);
             draw_scene(&rom, &trk, &karts, drv, &c, px, sw, sh,
                        show_grid, show_kart, frame_for(&none, &lz),
                        heading, shot_racers);
@@ -498,15 +509,17 @@ int main(int argc, char **argv)
                        .fov = cam_fov };
     static smk_racer racers[SMK_CHARACTERS];
     for (int i = 0; i < SMK_CHARACTERS; i++)
-        racer_start(&racers[i], &trk, i);
+        racer_start(&racers[i], &crs, i);
     smk_racer *me = &racers[0];
 
     float lean = 0.0f;
+    float g0x, g0y;
+    uint16_t g0h;
+    smk_course_start(&crs, 0, &g0x, &g0y, &g0h);
     smk_kart kart = {
-        .x = (int32_t)(shot_x * SMK_POS_ONE),
-        .y = (int32_t)(shot_y * SMK_POS_ONE),
-        .angle = (uint16_t)(shot_a * (float)SMK_ANGLE_TURN / (2.0f * (float)M_PI)
-                            + SMK_ANGLE_TURN / 4),
+        .x = (int32_t)(g0x * SMK_POS_ONE),
+        .y = (int32_t)(g0y * SMK_POS_ONE),
+        .angle = g0h,
     };
     camera_from_kart(&cam, &kart);
 
@@ -557,14 +570,15 @@ int main(int argc, char **argv)
                 if (in.prev_pal)   nth = (trk.theme + SMK_THEME_COUNT - 1) % SMK_THEME_COUNT;
                 if (smk_track_load(&rom, nt, nth, &trk, err, sizeof err)
                     && smk_course_load(&rom, nt, &crs)) {
-                    float sx, sy, sa;
+                    float sx, sy;
+                    uint16_t sh;
                     track = nt; theme = nth;
-                    smk_track_start(&trk, 0, &sx, &sy, &sa);
+                    smk_course_start(&crs, 0, &sx, &sy, &sh);
                     kart = (smk_kart){ .x = (int32_t)(sx * SMK_POS_ONE),
                                        .y = (int32_t)(sy * SMK_POS_ONE),
-                                       .angle = 0 };
+                                       .angle = sh };
                     for (int i = 0; i < SMK_CHARACTERS; i++)
-                        racer_start(&racers[i], &trk, i);
+                        racer_start(&racers[i], &crs, i);
                     camera_from_kart(&cam, &kart);
                 } else {
                     fprintf(stderr, "skipped: %s\n", err);

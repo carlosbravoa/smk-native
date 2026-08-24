@@ -145,6 +145,7 @@ typedef struct {
     bool     airborne;      /* $E2 bit 15                                */
     /* horizontal knockback while bouncing off a wall (NOTES 044/045)    */
     int16_t  bvx, bvy;
+    int8_t   bounce_cool;   /* suppresses immediate re-bounce after landing */
     /* Speed and acceleration are both 32-bit, split across two words,
      * and the *high* word is the 8.8 value handed to DSP-1 as the radius. */
     int16_t  speed;         /* $EA */
@@ -277,9 +278,18 @@ typedef struct {
     uint8_t  wattr[SMK_MAX_SECTORS];   /* per-sector attribute byte        */
     int      sectors;
     uint16_t lap_word;                 /* $80D4 param, meaning undecoded   */
+    /* finish-line rectangle, kept for grid placement */
+    int      fin_cell, fin_w, fin_h;
 } smk_course;
 
 bool smk_course_load(const smk_rom *rom, int track, smk_course *out);
+
+/* Starting-grid placement derived from decoded course data: two columns
+ * behind the finish strip, facing along the racing line.  Replaces the
+ * old fixed-coordinate grid, which held track 7's values and dropped
+ * karts "in the middle of nowhere" elsewhere. */
+void smk_course_start(const smk_course *c, int slot,
+                      float *x, float *y, uint16_t *heading);
 static inline uint8_t smk_course_cell(const smk_course *c, int wx, int wy)
 {
     return c->map[((wy >> 4) & 63) * SMK_SECT_W + ((wx >> 4) & 63)];
