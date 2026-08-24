@@ -68,6 +68,7 @@ static void pump(input_state *in)
 
 static const smk_course *course_for_step;
 static int player_slip_deg;
+static int hud_lap, hud_rank;
 static int player_height_px;
 
 static void collide_objects(smk_kart *k, const smk_course *crs)
@@ -153,6 +154,14 @@ static void draw_speedo(uint32_t *fb, int rw, int rh,
                                              : 0xFF808088;
         hud_number(fb, rw, rh, x + 38 * sc, y, deg > 99 ? 99 : deg, 2, sc2, sc);
     }
+    if (hud_lap > 0) {          /* lap and position: "L-P" in the corner */
+        int lx = rw - 30 * sc, ly = 8;
+        hud_number(fb, rw, rh, lx, ly, hud_lap > 9 ? 9 : hud_lap, 1,
+                   0xFFFFFFFF, sc);
+        hud_glyph(fb, rw, rh, lx + 6 * sc, ly, 15, 0xFF808088, sc); /* F as dash */
+        hud_number(fb, rw, rh, lx + 12 * sc, ly, hud_rank, 1,
+                   0xFFFFD040, sc);
+    }
 
     /* bar: speed vs this class's top, cap marked */
     int bx = x, by = y + 7 * sc, bw = 60 * sc, bh = 3 * sc;
@@ -195,6 +204,31 @@ typedef struct {
     int      rescue_max;    /* rescue timer's own progress watermark    */
     int      lap_cool;      /* one lap event per strip transit          */
 } smk_racer;
+
+/* Race position: order racers by (lap, sector), ties by distance to the
+ * next waypoint (closer = ahead).  Our bookkeeping, not the ROM's ranking
+ * code - labelled as such. */
+static int race_rank(const smk_racer *racers, int who, const smk_course *crs)
+{
+    int rank = 1;
+    long mine = ((long)racers[who].lap << 8) | (long)racers[who].sector;
+    for (int i = 0; i < SMK_CHARACTERS; i++) {
+        if (i == who) continue;
+        long theirs = ((long)racers[i].lap << 8) | (long)racers[i].sector;
+        if (theirs > mine) { rank++; continue; }
+        if (theirs == mine && crs->sectors) {
+            int nsec = (racers[i].sector + 1) % crs->sectors;
+            float wx = (float)crs->wx[nsec], wy = (float)crs->wy[nsec];
+            float dxm = (float)smk_kart_px(racers[who].k.x) - wx;
+            float dym = (float)smk_kart_px(racers[who].k.y) - wy;
+            float dxt = (float)smk_kart_px(racers[i].k.x) - wx;
+            float dyt = (float)smk_kart_px(racers[i].k.y) - wy;
+            if (dxt * dxt + dyt * dyt < dxm * dxm + dym * dym) rank++;
+        }
+    }
+    return rank;
+}
+
 
 static void racer_start(smk_racer *r, const smk_course *crs, int slot)
 {
@@ -995,6 +1029,8 @@ int main(int argc, char **argv)
             draw_scene(&rom, &trk, &karts, drv, &cam, fb, rw, rh,
                        show_grid, show_kart, frame_for(&in, &lean),
                        kart.angle, racers, &crs);
+            hud_lap = me->lap + 1;
+            hud_rank = race_rank(racers, 0, &crs);
             draw_speedo(fb, rw, rh, &kart,
                         smk_track_surface(&trk, smk_kart_px(kart.x),
                                           smk_kart_px(kart.y)),
