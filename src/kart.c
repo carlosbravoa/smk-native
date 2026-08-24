@@ -150,14 +150,11 @@ void smk_kart_move(smk_kart *k, const smk_track *t)
          * a bounce costs half the speed (PLACEHOLDER - the ROM's collision
          * handler is only partly decoded), and a fresh bounce cannot start
          * for a few frames after landing - repeated contact just blocks. */
-        if (k->bounce_cool > 0) {
-            if (!bx) k->x = nx;
-            if (!by) k->y = ny;
-            return;
-        }
         smk_kart_launch(k, SMK_HOP_VEL);
-        k->speed = (int16_t)(k->speed / 2);
-        k->bounce_cool = 20;
+        /* geometric damping so held-into-the-wall contact settles instead
+         * of ping-ponging forever (user report); the measured trace keeps
+         * speed, so this is a labelled feel choice, not a decode */
+        k->speed = (int16_t)(k->speed - k->speed / 4);
         if (bx) {
             k->vx = 0;
             k->bvx = 0;
