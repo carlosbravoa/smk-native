@@ -1687,4 +1687,41 @@ off-course fallback cases.
 
 ---
 
-*(next entry: 057)*
+**057** — 20/20: every GP track lapped by the AI under the strict rule.
+The last six tracks, and what each one actually needed.
+
+Starting point after the flow-field port: 14/20. The remaining six fell to
+four distinct causes, each found by instrumting the end-state rather than
+tuning blind:
+
+* **Jump gaps** (3, 9, 11, 17): stalls sat at `$22/$24` solid fields - the
+  gap pits the real game vaults.  These are jumpable barriers (the landing
+  code remaps `$22` → `$4C` at touchdown, `$80B1F2`); hitting one at speed
+  now launches off the ramp edge (placeholder velocity, labelled).  Four
+  tracks cleared by one rule.
+* **High-speed wedges** (4, 8, 9, 17 early exits): a kart pinned square
+  against a wall KEEPS its speed - the proportional graze loss is ~0 and
+  the position only crawls sub-pixel - so the low-speed escape trigger
+  never fired.  Stagnation (40 identical positions) is the reliable
+  trigger.  Also: the escape's open-ground scan sampled from 8 px and was
+  blind to walls 1-7 px away, and karts wedged in one-pixel concave
+  notches needed a physical 3 px nudge (labelled last resort).
+* **Deep pockets** (8, 16): karts that get off-line can enter paint whose
+  own waypoint lies across a wall; the flow field then pins them.
+  Escalating escape lengths (25→120 frames) were still not enough alone.
+* **Adjacent-sector oscillation** (15, and 8's remnant): the final pair
+  circled between two sectors for minutes, resetting every
+  sector-change-based timer.  The fix is the game's own answer:
+  **Lakitu**.  Ten seconds without *monotonic* progress - keyed on the
+  max of `(lap<<8)|sector`, which oscillation cannot reset - sets the kart
+  down at its sector's waypoint facing the next.  The rescue is the real
+  game's behaviour; our trigger and the missing animation are labelled.
+
+Result: 20/20 strict laps, times 19-74 s, both suites green.  The
+remaining honest gaps in the AI: ramp-launch velocity is a placeholder,
+the `$80ABxx` lane-offset adjusters are undecoded, there is no
+rubber-banding, and Lakitu is a teleport without his animation.
+
+---
+
+*(next entry: 058)*

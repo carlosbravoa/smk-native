@@ -78,6 +78,9 @@ typedef struct {
     int      escape;        /* frames left of hold-heading wall escape  */
     int      was_fast;      /* escape only after the kart has driven    */
     int      last_px, last_py, still;   /* position-stagnation detector  */
+    int      esc_len;       /* escalating escape duration               */
+    int      no_prog;       /* frames since monotonic progress          */
+    int      rescue_max;    /* rescue timer's own progress watermark    */
     int      lap_cool;      /* one lap event per strip transit          */
 } smk_racer;
 
@@ -128,6 +131,13 @@ static void racer_step(smk_racer *r, const smk_track *trk,
          * One lap event per transit. */
         if (r->lap_cool > 0) r->lap_cool--;
         if ((cell & SMK_SECT_FINISH) && r->lap_cool == 0) {
+            if (r->sector != sec) r->esc_len = 0;
+        /* progress for the rescue timer = monotonic max only, or the two
+         * stuck loops that oscillate between adjacent sectors reset it */
+        {
+            int prog2 = (r->lap << 8) | sec;
+            if (prog2 > r->rescue_max) { r->rescue_max = prog2; r->no_prog = 0; }
+        }
             if (r->sector >= crs->sectors - 2 && sec <= 1) {
                 int prog = ((r->lap + 1) << 8) | sec;
                 if (prog > r->progress_max) {
@@ -164,6 +174,23 @@ static void racer_step(smk_racer *r, const smk_track *trk,
      * without the hold the slew dragged the kart straight back into the
      * wall before it could move (NOTES 057). */
     if (r->k.speed > 300) r->was_fast = 1;
+    /* Lakitu: the game fishes a stuck or fallen kart back onto the track.
+     * Ten seconds without sector progress -> set down at the sector's own
+     * waypoint, facing the next one.  (The real trigger and animation are
+     * not decoded; the rescue itself is the game's own behaviour.) */
+    if (++r->no_prog > 600) {
+        int nx2 = r->sector + 1;
+        if (nx2 >= crs->sectors) nx2 = 0;
+        r->k.x = (int32_t)crs->wx[r->sector] << 16;
+        r->k.y = (int32_t)crs->wy[r->sector] << 16;
+        r->k.angle = heading_to(&r->k, crs->wx[nx2], crs->wy[nx2]);
+        r->k.speed = 0;
+        r->k.vx = r->k.vy = 0;
+        r->k.airborne = false;
+        r->no_prog = 0;
+        r->esc_len = 0;
+        r->escape = 0;
+    }
     /* a kart pinned nearly square against a wall keeps its speed (the
      * proportional graze loss is ~0) while its position only crawls
      * sub-pixel - so stagnation, not low speed, is the reliable trigger */
@@ -199,7 +226,11 @@ static void racer_step(smk_racer *r, const smk_track *trk,
             }
             r->k.angle = (uint16_t)(best_d * 0x2000);
             r->k.speed = 300;
-            r->escape = 25;
+            /* escalate on consecutive triggers: deep pockets need longer
+             * runs before the flow field is allowed to pull again */
+            r->esc_len = r->esc_len ? (r->esc_len * 2 > 120 ? 120
+                                       : r->esc_len * 2) : 25;
+            r->escape = r->esc_len;
             r->slow_frames = 0;
             if (r->still > 120) {
                 /* wedged in a concave notch: no heading can move it, so
