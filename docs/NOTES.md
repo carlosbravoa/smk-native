@@ -2287,4 +2287,27 @@ sprite art and the motion handlers are the open decode.
 
 ---
 
-*(next entry: 079)*
+**079** — Grip table COMPLETE (12 classes, two batteries).  Ice is not a
+grip value - it is cap-vs-limit geometry.
+
+gripcal3 over the previously unmeasured classes, same protocol:
+
+    $4E turn -801 slip 9445   (VL icy road: instant breakaway at pace)
+    $48 turn -307 slip 7741   (breakaway)
+    $4A turn -546 slip 3057   (partial breakaway)
+    $58 turn -307 slip  329   (holds; VL snow)
+    $5A turn -307 slip  310   (holds)
+    $5C turn -307 slip  289   (holds)
+
+One ABSOLUTE lateral limit (~250k at demo scale, = the NOTES 068 road
+measurement) predicts every outcome: class cap x 307 above the limit
+breaks away, below holds.  Steady slip and convergence are identical on
+every class.  So Vanilla Lake's slipperiness is EMERGENT - its road cap
+(.938) is high enough to cross the limit - and no per-class grip value
+exists in the ROM.  The removed x0.35 ice multiplier is confirmed wrong.
+Our per-class-top limit scaling (NOTES 069 feel adaptation, labelled)
+preserves the cap-vs-limit relationship at 50cc speeds.
+
+---
+
+*(next entry: 080)*

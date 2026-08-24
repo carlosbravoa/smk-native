@@ -569,12 +569,16 @@ static void step_kart(smk_kart *k, const smk_track *trk,
          *   - the drift state ($E2: $8000 hop -> $8004 slide -> $8024
          *     charged) is entered by hopping into a held turn: airborne
          *     grip is near zero, and landing steered holds the slide.
-         * Grip is CLASS-INDEPENDENT: the $56 measurement (gripcal2)
-         * shows the same steady slip (~203) and turn rate as road, so
-         * the old ice multiplier was a guess the data contradicts - and
-         * mistargeted anyway: types 11/12 are Choco mud and VL snow;
-         * Vanilla Lake's icy ROAD is class $4E (type 7).  If ice feel
-         * diverges in play, measure class $4E at speed - do not guess. */
+         * Grip is CLASS-INDEPENDENT - now measured across BOTH grip
+         * batteries (12 classes): every class shows the same steady
+         * slip (~200-330) and convergence, and one ABSOLUTE lateral
+         * limit (~250k demo-scale) explains exactly which classes break
+         * away: $4E/$48/$4A (caps .89-.97, fast enough to cross the
+         * limit - VL ice among them) do, $56/$58/$5A/$5C (slow caps)
+         * cannot.  "Ice feel" is EMERGENT from cap vs limit, not a grip
+         * multiplier.  Our limit scales with class top (labelled feel
+         * adaptation, NOTES 069) which keeps that relationship at every
+         * engine class. */
         float va = atan2f((float)k->vx, -(float)k->vy);
         float ha = (float)k->angle * (float)(2.0 * M_PI) / 65536.0f;
         float slip = va - ha;
