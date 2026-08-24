@@ -179,8 +179,9 @@ uint8_t smk_track_surface(const smk_track *t, int wx, int wy)
 
 uint32_t smk_track_texel(const smk_track *t, int wx, int wy)
 {
-    wx &= (SMK_WORLD_PX - 1);
-    wy &= (SMK_WORLD_PX - 1);
+    /* the world does not wrap (NOTES 063): beyond the plane, void */
+    if (wx < 0 || wx >= SMK_WORLD_PX || wy < 0 || wy >= SMK_WORLD_PX)
+        return 0xFF101018u;
     unsigned tile = t->map[(wy >> 3) * SMK_MAP_DIM + (wx >> 3)];
     if (tile >= SMK_TILE_COUNT) return t->palette[0];
     return t->palette[t->tiles[tile * SMK_TILE_BYTES + ((wy & 7) << 3) + (wx & 7)]];
