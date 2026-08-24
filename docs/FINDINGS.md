@@ -243,11 +243,34 @@ drives, 1 coasts, 10 brakes, 4 is the boost/brake check.
 
 ## DSP-1
 
-Used by gameplay, at DR `$6000` / SR `$7000`. Commands seen: `$00` multiply,
-`$04` sin/cos, `$0C` 2D rotate, `$28` vector length, `$80` (status). The
-sin/cos scaling is pinned by unit analysis — it returns `radius * sin`
-unshifted — and its result order (sin then cos) is confirmed three ways.
-`$81F638` is an **atan2** helper used by the AI.
+Used constantly, at DR `$6000` / SR `$7000`. Commands actually issued by
+this game (measured with a fully-synced stream, NOTES 039):
+
+| cmd | use | traffic |
+|---|---|---|
+| `$00` multiply | physics | heavy |
+| `$04` sin/cos | velocity from heading | heavy |
+| `$06` project | world point → screen H, V, size — the kart sprites | heaviest (~14/frame) |
+| `$02` projection setup | camera per viewport, 2×/frame | heavy |
+| `$0A` raster | per-scanline Mode 7 matrix, 96 lines per split-screen half | boot/menus |
+| `$28` distance | proximity checks | light |
+| `$01`, `$0B`, `$10` | transitions | rare |
+
+Protocol facts worth keeping: commands are single-byte stores, parameters
+16-bit words LSB-first; raster is a **streaming mode** (one Vs, then a
+4-word group per scanline auto-advancing as read, ended by `$8000` sentinel
+words); and `$80` is written 128× at boot by a flush loop at `$81E3EC`.
+
+**The camera model** (from `$02`'s own parameters): `F` is the focal point
+on the ground — the player's kart, in quarter-pixel units — with the eye
+`Lfe` away at elevation `Azs` behind azimuth `Aas`, and the screen `Les`
+from the eye. Race values (Lfe=Les=256, Azs=73°) put the eye 18.5 px behind
+and 61 px above the kart. Forward is `(sin Aas, −cos Aas)` — the same
+0 = −Y convention as kart headings.
+
+The sin/cos scaling is pinned by unit analysis — `radius * sin` unshifted —
+and its result order (sin then cos) is confirmed three ways. `$81F638` is
+an **atan2** helper used by the AI.
 
 ## Kart sprites
 
