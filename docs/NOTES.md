@@ -829,4 +829,41 @@ path tests.
 
 ---
 
-*(next entry: 033)*
+**033** — The kart state machine, which is what the demo race is sitting in.
+
+`$80AD6F` dispatches per kart:
+
+```
+phx
+lda $AC,x        ; per-kart STATE index (already doubled)
+tax
+jmp ($AD76,x)    ; every handler starts with `plx`
+```
+
+Table at `$80AD76`, and the handlers are small enough to read at a glance —
+each one just sets the acceleration field `$EE,x`:
+
+| state | handler | effect |
+|---|---|---|
+| 0 | `$80B035` | **drive**: accelerate toward the target speed |
+| 1 | `$80A647` | `accel = 0` — coast |
+| 2,3,5,6,7 | `$80A5A8` | `jsr $B768` |
+| 4 | `$80A5AD` | the boost/brake check |
+| 8 | `$80B015` | |
+| 9 | `$80A606` | |
+| 10 | `$80A5A1` | `accel = -$38` — brake |
+| 11 | `$80A55A` | |
+
+Beyond 11 the table is not a table. Also nearby: `$80A64F` sets
+`accel = -$10` and `$80A656` sets `-$08`, so the deceleration rates are
+plain constants in their handlers.
+
+This is the gate found in NOTES 032: in the demo race `$80B035` never
+executes, so `$AC,x` is not 0 for any kart — they are parked in a
+non-driving state and something is meant to move them to state 0 when the
+countdown ends. `$AC,x` is written from a dozen sites (`$80A10B`, `$80A633`,
+`$80A643`, `$80AAA4`, `$80B49A`, … ) which is the next thread to pull.
+
+---
+
+*(next entry: 034)*
