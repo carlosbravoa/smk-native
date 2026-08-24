@@ -1610,4 +1610,36 @@ the kart state - the difference is exactly what this measurement exposed.
 
 ---
 
-*(next entry: 055)*
+**055** — Walls made sticky; the NOTES-044 fling reattributed; and an AI
+regression taken knowingly.
+
+The playtest report "hit a corner and bounced forever" unravelled a chain:
+
+* **The measured fling belongs to bit-7 special surfaces.** NOTES 044's
+  launch + `$1000` along-wall knockback was captured on a class-`$80`
+  cell.  Nothing was ever measured for plain `$20` walls, and porting the
+  fling to them produced the ping-pong: held throttle refills speed
+  between bounces faster than any damping drains it, so it never settles.
+* **Plain walls are now sticky** (labelled feel model, not a decode): the
+  into-wall velocity component dies, speed scrubs in proportion to the
+  blocked share (a graze loses little, a head-on nearly stops), corners
+  stop the kart.  A synthetic held-into-the-corner test verifies **zero
+  direction reversals** - scrape and clear, no ping-pong.  The fling still
+  applies where it was measured: `$80`-class surfaces, once per contact.
+* **A real lap-counter bug surfaced on the way**: the strip holds paint of
+  both ends of the loop, so one transit could fire +1 then an unguarded
+  -1 and lock the counter against the monotonic guard forever.  Lap events
+  are now one-per-transit (90-frame cooldown).
+
+**The cost, stated plainly:** the AI relied on the fling to escape walls
+its cornering drives it into.  With sticky walls the strict-lap score
+drops 14 → 6/20; karts complete lap 1 and stall in corners on lap 2, and
+neither realign-probing nor waypoint lookahead recovers them.  Player feel
+wins this trade - the walls are for the person holding the pad - and the
+honest fix for the AI is following the ROM's line tightly enough not to
+hit walls, which is a decode item (the AI's real cornering inputs), not a
+heuristic to tune.  Recorded as the top P6 open.
+
+---
+
+*(next entry: 056)*

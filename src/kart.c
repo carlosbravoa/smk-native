@@ -125,8 +125,17 @@ void smk_kart_move(smk_kart *k, const smk_track *t)
             fx = advance(k->x, k->bvx ? k->bvx : k->vx);
             fy = advance(k->y, k->bvy ? k->bvy : k->vy);
             sv = smk_track_surface(t, smk_kart_px(fx), smk_kart_px(fy));
-            if (smk_surface_solid(sv) && smk_surface_type(sv) == 0)
-                return;                      /* fully cornered: hold */
+            if (smk_surface_solid(sv) && smk_surface_type(sv) == 0) {
+                /* fully cornered mid-flight: land on the spot, drop the
+                 * bounce, and stop - do not hover and re-bounce forever */
+                k->z = 0;
+                k->zvel = 0;
+                k->airborne = false;
+                k->bvx = k->bvy = 0;
+                k->speed = 0;
+                k->vx = k->vy = 0;
+                return;
+            }
         }
         k->x = fx;
         k->y = fy;
@@ -143,26 +152,47 @@ void smk_kart_move(smk_kart *k, const smk_track *t)
     bool bx = smk_surface_solid(smk_track_surface(t, smk_kart_px(nx), smk_kart_px(k->y)));
     bool by = smk_surface_solid(smk_track_surface(t, smk_kart_px(k->x), smk_kart_px(ny)));
     if (bx || by) {
-        /* $80F8C0: a wall hit sets $42,x = $8000 AND $26,x = $0080 - the
-         * kart is launched, and the measured knockback runs ALONG the wall
-         * (NOTES 044/051).  Two additions against the "eternal ping-pong"
-         * a player feels when holding into the wall (user report):
-         * a bounce costs half the speed (PLACEHOLDER - the ROM's collision
-         * handler is only partly decoded), and a fresh bounce cannot start
-         * for a few frames after landing - repeated contact just blocks. */
-        smk_kart_launch(k, SMK_HOP_VEL);
-        /* geometric damping so held-into-the-wall contact settles instead
-         * of ping-ponging forever (user report); the measured trace keeps
-         * speed, so this is a labelled feel choice, not a decode */
-        k->speed = (int16_t)(k->speed - k->speed / 4);
-        if (bx) {
-            k->vx = 0;
-            k->bvx = 0;
-            k->bvy = (int16_t)(k->vy >= 0 ? BOUNCE_VEL : -BOUNCE_VEL);
+        /* Wall contact (user playtest, NOTES 055).  SMK1 walls are sticky:
+         * a hit kills the into-wall component and most of the speed, with
+         * no launch - the launch + $1000 along-wall fling measured in
+         * NOTES 044 belongs to bit-7 SPECIAL surfaces only (that is where
+         * it was measured) and applying it to plain walls produced the
+         * reported eternal ping-pong.  Plain-wall numbers are a labelled
+         * feel model, not a decode. */
+        uint8_t wallv = bx
+            ? smk_track_surface(t, smk_kart_px(nx), smk_kart_px(k->y))
+            : smk_track_surface(t, smk_kart_px(k->x), smk_kart_px(ny));
+        if ((wallv & 0x80) && k->bounce_cool == 0) {
+            k->bounce_cool = 30;
+            k->speed = (int16_t)(k->speed - k->speed / 4);
+            smk_kart_launch(k, SMK_HOP_VEL);
+            if (bx && by) {
+                k->bvx = (int16_t)(k->vx > 0 ? -BOUNCE_VEL / 2 : BOUNCE_VEL / 2);
+                k->bvy = (int16_t)(k->vy > 0 ? -BOUNCE_VEL / 2 : BOUNCE_VEL / 2);
+                k->vx = k->vy = 0;
+            } else if (bx) {
+                k->vx = 0; k->bvx = 0;
+                k->bvy = (int16_t)(k->vy >= 0 ? BOUNCE_VEL : -BOUNCE_VEL);
+            } else {
+                k->vy = 0; k->bvy = 0;
+                k->bvx = (int16_t)(k->vx >= 0 ? BOUNCE_VEL : -BOUNCE_VEL);
+            }
         } else {
-            k->vy = 0;
-            k->bvy = 0;
-            k->bvx = (int16_t)(k->vx >= 0 ? BOUNCE_VEL : -BOUNCE_VEL);
+            /* sticky wall, angle-dependent: a graze scrubs a little, a
+             * head-on hit takes nearly everything.  Loss is proportional
+             * to the blocked share of the velocity. */
+            int into  = bx ? (k->vx < 0 ? -k->vx : k->vx)
+                           : (k->vy < 0 ? -k->vy : k->vy);
+            int along = bx ? (k->vy < 0 ? -k->vy : k->vy)
+                           : (k->vx < 0 ? -k->vx : k->vx);
+            if (bx && by) {
+                k->speed = 0;
+            } else if (into + along > 0) {
+                k->speed = (int16_t)((int32_t)k->speed * along
+                                     / (into + along));
+            }
+            if (bx) k->vx = 0;
+            if (by) k->vy = 0;
         }
         if (!bx) k->x = nx;
         if (!by) k->y = ny;

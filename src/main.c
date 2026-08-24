@@ -74,6 +74,9 @@ typedef struct {
     int      sector;        /* last on-course sector                    */
     int      lap;
     int      progress_max;  /* $F8,x: max of (lap<<8)|sector, monotonic */
+    int      slow_frames;   /* stuck-at-a-wall recovery counter         */
+    int      probe;         /* rotates the recovery direction           */
+    int      lap_cool;      /* one lap event per strip transit          */
 } smk_racer;
 
 static void racer_start(smk_racer *r, const smk_course *crs, int slot)
@@ -116,16 +119,23 @@ static void racer_step(smk_racer *r, const smk_track *trk,
          * everything seen before.  We keep lap and sector as fields and
          * apply the same wrap and guard. */
         /* the crossing only counts ON the strip ($808994 is called from
-         * the strip-accept path), forward guarded by max progress */
-        if (cell & SMK_SECT_FINISH) {
+         * the strip-accept path), forward guarded by max progress.  The
+         * strip holds paint of BOTH ends of the loop, so the sector can
+         * oscillate across one transit; without a cooldown that fired
+         * +1 then an unguarded -1 and left the counter locked (NOTES 055).
+         * One lap event per transit. */
+        if (r->lap_cool > 0) r->lap_cool--;
+        if ((cell & SMK_SECT_FINISH) && r->lap_cool == 0) {
             if (r->sector >= crs->sectors - 2 && sec <= 1) {
                 int prog = ((r->lap + 1) << 8) | sec;
                 if (prog > r->progress_max) {
                     r->lap++;
                     r->progress_max = prog;
+                    r->lap_cool = 90;
                 }
             } else if (sec >= crs->sectors - 2 && r->sector <= 1) {
                 r->lap--;
+                r->lap_cool = 90;
             }
         }
         r->sector = sec;
@@ -133,7 +143,34 @@ static void racer_step(smk_racer *r, const smk_track *trk,
 
     int next = r->sector + 1;
     if (next >= crs->sectors) next = 0;
+    /* lookahead: once near the target waypoint, aim at the one after it -
+     * waiting for the sector paint to change made the AI clip every
+     * corner into the walls (NOTES 055) */
+    {
+        int ddx = crs->wx[next] - smk_kart_px(r->k.x);
+        int ddy = crs->wy[next] - smk_kart_px(r->k.y);
+        if (ddx * ddx + ddy * ddy < 72 * 72) {
+            next++;
+            if (next >= crs->sectors) next = 0;
+        }
+    }
     uint16_t want = heading_to(&r->k, crs->wx[next], crs->wy[next]);
+    /* Stuck against a sticky wall: with no fling to free them, the AI
+     * needs the real game's visible recovery - realign toward the
+     * waypoint and pull away.  Labelled AI behaviour, not a decode. */
+    if (r->k.speed < 100) {
+        if (++r->slow_frames > 45) {
+            /* alternate probe angles so successive retries feel their way
+             * around the obstruction instead of re-driving into it */
+            r->probe = (r->probe + 1) % 6;
+            static const int16_t OFF[6] = { 0, 0x2000, -0x2000,
+                                            -0x8000, 0x6000, -0x6000 };
+            r->k.angle = (uint16_t)(want + OFF[r->probe]);
+            r->k.speed = 220;
+            r->slow_frames = 20;   /* retry sooner while still slow */
+        }
+    } else
+        r->slow_frames = 0;
     int16_t diff = (int16_t)(want - r->k.angle);
     if (diff > AI_SNAP || diff < -AI_SNAP) {
         uint16_t err = (uint16_t)(diff > 0 ? diff : -diff);
@@ -606,15 +643,19 @@ int main(int argc, char **argv)
                 int sec = cell & SMK_SECT_OFF;
                 if (sec != SMK_SECT_OFF && sec < crs.sectors
                     && !(kart.airborne && (crs.wattr[sec] & 0x80))) {
-                    if (cell & SMK_SECT_FINISH) {
+                    if (me->lap_cool > 0) me->lap_cool--;
+                    if ((cell & SMK_SECT_FINISH) && me->lap_cool == 0) {
                         if (me->sector >= crs.sectors - 2 && sec <= 1) {
                             int prog = ((me->lap + 1) << 8) | sec;
                             if (prog > me->progress_max) {
                                 me->lap++;
                                 me->progress_max = prog;
+                                me->lap_cool = 90;
                             }
-                        } else if (sec >= crs.sectors - 2 && me->sector <= 1)
+                        } else if (sec >= crs.sectors - 2 && me->sector <= 1) {
                             me->lap--;
+                            me->lap_cool = 90;
+                        }
                     }
                     me->sector = sec;
                 }
