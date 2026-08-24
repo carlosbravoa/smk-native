@@ -55,16 +55,22 @@ so resolution is not a constraint.
 Everything asset-side is verified byte-for-byte against the game's own
 65816 code, executed in an interpreter (see below).
 
+## What works now (updated)
+
+- **Seven opponents** drive the ROM's own racing lines with its decoded
+  speed classes, turn-rate tables, >90° turnaround, tangential wall bounce
+  and Z-axis jumps.  In a lap harness the AI completes strict full laps on
+  14 of 20 GP tracks at plausible times.
+- **Laps and sectors** use the decoded rule (`$808994`): the crossing
+  counts only on the finish strip, guarded by monotonic progress; sector
+  capture follows `$808962` (off-course keeps the old sector; airborne
+  rejects jump-zone sectors).
+- **Sprites turn correctly**: the frame-selection rule was measured from
+  the running game (22.5° + 11.25°·n boundaries, mirrored far half).
+
 ## What does not work yet
 
-Being explicit, because the gap is still large:
-
-- **No opponents, items, laps or lap timing.** Start lines and checkpoints
-  are not decoded; the start position is a heuristic.
-- **The kart sprite does not turn with the camera.** The frames are the
-  ROM's and their three size tiers are identified, but which frame to show
-  for a given heading is not decoded — reaching a race where the game
-  actually draws karts is still open.
+- **No items, no race timing/rank, no sound.**
 - **The feel is only partly the game's.** Kinematics, the speed model and
   the acceleration curve are exact. What is still invented is *policy*:
   which target speed the player's input selects, the braking rate, and the
