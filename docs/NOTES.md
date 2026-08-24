@@ -2218,4 +2218,30 @@ SUPERSEDES the NOTES 070 reading of kinds >= $C0 as sprite obstacles.
 
 ---
 
-*(next entry: 076)*
+**076** — Kart distance scaling, finally MEASURED: the law is BINARY.
+
+Method that worked after four failed rigs: let the attract race run
+naturally past the parked player and log every frame's kart-tile OAM
+entries WITH opaque pixel bboxes (decoded from VRAM), then associate
+sprite clusters to karts offline by projected bearing (projection
+constant fitted from single-kart frames: x - 128 = ~89 * lat/depth).
+2600 frames, plus a clean teleport run for the near range.
+
+* Near range (measured to depth 72): the FULL 32x32 art, four 16x16 OAM
+  blocks plus a shadow block.  No shrinking anywhere in the near range.
+* Far range (measured from depth 96 to 470+): a SMALL ~18x15 sprite
+  drawn from 8x8 OAM entries.  Constant size across the whole far range.
+* NO intermediate sizes appear at any depth: the sheet's rows 1-2
+  (27/24px art) are NOT depth tiers - purpose unknown (rear-view or
+  2P-mode candidates).  My 96/160/224 tier thresholds and the 320 cull
+  (NOTES 072, labelled estimates) are all WRONG: there are no steps, and
+  karts render past depth 470 - no distance cull at all.
+* The switch sits in (72, 96] - ported as 84 until pinned tighter.
+
+Failed-rig lessons are in the skill file: HUD churn, post-race freeze,
+the rear-view half, and teleports fighting the 30Hz sprite pipeline all
+produced convincing-looking wrong data before the natural-motion run.
+
+---
+
+*(next entry: 077)*
