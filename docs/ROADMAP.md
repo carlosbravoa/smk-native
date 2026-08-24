@@ -90,13 +90,12 @@ Done since: scanline counter, HTIME/VTIME compare, IRQ dispatch via
 `$00:FFEE`, `$4211` TIMEUP, and an interrupt nesting guard. With IRQ the
 game advances **mode 13 -> mode 0** (NOTES 019).
 
-Now blocked on the **SPC700**, not on timing: the game disables NMI/IRQ and
-spins on the APU handshake at `$81F510` a second time, expecting real
-replies rather than the IPL echo. Needed:
-  - an SPC700 CPU interpreter (small, well documented, same shape as the
-    65816 one already written); a stub S-DSP is fine at first
-  - upload the game's own driver the way the IPL does
-  - then HDMA (`$420C`), which is how the Mode 7 matrix reaches the PPU
+APU handshake solved without an SPC700 (NOTES 020) — the game uploads its
+55 KB driver and progresses **mode 13 → 0 → 2 → 0 → 3**, reading the joypad.
+
+Remaining to reach a race and observe physics:
+  - menu navigation: find the input pattern the title/menu screens accept
+  - HDMA (`$420C`), which is how the Mode 7 matrix reaches the PPU
 
 Acceptance: drive the attract mode with synthetic input and reach the race
 mode; then read kart position/velocity/angle straight out of WRAM while
@@ -170,11 +169,25 @@ The largest decode. Sub-order:
   with the object lists in P1). Rubber-banding parameters. Items later;
   plain driving opponents first.
 
-### P7 — Audio  ⬅ **MOVED UP: the SPC700 blocks P0.5, so it blocks P2-P6**
+### P7 — Audio  — **DECIDED: pre-recorded, no SPC700 in the shipped game**
 
-The 65816 blocks on the sound CPU (NOTES 019), so "no audio for now" is not
-an option that leaves the rest reachable. The SPC700 *core* is needed early;
-the S-DSP (actual sound output) can still come late.
+Design decision (the user's): the native game plays **pre-recorded digital
+audio**, not emulated FM/BRR. That removes the SPC700 from the shipped port
+entirely and makes the blocker in NOTES 019 cheap to solve — the 65816 only
+needs its *handshake* answered, not a real sound CPU. Done in NOTES 020.
+
+Where the audio comes from, which is the part that is not automatic: we
+cannot ship Super Mario Kart's music. The pipeline is
+
+    the user's ROM -> `smk spc` -> .spc -> any SPC player -> wav/ogg -> SDL_mixer
+
+`smk spc` already writes a structurally valid dump (NOTES 021). Two things
+remain: the driver's "play track N" command (we log the command stream but
+have not mapped it), and rendering, which needs an SPC player — either
+vendored, or left as a documented step the user runs once.
+
+Fallback if that proves fiddly: original replacement music, which ships
+cleanly and needs no ROM at all.
 - Faithful = run the game's own SPC700 program on an emulated SPC700+S-DSP
   core, uploaded from the ROM exactly as the game does, and speak to it
   through the 4 APU ports with the same command protocol the 65816 side

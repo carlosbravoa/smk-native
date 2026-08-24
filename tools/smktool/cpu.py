@@ -18,6 +18,7 @@ Memory map (HiROM):
 from __future__ import annotations
 from .opcodes import OPCODES
 from .dsp1 import DSP1
+from .apu import APU
 
 # flag bits
 C_, Z_, I_, D_, X_, M_, V_, N_ = 1, 2, 4, 8, 16, 32, 64, 128
@@ -44,7 +45,7 @@ class Bus:
         # ports 0/1, and the upload loop then waits for port 0 to echo the
         # byte counter it just wrote.  Echoing is enough to walk the game
         # through its entire sound upload.
-        self.apu_out = [0xAA, 0xBB, 0x00, 0x00]
+        self.apu = APU()
         self.apu_writes = 0
 
         # --- PPU status ----------------------------------------------
@@ -71,7 +72,7 @@ class Bus:
             if addr < 0x2000:
                 return self.wram[addr]
             if 0x2140 <= addr <= 0x2143:
-                return self.apu_out[addr & 3]
+                return self.apu.read(addr)
             if addr == 0x4210:
                 v = 0x42 | (0x80 if self.nmi_flag else 0)
                 self.nmi_flag = False
@@ -110,8 +111,7 @@ class Bus:
             if addr < 0x6000:
                 self.regs[addr] = val
                 if 0x2140 <= addr <= 0x2143:
-                    # echo: what the IPL upload loop is waiting for
-                    self.apu_out[addr & 3] = val
+                    self.apu.write(addr, val)
                     self.apu_writes += 1
                 if self.log_hw:
                     self.hw_writes.append((addr, val))

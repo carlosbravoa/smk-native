@@ -263,6 +263,37 @@ def cmd_freespace(args):
               % (s_, rom.pc_to_snes(s_), n, f))
 
 
+def cmd_spc(args):
+    """Boot the ROM in the interpreter and dump the sound driver it uploads.
+
+    No SPC700 emulation: the upload protocol tells us every byte and where
+    it goes, which is all an .spc file is.
+    """
+    from smktool.cpu import CPU, Bus, M_, X_
+    from smktool.apu import write_spc
+    rom, _ = load(args)
+    bus = Bus(bytes(rom.data))
+    cpu = CPU(bus)
+    cpu.PB, cpu.PC = 0x80, rom.vectors()["emu.RESET"]
+    cpu.P = M_ | X_
+    cpu.S = 0x1FFF
+    if not cpu.run_to(0x80805C, budget=8_000_000):
+        sys.exit("the ROM did not reach its main loop")
+    bus.reg_reads[0x4218] = 0
+    bus.reg_reads[0x4219] = 0
+    cpu.run_frames_scanline(args.frames)
+    a = bus.apu
+    nz = sum(1 for v in a.ram if v)
+    out = args.out or "build/smk_driver.spc"
+    os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+    write_spc(a, out)
+    print(f"{a.summary()}  entry ${a.entry:04X}")
+    print(f"captured {nz}/65536 bytes of SPC RAM -> {out}")
+    print("note: this is the state right after upload - the driver has not "
+          "run, so the DSP registers are zero and it is waiting for a "
+          "'play track' command on its ports.")
+
+
 def cmd_checksum(args):
     rom, _ = load(args)
     ok = rom.checksum_ok()
@@ -353,6 +384,11 @@ def main():
     s.add_argument("--min", type=int, default=32)
     s.add_argument("--top", type=int, default=20)
     s.set_defaults(fn=cmd_freespace)
+
+    s = sub.add_parser("spc", help="dump the sound driver the ROM uploads (.spc)")
+    s.add_argument("-o", "--out")
+    s.add_argument("-n", "--frames", type=int, default=200)
+    s.set_defaults(fn=cmd_spc)
 
     s = sub.add_parser("checksum", help="verify / fix the ROM checksum")
     s.add_argument("-w", "--write", action="store_true")

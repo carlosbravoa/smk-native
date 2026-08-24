@@ -351,4 +351,62 @@ blocker into a solved problem.
 
 ---
 
-*(next entry: 020)*
+**020** — The APU handshake, modelled properly. The game now boots, uploads
+its sound driver and progresses through several game modes.
+
+The conversation, observed rather than assumed (this is the whole protocol):
+
+```
+P2=lo P3=hi     destination address
+P1=d0           FIRST DATA BYTE - it doubles as the "data follows" flag,
+                so it must be non-zero
+P0=$CC          kick; the IPL echoes $CC
+P0=$00          commits d0; the IPL echoes 00
+P1=d1 P0=$01    ... and so on, the IPL echoing the counter each time
+P2/P3=entry P1=$00 P0=counter+2    ends the block and runs the driver
+```
+
+Three things had to be right, each found by watching the game stall:
+
+1. **The block-end test is at block boundaries, not per byte.** Port 1 holds
+   *data* during a transfer and is frequently zero; treating any zero as
+   "end of upload" truncates it to 26 bytes.
+2. **The final echo must survive.** The CPU is still waiting to read back
+   the value that ended the block, so advertising "ready" immediately
+   destroys the reply it is spinning on. Echo first, go ready on the next
+   read.
+3. **After the driver is running, commands to port 0 must not clobber the
+   ready flag.** The game sends a reset-style command (`P1=$3F … P0=$1F`)
+   and then polls for `$AA`/`$BB` again, expecting the driver to have jumped
+   back into the IPL. Echoing that command leaves `$1F` in port 0 and the
+   game polls forever.
+
+Result: **55825 bytes uploaded across 8 blocks, entry `$0800`**, and the
+game runs — mode 13 → 0 → 2 → 0 → 3, with the frame counter advancing and
+`$4218`/`$4219` being read, so input reaches it (holding Start moves 3 → 2).
+
+Not yet reached: the race. Modes 2/3 are the title/attract screens and
+menu navigation needs an input pattern we have not found. Mode 2's `$18`/
+`$1C` are static, so it is not a demo race.
+
+**021** — Sound driver dumped without emulating the SPC700.
+
+Since the upload protocol tells us every byte and its destination, the SPC700's
+64 KB RAM image can simply be *recorded*, and that image plus the register
+block is exactly what an `.spc` file is. `smk spc` writes one: 53132/65536
+bytes populated, entry `$0800`, structurally valid 66048-byte file.
+
+This matters for the audio plan: it means music can be rendered locally from
+the user's own ROM by any SPC player, so the project never ships audio.
+
+Honest caveat: this is the state *immediately after upload*. The driver has
+not executed, so the S-DSP registers are zero and the driver is idling
+waiting for a "play track N" command on its ports. Producing a dump that
+plays a chosen track needs that command byte, which is game-specific; we
+have the command *stream* logged (`APU.commands`) but have not yet mapped
+values to tracks. Playback itself is **unverified** - there is no SPC player
+in this environment to test against.
+
+---
+
+*(next entry: 022)*
