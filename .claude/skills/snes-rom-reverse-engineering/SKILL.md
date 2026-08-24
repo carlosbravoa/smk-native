@@ -778,3 +778,15 @@ change is behavioural, print the behaviour.
 - Do not let two render paths exist. A feature added to one and missing from
   the other makes screenshots disagree with the program, twice if you do not
   fix the cause.
+- Do not sweep an in-game measurement before rendering ONE frame and seeing
+  the thing you measure actually appear. Three OAM sweeps in a row measured
+  HUD churn, stale post-race state, and the rear-view mirror before a
+  sprite-layer render exposed each mistake in seconds. Related: many SNES
+  racers run a permanent split screen (view + rear-view/map); filter OAM by
+  screen half, and remember the followed camera may not be the kart you
+  think - and the world-forward sign is worth one render to verify.
+- Do not assume a per-track data list holds every entity kind. SMK's object
+  list is stamped GROUND features only (boxes, coins, oil - even the
+  kinds >= $C0, which stamp coin scatters); the solid obstacles live in a
+  separate spawn system. A cross-check - live entity positions vs list
+  records - settles it in one probe.
