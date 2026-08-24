@@ -72,6 +72,11 @@ static const smk_course *course_for_step;
 
 static void collide_objects(smk_kart *k, const smk_course *crs)
 {
+    /* MEASURED pipe response (NOTES 072): on contact the velocity
+     * REFLECTS off the obstacle, speed roughly halves (581 -> 308), and a
+     * ~9-frame knockback window follows with the velocity frozen
+     * ($AC = $16, $10 = $C000) before control returns.  The spin
+     * component is still unmeasured (the lab pinned the heading). */
     int kx = smk_kart_px(k->x), ky = smk_kart_px(k->y);
     for (int i = 0; i < crs->nobj; i++) {
         if (!(crs->obj[i].kind & 0xC0)) continue;
@@ -79,10 +84,19 @@ static void collide_objects(smk_kart *k, const smk_course *crs)
         int d2 = dx * dx + dy * dy;
         if (d2 >= 12 * 12 || d2 == 0) continue;
         float d = sqrtf((float)d2);
+        float nx2 = (float)dx / d, ny2 = (float)dy / d;
+        float dot = (float)k->vx * nx2 + (float)k->vy * ny2;
+        if (dot < 0.0f) {                    /* moving into the pipe */
+            k->vx = (int16_t)((float)k->vx - 2.0f * dot * nx2);
+            k->vy = (int16_t)((float)k->vy - 2.0f * dot * ny2);
+            k->vx /= 2;
+            k->vy /= 2;
+            k->speed = (int16_t)(k->speed * 308 / 581);
+            k->bounce_cool = 10;             /* ballistic window */
+        }
         float push = (12.0f - d) + 1.0f;
-        k->x += (int32_t)((float)dx / d * push * SMK_POS_ONE);
-        k->y += (int32_t)((float)dy / d * push * SMK_POS_ONE);
-        k->speed = (int16_t)(k->speed / 2);
+        k->x += (int32_t)(nx2 * push * SMK_POS_ONE);
+        k->y += (int32_t)(ny2 * push * SMK_POS_ONE);
     }
 }
 
@@ -615,16 +629,26 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
             float gx = (float)smk_kart_px(racers[k].k.x);
             float gy = (float)smk_kart_px(racers[k].k.y);
             if (!smk_project(cam, gx, gy, rw, rh, &px, &py, &sc)) continue;
-            /* a kart is roughly 20 world units across and the sprite is 32
-             * pixels, so it wants about 20/32 of the projected size */
-            int scale = (int)(sc * 0.62f + 0.5f);
+            /* MEASURED scaling (NOTES 072): the original never scales the
+             * sprite continuously - the OAM canvas stays 32x32 (1/8 of
+             * screen width) across the whole near/mid range, apparent size
+             * stepping through the ART TIERS inside that canvas, with one
+             * switch to 16x16 far out and a cull beyond.  Depth thresholds
+             * for the tier steps are estimates pending richer upload data
+             * (labelled); the constant-canvas behaviour is the measured
+             * part. */
+            float a2 = (float)cam_heading * (float)(2.0 * M_PI) / 65536.0f;
+            float depth = (gx - cam->x) * sinf(a2)
+                        + (gy - cam->y) * -cosf(a2);
+            if (depth > 320.0f) continue;                 /* cull        */
+            int scale = rw / 256;
             if (scale < 1) scale = 1;
-            if (scale > rh / 90) scale = rh / 90;
+            if (depth > 224.0f) scale = (scale + 1) / 2; /* 16px switch */
             const smk_driver *d2 = &SMK_DRIVERS[k];
             if (!loaded[k]) loaded[k] = smk_sprites_load(rom, d2->sheet, &other[k]);
             if (!loaded[k]) continue;
-            int tier = scale > 3 ? SMK_SPR_TIER0
-                     : scale > 1 ? SMK_SPR_TIER1 : SMK_SPR_TIER2;
+            int tier = depth < 96.0f  ? SMK_SPR_TIER0
+                     : depth < 160.0f ? SMK_SPR_TIER1 : SMK_SPR_TIER2;
             bool hf = false;
             uint16_t rel = (uint16_t)(racers[k].k.angle - cam_heading);
             int f = smk_sprite_for_heading(tier, rel, &hf);
@@ -635,7 +659,7 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
         }
     }
     if (show_kart && karts->frames) {
-        int scale = rh / 112;
+        int scale = rw / 256;                 /* the SNES 32px proportion */
         if (scale < 1) scale = 1;
         bool hf = frame < 0;
         smk_draw_sprite(karts, hf ? -frame : frame, trk->palette, drv->pal,
@@ -652,12 +676,23 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
  * steering input.  Encoded as negative-for-hflip in one int. */
 static int frame_for(const input_state *in, float *lean)
 {
+    /* MEASURED player frames (NOTES 072): the ROM shows the driven kart
+     * with exactly TWO rear-view frames - 1 (centred) and 47 (the deep
+     * lean from the extended sheet) - flipped for direction.  Brief taps
+     * produce no change (measured: no upload); the lean engages on a
+     * sustained hold or slide.  `lean` accumulates hold time. */
     float want = (in->left ? -1.0f : 0.0f) + (in->right ? 1.0f : 0.0f);
-    *lean += (want - *lean) * 0.25f;
-    uint16_t rel = (uint16_t)(int)(*lean * (float)0x1C00);
-    bool hf = false;
-    int f = smk_sprite_for_heading(SMK_SPR_TIER0, rel, &hf);
-    return hf ? -f : f;
+    if (want != 0.0f && ((*lean < 0) == (want < 0) || *lean == 0.0f))
+        *lean += want * 0.08f;
+    else
+        *lean = want * 0.08f;
+    if (*lean > 1.0f) *lean = 1.0f;
+    if (*lean < -1.0f) *lean = -1.0f;
+    if (in->hop_held && want != 0.0f)
+        return want < 0 ? -47 : 47;          /* slide: full lean at once */
+    if (*lean <= -0.5f) return -47;
+    if (*lean >= 0.5f) return 47;
+    return 1;
 }
 
 /* ------------------------------------------------------------------ */

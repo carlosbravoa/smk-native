@@ -2108,4 +2108,32 @@ is the next lab target; sprite tier thresholds sweeping now.
 
 ---
 
-*(next entry: 072)*
+**072** — The environment-and-sprites pass: pipe crash, player frames, and
+the scaling truth.
+
+* **Pipe crash, measured** (rig at 581 into a track-14 pipe): contact sets
+  `$10` bit `$0002`, the velocity REFLECTS, speed scales to 308/581
+  (~0.53), and a ~9-frame knockback window follows with the velocity
+  frozen (`$AC = $16`, `$10 = $C000`) before control returns.  Ported into
+  `collide_objects` - reflect, scale, 10-frame ballistic window.  The spin
+  component remains unmeasured (the lab pinned the heading) - open.
+* **Player frame mapping, measured** (nine scripted input phases logging
+  sheet uploads): the driven kart uses exactly TWO rear-view frames -
+  **1 (centred) and 47 (deep lean)** - flipped for direction.  Brief taps
+  upload nothing (the frame does not change); the lean engages on
+  sustained holds and slides and persists through release.  `frame_for`
+  now implements that mapping, replacing the synthesized three-step lean.
+  Which of frames 44-46 serve intermediate leans (if any) was not
+  observed - only 1 and 47 ever uploaded.
+* **Sprite scaling, measured**: the original NEVER scales continuously.
+  The OAM canvas stays 32x32 (1/8 screen width) across the whole near/mid
+  range - the depth sweep shows 32x32 at every bucket to 160+ - with
+  apparent size stepping through the art tiers INSIDE the canvas, one
+  16x16 switch far out, and a cull.  The renderer now draws constant-canvas
+  karts with tier steps at 96/160 depth, the 16px switch at 224, cull at
+  320 (thresholds labelled-estimated; the constant canvas is the measured
+  part).  This replaces the continuous 1/depth shrink - the "funny" look.
+
+---
+
+*(next entry: 073)*
