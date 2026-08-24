@@ -687,6 +687,39 @@ Constants that fall out of an already-decoded law are trustworthy;
 constants that stand alone deserve one more experiment at a different
 input.
 
+## Step 22: your verification harness can pass for the wrong reason
+
+The strongest-sounding result of this project — "478 predictions, 0
+mismatches, the ported kinematics reproduce the game exactly" — was
+produced by a harness that never once sampled a kart. It forced the race
+mode variable and reached a static scene where every kart sits at speed 0;
+it then chose its subject from the game's current-object pointer, which
+names whatever the engine was processing that instant; and it settled a
+count of frames that landed inside a scripted countdown. The object it
+happened to follow obeyed the same integration rule, so the check passed —
+across many sessions — until an unrelated fix changed the scene and it
+failed with a constant residue that unravelled all three faults at once.
+
+Rules that fall out of this:
+
+- **A harness has preconditions; make it prove them.** "The subject is a
+  kart", "the kart is actually driving", "positions are integrated, not
+  scripted" were all assumed. Now the check tests each frame for free
+  motion (moving, grounded, velocity consistent with the object's own
+  heading) and counts the rest as skipped.
+- **Add an INCONCLUSIVE outcome.** A verification that can only say
+  pass/fail will say one of them even when its preconditions collapsed.
+  Refusing to answer ("no subject qualified in this window") is the honest
+  third state, and it is what turns a silent lie into a visible gap.
+- **Never key a measurement on the engine's own scratch pointers.** A
+  register like `$B4` here is the current-`this` of an object loop; its
+  value depends on when in the frame you sample it. Address your subjects
+  absolutely.
+- **When a long-green check suddenly fails after an unrelated change,
+  bisect the change first, then audit the check.** The A/B (each fix
+  disabled, then all together) took minutes and cleared the new code;
+  everything after that pointed at the harness.
+
 ## Order of work
 
 1. Identify the ROM; get mapping and mirrors right. Add a hash check.
