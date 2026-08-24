@@ -2005,4 +2005,36 @@ it is not the off-road deceleration.
 
 ---
 
-*(next entry: 068)*
+**068** — Grip and drift MEASURED and ported.  And the drift state machine
+is real after all.
+
+Two battery runs on the calibration rig (short excursions, spin-abort,
+teleport recovery after the first run's wreckage cascaded):
+
+* **Steady cornering slip is ~200-310 units (~1.7 deg) on every class** -
+  `$42` at 770: slip 310; `$54` at 585: slip 202; `$56` at 289: slip 203 -
+  converging at ~0.5/frame.  Grip class-differences do NOT show in steady
+  slip.
+* **Breakaway is by lateral acceleration** (speed x turn rate): 950x307
+  breaks away (slip grows ~130/frame, steering authority collapses to
+  ~-20/frame - a progressive plow), while 770x307 and 585x307 hold.  The
+  limit sits near 250k.  So SMK's surface CAPS are most of its grip
+  system: capped surfaces cannot reach breakaway speeds.  Elegant.
+* **The drift state machine is real** - correcting the previous session's
+  "emergent-only" reading, which came from a 4-frame hop tap that never
+  engaged it.  A 6-frame tap into a held turn walks `$E2` through
+  `$8000` (hop) → `$8004` (slide) → `$8024` (slide + the charged-`$C2`
+  state from `$80B0F5`), with `$C2` charging to ~12000.
+* Slip recovers at ~150/frame below the limit; airborne the kart keeps
+  its momentum (near-zero grip), which is what makes hop-into-turn START
+  the slide.
+
+Ported into `step_kart` as the measured model: 0.5/frame convergence,
+lateral-acceleration breakaway at 250k, plow past it, held-slide grip
+while hopping with slip present.  Ice types 11/12 keep a labelled
+multiplier - absent from the demo theme, unmeasured.  All suites green,
+AI 20/20, corner settles.
+
+---
+
+*(next entry: 069)*

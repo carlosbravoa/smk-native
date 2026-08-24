@@ -457,31 +457,41 @@ static void step_kart(smk_kart *k, const smk_track *trk,
          * its decel table singles out as near-frictionless.  The grip
          * VALUES are labelled placeholders pending the $AA slip-machine
          * decode: road full grip, ice low, off-road in between. */
-        static const float GRIP[16] = {
-            1.00f, 0.95f, 0.80f, 0.80f, 0.75f, 0.75f, 0.70f, 0.70f,
-            1.00f, 0.70f, 0.65f, 0.35f, 0.30f, 0.75f, 0.70f, 0.65f,
-        };
-        float surf_grip = (surf == 0x00) ? 0.45f
-                          : GRIP[smk_surface_type(surf) & 15];
-        /* Convergence tuned for a VISIBLE slide (playtest: 0.35 aligned
-         * velocity in ~3 frames - imperceptible).  At speed, even tarmac
-         * lets the kart run wide; oversteer past ~20 degrees of slip
-         * breaks away further. */
+        /* MEASURED slip dynamics (NOTES 068, both grip batteries):
+         *   - steady cornering slip is ~200-310 units at the saturated
+         *     turn rate, on EVERY class - convergence ~0.5/frame;
+         *   - breakaway is by LATERAL ACCELERATION (speed x turn rate):
+         *     950x307 breaks away, 770x307 and 585x307 hold, so the
+         *     limit sits near 250k unit^2; past it slip grows ~130/frame
+         *     and steering authority collapses - a progressive plow, no
+         *     threshold switch;
+         *   - slip recovers at ~150/frame below the limit;
+         *   - the drift state ($E2: $8000 hop -> $8004 slide -> $8024
+         *     charged) is entered by hopping into a held turn: airborne
+         *     grip is near zero, and landing steered holds the slide.
+         * Ice (types 11/12) keeps a labelled low-grip multiplier - those
+         * classes are absent from the demo theme and unmeasured. */
+        float va = atan2f((float)k->vx, -(float)k->vy);
+        float ha = (float)k->angle * (float)(2.0 * M_PI) / 65536.0f;
+        float slip = va - ha;
+        while (slip >  (float)M_PI) slip -= 2.0f * (float)M_PI;
+        while (slip < -(float)M_PI) slip += 2.0f * (float)M_PI;
+        float slip_u = fabsf(slip) * 65536.0f / (2.0f * (float)M_PI);
+
+        int ty = smk_surface_type(surf);
+        float class_grip = (ty == 11 || ty == 12) ? 0.35f : 1.0f;
+
+        float lateral = (float)k->speed * 307.0f *
+                        ((in->left || in->right) ? 1.0f : 0.3f);
         float g;
-        if (k->airborne)           g = 0.04f;   /* mid-hop: keep momentum */
-        else if (in->hop_held)     g = 0.03f + 0.04f * surf_grip;
-        else if (k->speed > 550)   g = 0.03f + 0.11f * surf_grip;
-        else if (k->speed > 300)   g = 0.15f + 0.35f * surf_grip;
-        else                       g = 1.00f;
-        {   /* breakaway on oversteer */
-            float va = atan2f((float)k->vx, -(float)k->vy);
-            float ha = (float)k->angle * (float)(2.0 * M_PI) / 65536.0f;
-            float d = va - ha;
-            while (d >  (float)M_PI) d -= 2.0f * (float)M_PI;
-            while (d < -(float)M_PI) d += 2.0f * (float)M_PI;
-            if (fabsf(d) > 0.35f && k->speed > 300)
-                g *= 0.5f;
-        }
+        if (k->airborne)
+            g = 0.04f;                        /* hop: momentum carries    */
+        else if (in->hop_held && slip_u > 800.0f)
+            g = 0.10f;                        /* held slide (drift)       */
+        else if (lateral > 250000.0f || slip_u > 4000.0f)
+            g = 0.08f;                        /* past the limit: plow     */
+        else
+            g = 0.50f * class_grip;           /* measured convergence     */
         k->vx = (int16_t)(k->vx + (float)(tvx - k->vx) * g);
         k->vy = (int16_t)(k->vy + (float)(tvy - k->vy) * g);
     }
