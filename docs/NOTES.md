@@ -970,4 +970,42 @@ paths render, they will drift; give them one function the first time.
 
 ---
 
-*(next entry: 038)*
+**038** — ROOT CAUSE: the karts are not drawn because the DSP-1 model is
+badly incomplete, and a race leans on it constantly.
+
+The trail: VRAM at the kart tile slots turned out to hold HUD graphics, and
+in a *moving* race OAM contains only HUD — "FINAL LAP", digits, item boxes,
+portraits. The karts are simulated but never reach OAM at all.
+
+Counting DSP-1 traffic over 60 race frames explains it:
+
+```
+$00 multiply     x943      modelled
+$04 sin/cos      x138      modelled
+$28 vector len   x15       modelled
+$0C rotate       x4        modelled
+everything else  ~1500     NOT modelled
+```
+
+The long tail is partly an artefact — an unknown command desynchronises our
+parameter stream, so the following parameter bytes get counted as further
+"commands" — but that cuts the same way: **once one unmodelled command
+arrives, everything after it is garbage.** A race issues DSP-1 work every
+frame for projection, and kart screen positions come out of it. With the
+maths wrong, the karts project nowhere and are culled.
+
+This promotes ledger **S9** from "unverified scalings" to the top blocker.
+It is no longer only a P3 fidelity question; it gates **P4 (which frame the
+game picks), P6 (AI), and any attempt to compare our renderer against the
+game's own output**. NOTES 008's "only four commands" was measured from a
+static scan of gameplay code and was simply too small a sample.
+
+What it needs: implement the DSP-1 properly rather than command-by-command —
+the parameter/result shapes for the full command set, and scalings checked
+against something. Until then, everything observed *through* a race that
+touches projection is suspect; the physics results in 022 and 026 are not,
+because they were checked against the game's own arithmetic directly.
+
+---
+
+*(next entry: 039)*

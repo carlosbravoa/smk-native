@@ -57,7 +57,7 @@ re-investigating.
 | S6 | `src/main.c` `move_blocked` | refuse the move, slide per axis | `$80F8C0`: enters a collision state (`$42,x`=$8000, `$26,x`=$80) with its own recovery | P3 |
 | S7 | renderer | full-resolution smooth perspective | 256×224, per-scanline integer matrix | keep — named divergence, this is the point of a PC port. `--pixel` restores chunk. |
 | S8 | no audio | silence | SPC700 + S-DSP running its own program | P7 |
-| S9 | `tools/smktool/dsp1.py` | commands `$00`/`$0C`/`$28` scalings still unverified | the real DSP-1 | before they are relied on |
+| S9 | `tools/smktool/dsp1.py` | **only four DSP-1 commands modelled; a race issues ~1500 unmodelled operations per 60 frames** | the real DSP-1 | **top blocker** — gates P4, P6 and any render comparison (NOTES 038) |
 
 *Resolved:* **S9 for command `$04` (sin/cos)** — pinned by unit analysis in
 NOTES 017; movement no longer rests on a guess. The kinematics (velocity
@@ -81,7 +81,7 @@ used; C output is byte-identical to the game's loader on all 24 courses.
 | P1 the track | **done** — themes, tilemaps, tilesets, palettes, surface table, all verified against VRAM |
 | P2 start / laps | **part** — the real starting grid is in; checkpoints and lap logic are not |
 | P3 physics | **part** — kinematics, speed model and the ROM's acceleration tables are in and verified; steering policy and per-surface response are not |
-| P4 sprites | **part** — all eight drivers' sheets read from ROM and drawn, world-space projection works; the frame-selection rule is not decoded |
+| P4 sprites | **part** — all eight drivers' sheets read from ROM and drawn, world-space projection works; the frame-selection rule is blocked on S9 |
 | P5 race furniture | not started |
 | P6 opponents | not started (AI shape known: steer toward waypoints via atan2) |
 | P7 audio | **decided** — pre-recorded; `smk spc` dumps the driver, rendering not wired up |
@@ -256,7 +256,15 @@ cleanly and needs no ROM at all.
 — the Mode 7 matrix is HDMA-driven, so there are no PPU stores to read
 (NOTES 014).**
 
-**R1 — The DSP-1 coprocessor sits inside the physics.  [SCOPED, NOT CLOSED]**
+**R1 — The DSP-1 coprocessor sits inside the physics.  [REOPENED, AND
+BIGGER THAN THOUGHT]** The original scoping to four commands came from a
+static scan and undercounted badly: a running race issues roughly 1500
+unmodelled DSP-1 operations per 60 frames (NOTES 038). Because one unknown
+command desynchronises the parameter stream, everything after it is wrong.
+This now blocks sprites and AI as well as physics fidelity. Implement the
+device properly rather than one command at a time.
+
+Original scoping note follows.
 Confirmed used, and narrowed to four commands (NOTES 008): multiply, sin/cos,
 2D rotate, vector length. The remaining risk is *scaling*: our
 implementations are from documented behaviour, not measured (NOTES 015, S9).
