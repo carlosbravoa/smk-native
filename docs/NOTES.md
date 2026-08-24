@@ -1351,20 +1351,13 @@ decoded as write-twice 8.8 latches. What it revealed about SMK's Mode 7:
 * Per-line variation is real and correct (`$0F00` at line 0, `$0B80` by
   line 24) — the perspective ramp is being transferred properly.
 
-**Why the camera still is not measured.** In every demo state I can reach,
-**karts 0 and 1 are parked** — speed 0 for the whole window, 1-2 distinct
-headings, while karts 2-7 race normally. The camera follows the parked
-kart, so the matrix is genuinely constant: A = B = C = D = 2944 across 900
-frames. Forcing player control (`$0E32 = 0`) and holding accelerate for 700
-frames did not move them either.
+**Why the camera still is not measured.** *(Revised — see 049. The
+"parked kart" explanation below was wrong.)* In the states sampled, slots 0
+and 1 read speed 0 while 2-7 raced, and the matrix was constant:
+A = B = C = D = 2944 across 900 frames.
 
-So the constant matrix was never a bug, and NOTES 046's four negatives are
-now partly explained: **a static camera cannot correlate with anything.**
-HDMA was necessary but not sufficient. The actual blocker is *reaching a
-state where the followed kart drives* — a state-reaching problem (SKILL
-step 18), not a hardware-modelling one. Options for next time: find the
-real player-control entry rather than poking `$0E32`, or make the camera
-follow one of the karts that does move.
+The inference drawn here — that the camera follows a parked kart — did not
+survive the next experiment. See 049.
 
 Our native `yaw = kart heading, no lag` stands unchanged and still
 labelled as an assumption.
@@ -1401,4 +1394,47 @@ the need for a reachable game state entirely. The dispatch to decode is at
 
 ---
 
-*(next entry: 049)*
+**049** — `$B4` is not the player kart. Correcting 047, and the sprite lean
+explained from outside.
+
+Two corrections, both prompted by the observation that SMK pins the
+player's kart to a fixed screen position and moves the world underneath it,
+the kart only leaning, hopping and spinning in place.
+
+**1. `$B4` is the current-object pointer, not a player pointer.** Logging
+it every frame gives eleven distinct values in one race — `$1000` through
+`$1700`, plus `$1840`, `$18C0` and `$1C00`. It is the `this` register that
+every handler reads (`ldx $B4`), reloaded as the game walks its object
+list, so its value depends entirely on *when* in the frame you sample. The
+earlier reading of `$18C0` was not a mystery and `$1100` was not evidence
+that the player is slot 1. Any conclusion of the form "`$B4` says the
+player is X" is unsound.
+
+**2. So 047's explanation of the constant matrix was wrong.** The matrix is
+still constant when correlated against the object `$B4` names, so "the
+camera follows a parked kart" was never the reason. What remains true is
+only the measurement: A = B = C = D = 2944 at a fixed scanline across 900
+frames, while per-line variation within a frame is correct. The live
+suspect is now our **IRQ/HDMA interleaving** — SMK builds its per-scanline
+matrix in a scanline IRQ, and our frame loop runs a line's HDMA before that
+line's instructions, so an HDMA read can precede the write that fills it.
+That is a model-ordering question, testable directly.
+
+**What the thread does not block.** The reason to want the camera angle was
+the player kart's turning lean, which I had assumed came from camera lag.
+It does not: the lean is a **sprite animation** on a kart that is always
+drawn from directly behind. So camera yaw = kart heading with no lag, and
+`frame_for()`'s steering-driven lean is the right model — the assumption
+flagged in 046 is now explained rather than merely bounded. Sheet frames
+32-47 are the hit/spin-out rotation, cycled over time rather than selected
+by heading (NOTES 040 guessed at their content and can now be stated).
+
+**Audit of what depended on the bad assumption:** nothing decoded. The
+sprite frame rule (041) force-spun a chosen kart against a constant
+reference; the AI controller (043) measured karts 2-7 as AI regardless of
+which is the player; the kinematics verification compares all eight slots.
+The slot confusion was confined to this camera thread.
+
+---
+
+*(next entry: 050)*
