@@ -70,3 +70,36 @@ void smk_render_mode7(const smk_track *t, const smk_camera *cam,
         }
     }
 }
+
+
+/* The inverse of the ground-plane mapping in smk_render_mode7().
+ *
+ * Forward:   z  = height * focal / (sy - horizon)
+ *            world = camera + forward*z + right*(sx - w/2)*z/focal
+ * so given a world point, its forward and rightward components relative to
+ * the camera give the row and column directly.  Everything an object needs
+ * to sit on the plane at the right size goes through here.
+ */
+bool smk_project(const smk_camera *cam, float wx, float wy,
+                 int w, int h, float *sx, float *sy, float *scale)
+{
+    const float sa = sinf(cam->angle), ca = cosf(cam->angle);
+    const float focal = cam->fov * (float)w;
+    const float horizon = cam->horizon * (float)h;
+
+    /* shortest offset on a plane that wraps every SMK_WORLD_PX */
+    float dx = wx - cam->x, dy = wy - cam->y;
+    while (dx >  SMK_WORLD_PX / 2) dx -= SMK_WORLD_PX;
+    while (dx < -SMK_WORLD_PX / 2) dx += SMK_WORLD_PX;
+    while (dy >  SMK_WORLD_PX / 2) dy -= SMK_WORLD_PX;
+    while (dy < -SMK_WORLD_PX / 2) dy += SMK_WORLD_PX;
+
+    float zf =  dx * ca + dy * sa;          /* along the camera's forward */
+    float xr = -dx * sa + dy * ca;          /* to its right               */
+    if (zf < 1.0f) return false;            /* behind, or on top of, us   */
+
+    *sy = horizon + cam->height * focal / zf;
+    *sx = (float)w * 0.5f + xr * focal / zf;
+    *scale = focal / zf;
+    return *sy < (float)h && *sy > horizon;
+}

@@ -47,7 +47,8 @@ so resolution is not a constraint.
 - The **player's kart drawn from the ROM's own sprite frames** — 32x32 4bpp,
   read at runtime; `--character 0..7` selects any of the eight drivers, each
   with its own sheet and palette
-- The **real starting grid**, read off the game's own demo race
+- The **real starting grid**, read off the game's own demo race, with the
+  other seven karts drawn in world space and scaled by distance
 - A resolution-independent perspective ground plane
 - Fixed **60.0988 Hz** tick, the SNES NTSC vblank rate
 

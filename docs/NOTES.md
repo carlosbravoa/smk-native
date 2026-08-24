@@ -932,4 +932,42 @@ Two lessons, both cheap to have avoided:
 
 ---
 
-*(next entry: 036)*
+**036** — NEGATIVE RESULT: VRAM kart tiles do not match the ROM sheets
+byte-for-byte.
+
+With karts moving in the demo race, the frame the game picked should be
+readable by taking the 4x4 tile block at each kart's OAM tile slot
+(`$C0`/`$C4`/`$C8`/`$CC`, sprite base `$8000` from `OBSEL = $02`) and finding
+it in the character sheet. Over 400 frames: **zero matches**, against all
+seven sheets and all 32 frames of each.
+
+So one of these is wrong, and the next step is to find out which rather than
+guess: the sprite tile base, the order tiles are assembled into a 32x32
+block in VRAM, or the assumption that VRAM holds sheet bytes unmodified.
+Dumping the VRAM block and rendering it will settle it in one look — if it
+draws a kart, the bytes are there and only the correspondence is wrong.
+
+Also worth noting: no kart-sprite DMA occurs at all while the karts drive,
+so whatever puts those tiles in VRAM does it another way — probably direct
+`$2118`/`$2119` writes during vblank, which the PPU model does capture.
+
+**037** — World-space sprite projection, and a bug worth naming.
+
+`smk_project()` inverts the ground-plane mapping: take the offset from the
+camera (wrapping on the 1024-unit plane), split it into forward and
+rightward components, and the row and column follow directly, with
+pixels-per-world-unit as `focal / forward`. Everything that sits on the
+plane goes through it.
+
+The native game now draws the **rest of the starting grid** — real positions
+from the game's own grid, real sprites, scaled by distance across the three
+size tiers. They do not drive; there are no opponents yet.
+
+The bug worth naming: this was the *second* time a feature was added to the
+interactive render path and silently missing from `--shot`, so screenshots
+disagreed with the game. Both now go through one `draw_scene()`. If two code
+paths render, they will drift; give them one function the first time.
+
+---
+
+*(next entry: 038)*

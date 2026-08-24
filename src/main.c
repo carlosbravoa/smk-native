@@ -123,6 +123,51 @@ static void camera_from_kart(smk_camera *cam, const smk_kart *k)
                  - (float)M_PI / 2.0f;
 }
 
+
+/* Everything drawn on top of the ground plane.  Shared by the interactive
+ * loop and --shot so the two cannot drift apart - they already did once. */
+static void draw_scene(const smk_rom *rom, const smk_track *trk,
+                       const smk_sprites *karts, const smk_driver *drv,
+                       const smk_camera *cam, uint32_t *fb, int rw, int rh,
+                       int show_grid, int show_kart, int frame)
+{
+    if (show_grid && karts->frames) {
+        static smk_sprites other[SMK_CHARACTERS];
+        static bool loaded[SMK_CHARACTERS];
+        for (int k = 1; k < SMK_CHARACTERS; k++) {
+            float gx, gy, ga, px, py, sc;
+            smk_track_start(trk, k, &gx, &gy, &ga);
+            if (!smk_project(cam, gx, gy, rw, rh, &px, &py, &sc)) continue;
+            /* a kart is roughly 20 world units across and the sprite is 32
+             * pixels, so it wants about 20/32 of the projected size */
+            int scale = (int)(sc * 0.62f + 0.5f);
+            if (scale < 1) scale = 1;
+            if (scale > rh / 90) scale = rh / 90;
+            const smk_driver *d2 = &SMK_DRIVERS[k];
+            if (!loaded[k]) loaded[k] = smk_sprites_load(rom, d2->sheet, &other[k]);
+            if (!loaded[k]) continue;
+            int tier = scale > 3 ? SMK_SPR_TIER0
+                     : scale > 1 ? SMK_SPR_TIER1 : SMK_SPR_TIER2;
+            smk_draw_sprite(&other[k], tier + SMK_SPR_REAR, trk->palette,
+                            d2->pal, (int)px, (int)py, scale, fb, rw, rh, rw);
+        }
+    }
+    if (show_kart && karts->frames) {
+        int scale = rh / 112;
+        if (scale < 1) scale = 1;
+        smk_draw_sprite(karts, frame, trk->palette, drv->pal,
+                        rw / 2, rh - rh / 12, scale, fb, rw, rh, rw);
+    }
+}
+
+/* PLACEHOLDER frame choice - see include/smk.h. */
+static int frame_for(const input_state *in, float *lean)
+{
+    float want = (in->left ? -1.0f : 0.0f) + (in->right ? 1.0f : 0.0f);
+    *lean += (want - *lean) * 0.25f;
+    return smk_sprite_frame(SMK_SPR_TIER0, *lean);
+}
+
 /* ------------------------------------------------------------------ */
 static void usage(const char *argv0)
 {
@@ -133,7 +178,8 @@ static void usage(const char *argv0)
            "  --class N       engine class 0/1/2 (50/100/150cc)  [0]\n"
            "  --character N   0 Mario 1 Luigi 2 Bowser 3 Peach 4 DK Jr\n"
            "                  5 Yoshi 6 Koopa 7 Toad              [0]\n"
-           "  --no-kart       hide the kart sprite\n"
+           "  --no-kart       hide the player's kart\n"
+           "  --no-grid       hide the rest of the starting grid\n"
            "  --width W       window width                 [1024]\n"
            "  --height H      window height                [896]\n"
            "  --pixel N       render at 1/N resolution     [2]\n"
@@ -157,6 +203,7 @@ int main(int argc, char **argv)
     int engine_class = 0;        /* 0 = 50cc, 1 = 100cc, 2 = 150cc  */
     int character = 0;           /* index into SMK_DRIVERS */
     int show_kart = 1;
+    int show_grid = 1;
     int win_w = 1024, win_h = 896, pixel = 2, fullscreen = 0;
     const char *dump = NULL;          /* write raw track data and exit      */
     const char *shot = NULL;          /* render one frame to a BMP and exit */
@@ -172,6 +219,7 @@ int main(int argc, char **argv)
         ARG("--track", track) ARG("--theme", theme) ARG("--class", engine_class)
         ARG("--character", character)
         if (!strcmp(a, "--no-kart")) { show_kart = 0; continue; }
+        if (!strcmp(a, "--no-grid")) { show_grid = 0; continue; }
         ARG("--width", win_w) ARG("--height", win_h) ARG("--pixel", pixel)
         if (!strcmp(a, "--fullscreen")) { fullscreen = 1; continue; }
         if (!strcmp(a, "--frames") && i + 1 < argc) { max_frames = atol(argv[++i]); continue; }
@@ -257,11 +305,12 @@ int main(int argc, char **argv)
                          .height = cam_height, .horizon = cam_horizon,
                          .fov = cam_fov };
         smk_render_mode7(&trk, &c, px, sw, sh, sw);
-        if (show_kart && karts.frames) {
-            int scale = sh / 112;
-            if (scale < 1) scale = 1;
-            smk_draw_sprite(&karts, SMK_SPR_REAR, trk.palette, drv->pal,
-                            sw / 2, sh - sh / 12, scale, px, sw, sh, sw);
+        {
+            input_state none;
+            float lz = 0.0f;
+            memset(&none, 0, sizeof none);
+            draw_scene(&rom, &trk, &karts, drv, &c, px, sw, sh,
+                       show_grid, show_kart, frame_for(&none, &lz));
         }
         if (SDL_Init(SDL_INIT_VIDEO) != 0 && SDL_Init(0) != 0) {
             fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
@@ -382,21 +431,8 @@ int main(int argc, char **argv)
 
         if (tex && fb) {
             smk_render_mode7(&trk, &cam, fb, rw, rh, rw);
-            if (show_kart && karts.frames) {
-                /* PLACEHOLDER frame choice: the ROM picks the sprite from
-                 * the kart's heading relative to the camera and its steering
-                 * state; we only lean with the steering input.  The frames
-                 * themselves and their layout are the ROM's. */
-                /* lean tracks the steering input, eased so the kart does
-                 * not snap between frames */
-                float want = (in.left ? -1.0f : 0.0f) + (in.right ? 1.0f : 0.0f);
-                lean += (want - lean) * 0.25f;
-                int frame = smk_sprite_frame(SMK_SPR_TIER0, lean);
-                int scale = rh / 112;            /* kart ~2/7 of screen height */
-                if (scale < 1) scale = 1;
-                smk_draw_sprite(&karts, frame, trk.palette, drv->pal,
-                                rw / 2, rh - rh / 12, scale, fb, rw, rh, rw);
-            }
+            draw_scene(&rom, &trk, &karts, drv, &cam, fb, rw, rh,
+                       show_grid, show_kart, frame_for(&in, &lean));
             SDL_UpdateTexture(tex, NULL, fb, rw * (int)sizeof *fb);
             SDL_RenderClear(ren);
             SDL_RenderCopy(ren, tex, NULL, NULL);

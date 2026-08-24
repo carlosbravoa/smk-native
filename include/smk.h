@@ -222,6 +222,12 @@ typedef struct {
 void smk_render_mode7(const smk_track *t, const smk_camera *cam,
                       uint32_t *pixels, int w, int h, int pitch_px);
 
+/* Project a world point onto the screen through the Mode 7 camera.
+ * Returns false when the point is behind the camera or above the horizon.
+ * `scale` comes back as pixels-per-world-unit at that depth. */
+bool smk_project(const smk_camera *cam, float wx, float wy,
+                 int w, int h, float *sx, float *sy, float *scale);
+
 /* Blit one sprite frame, nearest-neighbour, index 0 transparent. */
 void smk_draw_sprite(const smk_sprites *s, int frame, const uint32_t *palette,
                      int pal_base, int cx, int cy, int scale,
