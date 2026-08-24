@@ -9,6 +9,13 @@
 #define TBL_PALETTE  0x81EBBBu   /* 256 colours, BGR555                    */
 #define TBL_THEME    0x81EC2Fu   /* 24 bytes, track -> theme*2 ($81EC5E)   */
 #define SURF_BLOB    0x87FDBAu   /* compressed surface behaviour data       */
+#define OBJ_GFX      0xC40000u   /* object tiles (boxes, coins, oil...):
+                                  * $81E6B9 decompresses this to $7F:0000,
+                                  * expands 64 tiles to $7F:7000, DMAs them
+                                  * to VRAM $3000 = tile slots 192-255 */
+#define TBL_STAMP    0x84F23Du   /* stamp graphic pointers (16-bit, bank $84) */
+#define TBL_SIZES    0x84F384u   /* stamp (w,h) pairs by size class          */
+#define OBJ_LISTS    0x85D000u   /* per-track object lists, 128 bytes apart  */
 #define TBL_SURF_OFF 0x81EB4Bu   /* per-theme 16-bit offset into that blob  */
 
 /* We mirror WRAM bank $7F, because the game's loads are not independent:
@@ -91,7 +98,54 @@ static bool load_surface(const smk_rom *rom, int theme, uint8_t *out)
      * zeroed buffer, which is the same answer for a freshly cleared bank. */
     (void)n;
     memcpy(out, buf + off, SMK_TILE_COUNT);
+    /* Behaviour for the object tiles 192-255.  CAPTURED from the running
+     * game (WRAM $0BC0+, docs/NOTES.md 069) rather than located in ROM -
+     * the code filling these entries is still undecoded.  Item boxes are
+     * class $14, coins $16; none are solid. */
+    static const uint8_t OBJ_SURF[64] = {
+        0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,
+        0x14,0x14,0x14,0x14,0x14,0x14,0x14,0x14,
+        0x40,0x40,0x40,0x40,0x40,0x40,0x40,0x40,
+        0x40,0x40,0x40,0x40,0x40,0x40,0x40,0x40,
+        0x16,0x16,0x16,0x16,0x16,0x16,0x16,0x16,
+        0x16,0x16,0x16,0x16,0x16,0x16,0x16,0x16,
+        0x80,0x80,0x80,0x80,0x10,0x10,0x10,0x10,
+        0x10,0x10,0x18,0x18,0x18,0x18,0x1A,0x40,
+    };
+    memcpy(out + SMK_TILE_COUNT, OBJ_SURF, 64);
     return true;
+}
+
+/* The stamp blitter at $84F1A4, ported.
+ *
+ * Per object record [kind][cell:word] (cell = tilemap byte offset,
+ * $FFFF-terminated): kind bits 0-5 pick a stamp (pointer table $84F23D,
+ * tile bytes in bank $84, row-major), bits 6-7 a size class ((w,h) pairs
+ * at $84F384: 2x2, 3x1, 1x3, 5x5).  $FF bytes are transparent.  The
+ * blitter has NO kind filter: sprite obstacles (>= $C0) also stamp - a
+ * sparse 5x5 scatter of tile $FE, the dirt under the pipes. */
+void smk_track_place_objects(const smk_rom *rom, smk_track *t)
+{
+    uint8_t *map = t->map;
+    uint32_t list = smk_snes_to_pc(rom, OBJ_LISTS) + (uint32_t)t->track * 128u;
+    uint32_t szs  = smk_snes_to_pc(rom, TBL_SIZES);
+    uint32_t ptrs = smk_snes_to_pc(rom, TBL_STAMP);
+    for (uint32_t rec = list; rec + 3 <= list + 128; rec += 3) {
+        unsigned cell = rom->data[rec + 1] | (rom->data[rec + 2] << 8);
+        if (cell == 0xFFFF) break;
+        uint8_t kind = rom->data[rec];
+        unsigned cls2 = (kind >> 5) & 6;
+        int w = rom->data[szs + cls2], h = rom->data[szs + cls2 + 1];
+        uint32_t sp = ptrs + (uint32_t)(kind & 0x3F) * 2u;
+        uint32_t stamp = smk_snes_to_pc(rom,
+            0x840000u | rom->data[sp] | ((uint32_t)rom->data[sp + 1] << 8));
+        for (int row = 0; row < h; row++)
+            for (int col = 0; col < w; col++) {
+                uint8_t t = rom->data[stamp + (uint32_t)(row * w + col)];
+                unsigned at = cell + (unsigned)row * SMK_MAP_DIM + (unsigned)col;
+                if (t != 0xFF && at < SMK_MAP_BYTES) map[at] = t;
+            }
+    }
 }
 
 /* Decompress table[index] into the WRAM image at `dest`. */
@@ -146,6 +200,14 @@ bool smk_track_load(const smk_rom *rom, int track, int theme,
     expand_tiles(wram + STAGE_OFF, WRAM_SIZE - STAGE_OFF,
                  out->tiles, SMK_TILE_COUNT);
 
+    /* --- object tiles (slots 192-255), as $81E6B9 does ---------------- */
+    if (smk_decompress_into(rom->data, rom->size,
+                            smk_snes_to_pc(rom, OBJ_GFX),
+                            wram, WRAM_SIZE, MAP_OFF, NULL) >= 0)
+        expand_tiles(wram + MAP_OFF, WRAM_SIZE - MAP_OFF,
+                     out->tiles + (size_t)SMK_TILE_COUNT * SMK_TILE_BYTES, 64);
+
+
     /* --- palette ----------------------------------------------------- */
     long qn = load_into(rom, TBL_PALETTE, theme, wram, STAGE_OFF);
     if (qn != 512) {
@@ -174,7 +236,7 @@ uint8_t smk_track_surface(const smk_track *t, int wx, int wy)
     if (wx < 0 || wx >= SMK_WORLD_PX || wy < 0 || wy >= SMK_WORLD_PX)
         return SMK_SURF_SOLID;
     unsigned tile = t->map[(wy >> 3) * SMK_MAP_DIM + (wx >> 3)];
-    return tile < SMK_TILE_COUNT ? t->surface[tile] : 0;
+    return tile < SMK_TILE_TOTAL ? t->surface[tile] : 0;
 }
 
 uint32_t smk_track_texel(const smk_track *t, int wx, int wy)
@@ -183,7 +245,7 @@ uint32_t smk_track_texel(const smk_track *t, int wx, int wy)
     if (wx < 0 || wx >= SMK_WORLD_PX || wy < 0 || wy >= SMK_WORLD_PX)
         return 0xFF101018u;
     unsigned tile = t->map[(wy >> 3) * SMK_MAP_DIM + (wx >> 3)];
-    if (tile >= SMK_TILE_COUNT) return t->palette[0];
+    if (tile >= SMK_TILE_TOTAL) return t->palette[0];
     return t->palette[t->tiles[tile * SMK_TILE_BYTES + ((wy & 7) << 3) + (wx & 7)]];
 }
 

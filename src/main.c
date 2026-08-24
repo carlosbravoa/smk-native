@@ -624,21 +624,9 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
                                         : edge ? 0xFF1E6B1E : 0xFF2E9B2E;
                     }
                 }
-            } else {
-                /* flat decal on the ground: a small ground-scaled diamond */
-                int half = (int)(4.0f * sc) + 1;
-                uint32_t col = 0xFFE0B830;
-                for (int dy = -half / 2; dy <= half / 2; dy++) {
-                    int yy = (int)py + dy;
-                    if (yy < 0 || yy >= rh) continue;
-                    int wdt = half - (dy < 0 ? -dy : dy) * 2;
-                    for (int dx = -wdt; dx <= wdt; dx++) {
-                        int xx = (int)px + dx;
-                        if (xx < 0 || xx >= rw) continue;
-                        fb[yy * rw + xx] = col;
-                    }
-                }
             }
+            /* kinds < $C0 need no billboard: they are stamped into the
+             * tilemap at load, exactly like the game does ($84F1A4) */
         }
     }
 
@@ -842,14 +830,18 @@ int main(int argc, char **argv)
     if (dump) {
         FILE *f = fopen(dump, "wb");
         if (!f) { fprintf(stderr, "cannot write %s\n", dump); return 1; }
+        /* the contract with tools/test.py is loader output only:
+         * 192 theme tiles, and the map BEFORE object stamps */
         fwrite(trk.map, 1, sizeof trk.map, f);
-        fwrite(trk.tiles, 1, sizeof trk.tiles, f);
+        fwrite(trk.tiles, 1, (size_t)SMK_TILE_COUNT * SMK_TILE_BYTES, f);
         fwrite(trk.palette, 4, 256, f);
         fclose(f);
         printf("track %d theme %d -> %s\n", track, trk.theme, dump);
         smk_rom_free(&rom);
         return 0;
     }
+
+    smk_track_place_objects(&rom, &trk);
 
     /* Headless single-frame render: no window, no event loop.  Also the
      * cheapest way to eyeball the renderer from a script. */
@@ -986,6 +978,7 @@ int main(int argc, char **argv)
                     && smk_course_load(&rom, nt, &crs)) {
                     float sx, sy;
                     uint16_t sh;
+                    smk_track_place_objects(&rom, &trk);
                     track = nt; theme = nth;
                     smk_course_start(&crs, 0, &sx, &sy, &sh);
                     kart = (smk_kart){ .x = (int32_t)(sx * SMK_POS_ONE),
@@ -997,6 +990,7 @@ int main(int argc, char **argv)
                 } else {
                     fprintf(stderr, "skipped: %s\n", err);
                     smk_track_load(&rom, track, theme, &trk, err, sizeof err);
+                    smk_track_place_objects(&rom, &trk);
                 }
             }
             if (in.toggle_filter) {

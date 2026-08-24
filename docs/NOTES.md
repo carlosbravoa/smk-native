@@ -2161,4 +2161,41 @@ visible hop.
 
 ---
 
-*(next entry: 074)*
+**074** — Real object graphics: the full stamp chain decoded, ported, and
+pinned live-exact.  And a surprise: the "pipe" kinds stamp COINS.
+
+The chain (all from the ROM, no captures needed at runtime):
+
+* Object tile pixels: `$81E6B9` decompresses the blob at **$C4:0000**
+  (our own codec) to `$7F:0000`, then the expander at `$84E3C7` (already
+  ported as `expand_tiles`) produces 64 8bpp Mode 7 tiles that DMA to
+  VRAM `$3000` = tile slots 192-255.  Ported into `smk_track_load`:
+  `tiles[]` now holds 256 tiles.
+* The stamp blitter `$84F1A4` (hand-decoded this session): per record,
+  `kind & $3F` indexes the pointer table `$84F23D` (overlapping windows
+  into a tile sequence; entries 32+ step 25 bytes), `kind >> 6` picks
+  (w,h) from `$84F384` = 2x2, 3x1, 1x3, 5x5; stamp bytes are tile
+  indices written row-major into the TILEMAP at the record's cell
+  (+128/row), `$FF` transparent.  **The blitter has no kind filter** -
+  kinds >= $C0 stamp too.
+* Ported as `smk_track_place_objects` - a separate step after
+  `smk_track_load`, because tools/test.py cross-checks the loader against
+  the game's own LOADER ($81E67A), which has not stamped either.
+* Selftest pins track 7 against the live capture: tiles 196/199 x12
+  (item boxes) and 254 x35 (37 stamped minus 2 overlaps) - EXACT.
+* Surface classes for tiles 192-255: still the live-captured 64 bytes
+  (item box $14, coin $16); the ROM code that fills WRAM $0BC0+ remains
+  undecoded.
+
+The surprise: rendering the stamped map shows the >= $C0 kinds lay down
+**coin clusters** (sparse 5x5 scatters of tile $FE, unmistakably coins),
+NOT pipe shadows.  On Mario Circuit 1 (track 7) the $DC/$E0/$EC records
+are the coin groups on the road.  This BREAKS the NOTES 070 reading that
+kinds >= $C0 are pipe obstacles: our billboards + solid cylinders at
+those positions are wrong at least for coin tracks.  Where the real
+sprite obstacles (pipes, moles, Thwomps) come from is now the open
+question - probing the live object blocks ($1840/$18C0/$1C00).
+
+---
+
+*(next entry: 075)*

@@ -54,6 +54,7 @@ int smk_track_theme(const smk_rom *rom, int track);
 #define SMK_TILE_PX       8
 #define SMK_TILE_BYTES    64          /* Mode 7: linear, 1 byte per pixel */
 #define SMK_TILE_COUNT    192
+#define SMK_TILE_TOTAL    256         /* 192 theme tiles + 64 object tiles */
 #define SMK_WORLD_PX      (SMK_MAP_DIM * SMK_TILE_PX)   /* 1024 */
 
 /* Surface behaviour, one byte per tile index, from the ROM's table.
@@ -64,8 +65,8 @@ int smk_track_theme(const smk_rom *rom, int track);
 
 typedef struct {
     uint8_t  map[SMK_MAP_BYTES];                    /* tile index per cell   */
-    uint8_t  surface[SMK_TILE_COUNT];               /* behaviour per tile    */
-    uint8_t  tiles[SMK_TILE_COUNT * SMK_TILE_BYTES];/* expanded 8bpp pixels  */
+    uint8_t  surface[SMK_TILE_TOTAL];               /* behaviour per tile    */
+    uint8_t  tiles[SMK_TILE_TOTAL * SMK_TILE_BYTES];/* expanded 8bpp pixels  */
     uint32_t palette[256];                          /* 0xRRGGBB              */
     int      track;
     int      theme;
@@ -74,6 +75,12 @@ typedef struct {
 /* Load a course.  `theme` < 0 means "use the ROM's own binding". */
 bool smk_track_load(const smk_rom *rom, int track, int theme,
                     smk_track *out, char *err, size_t errsz);
+
+/* Stamp the track's objects into the tilemap, as $84F1A4 does at race
+ * setup.  A separate step because the loader cross-check (tools/test.py)
+ * compares smk_track_load against the game's LOADER, which has not
+ * stamped yet either. */
+void smk_track_place_objects(const smk_rom *rom, smk_track *t);
 
 /* The starting grid, read off the game itself (docs/NOTES.md 029): eight
  * karts in two staggered columns, x alternating 952/920, y stepping down by

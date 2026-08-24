@@ -199,6 +199,31 @@ int main(int argc, char **argv)
     check("a malformed stream is rejected",
           smk_decompress(bad, sizeof bad, 0, out, sizeof out, NULL) < 0, NULL);
 
+    {
+        /* Object stamps: track 7's map must carry the item-box tiles and
+         * the pipes' dirt scatter with the counts captured from the live
+         * game (WRAM tilemap, docs/NOTES.md 074). */
+        smk_track trk;
+        char terr[128];
+        if (smk_track_load(&rom, 7, -1, &trk, terr, sizeof terr)) {
+            smk_track_place_objects(&rom, &trk);
+            int n196 = 0, n199 = 0, n254 = 0;
+            for (int i = 0; i < SMK_MAP_BYTES; i++) {
+                if (trk.map[i] == 196) n196++;
+                if (trk.map[i] == 199) n199++;
+                if (trk.map[i] == 254) n254++;
+            }
+            check("track 7 object stamps match the live capture",
+                  n196 == 12 && n199 == 12 && n254 == 35, NULL);
+            const uint8_t *ot = trk.tiles + 196 * SMK_TILE_BYTES;
+            int opaque = 0;
+            for (int i = 0; i < SMK_TILE_BYTES; i++) if (ot[i]) opaque++;
+            check("object tile 196 decompressed to pixels", opaque > 16, NULL);
+        } else {
+            check("track 7 loads for the stamp check", 0, terr);
+        }
+    }
+
     printf("\n%d passed, %d failed\n", pass, fail);
     smk_rom_free(&rom);
     return fail ? 1 : 0;
