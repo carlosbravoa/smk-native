@@ -151,6 +151,30 @@ def main():
             check("C tilesets match the game's own loader", t_ok == A_TRACKS, f"{t_ok}/{A_TRACKS}")
             check("C palettes match the game's own loader", p_ok == A_TRACKS, f"{p_ok}/{A_TRACKS}")
 
+    print("\ncourse data (sectors + racing line)")
+    from smktool import course as CRS
+    good = 0
+    total_pts = 0
+    for tr in range(24):
+        try:
+            m, n = CRS.build_sector_map(rom, tr)
+            pts = CRS.waypoints(rom, tr, n)
+            if (10 <= n <= 120 and pts[0][:2] == pts[-1][:2]
+                    and all(0 <= x < 1024 and 0 <= y < 1024 for x, y, _ in pts)
+                    and sum(1 for v in m if v) > 200):
+                good += 1
+            total_pts += n
+        except Exception:
+            pass
+    check("all 24 courses decode sectors and a closed racing line",
+          good == 24, f"{good}/24, {total_pts} waypoints total")
+    # spot check against values observed in the running game (track 7)
+    m7, n7 = CRS.build_sector_map(rom, 7)
+    p7 = CRS.waypoints(rom, 7, n7)
+    check("track 7 racing line matches the live game's RAM",
+          n7 == 30 and [(x, y) for x, y, _ in p7[:4]]
+          == [(896, 424), (832, 360), (768, 328), (696, 288)])
+
     print("\nphysics tables")
     tp = rom.snes_to_pc(0x81FED5)
     ptrs = [rom.u16(tp + i * 2) for i in range(3)]
