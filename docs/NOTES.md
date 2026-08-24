@@ -1371,4 +1371,34 @@ labelled as an assumption.
 
 ---
 
-*(next entry: 048)*
+**048** — Surface speed modifiers: two failed measurements, and what the
+next attempt should do differently.
+
+**Attempt 1, free-running demo.** Sampled surface byte (`$68,x`) against
+speed for 1500 frames. Confounded: the means were dominated by the two
+parked karts (surface `$00`, n = 7800), and the racing karts almost never
+change surface — only **one** transition pair reached six samples, and its
+median speed change was zero. Free-running AI karts stay on the road, which
+is exactly what makes them useless for this measurement.
+
+**Attempt 2, controlled probe.** Found a world position for each surface
+class on the track and pinned a kart there at rest, expecting it to
+accelerate to that surface's terminal speed. Speed stayed **0 for all 150
+frames on every class** — writing position and velocity every frame
+suppresses the kart's own update, so the probe measured nothing at all.
+(The Z-axis probe worked because it wrote *one* field and let the game run;
+this one wrote four and froze the object.)
+
+Useful by-product: track 7 carries only **three** surface classes
+(`$26`, `$40`, `$54`), so it is a poor track for this measurement anyway.
+Theme 3 has eleven and theme 0 has fourteen — pick one of those.
+
+**What to do next:** teleport once and let the kart drive freely, sampling
+only while it stays on the target class; or drive the acceleration handler
+directly through `Oracle.call()` with the surface byte set, which sidesteps
+the need for a reachable game state entirely. The dispatch to decode is at
+`$80E09D` (table at `$80E0B4`, second level of pointers).
+
+---
+
+*(next entry: 049)*
