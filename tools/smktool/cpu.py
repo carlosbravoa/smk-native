@@ -67,6 +67,13 @@ class Bus:
         self.oamadd = 0         # $2102/$2103, in bytes
         self.dma_bytes = 0
         self.dma_log: list[tuple[int, int, int, int]] = []   # (srcbank,src,bbad,count)
+        self.wmadd = 0                  # $2181-$2183 WRAM port address
+        self.mpya = 0                   # $4202-$4206 CPU math unit
+        self.dividend = 0
+        self.mul_r = 0
+        self.div_q = 0
+        self.m7_ofs = [0, 0, 0, 0]      # M7HOFS, M7VOFS, M7X, M7Y
+        self.m7_ofs_lo = [0, 0, 0, 0]
         self.m7 = [0, 0, 0, 0]          # $211B-$211E latches (8.8)
         self.m7_lines: list[tuple[int, int, int, int, int]] = []   # per-scanline
         self.log_m7 = False
@@ -116,6 +123,17 @@ class Bus:
                 return self.hcount & 0xFF
             if addr == 0x213D:                     # OPVCT, latched V
                 return self.vcount & 0xFF
+            # $4214-$4217: results of the CPU's multiply/divide unit.  These
+            # fell through to 0 before, so every hardware divide the game did
+            # came back zero - see docs/NOTES.md 050.
+            if addr == 0x4214:
+                return self.div_q & 0xFF
+            if addr == 0x4215:
+                return (self.div_q >> 8) & 0xFF
+            if addr == 0x4216:
+                return self.mul_r & 0xFF
+            if addr == 0x4217:
+                return (self.mul_r >> 8) & 0xFF
             if addr < 0x6000:
                 return self.reg_reads.get(addr, 0)
             if addr < 0x8000:
@@ -139,7 +157,10 @@ class Bus:
                 return
             if addr < 0x6000:
                 self.regs[addr] = val
-                if 0x2100 <= addr <= 0x213F or addr == 0x420B:
+                if 0x4202 <= addr <= 0x4206:
+                    self._cpu_math(addr, val)
+                if (0x2100 <= addr <= 0x213F or 0x2180 <= addr <= 0x2183
+                        or addr == 0x420B):
                     self._ppu_write(addr, val)
                 if 0x2140 <= addr <= 0x2143:
                     self.apu.write(addr, val)
@@ -152,11 +173,56 @@ class Bus:
                 return
         # writes to ROM are ignored, as on hardware
 
+    # ---- CPU multiply / divide ------------------------------------
+    def _cpu_math(self, addr: int, val: int) -> None:
+        """$4202-$4206.  Writing the second operand starts the operation:
+        WRMPYB gives a 16-bit product in $4216/7; WRDIVB gives the quotient
+        in $4214/5 and the remainder in $4216/7."""
+        if addr == 0x4202:
+            self.mpya = val
+        elif addr == 0x4203:                      # start multiply
+            self.mul_r = (self.mpya * val) & 0xFFFF
+        elif addr == 0x4204:
+            self.dividend = (self.dividend & 0xFF00) | val
+        elif addr == 0x4205:
+            self.dividend = (self.dividend & 0x00FF) | (val << 8)
+        elif addr == 0x4206:                      # start divide
+            if val == 0:
+                self.div_q = 0xFFFF
+                self.mul_r = self.dividend & 0xFFFF
+            else:
+                self.div_q = (self.dividend // val) & 0xFFFF
+                self.mul_r = (self.dividend % val) & 0xFFFF
+
     # ---- PPU ------------------------------------------------------
     def _vram_step(self) -> int:
         return {0: 1, 1: 32, 2: 128, 3: 128}[self.vmain & 3]
 
     def _ppu_write(self, addr: int, val: int) -> None:
+        # $2180-$2183: the WRAM data port.  DMA into WRAM goes through $2180,
+        # which is how a game moves a computed table into RAM without the CPU
+        # touching it - miss this and such tables stay empty forever.
+        if addr == 0x2180:
+            self.wram[self.wmadd & 0x1FFFF] = val
+            self.wmadd = (self.wmadd + 1) & 0x1FFFF
+            return
+        if addr == 0x2181:
+            self.wmadd = (self.wmadd & 0x1FF00) | val
+            return
+        if addr == 0x2182:
+            self.wmadd = (self.wmadd & 0x100FF) | (val << 8)
+            return
+        if addr == 0x2183:
+            self.wmadd = (self.wmadd & 0x0FFFF) | ((val & 1) << 16)
+            return
+        if addr in (0x210D, 0x210E, 0x211F, 0x2120):
+            # write-twice 13-bit latches: Mode 7 scroll ($210D/$210E) and
+            # the rotation centre ($211F/$2120)
+            i = {0x210D: 0, 0x210E: 1, 0x211F: 2, 0x2120: 3}[addr]
+            prev = self.m7_ofs_lo[i]
+            self.m7_ofs[i] = ((val << 8) | prev) & 0x1FFF
+            self.m7_ofs_lo[i] = val
+            return
         if 0x211B <= addr <= 0x211E:
             # each is a write-twice 8.8 latch (low byte then high)
             i = addr - 0x211B
