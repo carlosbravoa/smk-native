@@ -109,6 +109,21 @@ bool smk_course_load(const smk_rom *rom, int track, smk_course *out)
         }
     }
 
+    /* --- sprite obstacles ($84DC20: $85:C800 + track*64) ------------- */
+    {
+        uint32_t p3 = smk_snes_to_pc(rom, 0x85C800u) + (uint32_t)track * 64u;
+        out->nent = 0;
+        for (int i = 0; i < 32; i++) {
+            unsigned wd = rom->data[p3] | (unsigned)rom->data[p3 + 1] << 8;
+            if (wd == 0) break;
+            out->ent[out->nent].kind = (uint8_t)(wd >> 14);
+            out->ent[out->nent].x = (uint16_t)((wd & 0x7F) * 8 + 4);
+            out->ent[out->nent].y = (uint16_t)(((wd >> 7) & 0x7F) * 8 + 4);
+            out->nent++;
+            p3 += 2;
+        }
+    }
+
     /* --- the AI direction field ($81FCFC) --------------------------- */
     for (int i = 0; i < SMK_SECT_CELLS; i++) {
         int s2 = out->map[i] & SMK_SECT_OFF;

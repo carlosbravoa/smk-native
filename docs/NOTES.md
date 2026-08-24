@@ -2261,4 +2261,30 @@ Verified visually: the grid field at depths 94-260 renders as minis.
 
 ---
 
-*(next entry: 078)*
+**078** — The sprite-obstacle spawner DECODED: per-track entity list at
+$85:C800 + track*64.
+
+Chain: writer trace on the live entity blocks ($1800-$18FF) -> spawn-time
+writers at $84:DC56 -> hand-decode of $84:DC20:
+
+* `LDA $0124 : XBA : LSR LSR : ADC #$C800` with bank $85 - the list is
+  **$85:C800 + track*64**, WORD records, zero-terminated.
+* Record: low 7 bits *8+4 = x, next 7 bits *8+4 = y (same cell scheme as
+  the ground objects, +4 centres), top 2 bits a kind field (only used on
+  tracks 20-23).
+* Verified: track 7's first records (268,92),(164,132) equal the live
+  entity positions EXACTLY; Donut Plains tracks (1/8/16) have empty
+  lists, matching their obstacle-free design.  Selftest-pinned.
+* Entity TYPE is per-track via a handler table ($84:DD15 indexed by
+  $0D2C) - not yet decoded; MC tracks get pipes, Bowser tracks Thwomps,
+  Choco moles, etc.
+
+Ported: `ent[]` in smk_course, static cylinder collision with the
+MEASURED pipe response at every entity, billboards at the true
+positions.  LABELLED interim: movers (Thwomps/moles) stand still, and
+the billboard pixels are still the placeholder green pipe - the entity
+sprite art and the motion handlers are the open decode.
+
+---
+
+*(next entry: 079)*

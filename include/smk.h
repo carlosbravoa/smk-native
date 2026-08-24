@@ -305,6 +305,11 @@ typedef struct {
      * bits 6-7 = size class. */
     struct { uint8_t kind; uint16_t x, y; } obj[42];
     int      nobj;
+    /* Sprite obstacles (pipes, Thwomps, moles...), decoded from the
+     * spawner at $84DC20: per-track word list at $85:C800 + track*64,
+     * [kind:2][y:7][x:7], coordinates cell*8+4, zero-terminated. */
+    struct { uint8_t kind; uint16_t x, y; } ent[32];
+    int      nent;
 } smk_course;
 
 bool smk_course_load(const smk_rom *rom, int track, smk_course *out);

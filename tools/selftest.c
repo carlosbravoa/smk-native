@@ -222,6 +222,19 @@ int main(int argc, char **argv)
         } else {
             check("track 7 loads for the stamp check", 0, terr);
         }
+        {
+            /* Sprite obstacles: the decoded $85:C800 list for track 7
+             * must match the entities captured live at race start
+             * ((268,92) and (164,132) were the spawned pair). */
+            smk_course cc;
+            if (smk_course_load(&rom, 7, &cc)) {
+                check("track 7 entity list matches the live spawn",
+                      cc.nent == 8 && cc.ent[0].x == 268 && cc.ent[0].y == 92
+                      && cc.ent[1].x == 164 && cc.ent[1].y == 132, NULL);
+            } else {
+                check("track 7 course loads for the entity check", 0, NULL);
+            }
+        }
     }
 
     printf("\n%d passed, %d failed\n", pass, fail);

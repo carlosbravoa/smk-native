@@ -79,11 +79,33 @@ static void collide_objects(smk_kart *k, const smk_course *crs)
      * come from a separate spawn system (the $1800 object blocks) that is
      * not decoded yet, so right now there is nothing to collide with.
      *
-     * The MEASURED pipe response, kept for when that system lands
-     * (crash lab, NOTES 072): velocity REFLECTS about the contact
-     * normal, both components halve, speed scales 308/581, and a
-     * 10-frame ballistic window follows (bounce_cool).  */
-    (void)k; (void)crs;
+     * The spawner is now decoded (NOTES 078): per-track entity list at
+     * $85:C800 + track*64.  Static cylinder collision at those positions
+     * with the MEASURED pipe response (crash lab, NOTES 072): velocity
+     * REFLECTS about the contact normal, both components halve, speed
+     * scales 308/581, and a 10-frame ballistic window follows.  Movers
+     * (Thwomps, moles) are static interim - positions right, motion not
+     * yet decoded (labelled). */
+    int kx = smk_kart_px(k->x), ky = smk_kart_px(k->y);
+    for (int i = 0; i < crs->nent; i++) {
+        int dx = kx - (int)crs->ent[i].x, dy = ky - (int)crs->ent[i].y;
+        int d2 = dx * dx + dy * dy;
+        if (d2 >= 12 * 12 || d2 == 0) continue;
+        float d = sqrtf((float)d2);
+        float nx2 = (float)dx / d, ny2 = (float)dy / d;
+        float dot = (float)k->vx * nx2 + (float)k->vy * ny2;
+        if (dot < 0.0f) {
+            k->vx = (int16_t)((float)k->vx - 2.0f * dot * nx2);
+            k->vy = (int16_t)((float)k->vy - 2.0f * dot * ny2);
+            k->vx /= 2;
+            k->vy /= 2;
+            k->speed = (int16_t)(k->speed * 308 / 581);
+            k->bounce_cool = 10;
+        }
+        float push = (12.0f - d) + 1.0f;
+        k->x += (int32_t)(nx2 * push * SMK_POS_ONE);
+        k->y += (int32_t)(ny2 * push * SMK_POS_ONE);
+    }
 }
 
 /* ------------------------------------------------------------------ */
@@ -612,10 +634,31 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
 {
     /* Track objects render through the GROUND: every object-list entry
      * (boxes, coins, oil) is stamped into the tilemap at load, exactly
-     * like the game does ($84F1A4).  Sprite obstacles (pipes, moles)
-     * belong to the undecoded $1800 entity system - nothing extra to
-     * draw here yet (NOTES 075). */
-    (void)course;
+     * like the game does ($84F1A4).  Sprite obstacles come from the
+     * decoded entity list (NOTES 078) and draw as billboards - the
+     * pixels are still placeholders (green pipe) until the entity
+     * sprite art is located. */
+    if (course) {
+        for (int i = 0; i < course->nent; i++) {
+            float px, py, sc;
+            if (!smk_project(cam, (float)course->ent[i].x,
+                             (float)course->ent[i].y, rw, rh, &px, &py, &sc))
+                continue;
+            int bw = (int)(10.0f * sc) + 1, bh = (int)(16.0f * sc) + 1;
+            for (int dy = 0; dy < bh; dy++) {
+                int yy = (int)py - dy;
+                if (yy < 0 || yy >= rh) continue;
+                for (int dx = -bw / 2; dx <= bw / 2; dx++) {
+                    int xx = (int)px + dx;
+                    if (xx < 0 || xx >= rw) continue;
+                    int edge = (dx < -bw / 2 + 1 || dx > bw / 2 - 1);
+                    int lip = (dy > bh - 3);
+                    fb[yy * rw + xx] = lip ? 0xFF77E077
+                                    : edge ? 0xFF1E6B1E : 0xFF2E9B2E;
+                }
+            }
+        }
+    }
 
     if (show_grid && karts->frames && racers) {
         static smk_sprites other[SMK_CHARACTERS];
