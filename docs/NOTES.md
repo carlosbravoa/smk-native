@@ -782,4 +782,51 @@ the gate is upstream of it and can be found by walking back from there.
 
 ---
 
-*(next entry: 032)*
+**032** — All eight drivers, and where the demo race actually stops.
+
+**Sprite sheets.** Rendering one frame from every bank at `$2000` found
+seven sheets, and pairing them with palettes came from a grid of every sheet
+under every sprite palette:
+
+| driver | sheet | palette |
+|---|---|---|
+| Mario | `$C0:2000` | `$90` |
+| Luigi | `$C0:2000` | `$A0` |
+| Bowser | `$C1:2000` | `$80` |
+| Peach | `$C2:2000` | `$B0` |
+| DK Jr | `$C3:2000` | `$B0` |
+| Yoshi | `$C4:2000` | `$80` |
+| Koopa | `$C5:2000` | `$90` |
+| Toad | `$C6:2000` | `$90` |
+
+Seven sheets for eight drivers: **Mario and Luigi share one**, differing
+only by palette, which is how the game does it too. `$C7` is not a sheet.
+
+Worth knowing: the **sprite half of the palette is not theme-independent** —
+37 to 53 of its 256 bytes change between themes, so the game re-tints the
+drivers per course. The indices above are right; the exact colours follow
+whichever track is loaded. Still not decoded: the game's own character
+table, which is what really binds a driver to a sheet and a palette.
+
+**Where the demo race stops.** Counting executions of the physics routines
+over ~60 frames settles it:
+
+| routine | demo race | forced race |
+|---|---|---|
+| surface lookup `$80FA62` | 8 | 8 |
+| acceleration `$80B035` | **0** | 5 |
+| steering apply `$80AFBE` | **0** | 8 |
+
+In the demo, *no kart update runs at all* — only the surface lookup. The
+karts are not stalled mid-race, they are held before the countdown ever
+releases them, and whatever releases it never fires. In a forced race the
+opposite holds: the updates run but nothing draws the karts.
+
+So the gate is a race-state transition upstream of the kart update, and it
+is the one thing standing between here and a complete race. Finding it means
+diffing low RAM between the two states and looking for the flag the update
+path tests.
+
+---
+
+*(next entry: 033)*

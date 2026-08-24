@@ -10,20 +10,24 @@
 
 #define KART_SHEET_DEFAULT  0xC02000u   /* observed in the DMA log */
 
-/* Sheets found by rendering frame 4 from every bank at $2000 and looking:
- * $C0 Mario/Luigi, $C1 Bowser, $C2 Peach, $C3 Koopa, $C4 Yoshi,
- * $C5 Donkey Kong Jr, $C6 Toad.  $C7 is not a sheet.
- * The palette assignment is by position and has NOT been read out of the
- * game's own character table. */
+/* Sheets found by rendering a frame from every bank at $2000; the sheet and
+ * palette pairing below was then read off a grid of every sheet under every
+ * sprite palette.
+ *
+ * NOT decoded: the game's own character table, which is what really binds a
+ * driver to a sheet and a palette, has not been found.  Note also that the
+ * sprite half of the palette differs between themes (37-53 of 256 bytes),
+ * so the game re-tints drivers per course - these indices are right, the
+ * exact colours follow whichever track is loaded. */
 const smk_driver SMK_DRIVERS[SMK_CHARACTERS] = {
     { "Mario",   0xC02000u, 0x90 },
-    { "Luigi",   0xC02000u, 0xA0 },
-    { "Bowser",  0xC12000u, 0xB0 },
-    { "Peach",   0xC22000u, 0xC0 },
-    { "Koopa",   0xC32000u, 0xD0 },
-    { "Yoshi",   0xC42000u, 0xE0 },
-    { "DK Jr",   0xC52000u, 0xF0 },
-    { "Toad",    0xC62000u, 0x80 },
+    { "Luigi",   0xC02000u, 0xA0 },   /* same sheet, different palette */
+    { "Bowser",  0xC12000u, 0x80 },
+    { "Peach",   0xC22000u, 0xB0 },
+    { "DK Jr",   0xC32000u, 0xB0 },
+    { "Yoshi",   0xC42000u, 0x80 },
+    { "Koopa",   0xC52000u, 0x90 },
+    { "Toad",    0xC62000u, 0x90 },
 };
 
 /* One 8x8 4bpp tile -> 64 palette indices. */

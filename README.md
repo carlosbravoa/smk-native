@@ -45,7 +45,9 @@ so resolution is not a constraint.
   **acceleration curve and target speeds** read at runtime (`--class`
   selects 50/100/150cc)
 - The **player's kart drawn from the ROM's own sprite frames** — 32x32 4bpp,
-  read at runtime, with `--character` selecting Mario/Luigi/Peach
+  read at runtime; `--character 0..7` selects any of the eight drivers, each
+  with its own sheet and palette
+- The **real starting grid**, read off the game's own demo race
 - A resolution-independent perspective ground plane
 - Fixed **60.0988 Hz** tick, the SNES NTSC vblank rate
 
@@ -59,7 +61,9 @@ Being explicit, because the gap is still large:
 - **No opponents, items, laps or lap timing.** Start lines and checkpoints
   are not decoded; the start position is a heuristic.
 - **The kart sprite does not turn with the camera.** The frames are the
-  ROM's; which frame to show for a given heading is not decoded.
+  ROM's and their three size tiers are identified, but which frame to show
+  for a given heading is not decoded — reaching a race where the game
+  actually draws karts is still open.
 - **The feel is only partly the game's.** Kinematics, the speed model and
   the acceleration curve are exact. What is still invented is *policy*:
   which target speed the player's input selects, the braking rate, and the
