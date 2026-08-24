@@ -1336,4 +1336,39 @@ entry at `$80E1D2`. Not decoded.
 
 ---
 
-*(next entry: 047)*
+**047** — HDMA modelled. The camera is still not measured, but the reason
+has changed — and NOTES 046's framing was half wrong.
+
+**HDMA now works** (`tools/smktool/cpu.py`): per-scanline transfers with
+repeat and indirect entries, driven from the frame loop, plus `$211B-$211E`
+decoded as write-twice 8.8 latches. What it revealed about SMK's Mode 7:
+
+* **Four separate HDMA channels**, one per matrix register — ch1 → `$211B`,
+  ch2 → `$211C`, ch3 → `$211D`, ch4 → `$211E` — all `dmap = $42`: mode 2
+  (two bytes to the same register) with the **indirect** bit set, tables in
+  bank `$00`, data in bank `$7E`. That is 4 × 2 × 170 = **1360 matrix
+  writes per frame**, and the model reproduces exactly that count.
+* Per-line variation is real and correct (`$0F00` at line 0, `$0B80` by
+  line 24) — the perspective ramp is being transferred properly.
+
+**Why the camera still is not measured.** In every demo state I can reach,
+**karts 0 and 1 are parked** — speed 0 for the whole window, 1-2 distinct
+headings, while karts 2-7 race normally. The camera follows the parked
+kart, so the matrix is genuinely constant: A = B = C = D = 2944 across 900
+frames. Forcing player control (`$0E32 = 0`) and holding accelerate for 700
+frames did not move them either.
+
+So the constant matrix was never a bug, and NOTES 046's four negatives are
+now partly explained: **a static camera cannot correlate with anything.**
+HDMA was necessary but not sufficient. The actual blocker is *reaching a
+state where the followed kart drives* — a state-reaching problem (SKILL
+step 18), not a hardware-modelling one. Options for next time: find the
+real player-control entry rather than poking `$0E32`, or make the camera
+follow one of the karts that does move.
+
+Our native `yaw = kart heading, no lag` stands unchanged and still
+labelled as an assumption.
+
+---
+
+*(next entry: 048)*
