@@ -99,14 +99,34 @@ void smk_kart_launch(smk_kart *k, int16_t zvel)
 
 void smk_kart_move(smk_kart *k, const smk_track *t)
 {
-    /* Airborne: the kart flies.  Solid cells are not tested - that is what
-     * makes jumps and the wall bounce work, and it matches the collision
-     * routine being gated off at $80F897 (`bit $12,x / bpl` skips the whole
-     * check).  INFERRED: we have not pinned which bit that gate is, only
-     * that a gate exists and that flight must ignore walls. */
+    /* Airborne: the kart flies over most solids - that is what makes jumps
+     * work - but a hard WALL (surface type 0, e.g. $20) still blocks, or a
+     * bounced kart can land embedded inside one and lock up (NOTES 053).
+     * The ROM treats landing per type too: $80B1F2 remaps type-$22 cells
+     * to $4C at touchdown.  INFERRED: the exact set of flight-blocking
+     * types; type 0 is the one observed to embed. */
     if (k->airborne) {
-        k->x = advance(k->x, k->bvx ? k->bvx : k->vx);
-        k->y = advance(k->y, k->bvy ? k->bvy : k->vy);
+        int32_t fx = advance(k->x, k->bvx ? k->bvx : k->vx);
+        int32_t fy = advance(k->y, k->bvy ? k->bvy : k->vy);
+        uint8_t sv = smk_track_surface(t, smk_kart_px(fx), smk_kart_px(fy));
+        if (smk_surface_solid(sv) && smk_surface_type(sv) == 0) {
+            /* deflect along the wall, as on the ground */
+            uint8_t sx = smk_track_surface(t, smk_kart_px(fx), smk_kart_px(k->y));
+            if (smk_surface_solid(sx) && smk_surface_type(sx) == 0) {
+                k->bvx = 0;
+                k->vx = 0;
+            } else {
+                k->bvy = 0;
+                k->vy = 0;
+            }
+            fx = advance(k->x, k->bvx ? k->bvx : k->vx);
+            fy = advance(k->y, k->bvy ? k->bvy : k->vy);
+            sv = smk_track_surface(t, smk_kart_px(fx), smk_kart_px(fy));
+            if (smk_surface_solid(sv) && smk_surface_type(sv) == 0)
+                return;                      /* fully cornered: hold */
+        }
+        k->x = fx;
+        k->y = fy;
         return;
     }
 

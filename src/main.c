@@ -113,13 +113,20 @@ static void racer_step(smk_racer *r, const smk_track *trk,
          * keeps the maximum progress so a lap only counts when it exceeds
          * everything seen before.  We keep lap and sector as fields and
          * apply the same wrap and guard. */
-        if (r->sector >= crs->sectors - 2 && sec <= 1)
-            r->lap++;
-        else if (sec >= crs->sectors - 2 && r->sector <= 1)
-            r->lap--;
+        /* the crossing only counts ON the strip ($808994 is called from
+         * the strip-accept path), forward guarded by max progress */
+        if (cell & SMK_SECT_FINISH) {
+            if (r->sector >= crs->sectors - 2 && sec <= 1) {
+                int prog = ((r->lap + 1) << 8) | sec;
+                if (prog > r->progress_max) {
+                    r->lap++;
+                    r->progress_max = prog;
+                }
+            } else if (sec >= crs->sectors - 2 && r->sector <= 1) {
+                r->lap--;
+            }
+        }
         r->sector = sec;
-        int prog = (r->lap << 8) | sec;
-        if (prog > r->progress_max) r->progress_max = prog;
     }
 
     int next = r->sector + 1;
@@ -585,10 +592,16 @@ int main(int argc, char **argv)
                 int sec = cell & SMK_SECT_OFF;
                 if (sec != SMK_SECT_OFF && sec < crs.sectors
                     && !(kart.airborne && (crs.wattr[sec] & 0x80))) {
-                    if (me->sector >= crs.sectors - 2 && sec <= 1)
-                        me->lap++;
-                    else if (sec >= crs.sectors - 2 && me->sector <= 1)
-                        me->lap--;
+                    if (cell & SMK_SECT_FINISH) {
+                        if (me->sector >= crs.sectors - 2 && sec <= 1) {
+                            int prog = ((me->lap + 1) << 8) | sec;
+                            if (prog > me->progress_max) {
+                                me->lap++;
+                                me->progress_max = prog;
+                            }
+                        } else if (sec >= crs.sectors - 2 && me->sector <= 1)
+                            me->lap--;
+                    }
                     me->sector = sec;
                 }
             }
