@@ -1,6 +1,10 @@
 /* SDL2 host for the Super Mario Kart reimplementation. */
 #include "smk.h"
 
+#ifndef SMK_BUILD
+#define SMK_BUILD "dev"
+#endif
+
 #include <SDL.h>
 #include <math.h>
 #include <stdio.h>
@@ -119,6 +123,17 @@ static void draw_speedo(uint32_t *fb, int rw, int rh,
 
     hud_number(fb, rw, rh, x, y, k->speed < 0 ? 0 : k->speed, 4, col, sc);
     hud_hex2(fb, rw, rh, x + 24 * sc, y, surf, 0xFF90C8FF, sc);
+    {   /* slip angle in degrees - sliding is visible as a number */
+        float va = atan2f((float)k->vx, -(float)k->vy);
+        float ha = (float)k->angle * (float)(2.0 * M_PI) / 65536.0f;
+        float d = va - ha;
+        while (d >  (float)M_PI) d -= 2.0f * (float)M_PI;
+        while (d < -(float)M_PI) d += 2.0f * (float)M_PI;
+        int deg = (int)(fabsf(d) * 180.0f / (float)M_PI);
+        uint32_t sc2 = deg > 20 ? 0xFFFF5050 : deg > 5 ? 0xFFFFA030
+                                             : 0xFF808088;
+        hud_number(fb, rw, rh, x + 38 * sc, y, deg > 99 ? 99 : deg, 2, sc2, sc);
+    }
 
     /* bar: speed vs this class's top, cap marked */
     int bx = x, by = y + 7 * sc, bw = 60 * sc, bh = 3 * sc;
@@ -481,14 +496,20 @@ static void step_kart(smk_kart *k, const smk_track *trk,
         int ty = smk_surface_type(surf);
         float class_grip = (ty == 11 || ty == 12) ? 0.35f : 1.0f;
 
+        /* The breakaway limit was MEASURED at the demo's speed scale
+         * (top ~951, limit ~250k -> breakaway at ~86% of top under full
+         * lock).  Shipped as an absolute it was unreachable at 50cc -
+         * playtest: "no difference" - so it scales by the class top,
+         * preserving the measured ratio across 50/100/150cc. */
+        float limit = (float)top * 264.0f;
         float lateral = (float)k->speed * 307.0f *
                         ((in->left || in->right) ? 1.0f : 0.3f);
         float g;
         if (k->airborne)
             g = 0.04f;                        /* hop: momentum carries    */
-        else if (in->hop_held && slip_u > 800.0f)
+        else if (in->hop_held && k->speed > 300)
             g = 0.10f;                        /* held slide (drift)       */
-        else if (lateral > 250000.0f || slip_u > 4000.0f)
+        else if (lateral > limit || slip_u > 4000.0f)
             g = 0.08f;                        /* past the limit: plow     */
         else
             g = 0.50f * class_grip;           /* measured convergence     */
@@ -940,7 +961,7 @@ int main(int argc, char **argv)
             double secs = (double)(t1 - fps_t0) / (double)freq;
             char title[192];
             snprintf(title, sizeof title,
-                     "Super Mario Kart  -  track %d  lap %d  sector %d/%d  -  "
+                     "SMK [" SMK_BUILD "]  track %d  lap %d  sector %d/%d  -  "
                      "surf $%02X type %d cap %d  -  %dx%d  %.0f fps",
                      track, me->lap + 1, me->sector, crs.sectors,
                      smk_track_surface(&trk, smk_kart_px(kart.x),

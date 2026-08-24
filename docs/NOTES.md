@@ -2037,4 +2037,21 @@ AI 20/20, corner settles.
 
 ---
 
-*(next entry: 069)*
+**069** — "Is that in my build?"  Yes - and it was inert at 50cc.
+
+The measured breakaway limit (250k lateral) was captured at the demo's
+speed scale (top ~951) and shipped as an ABSOLUTE.  At the default 50cc
+(top 672) the maximum possible lateral force is 206k: the model was in the
+build and mathematically unreachable - the playtest's "no difference" was
+exactly right.  The limit now scales by the class top (breakaway at ~86%
+of top under full lock, the measured ratio), so every class slides near
+its own edge.  The hop-slide gate also dropped its slip precondition
+(hop held + speed is enough - the state machine's own behaviour).
+
+Two visibility fixes so this class of question answers itself in-game:
+the window title carries the git build hash, and the speedometer gained a
+SLIP readout in degrees (gray planted, orange sliding, red spinning).
+
+---
+
+*(next entry: 070)*

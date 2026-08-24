@@ -35,3 +35,12 @@ target_compile_options(smk_selftest PRIVATE -Wall -Wextra -O2)
 
 enable_testing()
 add_test(NAME selftest COMMAND smk_selftest ${CMAKE_SOURCE_DIR}/rom/smk_usa.sfc)
+
+# stamp the build with the git short hash so "is it in my build" is visible
+execute_process(COMMAND git rev-parse --short HEAD
+                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                OUTPUT_VARIABLE SMK_GIT_HASH OUTPUT_STRIP_TRAILING_WHITESPACE
+                ERROR_QUIET)
+if(SMK_GIT_HASH)
+  target_compile_definitions(smk PRIVATE SMK_BUILD="${SMK_GIT_HASH}")
+endif()
