@@ -2198,4 +2198,24 @@ question - probing the live object blocks ($1840/$18C0/$1C00).
 
 ---
 
-*(next entry: 075)*
+**075** — The object list is GROUND ONLY; fake pipes removed.
+
+Cross-checking the live entity blocks against the track 7 object list:
+the four live entities at race start ($1800/$1840/$1880/$18C0 - paired
+records, types $C0/$C4, handler ptrs $E4E7/$E4F7, positions (268,92) and
+(164,132)) match NO object-list record.  The list's >= $C0 kinds on track
+7 all decode to coin scatters at road positions.  Conclusion: the
+$85:D000 list holds only stamped ground features (boxes, coins, oil);
+sprite obstacles (pipes, moles, Thwomps, Lakitu) are spawned by a
+separate system driving the $1800 blocks - undecoded, on the backlog.
+
+Ported accordingly: the green billboard "pipes" and their cylinder
+collision at >= $C0 positions are REMOVED (they were fake pipes standing
+on coin clusters).  The measured pipe crash response (NOTES 072) is kept
+in a comment at collide_objects for when the entity system lands.
+
+SUPERSEDES the NOTES 070 reading of kinds >= $C0 as sprite obstacles.
+
+---
+
+*(next entry: 076)*
