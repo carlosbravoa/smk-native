@@ -1586,4 +1586,28 @@ drift/hop decode.
 
 ---
 
-*(next entry: 054)*
+**054** — The camera thread, closed with a final precise negative.
+
+With a driven, turning player (335 distinct headings, speed 709), the
+Mode 7 matrix at every sampled scanline **still does not vary**. Forcing
+the kart's state words wakes the kart's physics but not the camera update,
+which evidently lives in the player-handler dispatch that stays dormant in
+attract mode. So the camera's dynamics remain unmeasured, and the thread
+is closed rather than continued:
+
+* Every gameplay-relevant camera fact is already established — yaw = kart
+  heading (the kart's lean is a sprite animation, per the user's own
+  description of the original), and `$02` fixes Lfe = Les = 256,
+  Azs = 73°.
+* What is not established is only whether the ROM smooths yaw over a few
+  frames, and that cannot be measured until either the demo's recorded
+  input reaches the players or the full player handler is woken.  Neither
+  is worth the cost while it blocks nothing.
+
+Four attempts, four different failure reasons, all recorded (046, 047,
+049, here). If someone resumes this: wake the player DISPATCH, not just
+the kart state - the difference is exactly what this measurement exposed.
+
+---
+
+*(next entry: 055)*
