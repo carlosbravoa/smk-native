@@ -148,6 +148,27 @@ def build_flow_map(m: bytes, pts) -> bytearray:
     return flow
 
 
+OBJ_BASE = 0x85D000            # + track*128; battle mode: $30:7000
+OBJ_SLOT = 128
+
+
+def objects(rom: Rom, track: int):
+    """Per-track object list ($84F15D: list = $85:D000 + track*128).
+    Records are [kind][pos:word], $FFFF-terminated; pos packs the map cell
+    as x/8 + (y/8)*128.  kind bits 0-5 select the stamp graphic, bits 6-7
+    its size class (NOTES 064)."""
+    p = rom.snes_to_pc(OBJ_BASE) + track * OBJ_SLOT
+    out = []
+    for _ in range(OBJ_SLOT // 3):
+        kind = rom.data[p]
+        pos = rom.data[p + 1] | rom.data[p + 2] << 8
+        if pos == 0xFFFF:
+            break
+        out.append((kind, (pos & 0x7F) * 8, ((pos >> 7) & 0x7F) * 8))
+        p += 3
+    return out
+
+
 def sector_at(m: bytes, x: int, y: int) -> int:
     """Low 7 bits are the sector; bit 7 marks the finish strip; $7F means
     off the course entirely ($808931)."""

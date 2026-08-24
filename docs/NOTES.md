@@ -1889,4 +1889,35 @@ nothing: my surface-cap edits had silently failed.
 
 ---
 
-*(next entry: 064)*
+**064** — Track objects decoded and shipped: item boxes, pipes, coins.
+
+The chain, each step verified live:
+
+* The collector at `$81B797` (tile-pair swap when a kart touches an
+  object) was the known anchor; the PLACER is the stamp blitter at
+  `$84F1A4-$84F235`: per object, copy a w x h tile stamp (sizes from
+  `$84F384`, graphics via the pointer table at `$84F23D`, staged through
+  WRAM `$1800`) into the tilemap, `$FF` bytes transparent.
+* Object records are `[kind][cell:word]`, `$FFFF`-terminated; cell packs
+  x/8 + (y/8)*128; kind bits 0-5 = stamp graphic, bits 6-7 = size class.
+* **The per-track list needs no index table**: `$84F15D` computes
+  `list = $85:D000 + track*128` (battle mode: `$30:7000`).  Track 7 →
+  `$D380`, byte-identical to the live capture; its 21 records match the
+  count observed running.
+* Bank `$81:B470` holds a separate structure - per-track lists of stamp
+  GRAPHIC ids to install (records delimited by their own pointer table) -
+  used to load the right tile graphics; not needed for object data.
+* Two capture-method lessons: `run_to` cannot cross frames (the main loop
+  spins waiting for an NMI only the frame-stepper delivers), and our bus
+  write-log records the PC AFTER the store instruction - a PC-keyed hook
+  must use the post-instruction address.
+
+Ported: `objects()` in course.py and the `obj[]` array in
+`smk_course_load`, selftest-pinned to the live capture; the renderer draws
+objects at their true positions (PLACEHOLDER visuals - gold blocks for
+item boxes, green for big stamps - until the animated stamp tile graphics
+are decoded).
+
+---
+
+*(next entry: 065)*

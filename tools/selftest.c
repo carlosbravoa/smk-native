@@ -137,6 +137,11 @@ int main(int argc, char **argv)
                 && (crs.map[i] & SMK_SECT_OFF) != SMK_SECT_OFF) strip++;
         snprintf(det, sizeof det, "%d cells", strip);
         check("track 7 finish strip covers 65 on-track cells", strip == 65, det);
+
+        /* objects ($85:D000 + track*128), pinned to the live capture */
+        check("track 7 has 21 objects, first an item box at (80,280)",
+              crs.nobj == 21 && crs.obj[0].kind == 1
+              && crs.obj[0].x == 80 && crs.obj[0].y == 280, NULL);
     }
 
     printf("\nstarting grid\n");

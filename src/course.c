@@ -93,6 +93,22 @@ bool smk_course_load(const smk_rom *rom, int track, smk_course *out)
     out->fin_w = (int)w;
     out->fin_h = (int)h;
 
+    /* --- track objects ($84F15D: $85:D000 + track*128) --------------- */
+    {
+        uint32_t p2 = smk_snes_to_pc(rom, 0x85D000u) + (uint32_t)track * 128u;
+        out->nobj = 0;
+        for (int i = 0; i < 42; i++) {
+            uint8_t kind = rom->data[p2];
+            unsigned pos = rom->data[p2 + 1] | (unsigned)rom->data[p2 + 2] << 8;
+            if (pos == 0xFFFF) break;
+            out->obj[out->nobj].kind = kind;
+            out->obj[out->nobj].x = (uint16_t)((pos & 0x7F) * 8);
+            out->obj[out->nobj].y = (uint16_t)(((pos >> 7) & 0x7F) * 8);
+            out->nobj++;
+            p2 += 3;
+        }
+    }
+
     /* --- the AI direction field ($81FCFC) --------------------------- */
     for (int i = 0; i < SMK_SECT_CELLS; i++) {
         int s2 = out->map[i] & SMK_SECT_OFF;

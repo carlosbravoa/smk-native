@@ -289,6 +289,11 @@ typedef struct {
      * sector's waypoint.  Verified 95% byte-exact vs the game, 100% within
      * one step (the ROM's table atan2 rounds differently at boundaries). */
     uint8_t  flow[SMK_SECT_CELLS];
+    /* track objects ($85:D000 + track*128, NOTES 064): item boxes, pipes,
+     * coins - [kind][cell:word] records.  kind bits 0-5 = stamp graphic,
+     * bits 6-7 = size class. */
+    struct { uint8_t kind; uint16_t x, y; } obj[42];
+    int      nobj;
 } smk_course;
 
 bool smk_course_load(const smk_rom *rom, int track, smk_course *out);

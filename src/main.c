@@ -421,8 +421,32 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
                        const smk_sprites *karts, const smk_driver *drv,
                        const smk_camera *cam, uint32_t *fb, int rw, int rh,
                        int show_grid, int show_kart, int frame,
-                       uint16_t cam_heading, const smk_racer *racers)
+                       uint16_t cam_heading, const smk_racer *racers,
+                       const smk_course *course)
 {
+    /* track objects: PLACEHOLDER visuals (the stamp tile graphics are
+     * animated VRAM streams, not yet decoded) - item boxes draw as small
+     * gold blocks, larger stamps as green, at their true ROM positions */
+    if (course) {
+        for (int i = 0; i < course->nobj; i++) {
+            float px, py, sc;
+            if (!smk_project(cam, (float)course->obj[i].x,
+                             (float)course->obj[i].y, rw, rh, &px, &py, &sc))
+                continue;
+            int half = (int)(6.0f * sc) + 1;
+            uint32_t col = (course->obj[i].kind & 0xC0) ? 0xFF2E8B2E : 0xFFE0B830;
+            for (int dy = -half; dy <= half; dy++) {
+                int yy = (int)py + dy;
+                if (yy < 0 || yy >= rh) continue;
+                for (int dx = -half; dx <= half; dx++) {
+                    int xx = (int)px + dx;
+                    if (xx < 0 || xx >= rw) continue;
+                    fb[yy * rw + xx] = col;
+                }
+            }
+        }
+    }
+
     if (show_grid && karts->frames && racers) {
         static smk_sprites other[SMK_CHARACTERS];
         static bool loaded[SMK_CHARACTERS];
@@ -634,7 +658,7 @@ int main(int argc, char **argv)
                 racer_start(&shot_racers[i], &crs, i);
             draw_scene(&rom, &trk, &karts, drv, &c, px, sw, sh,
                        show_grid, show_kart, frame_for(&none, &lz),
-                       heading, shot_racers);
+                       heading, shot_racers, &crs);
         }
         if (SDL_Init(SDL_INIT_VIDEO) != 0 && SDL_Init(0) != 0) {
             fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
@@ -797,7 +821,7 @@ int main(int argc, char **argv)
             smk_render_mode7(&trk, &cam, fb, rw, rh, rw);
             draw_scene(&rom, &trk, &karts, drv, &cam, fb, rw, rh,
                        show_grid, show_kart, frame_for(&in, &lean),
-                       kart.angle, racers);
+                       kart.angle, racers, &crs);
             SDL_UpdateTexture(tex, NULL, fb, rw * (int)sizeof *fb);
             SDL_RenderClear(ren);
             SDL_RenderCopy(ren, tex, NULL, NULL);
