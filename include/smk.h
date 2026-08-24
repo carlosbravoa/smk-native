@@ -217,6 +217,36 @@ bool smk_sprites_load(const smk_rom *rom, uint32_t base, smk_sprites *out);
 typedef struct { const char *name; uint32_t sheet; int pal; } smk_driver;
 extern const smk_driver SMK_DRIVERS[SMK_CHARACTERS];
 
+/* ---- Course data: sectors, racing line, finish -------------------------
+ *
+ * Decoded from the loader at $81FBC0-$81FEB5 and verified byte-exact
+ * against the running game (docs/NOTES.md 042).  A 64x64 map of 16px cells
+ * holds a SECTOR index per cell (bit 7 = finish-line strip; $7F in the low
+ * bits means off-course).  One waypoint of the racing line per sector.
+ * Unpainted cells are scratch left by the tile expander and are dont-care.
+ */
+#define SMK_SECT_W       64
+#define SMK_SECT_CELLS   (SMK_SECT_W * SMK_SECT_W)
+#define SMK_SECT_CELL_PX 16
+#define SMK_SECT_FINISH  0x80u
+#define SMK_SECT_OFF     0x7Fu
+#define SMK_MAX_SECTORS  128
+
+typedef struct {
+    uint8_t  map[SMK_SECT_CELLS];      /* sector | flags per cell          */
+    uint16_t wx[SMK_MAX_SECTORS + 1];  /* racing line, closed              */
+    uint16_t wy[SMK_MAX_SECTORS + 1];
+    uint8_t  wattr[SMK_MAX_SECTORS];   /* per-sector attribute byte        */
+    int      sectors;
+    uint16_t lap_word;                 /* $80D4 param, meaning undecoded   */
+} smk_course;
+
+bool smk_course_load(const smk_rom *rom, int track, smk_course *out);
+static inline uint8_t smk_course_cell(const smk_course *c, int wx, int wy)
+{
+    return c->map[((wy >> 4) & 63) * SMK_SECT_W + ((wx >> 4) & 63)];
+}
+
 /* ---- Mode 7 camera and renderer --------------------------------------- */
 
 typedef struct {

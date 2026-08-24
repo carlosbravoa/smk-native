@@ -1124,4 +1124,56 @@ our camera tracks exactly, so a small lag is synthesised from steering.
 
 ---
 
-*(next entry: 042)*
+**042** — The per-track course container: sectors, racing line, finish line.
+P2's data and P6's data turn out to be one structure, and it is now decoded
+and verified byte-exact.
+
+**Where it lives.** Word tables at `$81:FF9B` (record stream) and `$81:FFCB`
+(waypoints), 24 entries each, both into bank `$C6`; `$0E68` selects an
+alternate source at `$08:847B`/`$08:84C6` (other modes). Loader at
+`$81FBC0-$81FEB5`.
+
+**The sector map.** The record stream paints a 64×64 map of 16-px cells at
+`$7F:5000`, one SECTOR per record, `$FF`-terminated. Record =
+`[type][pos.lo][pos.hi]` + payload, `cell = pos.lo + (pos.hi << 6)`. Seven
+paint shapes: type 0 rectangle (w,h); types 2/4/6/8 four triangle
+orientations (run right/left × rows down/up, width shrinking); types 10/12
+diagonal wedges (columns of h cells, next column at +63/+65, shrinking).
+Types 10/12 carry a payload byte the paint loop never reads.
+
+**Semantics** (reader at `$808931`): low 7 bits = sector, bit 7 = the
+finish-line strip, `$7F` = off-course (sets kart flag bit 1). The kart's
+current sector is kept near `+$DC` in the kart block. The finish strip is a
+w×h rectangle of bit-7 ORs from the params table `$81:80D4` (6 bytes/track:
+a lap word → `$014A`, strip cell, w, h).
+
+**The racing line.** One waypoint per sector from the second stream, 3 bytes
+each: x/8, y/8, and an attribute whose **low 2 bits select the AI's
+target-speed row** (`$80B074` reads `$0800,y & 3`) — 0 slow through 3 fast,
+visibly slow before hairpins. The loader repeats point 0 at the end to
+close the loop.
+
+**Why the map first compared at only 63%:** the game never zeroes
+`$7F:5000`, and the Mode 7 tile expander's output buffer overlaps it — the
+"fill" in unpainted cells is leftover tile pixels. Masked to painted cells,
+our builder matches **2606/2606 (100.00%), finish flag included**, and the
+racing line matches the live game word-for-word.
+
+**Ported** as `tools/smktool/course.py` and `src/course.c` (twins, both
+tested). The native game now has: opponents driving the racing line with
+the decoded speed classes, and lap counting from sector progress + the
+finish strip.
+
+**Honest status of the opponents:** the data is the ROM's; the steering
+CONTROLLER is ours and incomplete. In a harness, AI karts complete genuine
+full laps on 5-6 of 20 GP tracks at plausible times (20-40 s) and fail on
+the rest by two identified modes: *orbiting* (turn radius at speed exceeds
+waypoint distance — the ROM must brake on heading error in a way we have
+not decoded) and *jump segments* (three stuck segments cross solid cells
+the game vaults over; we have no Z axis). Tuning the controller by trial
+and error made it worse, so it stays simple and labelled; the fix is to
+instrument the ROM's own AI update (`$80AFF9` slew, its brake rule) next.
+
+---
+
+*(next entry: 043)*

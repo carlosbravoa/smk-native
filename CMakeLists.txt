@@ -18,6 +18,7 @@ add_library(smkcore STATIC
   src/kart.c
   src/physics.c
   src/sprite.c
+  src/course.c
 )
 target_include_directories(smkcore PUBLIC include)
 target_compile_options(smkcore PRIVATE -Wall -Wextra -O2)

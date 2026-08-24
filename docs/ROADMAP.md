@@ -82,8 +82,8 @@ used; C output is byte-identical to the game's loader on all 24 courses.
 | P2 start / laps | **part** — the real starting grid is in; checkpoints and lap logic are not |
 | P3 physics | **part** — kinematics, speed model and the ROM's acceleration tables are in and verified; steering policy and per-surface response are not |
 | P4 sprites | **mostly** — sheets, projection, and the **measured frame-selection rule** (NOTES 041); residuals: tier boundaries assumed shared, hflip side unverified, player rel synthesised |
-| P5 race furniture | not started |
-| P6 opponents | not started (AI shape known: steer toward waypoints via atan2) |
+| P5 race furniture | not started (the course container is decoded; object records were not part of it — still to locate) |
+| P6 opponents | **part** — racing lines + speed classes decoded and verified; opponents drive; controller (slew/brake/recovery) still a placeholder, laps complete on ~5/20 tracks |
 | P7 audio | **decided** — pre-recorded; `smk spc` dumps the driver, rendering not wired up |
 | P8 modes / menus | not started |
 

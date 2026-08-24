@@ -35,6 +35,7 @@ from .rom import Rom
 
 TBL_RECORDS  = 0x81FF9B
 TBL_WAYPOINTS = 0x81FFCB
+TBL_PARAMS   = 0x8180D4      # 6 bytes per track: lap word, strip cell, w1|w2<<8
 DATA_BANK = 0xC6
 MAP_W = 64
 MAP_CELLS = MAP_W * MAP_W
@@ -111,5 +112,23 @@ def waypoints(rom: Rom, track: int, count: int):
     return pts
 
 
+def mark_finish(rom: Rom, track: int, m: bytearray) -> dict:
+    """OR bit 7 over the finish-line rectangle, per $81FC92-$81FCB3:
+    width w ($80D8 low) by h rows ($80D8 high), from the cell at $80D6,
+    one row (+64) apart.  The rectangle may overhang the track; only cells
+    on painted sectors matter to the reader."""
+    pc = rom.snes_to_pc(TBL_PARAMS) + track * 6
+    lap_word = rom.u16(pc)
+    cell = rom.u16(pc + 2)
+    w = rom.data[pc + 4]
+    h = rom.data[pc + 5]
+    for row in range(h):
+        for i in range(w):
+            m[(cell + row * MAP_W + i) & (MAP_CELLS - 1)] |= 0x80
+    return {"lap_word": lap_word, "cell": cell, "w": w, "h": h}
+
+
 def sector_at(m: bytes, x: int, y: int) -> int:
+    """Low 7 bits are the sector; bit 7 marks the finish strip; $7F means
+    off the course entirely ($808931)."""
     return m[((y >> 4) & 63) * MAP_W + ((x >> 4) & 63)]

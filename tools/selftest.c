@@ -68,6 +68,39 @@ int main(int argc, char **argv)
     for (int i = 0; i < 256; i++) if (a.palette[i] > 0xFFFFFF) inrange = 0;
     check("256 colours in range", inrange, NULL);
 
+    printf("\ncourse data\n");
+    {
+        int good = 0, wp_total = 0;
+        static smk_course crs;
+        for (int tr = 0; tr < SMK_TRACK_COUNT; tr++) {
+            if (!smk_course_load(&rom, tr, &crs)) continue;
+            int painted = 0;
+            for (int i = 0; i < SMK_SECT_CELLS; i++)
+                if (crs.map[i] & SMK_SECT_OFF) painted++;
+            if (crs.sectors >= 10 && crs.sectors <= 120 && painted > 200
+                && crs.wx[0] == crs.wx[crs.sectors]
+                && crs.wy[0] == crs.wy[crs.sectors])
+                good++;
+            wp_total += crs.sectors;
+        }
+        snprintf(det, sizeof det, "%d/%d, %d waypoints", good,
+                 SMK_TRACK_COUNT, wp_total);
+        check("every course loads sectors and a closed racing line",
+              good == SMK_TRACK_COUNT, det);
+
+        /* values confirmed against the running game (NOTES 042) */
+        smk_course_load(&rom, 7, &crs);
+        check("track 7 matches the live game",
+              crs.sectors == 30 && crs.wx[0] == 896 && crs.wy[0] == 424
+              && crs.wx[1] == 832 && crs.wy[1] == 360, NULL);
+        int strip = 0;
+        for (int i = 0; i < SMK_SECT_CELLS; i++)
+            if ((crs.map[i] & SMK_SECT_FINISH) && (crs.map[i] & SMK_SECT_OFF)
+                && (crs.map[i] & SMK_SECT_OFF) != SMK_SECT_OFF) strip++;
+        snprintf(det, sizeof det, "%d cells", strip);
+        check("track 7 finish strip covers 65 on-track cells", strip == 65, det);
+    }
+
     printf("\nstarting grid\n");
     {
         int on_road = 0;

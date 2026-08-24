@@ -58,6 +58,89 @@ static void pump(input_state *in)
 }
 
 /* ------------------------------------------------------------------ */
+/* Opponents: drive the game's own racing line.
+ *
+ * The DATA is the ROM's - sector map, waypoints, acceleration tables - and
+ * the steering LAW matches the decoded shape: the AI aims at the waypoint
+ * of the sector ahead ($80B0B1: waypoint minus position into atan2) and the
+ * heading slews toward that target, snapping when close ($80AFBE).
+ * PLACEHOLDER values, marked: the slew rate, the target-speed entry per
+ * kart, and rubber-banding (none).  Lap counting below is ours too: the
+ * ROM's crossing test is not decoded, so we count a lap when a kart on the
+ * finish strip has come around through the back half of the course.
+ */
+typedef struct {
+    smk_kart k;
+    int      sector;        /* last on-course sector                    */
+    int      best;          /* furthest sector reached this lap         */
+    int      lap;
+} smk_racer;
+
+static void racer_start(smk_racer *r, const smk_track *trk, int slot)
+{
+    float x, y, a;
+    memset(r, 0, sizeof *r);
+    smk_track_start(trk, slot, &x, &y, &a);
+    r->k.x = (int32_t)(x * SMK_POS_ONE);
+    r->k.y = (int32_t)(y * SMK_POS_ONE);
+    r->k.angle = 0;
+}
+
+static uint16_t heading_to(const smk_kart *k, int tx, int ty)
+{
+    float dx = (float)(tx - smk_kart_px(k->x));
+    float dy = (float)(ty - smk_kart_px(k->y));
+    /* game convention: 0 = -Y, clockwise */
+    return (uint16_t)(atan2f(dx, -dy) * (float)SMK_ANGLE_TURN
+                      / (2.0f * (float)M_PI));
+}
+
+#define AI_SLEW      0x0180      /* PLACEHOLDER: heading units per frame */
+#define AI_SNAP      0x0200      /* $80AFBE snaps inside this            */
+
+static void racer_step(smk_racer *r, const smk_track *trk,
+                       const smk_course *crs, const smk_physics *phys)
+{
+    uint8_t cell = smk_course_cell(crs, smk_kart_px(r->k.x), smk_kart_px(r->k.y));
+    int sec = cell & SMK_SECT_OFF;
+    if (sec != SMK_SECT_OFF && sec < crs->sectors)
+        r->sector = sec;
+
+    /* lap: on the finish strip after coming around the back half */
+    if (r->sector > r->best) r->best = r->sector;
+    if ((cell & SMK_SECT_FINISH) && r->best > crs->sectors / 2
+        && r->sector <= 1) {
+        r->lap++;
+        r->best = 0;
+    }
+
+    int next = r->sector + 1;
+    if (next >= crs->sectors) next = 0;
+    uint16_t want = heading_to(&r->k, crs->wx[next], crs->wy[next]);
+    int16_t diff = (int16_t)(want - r->k.angle);
+    if (diff > AI_SNAP || diff < -AI_SNAP) {
+        r->k.angle += (uint16_t)(diff > 0 ? AI_SLEW : -AI_SLEW);
+    } else {
+        r->k.angle = want;
+    }
+
+    /* DECODED ($80B074): the target speed row is selected by the sector
+     * waypoint attribute's low two bits - 0 slow through 3 fast. */
+    int target = (int16_t)phys->w[SMK_PHYS_TARGET + (crs->wattr[r->sector] & 3)];
+    int32_t accel;
+    if (r->k.speed < target)
+        accel = (int32_t)smk_physics_accel(phys, r->k.speed) << 8;
+    else
+        accel = -((int32_t)0x0400 << 8);
+    r->k.accel = (int16_t)(accel >> 16);
+    r->k.accel_frac = (uint16_t)(accel & 0xFFFF);
+    smk_kart_accelerate(&r->k);
+    if (r->k.speed > target) r->k.speed = (int16_t)target;
+    smk_kart_face(&r->k);
+    smk_kart_move(&r->k, trk);
+}
+
+/* ------------------------------------------------------------------ */
 /* Turning input into speed and heading.
  *
  * PLACEHOLDER (ledger S1).  The motion itself - velocity from (sin, -cos) *
@@ -130,14 +213,15 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
                        const smk_sprites *karts, const smk_driver *drv,
                        const smk_camera *cam, uint32_t *fb, int rw, int rh,
                        int show_grid, int show_kart, int frame,
-                       uint16_t cam_heading)
+                       uint16_t cam_heading, const smk_racer *racers)
 {
-    if (show_grid && karts->frames) {
+    if (show_grid && karts->frames && racers) {
         static smk_sprites other[SMK_CHARACTERS];
         static bool loaded[SMK_CHARACTERS];
         for (int k = 1; k < SMK_CHARACTERS; k++) {
-            float gx, gy, ga, px, py, sc;
-            smk_track_start(trk, k, &gx, &gy, &ga);
+            float px, py, sc;
+            float gx = (float)smk_kart_px(racers[k].k.x);
+            float gy = (float)smk_kart_px(racers[k].k.y);
             if (!smk_project(cam, gx, gy, rw, rh, &px, &py, &sc)) continue;
             /* a kart is roughly 20 world units across and the sprite is 32
              * pixels, so it wants about 20/32 of the projected size */
@@ -149,10 +233,8 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
             if (!loaded[k]) continue;
             int tier = scale > 3 ? SMK_SPR_TIER0
                      : scale > 1 ? SMK_SPR_TIER1 : SMK_SPR_TIER2;
-            /* grid karts face heading 0; their view angle is the measured
-             * rule applied to (their heading - the camera's) */
             bool hf = false;
-            uint16_t rel = (uint16_t)(0 - cam_heading);
+            uint16_t rel = (uint16_t)(racers[k].k.angle - cam_heading);
             int f = smk_sprite_for_heading(tier, rel, &hf);
             smk_draw_sprite(&other[k], f, trk->palette,
                             d2->pal, (int)px, (int)py, scale, hf, fb, rw, rh, rw);
@@ -283,6 +365,11 @@ int main(int argc, char **argv)
         fprintf(stderr, "error: cannot load physics tables\n");
         return 1;
     }
+    static smk_course crs;
+    if (!smk_course_load(&rom, track, &crs)) {
+        fprintf(stderr, "error: cannot load course data for track %d\n", track);
+        return 1;
+    }
     static smk_track trk;
     if (!smk_track_load(&rom, track, theme, &trk, err, sizeof err)) {
         fprintf(stderr, "error: %s\n", err);
@@ -295,6 +382,7 @@ int main(int argc, char **argv)
            track, trk.theme, engine_class);
     printf("driver: %s (sheet $%06X, palette $%02X)\n",
            drv->name, drv->sheet, drv->pal);
+    printf("course: %d sectors, racing line loaded\n", crs.sectors);
     printf("acceleration curve and target speeds read from the ROM\n");
 
     /* Raw asset dump, so the C pipeline can be diffed against the oracle
@@ -330,9 +418,12 @@ int main(int argc, char **argv)
                                           / (2.0f * (float)M_PI)
                                           + SMK_ANGLE_TURN / 4);
             memset(&none, 0, sizeof none);
+            static smk_racer shot_racers[SMK_CHARACTERS];
+            for (int i = 0; i < SMK_CHARACTERS; i++)
+                racer_start(&shot_racers[i], &trk, i);
             draw_scene(&rom, &trk, &karts, drv, &c, px, sw, sh,
                        show_grid, show_kart, frame_for(&none, &lz),
-                       heading);
+                       heading, shot_racers);
         }
         if (SDL_Init(SDL_INIT_VIDEO) != 0 && SDL_Init(0) != 0) {
             fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
@@ -372,6 +463,12 @@ int main(int argc, char **argv)
 
     smk_camera cam = { .height = cam_height, .horizon = cam_horizon,
                        .fov = cam_fov };
+    static smk_racer racers[SMK_CHARACTERS];
+    for (int i = 0; i < SMK_CHARACTERS; i++)
+        racer_start(&racers[i], &trk, i);
+    smk_racer *me = &racers[0];
+    int my_best = 0, my_lap = 0;
+
     float lean = 0.0f;
     smk_kart kart = {
         .x = (int32_t)(shot_x * SMK_POS_ONE),
@@ -426,13 +523,17 @@ int main(int argc, char **argv)
                 if (in.prev_track) { nt = (track + SMK_TRACK_COUNT - 1) % SMK_TRACK_COUNT; nth = -1; }
                 if (in.next_pal)   nth = (trk.theme + 1) % SMK_THEME_COUNT;
                 if (in.prev_pal)   nth = (trk.theme + SMK_THEME_COUNT - 1) % SMK_THEME_COUNT;
-                if (smk_track_load(&rom, nt, nth, &trk, err, sizeof err)) {
+                if (smk_track_load(&rom, nt, nth, &trk, err, sizeof err)
+                    && smk_course_load(&rom, nt, &crs)) {
                     float sx, sy, sa;
                     track = nt; theme = nth;
                     smk_track_start(&trk, 0, &sx, &sy, &sa);
                     kart = (smk_kart){ .x = (int32_t)(sx * SMK_POS_ONE),
                                        .y = (int32_t)(sy * SMK_POS_ONE),
-                                       .angle = (uint16_t)(SMK_ANGLE_TURN / 4) };
+                                       .angle = 0 };
+                    for (int i = 0; i < SMK_CHARACTERS; i++)
+                        racer_start(&racers[i], &trk, i);
+                    my_best = 0; my_lap = 0;
                     camera_from_kart(&cam, &kart);
                 } else {
                     fprintf(stderr, "skipped: %s\n", err);
@@ -448,6 +549,24 @@ int main(int argc, char **argv)
 
             step_kart(&kart, &trk, &phys, &in);
             camera_from_kart(&cam, &kart);
+            me->k = kart;
+
+            for (int i = 1; i < SMK_CHARACTERS; i++)
+                racer_step(&racers[i], &trk, &crs, &phys);
+
+            /* player lap counting - same logic as racer_step's */
+            {
+                uint8_t cell = smk_course_cell(&crs, smk_kart_px(kart.x),
+                                               smk_kart_px(kart.y));
+                int sec = cell & SMK_SECT_OFF;
+                if (sec != SMK_SECT_OFF && sec < crs.sectors && sec > my_best)
+                    my_best = sec;
+                if ((cell & SMK_SECT_FINISH) && my_best > crs.sectors / 2
+                    && sec <= 1) {
+                    my_lap++;
+                    my_best = 0;
+                }
+            }
         }
         (void)stepped;   /* edges deliberately survive a tickless iteration */
 
@@ -455,7 +574,7 @@ int main(int argc, char **argv)
             smk_render_mode7(&trk, &cam, fb, rw, rh, rw);
             draw_scene(&rom, &trk, &karts, drv, &cam, fb, rw, rh,
                        show_grid, show_kart, frame_for(&in, &lean),
-                       kart.angle);
+                       kart.angle, racers);
             SDL_UpdateTexture(tex, NULL, fb, rw * (int)sizeof *fb);
             SDL_RenderClear(ren);
             SDL_RenderCopy(ren, tex, NULL, NULL);
@@ -470,10 +589,11 @@ int main(int argc, char **argv)
             double secs = (double)(t1 - fps_t0) / (double)freq;
             char title[192];
             snprintf(title, sizeof title,
-                     "Super Mario Kart  -  track %d  theme %d  -  "
-                     "%dx%d  surface $%02X  %.0f fps", track, trk.theme, rw, rh,
-                     smk_track_surface(&trk, smk_kart_px(kart.x), smk_kart_px(kart.y)),
-                     frames / secs);
+                     "Super Mario Kart  -  track %d  lap %d  sector %d/%d  -  "
+                     "%dx%d  %.0f fps", track, my_lap + 1,
+                     smk_course_cell(&crs, smk_kart_px(kart.x),
+                                     smk_kart_px(kart.y)) & SMK_SECT_OFF,
+                     crs.sectors, rw, rh, frames / secs);
             SDL_SetWindowTitle(win, title);
             frames = 0; fps_t0 = t1;
         }
