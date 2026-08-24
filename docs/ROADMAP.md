@@ -57,7 +57,7 @@ re-investigating.
 | S6 | `src/main.c` `move_blocked` | refuse the move, slide per axis | `$80F8C0`: enters a collision state (`$42,x`=$8000, `$26,x`=$80) with its own recovery | P3 |
 | S7 | renderer | full-resolution smooth perspective | 256×224, per-scanline integer matrix | keep — named divergence, this is the point of a PC port. `--pixel` restores chunk. |
 | S8 | no audio | silence | SPC700 + S-DSP running its own program | P7 |
-| S9 | `tools/smktool/dsp1.py` | **only four DSP-1 commands modelled; a race issues ~1500 unmodelled operations per 60 frames** | the real DSP-1 | **top blocker** — gates P4, P6 and any render comparison (NOTES 038) |
+| S9 | `tools/smktool/dsp1.py` | full command set implemented; stream never desyncs; camera model verified against the game's own usage. Residual: gyrate is a passthrough, and raster/`$08`/`$18` scalings are unchecked | the real chip's exact fixed-point pipeline | largely closed (NOTES 039); residuals logged on first contact |
 
 *Resolved:* **S9 for command `$04` (sin/cos)** — pinned by unit analysis in
 NOTES 017; movement no longer rests on a guess. The kinematics (velocity
@@ -256,15 +256,16 @@ cleanly and needs no ROM at all.
 — the Mode 7 matrix is HDMA-driven, so there are no PPU stores to read
 (NOTES 014).**
 
-**R1 — The DSP-1 coprocessor sits inside the physics.  [REOPENED, AND
-BIGGER THAN THOUGHT]** The original scoping to four commands came from a
-static scan and undercounted badly: a running race issues roughly 1500
-unmodelled DSP-1 operations per 60 frames (NOTES 038). Because one unknown
-command desynchronises the parameter stream, everything after it is wrong.
-This now blocks sprites and AI as well as physics fidelity. Implement the
-device properly rather than one command at a time.
+**R1 — The DSP-1 coprocessor sits inside the physics.  [CLOSED as a
+blocker — NOTES 039]** The full command set is implemented and the stream
+stays in sync through boot and racing with zero unknown commands. The
+camera model (`$02`/`$06`) was corrected against the game's own parameter
+traffic: F is the ground focal point, not the camera. Residual
+approximations are labelled in the code and logged on first use.
 
-Original scoping note follows.
+History: first scoped to four commands from a static scan (undercounted),
+then reopened when a race showed ~1500 unmodelled operations. Original
+notes follow.
 Confirmed used, and narrowed to four commands (NOTES 008): multiply, sin/cos,
 2D rotate, vector length. The remaining risk is *scaling*: our
 implementations are from documented behaviour, not measured (NOTES 015, S9).

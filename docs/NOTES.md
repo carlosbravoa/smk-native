@@ -1008,4 +1008,51 @@ because they were checked against the game's own arithmetic directly.
 
 ---
 
-*(next entry: 039)*
+**039** — The DSP-1, implemented properly. S9 substantially closed.
+
+Replaced the four-command model with the full documented command set (30
+commands, our own maths), then corrected it against the game's own traffic.
+The method that worked: log every DSP write **with the program counter**,
+and compress the stream into runs. Command bytes come from single-byte
+stores at their own PC; parameters come as two-byte word stores — the PC
+pattern makes the framing unambiguous.
+
+**Three corrections the traffic forced:**
+
+1. *The `$01` command was a mirage.* What the old model counted as 64
+   attitude calls was the high byte of `$02`'s fifth parameter, misread
+   after a desync. With raster fixed there are no `$01` calls anywhere.
+   (My first "fix" — reshaping `$01` to two parameters — was wrong twice
+   over; the PC-context trace killed it before it shipped.)
+2. *Raster (`$0A`) is a streaming mode, not a call.* One command byte, one
+   starting Vs, then the chip serves a 4-word Mode 7 matrix group per
+   scanline, auto-advancing as each group is read — the game reads **96
+   groups per screen half** (split screen: two rasters per frame, Vs
+   `$0087` and `$FFB7`). The mode ends with **`$8000` sentinel words**
+   followed by the next command byte. One byte-ambiguity: after a sentinel,
+   `$00` could open another sentinel word or be the multiply command; the
+   real stream always means the sentinel, so the model prefers the word.
+3. *The camera model was upside down.* `$02`'s `F` is not the camera — it
+   is the **focal point on the ground** (the player's kart, in quarter-pixel
+   units: Fx = x·4). The eye sits `Lfe` away at elevation `Azs` on the far
+   side of azimuth `Aas`; `Les` is eye→screen. Race values: Lfe=Les=256,
+   Azs=$3400 (73°) → eye 18.5 px behind and 61 px above the kart — exactly
+   SMK's camera. Forward is `(sin Aas, −cos Aas)`, the same 0 = −Y
+   convention as kart headings (NOTES 017). With that fixed, `$06` projects
+   kart 2 to (H=−3, V=155, M=208) instead of "offscreen".
+
+**Results.** Boot: `$02`×129, `$0A`×129, `$80`×128 — and `$80` is explained:
+`$81E3EC` writes it 128 times as a flush before first use; consume-nothing
+is the right handling. Race: `$02`/`$04`/`$06`/`$28` only. **Zero unknown
+commands anywhere; the stream never desyncs.** `verify-physics` still
+passes bit-exact (238/0), and new OAM entries with kart-block tile patterns
+appeared in the first post-fix race snapshot.
+
+Still approximate, and marked in code: `$14` gyrate (passthrough), the
+`$08`/`$18` fixed-point conventions, exact raster output scaling, and the
+`Vof`/`Vva` sign conventions. None is on the current critical path; each is
+logged when traffic first touches it.
+
+---
+
+*(next entry: 040)*
