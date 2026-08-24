@@ -518,4 +518,56 @@ forced state needs a plausibility test before it is believed.
 
 ---
 
-*(next entry: 025)*
+**025** — Player acceleration and steering decoded. Found by instrumenting
+the running game: watching which PC writes the player's `$EE` (acceleration)
+and `$2A` (angle) fields pointed straight at them.
+
+**Acceleration — `$80B035`:**
+
+```
+jsr $B074          ; A = TARGET speed
+sec / sbc $EA,x    ; target - current
+bcc  decelerate
+    ldy #$0690 / sty $10
+    jsr $A7E1      ; A = accel, from a table indexed by current speed
+    stz $EE,x
+    sta $ED,x      ; writing at $ED spans $ED/$EE: accel32 = A << 8
+    rts
+decelerate:
+    eor #$FFFF / inc A          ; how far over target
+    cmp #$0200 / clamp to $01FF
+    asl / asl / xba / and #$0006
+    lda $B064,y / sta $EE,x     ; four-entry deceleration table
+```
+
+**`$80A7E1`**, the accel lookup: clamp speed to `$03FF`, multiply by 8, mask
+`#$FE00`, `xba` (an arithmetic `>>8`), add the table base from `$10`, and
+read a word. So **acceleration is a function of current speed via a table**,
+and deceleration is a function of how far over target you are.
+
+**Target speed — `$80B074`:** indexes `$0800` by the kart's stat field
+`$C0,x`, takes two bits of that, adds `$C8,x`, and reads a **target-speed
+table**, then adds a bonus chosen by `$DA,x` or `$E6,x` from two small ROM
+tables at `$80B099`/`$80B0A1`.
+
+**Steering — `$80AFBE`:** `$FA,x` is the *target* angle and `$A2,x` the
+current steering angle. If the difference is within `±$0200` the angle snaps
+to the target (`sta $A2,x / sta $2A,x`); otherwise it slews via `$80AFF9`.
+So steering is a slew-rate-limited follow, not a direct write.
+
+**The constraint that matters for the port.** The acceleration table
+(`$0690`) and the target-speed table (`$06B0`) are in **WRAM**, built at race
+setup from the character and engine class. Their contents are therefore game
+data and must not be baked into this repository as constants. The port has
+to locate the ROM source of those tables and read them at runtime, the same
+way it reads tilemaps and palettes. That is the next step for S1, and it is
+the reason S1 is not being closed with measured numbers.
+
+Structure confirmed against the running game; the exact index arithmetic
+matched about a third of sampled frames on a first pass, because the
+deceleration branch also writes `$EE` and the sampling straddles both. Worth
+redoing carefully when the ROM-side tables are found.
+
+---
+
+*(next entry: 026)*

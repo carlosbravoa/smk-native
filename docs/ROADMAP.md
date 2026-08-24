@@ -155,8 +155,13 @@ The largest decode. Sub-order:
    **Kinematics done and verified: `make verify-physics` shows 0 mismatches
    over hundreds of steps against the running game (NOTES 022).**
    **Speed integration done too (NOTES 023): speed and acceleration are
-   32-bit pairs `$E8/$EA` and `$EC/$EE`; `smk_kart_accelerate()` mirrors it.
-   Remaining: what writes `$EC`/`$EE`, i.e. the input and state logic.**
+   32-bit pairs `$E8/$EA` and `$EC/$EE`; `smk_kart_accelerate()` mirrors it.**
+   **Acceleration and steering decoded (NOTES 025): acceleration is a table
+   lookup on current speed toward a target speed, deceleration a four-entry
+   table; steering is a slew-limited follow of a target angle `$FA,x`.
+   Blocked on: both tables live in WRAM, built per character at race setup,
+   so their values are game data. Find their ROM source and read it at
+   runtime — do not bake the numbers in.**
 4. Only after the oracle agrees: replace S1, derive the camera from the kart
    state the way the game computes its matrix (kills S4).
 - Acceptance: oracle diff = 0 over the swept state space for each ported
