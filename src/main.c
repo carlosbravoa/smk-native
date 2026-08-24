@@ -535,12 +535,6 @@ static void step_kart(smk_kart *k, const smk_track *trk,
                                      / 65536.0f) * (float)k->speed);
         int32_t tvy = (int32_t)(-cosf((float)k->angle * (float)(2.0 * M_PI)
                                       / 65536.0f) * (float)k->speed);
-        /* Per-surface grip by 16-type (NOTES 060).  The COMPOSITION is the
-         * ROM's - per-theme class arrays select the type - and the ice
-         * types (11/12: classes $56/$58, the ice-theme roads) are the ones
-         * its decel table singles out as near-frictionless.  The grip
-         * VALUES are labelled placeholders pending the $AA slip-machine
-         * decode: road full grip, ice low, off-road in between. */
         /* MEASURED slip dynamics (NOTES 068, both grip batteries):
          *   - steady cornering slip is ~200-310 units at the saturated
          *     turn rate, on EVERY class - convergence ~0.5/frame;
@@ -553,8 +547,12 @@ static void step_kart(smk_kart *k, const smk_track *trk,
          *   - the drift state ($E2: $8000 hop -> $8004 slide -> $8024
          *     charged) is entered by hopping into a held turn: airborne
          *     grip is near zero, and landing steered holds the slide.
-         * Ice (types 11/12) keeps a labelled low-grip multiplier - those
-         * classes are absent from the demo theme and unmeasured. */
+         * Grip is CLASS-INDEPENDENT: the $56 measurement (gripcal2)
+         * shows the same steady slip (~203) and turn rate as road, so
+         * the old ice multiplier was a guess the data contradicts - and
+         * mistargeted anyway: types 11/12 are Choco mud and VL snow;
+         * Vanilla Lake's icy ROAD is class $4E (type 7).  If ice feel
+         * diverges in play, measure class $4E at speed - do not guess. */
         float va = atan2f((float)k->vx, -(float)k->vy);
         float ha = (float)k->angle * (float)(2.0 * M_PI) / 65536.0f;
         float slip = va - ha;
@@ -562,8 +560,7 @@ static void step_kart(smk_kart *k, const smk_track *trk,
         while (slip < -(float)M_PI) slip += 2.0f * (float)M_PI;
         float slip_u = fabsf(slip) * 65536.0f / (2.0f * (float)M_PI);
 
-        int ty = smk_surface_type(surf);
-        float class_grip = (ty == 11 || ty == 12) ? 0.35f : 1.0f;
+        float class_grip = 1.0f;         /* uniform - measured, see above */
 
         /* The breakaway limit was MEASURED at the demo's speed scale
          * (top ~951, limit ~250k -> breakaway at ~86% of top under full
