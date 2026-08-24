@@ -602,6 +602,35 @@ The check took one query and cost nothing. Whenever a measurement comes from
 a state you constructed rather than one the game walked into, ask what it
 would look like if it were wrong, and test that.
 
+## Step 18: reaching the state you need to observe
+
+Getting the machine to run is only half of it; you then have to get the game
+*into the situation you want to measure*, and that is its own problem.
+
+**Attract sequences have their own pacing.** A wait that feels generous in
+wall-clock terms can be short in game time when the simulation runs at a
+fraction of real speed. One title screen held for 28 seconds of game time —
+about 1700 frames — before anything else happened, and a demo race then held
+its karts on the grid for hundreds more.
+
+**Watch all the actors, not the first one.** A demo race looked frozen for
+several runs because only karts 0 and 1 were sampled; karts 2 and 3 were the
+first to move. Poll the aggregate ("has *anything* started moving?"), not a
+representative.
+
+**A forced state is not the state.** Writing the pending-mode variable gets
+you into a race in seconds, but that race ran its physics and never drew the
+karts, while the demo race drew everything and ran no physics. Two halves,
+neither sufficient. Before drawing conclusions from a state you constructed,
+confirm the specific thing you care about is actually happening in it.
+
+**An absence constrains where to look; it does not say what is wrong.** "The
+kart update never executes" was read as "the karts are parked in an idle
+state", and the one-line test of that — force the state index — showed the
+index was already correct. The dispatcher simply was not being reached. Cost:
+one wrong entry in the log. Test the cheap consequence of an inference before
+building on it.
+
 ## Order of work
 
 1. Identify the ROM; get mapping and mirrors right. Add a hash check.
@@ -641,3 +670,6 @@ would look like if it were wrong, and test that.
 - Do not report absence from a partial trace ("nothing writes X") as a fact.
 - Do not trust a measurement taken from a state you forced without checking
   the game actually reached the situation you think it did.
+- Do not let two render paths exist. A feature added to one and missing from
+  the other makes screenshots disagree with the program, twice if you do not
+  fix the cause.
