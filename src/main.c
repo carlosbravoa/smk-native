@@ -102,7 +102,11 @@ static void racer_step(smk_racer *r, const smk_track *trk,
 {
     uint8_t cell = smk_course_cell(crs, smk_kart_px(r->k.x), smk_kart_px(r->k.y));
     int sec = cell & SMK_SECT_OFF;
-    if (sec != SMK_SECT_OFF && sec < crs->sectors)
+    /* DECODED ($808962): keep the old sector when off-course ($7F), and
+     * while airborne reject sectors whose waypoint attribute has bit 7 set
+     * - the anti-shortcut rule for jump zones. */
+    if (sec != SMK_SECT_OFF && sec < crs->sectors
+        && !(r->k.airborne && (crs->wattr[sec] & 0x80)))
         r->sector = sec;
 
     /* lap: on the finish strip after coming around the back half */

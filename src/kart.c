@@ -122,13 +122,22 @@ void smk_kart_move(smk_kart *k, const smk_track *t)
     if (bx || by) {
         /* $80F8C0: a wall hit sets $42,x = $8000 AND $26,x = $0080 - the
          * kart is launched, so the bounce lasts exactly as long as the
-         * ballistic flight (NOTES 045).  The 8-frame duration measured in
-         * NOTES 044 was that flight time, not a constant. */
+         * ballistic flight (NOTES 045).  The measured horizontal knockback
+         * (NOTES 044: approach -X into a wall, knockback (0,+$1000)) runs
+         * ALONG the wall, not back the way the kart came - reflecting the
+         * velocity drove karts ~144px into earlier sectors and looped the
+         * AI forever (NOTES 051).  So: kill the into-wall component, slide
+         * along the tangent at the measured $1000. */
         smk_kart_launch(k, SMK_HOP_VEL);
-        if (bx) k->vx = (int16_t)-k->vx;
-        if (by) k->vy = (int16_t)-k->vy;
-        k->bvx = bx ? (k->vx >= 0 ? BOUNCE_VEL : -BOUNCE_VEL) : 0;
-        k->bvy = by ? (k->vy >= 0 ? BOUNCE_VEL : -BOUNCE_VEL) : 0;
+        if (bx) {
+            k->vx = 0;
+            k->bvx = 0;
+            k->bvy = (int16_t)(k->vy >= 0 ? BOUNCE_VEL : -BOUNCE_VEL);
+        } else {
+            k->vy = 0;
+            k->bvy = 0;
+            k->bvx = (int16_t)(k->vx >= 0 ? BOUNCE_VEL : -BOUNCE_VEL);
+        }
         if (!bx) k->x = nx;
         if (!by) k->y = ny;
         return;

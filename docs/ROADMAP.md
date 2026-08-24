@@ -83,7 +83,7 @@ used; C output is byte-identical to the game's loader on all 24 courses.
 | P3 physics | **part** — kinematics, speed model and the ROM's acceleration tables are in and verified; steering policy and per-surface response are not |
 | P4 sprites | **mostly** — sheets, projection, and the **measured frame-selection rule** (NOTES 041); residuals: tier boundaries assumed shared, hflip side unverified, player rel synthesised |
 | P5 race furniture | not started (the course container is decoded; object records were not part of it — still to locate) |
-| P6 opponents | **part** — racing lines, speed classes, turn law, turnaround, wall bounce and the Z axis all decoded; full laps on **10/20** tracks, several others near-miss. Remaining: launch triggers per surface, and per-track trouble spots |
+| P6 opponents | **mostly** — racing lines, speed classes, turn law, turnaround, tangential wall bounce, Z axis, and the sector-acceptance rule (off-course + airborne/attr-7) all decoded. AI circulates and crosses on 16/20 tracks (10/20 under strict per-lap coverage); remaining opens are the ROM's crossing test `$808994` and four stubborn tracks |
 | P7 audio | **decided** — pre-recorded; `smk spc` dumps the driver, rendering not wired up |
 | P8 modes / menus | not started |
 

@@ -1480,4 +1480,42 @@ preconditions fail — is what was missing.
 
 ---
 
-*(next entry: 051)*
+**051** — Two decoded rules end the AI loops; and a lesson about surrogate
+metrics.
+
+**The loops diagnosed.** The "stuck" tracks were never frozen: the karts
+drive at full speed forever, with `sector < best` — bounced backward into
+an earlier sector's paint, they aim at that sector's successor, hit the
+same wall, and orbit. Two decoded facts fix it:
+
+1. **Sector acceptance** (`$808962-$808983`): a new sector is accepted
+   unless the cell reads `$7F` (off-course - keep the old sector) or the
+   kart is **airborne and the new sector's waypoint attribute has bit 7
+   set**. That is what attr bit 7 means: do not capture progress from this
+   sector while flying - the anti-shortcut rule for jump zones. The
+   accepted sector is stored to both `$DC,x` and `$C0,x` (the copy the
+   target-speed lookup reads).
+2. **The bounce runs along the wall, not backward.** NOTES 044's measured
+   knockback - approach `-X` into a wall, knockback `(0, +$1000)` - is
+   *tangential*, perpendicular to the approach. My port reflected the full
+   velocity instead, which drove karts ~144 px back down the track during
+   the ballistic flight and seeded every loop. Now: the into-wall component
+   is killed and the kart slides along the tangent at the measured `$1000`.
+
+**Effect.** Lap completion under the loose criterion went **10/20 → 16/20**.
+
+**The surrogate-metric lesson.** Tightening the harness's lap test to
+require per-lap sector coverage exposed that two "laps" were shortcut
+artifacts - and that several karts legitimately cover only ~85% of sectors
+per lap (jump sectors are flown over, per rule 1 above; the finish strip on
+some tracks lies wholly in the LAST sector so a `sector<=1` crossing test
+never fires there). Chasing a threshold that makes the surrogate agree with
+the eye is the wrong game: the honest numbers are **16/20 circulating and
+crossing repeatedly** and **10/20 under strict per-lap coverage**, and the
+correct fix is decoding the ROM's own crossing routine - `$808994`, called
+exactly when a finish-strip cell is accepted - instead of tuning a
+surrogate. That is the next lap/checkpoint item.
+
+---
+
+*(next entry: 052)*
