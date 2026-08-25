@@ -2,6 +2,7 @@
  * trajectory against the game's own.
  *
  *   smk_demoreplay rom.sfc demo_race.csv [1000|1100] [--tol PX] [--no-resync]
+ *                  [--trace A B] [--gate]
  *
  * The CSV is tools/labs/mame/demolog.lua's per-frame log of the running
  * game (both karts).  The port is set up from the log's initial state -
@@ -18,22 +19,6 @@
 #include <string.h>
 #include <math.h>
 
-#define MAXF 4000
-#define MAXC 64
-
-static int ncol;
-static char *cols[MAXC];
-static int col(const char *name)
-{
-    for (int i = 0; i < ncol; i++) if (!strcmp(cols[i], name)) return i;
-    fprintf(stderr, "missing column %s\n", name);
-    exit(2);
-}
-
-typedef struct { int v[MAXC]; } row_t;
-static row_t rows[MAXF];
-static int nrows;
-
 static int16_t s16(int v) { return (int16_t)(uint16_t)v; }
 
 int main(int argc, char **argv)
@@ -42,9 +27,8 @@ int main(int argc, char **argv)
     const char *csv = argc > 2 ? argv[2] : "tools/labs/mame/demo_race.csv";
     int kart_id = 1000;                 /* the log names karts by WRAM block: 1000 / 1100 */
     double tol = 4.0;
-    bool resync = true;
+    bool resync = true, gate = false;
     int trace_a = -1, trace_b = -1;
-    bool gate = false;
     for (int i = 3; i < argc; i++) {
         if (!strcmp(argv[i], "--tol") && i + 1 < argc) tol = atof(argv[++i]);
         else if (!strcmp(argv[i], "--no-resync")) resync = false;
@@ -53,69 +37,28 @@ int main(int argc, char **argv)
         else kart_id = atoi(argv[i]);
     }
 
-    FILE *f = fopen(csv, "r");
-    if (!f) { perror(csv); return 2; }
-    static char line[4096];
-    if (!fgets(line, sizeof line, f)) return 2;
-    line[strcspn(line, "\r\n")] = 0;
-    for (char *t = strtok(line, ","); t && ncol < MAXC; t = strtok(NULL, ","))
-        cols[ncol++] = strdup(t);
-    int c_kart = col("kart"), c_c4 = col("fC4"), c_x = col("f18"), c_xf = col("f16");
-    int c_y = col("f1C"), c_yf = col("f1A"), c_a4 = col("fA4"), c_ea = col("fEA");
-    int c_e8 = col("fE8"), c_a8 = col("fA8"), c_aa = col("fAA"), c_fa = col("fFA");
-    int c_b2 = col("fB2"), c_a6 = col("fA6"), c_ac = col("fAC"), c_e2 = col("fE2");
-    int c_z = col("f1F"), c_zv = col("f26"), c_vx = col("f22"), c_vy = col("f24");
-    int c_coins = col(kart_id == 1000 ? "gE00" : "gE02");
-    int c_track = col("g124"), c_class = col("g30"), c_char = col("f12"), c_f10 = col("f10");
-    int c_ae = col("fAE"), c_ee = col("fEE"), c_a2 = col("fA2");
-    (void)c_ae; (void)c_a2;
-    while (fgets(line, sizeof line, f) && nrows < MAXF) {
-        int i = 0;
-        row_t r;
-        for (char *t = strtok(line, ","); t && i < ncol; t = strtok(NULL, ","))
-            r.v[i++] = (int)strtol(t, NULL, 10);
-        if (r.v[c_kart] == kart_id) rows[nrows++] = r;
-    }
-    fclose(f);
-    if (nrows < 10) { fprintf(stderr, "no rows for kart %x\n", kart_id); return 2; }
+    static smk_demolog log;
+    if (!smk_demolog_load(csv, kart_id, &log)) { fprintf(stderr, "cannot read %s for kart %d\n", csv, kart_id); return 2; }
 
     smk_rom rom;
     char err[256];
     if (!smk_rom_load(&rom, rom_path, err, sizeof err)) { fprintf(stderr, "%s\n", err); return 2; }
 
-    int track = rows[0].v[c_track];
-    int engine_class = rows[0].v[c_class] / 2;
-    int character = rows[0].v[c_char] / 2;
     static smk_track trk;
     static smk_course crs;
-    if (!smk_track_load(&rom, track, -1, &trk, err, sizeof err)) { fprintf(stderr, "%s\n", err); return 2; }
+    if (!smk_track_load(&rom, log.track, -1, &trk, err, sizeof err)) { fprintf(stderr, "%s\n", err); return 2; }
     smk_track_place_objects(&rom, &trk);
-    if (!smk_course_load(&rom, track, &crs)) { fprintf(stderr, "course %d\n", track); return 2; }
+    if (!smk_course_load(&rom, log.track, &crs)) { fprintf(stderr, "course %d\n", log.track); return 2; }
 
     static smk_player p;
-    if (!smk_player_setup(&rom, character, engine_class, &p)) { fprintf(stderr, "player setup\n"); return 2; }
-
-    /* start at the frame before the kart first moves: the game holds the
-     * grid until the lights, above the per-kart dispatcher */
-    int i0 = 0;
-    while (i0 < nrows - 1 && s16(rows[i0 + 1].v[c_ea]) == 0) i0++;
+    if (!smk_player_setup(&rom, log.character, log.engine_class, &p)) { fprintf(stderr, "player setup\n"); return 2; }
 
     smk_kart k;
     memset(&k, 0, sizeof k);
-#define SYNC(i) do { const row_t *r = &rows[i]; \
-        k.x = ((int32_t)r->v[c_x] << 16) | (r->v[c_xf] & 0xFFFF); \
-        k.y = ((int32_t)r->v[c_y] << 16) | (r->v[c_yf] & 0xFFFF); \
-        k.vx = s16(r->v[c_vx]); k.vy = s16(r->v[c_vy]); \
-        k.speed = s16(r->v[c_ea]); k.speed_frac = (uint16_t)r->v[c_e8]; \
-        k.z = (int32_t)r->v[c_z] << 8; k.zvel = s16(r->v[c_zv]); \
-        k.airborne = (r->v[c_e2] & 0x8000) != 0; k.bounce_cool = 0; k.bvx = k.bvy = 0; \
-        smk_player_reset(&p, (uint16_t)r->v[c_a4]); \
-        p.vlag = s16(r->v[c_a8]); p.plag = s16(r->v[c_aa]); p.spin = s16(r->v[c_fa]); \
-        p.turn = s16(r->v[c_b2]); p.state = r->v[c_a6]; p.flags = (uint16_t)(r->v[c_e2] & 0x802C); \
-        p.pad = (uint16_t)r->v[c_c4]; \
-        p.vel_angle = (uint16_t)(p.heading + p.vlag); p.pose = (uint16_t)(p.heading - p.plag); \
-        p.coins = r->v[c_coins]; p.accel32 = (int32_t)s16(r->v[c_ee]) << 16; } while (0)
-    SYNC(i0);
+    int i0 = log.start;
+    smk_demolog_sync(&log, i0, &p, &k);
+    int track = log.track, character = log.character, engine_class = log.engine_class;
+    int nrows = log.n;
 
     printf("demo replay: track %d, character %d, %dcc, kart %d, %d frames from %d, tol %.1f px%s\n",
            track, character, engine_class == 0 ? 50 : engine_class == 1 ? 100 : 150,
@@ -125,15 +68,14 @@ int main(int argc, char **argv)
     double sum_err = 0, max_err = 0;
     int max_err_frame = -1, head_bad = 0, spd_bad = 0;
     for (int i = i0 + 1; i < nrows; i++) {
-        const row_t *r = &rows[i];
-        uint16_t c4 = (uint16_t)r->v[c_c4];
-        uint16_t held = (uint16_t)(c4 & 0xFFF0);
-        uint16_t pressed = (uint16_t)(((c4 & 3) << 8) | ((c4 & 0xC) << 2));
-        p.coins = r->v[c_coins];
+        const smk_demo_frame *r = &log.f[i];
+        uint16_t c4 = r->c4, held, pressed;
+        smk_demolog_pad(r, &held, &pressed);
+        p.coins = r->coins;
         smk_player_step(&p, &k, &trk, held, pressed);
         smk_collide_objects(&k, &crs);
 
-        double gx = r->v[c_x] + r->v[c_xf] / 65536.0, gy = r->v[c_y] + r->v[c_yf] / 65536.0;
+        double gx = r->x / 65536.0, gy = r->y / 65536.0;
         double px = k.x / 65536.0, py = k.y / 65536.0;
         double dx = px - gx, dy = py - gy;
         if (dx > 512) dx -= 1024;
@@ -141,13 +83,13 @@ int main(int argc, char **argv)
         if (dy > 512) dy -= 1024;
         if (dy < -512) dy += 1024;
         double e = sqrt(dx * dx + dy * dy);
-        int dh = s16((int)p.heading - r->v[c_a4]);
-        int ds = k.speed - s16(r->v[c_ea]);
+        int dh = s16((int)p.heading - r->a4);
+        int ds = k.speed - r->speed;
         n++;
         if (i >= trace_a && i <= trace_b)
             printf("  f%4d pad %04X | spd %4d/%4d | B2 %5d/%5d | A4 %5d/%5d | A8 %5d/%5d | A6 %02X/%02X | pos game %8.3f,%8.3f port %8.3f,%8.3f err %.2f\n",
-                   i, c4, s16(r->v[c_ea]), k.speed, s16(r->v[c_b2]), p.turn, r->v[c_a4], p.heading,
-                   s16(r->v[c_a8]), p.vlag, r->v[c_a6], p.state, gx, gy, px, py, e);
+                   i, c4, r->speed, k.speed, r->turn, p.turn, r->a4, p.heading,
+                   r->vlag, p.vlag, r->state, p.state, gx, gy, px, py, e);
         sum_err += e;
         if (e <= 1.0) within1++;
         if (e <= tol) { within_tol++; streak++; if (streak > best_streak) best_streak = streak; }
@@ -157,8 +99,8 @@ int main(int argc, char **argv)
         if (e > tol && resync) {
             resyncs++;
             printf("  diverged at frame %4d: err %6.1f px, heading %+6d, speed %+4d | game: spd %4d $A6 %02X $AC %02X $10 %04X $E2 %04X pad %04X\n",
-                   i, e, dh, ds, s16(r->v[c_ea]), r->v[c_a6], r->v[c_ac], r->v[c_f10], r->v[c_e2], c4);
-            SYNC(i);
+                   i, e, dh, ds, r->speed, r->state, r->drive, r->flags10, r->flags, c4);
+            smk_demolog_sync(&log, i, &p, &k);
             streak = 0;
         }
     }

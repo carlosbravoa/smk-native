@@ -711,6 +711,9 @@ static void usage(const char *argv0)
            "  --shot PATH     render one frame to a BMP and exit\n"
            "  --dump PATH     write map+tiles+palette and exit (verification)\n"
            "  --at X Y DEG    camera placement for --shot\n"
+           "  --replay CSV    drive the kart from the game's own log\n"
+           "                  (tools/labs/mame/demo_race.csv); the real kart\n"
+           "                  rides along as a ghost.  --replay-kart 1000|1100\n"
            "  o p             override the course theme\n"
            "\n"
            "controls (keyboard / gamepad, mapped to the SNES pad):\n"
@@ -736,6 +739,8 @@ int main(int argc, char **argv)
     int win_w = 1024, win_h = 896, pixel = 2, fullscreen = 0;
     const char *dump = NULL;          /* write raw track data and exit      */
     const char *shot = NULL;          /* render one frame to a BMP and exit */
+    const char *replay_path = NULL;   /* --replay: drive the kart from the game's log */
+    int replay_kart = 1000;           /* 1000 = P1 (Mario), 1100 = P2 (Toad)        */
     float shot_x = 512, shot_y = 512, shot_a = 0;
     int have_at = 0;
     long max_frames = 0;              /* >0: run headless for N frames, then exit */
@@ -757,6 +762,8 @@ int main(int argc, char **argv)
         if (!strcmp(a, "--fullscreen")) { fullscreen = 1; continue; }
         if (!strcmp(a, "--frames") && i + 1 < argc) { max_frames = atol(argv[++i]); continue; }
         if (!strcmp(a, "--shot") && i + 1 < argc) { shot = argv[++i]; continue; }
+        if (!strcmp(a, "--replay") && i + 1 < argc) { replay_path = argv[++i]; continue; }
+        ARG("--replay-kart", replay_kart)
         if (!strcmp(a, "--dump") && i + 1 < argc) { dump = argv[++i]; continue; }
         #define FARG(name, var) if (!strcmp(a, name) && i + 1 < argc) { var = (float)atof(argv[++i]); continue; }
         #undef FARG
@@ -804,6 +811,19 @@ int main(int argc, char **argv)
         return 1;
     }
     static smk_course crs;
+    static smk_demolog replay;
+    if (replay_path) {
+        if (!smk_demolog_load(replay_path, replay_kart, &replay)) {
+            fprintf(stderr, "error: cannot read the replay log %s (kart %d)\n",
+                    replay_path, replay_kart);
+            return 1;
+        }
+        track = replay.track; theme = -1;
+        character = replay.character;
+        engine_class = replay.engine_class;
+        printf("replay: track %d, character %d, class %d, %d frames\n",
+               track, character, engine_class, replay.n);
+    }
     if (!smk_course_load(&rom, track, &crs)) {
         fprintf(stderr, "error: cannot load course data for track %d\n", track);
         return 1;
@@ -939,6 +959,12 @@ int main(int argc, char **argv)
         .angle = g0h,
     };
     smk_player_reset(&player, g0h);
+    int replay_i = 0;
+    if (replay_path) {
+        replay_i = replay.start;
+        smk_demolog_sync(&replay, replay_i, &player, &kart);
+        race_state = RACE_RUN;             /* the log starts at the lights */
+    }
     camera_from_kart(&cam, &kart);
 
     input_state in;
@@ -1021,6 +1047,25 @@ int main(int argc, char **argv)
                 in.hop_held = false;
             }
             if (race_state == RACE_RUN) { hud_race_frames++; hud_countdown = 0; }
+            if (replay_path) {
+                /* the recorded pad word replaces the player's input, and
+                 * the game's own kart rides along as a ghost (slot 1) */
+                in.up = in.down = in.left = in.right = in.hop_held = in.hop = false;
+                if (replay_i + 1 < replay.n) {
+                    const smk_demo_frame *r = &replay.f[++replay_i];
+                    in.up = (r->c4 & 0x8000) != 0;
+                    in.down = (r->c4 & 0x4000) != 0;
+                    in.left = (r->c4 & 0x0200) != 0;
+                    in.right = (r->c4 & 0x0100) != 0;
+                    in.hop_held = (r->c4 & 0x0030) != 0;
+                    in.hop = (r->c4 & 0x000C) != 0;
+                    player.coins = r->coins;
+                    racers[1].k.x = r->x; racers[1].k.y = r->y;
+                    racers[1].k.angle = r->pose;
+                    racers[1].k.z = (int32_t)r->z << 8;
+                    racers[1].k.airborne = (r->flags & 0x8000) != 0;
+                }
+            }
             step_kart(&kart, &trk, &phys, &in);
             /* edges are cleared AFTER the tick that consumes them.  Clearing
              * first meant step_kart never saw in.hop, so a hop press did
@@ -1029,7 +1074,7 @@ int main(int argc, char **argv)
             camera_from_kart(&cam, &kart);
             me->k = kart;
 
-            if (race_state == RACE_RUN)
+            if (race_state == RACE_RUN && !replay_path)
                 for (int i = 1; i < SMK_CHARACTERS; i++)
                     smk_racer_step(&racers[i], &trk, &crs, &phys);
 
@@ -1097,6 +1142,14 @@ int main(int argc, char **argv)
                      smk_surface_cap(smk_track_surface(&trk,
                          smk_kart_px(kart.x), smk_kart_px(kart.y))),
                      rw, rh, frames / secs);
+            if (replay_path && replay_i < replay.n) {
+                double dx = (kart.x - replay.f[replay_i].x) / 65536.0;
+                double dy = (kart.y - replay.f[replay_i].y) / 65536.0;
+                size_t len = strlen(title);
+                snprintf(title + len, sizeof title - len,
+                         "  -  replay f%d/%d  off by %.1f px",
+                         replay_i, replay.n, sqrt(dx * dx + dy * dy));
+            }
             SDL_SetWindowTitle(win, title);
             frames = 0; fps_t0 = t1;
         }

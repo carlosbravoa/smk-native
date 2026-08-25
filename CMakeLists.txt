@@ -17,6 +17,7 @@ add_library(smkcore STATIC
   src/mode7.c
   src/kart.c
   src/player.c
+  src/demolog.c
   src/physics.c
   src/ai.c
   src/sprite.c

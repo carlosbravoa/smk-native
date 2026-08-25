@@ -289,6 +289,31 @@ void smk_dsp_sincos(uint16_t angle, int16_t radius, int16_t *sx, int16_t *cy);
 /* the camera azimuth the ROM feeds DSP-1 ($808632): heading + $C0 */
 #define SMK_CAM_LEAD 0x00C0
 
+/* ---- The game's own per-frame log (tools/labs/mame/demolog.lua) ---------
+ * One frame of one kart as the running game had it.  demoreplay.c scores
+ * the port against it; the game's --replay plays it with a ghost. */
+typedef struct {
+    uint16_t c4;               /* the composed pad word $C4              */
+    int32_t  x, y;             /* 16.16 position                         */
+    uint16_t a4, a2, pose;     /* heading, velocity angle, pose          */
+    int16_t  speed; uint16_t frac;
+    int16_t  vx, vy, vlag, plag, spin, turn, accel;
+    int      state, drive;     /* $A6, $AC                               */
+    uint16_t flags, flags10;   /* $E2, $10                               */
+    int      z, zvel, coins;
+} smk_demo_frame;
+typedef struct {
+    smk_demo_frame *f;
+    int n, start;              /* start = frame before the kart moves    */
+    int track, character, engine_class, kart;
+} smk_demolog;
+bool smk_demolog_load(const char *path, int kart, smk_demolog *out);
+void smk_demolog_free(smk_demolog *d);
+/* place the port's kart and player exactly where the game was at frame i */
+void smk_demolog_sync(const smk_demolog *d, int i, smk_player *p, smk_kart *k);
+/* the pad words the port's step wants, from the logged $C4 */
+void smk_demolog_pad(const smk_demo_frame *r, uint16_t *held, uint16_t *pressed);
+
 void smk_kart_launch(smk_kart *k, int16_t zvel);
 
 static inline int smk_kart_px(int32_t v) { return (int)(v >> SMK_POS_SHIFT); }
