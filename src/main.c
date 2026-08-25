@@ -598,9 +598,16 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
                 if (fabsf((float)TIER[t].h - want)
                     < fabsf((float)TIER[ti].h - want)) ti = t;
             int obase = TIER[ti].base;
-            int scale = rw / 256;
-            if (scale < 1) scale = 1;
-            int pw = SMK_OBJ_PIPE_W * scale, ph = SMK_OBJ_PIPE_H * scale;
+            /* Same anchor as the karts: an object at the player's own
+             * depth draws at the SNES's own size, and shrinks from
+             * there.  The tier only picks the ARTWORK; the size comes
+             * from the projection, otherwise near and far render
+             * identically and the far ones read as too big (playtest). */
+            float oscale = (float)(rw / 256) * SMK_CAM_TRAIL / dep_eye;
+            if (oscale > (float)(rw / 256)) oscale = (float)(rw / 256);
+            int pw = (int)(SMK_OBJ_PIPE_W * oscale + 0.5f);
+            int ph = (int)(SMK_OBJ_PIPE_H * oscale + 0.5f);
+            if (pw < 2 || ph < 2) continue;
             int x0 = (int)px - pw / 2, y0 = (int)py - ph;
             for (int dy = 0; dy < ph; dy++) {
                 int yy = y0 + dy;
@@ -673,15 +680,19 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
              * cannot scale sprites and quantises this to a few art
              * sizes; ours is continuous - a deliberate, labelled
              * divergence that keeps karts road-proportional.) */
-            (void)depth;
-            if (mirror)
-                smk_draw_sprite_mirror(&other[k], 0, trk->palette, d2->pal,
-                                       (int)px, (int)py, scale,
-                                       fb, rw, rh, rw);
-            else
-                smk_draw_sprite(&other[k], f, trk->palette,
-                                d2->pal, (int)px, (int)py, scale, hf,
-                                fb, rw, rh, rw);
+            /* MEASURED-BY-EYE against the original (NOTES 100): three
+             * opponents up the road are about a third of the player's
+             * height, so karts DO shrink with distance.  The constant
+             * canvas of NOTES 084 came from the same contaminated sweep
+             * as its neighbours.  Scale follows the projection, anchored
+             * so a kart at the player's own depth is the SNES's 32 px. */
+            float kdep = depth + SMK_CAM_TRAIL;
+            if (kdep < 8.0f) continue;
+            float kscale = (float)(rw / 256) * SMK_CAM_TRAIL / kdep;
+            if (kscale > (float)(rw / 256)) kscale = (float)(rw / 256);
+            smk_draw_sprite_scaled(&other[k], mirror ? 0 : f, trk->palette,
+                                   d2->pal, (int)px, (int)py, kscale,
+                                   hf, mirror, fb, rw, rh, rw);
         }
     }
     if (show_kart && karts->frames) {

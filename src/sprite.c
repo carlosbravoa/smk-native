@@ -100,6 +100,45 @@ void smk_draw_sprite(const smk_sprites *s, int frame, const uint32_t *palette,
 }
 
 
+/* Draw a kart frame at a CONTINUOUS scale (NOTES 100).
+ *
+ * Distant karts really are smaller in the original - three opponents up
+ * the road are a third of the player's height in a reference shot - so
+ * the size follows the projection, anchored so that a kart at the
+ * player's own distance is the SNES's 32 px.  (The hardware quantises
+ * this to a few art sizes; ours is continuous, and that divergence is
+ * in the ledger.) */
+void smk_draw_sprite_scaled(const smk_sprites *s, int frame,
+                            const uint32_t *palette, int pal_base,
+                            int cx, int cy, float scale, bool hflip,
+                            bool mirror_half,
+                            uint32_t *pixels, int w, int h, int pitch_px)
+{
+    if (frame < 0 || frame >= s->frames || scale <= 0.01f) return;
+    const uint8_t *src = s->px[frame];
+    int size = (int)(SMK_SPR_PX * scale + 0.5f);
+    if (size < 2) return;
+    int x0 = cx - size / 2, y0 = cy - size;
+    for (int y = 0; y < size; y++) {
+        int sy = y0 + y;
+        if (sy < 0 || sy >= h) continue;
+        const uint8_t *row = src + (y * SMK_SPR_PX / size) * SMK_SPR_PX;
+        uint32_t *dst = pixels + (size_t)sy * (size_t)pitch_px;
+        for (int x = 0; x < size; x++) {
+            int sx = x0 + x;
+            if (sx < 0 || sx >= w) continue;
+            int col = x * SMK_SPR_PX / size;
+            if (mirror_half && col >= SMK_SPR_PX / 2)
+                col = SMK_SPR_PX - 1 - col;
+            else if (hflip)
+                col = SMK_SPR_PX - 1 - col;
+            uint8_t v = row[col];
+            if (v == 0) continue;
+            dst[sx] = palette[(pal_base + v) & 0xFF];
+        }
+    }
+}
+
 /* The straight rear view: the game stores only the LEFT HALF (frame 0's
  * left 16 columns) and mirrors it - measured pixel-exact against the
  * live P1 sprite (NOTES 080).  Drawing any full rotation frame as

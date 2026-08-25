@@ -2966,4 +2966,36 @@ between the Thwomps while the entities themselves still block.
 
 ---
 
-*(next entry: 100)*
+**100** — Distant objects DO shrink.  NOTES 084's constant canvas was
+wrong, and it took the entities down with it.
+
+Playtest: "far away look bigger than getting closer - they should grow
+as we get closer".  Measuring our own frames confirmed it: near Thwomps
+45 px, far Thwomp 48 px.  Not inverted so much as FLAT - and against a
+road that shrinks with distance, a flat sprite reads as growing.
+
+Two causes, one root.  The tier ladder I had picked spans only 15 -> 11
+art pixels, so switching tiers is nearly invisible; and the draw size
+was the constant SNES proportion, which by construction cannot change
+with distance.
+
+The root is NOTES 084.  It concluded "constant canvas at every depth"
+from an OAM sweep - the same family of sweep that produced the HUD
+contamination.  The reference screenshot settles it directly: three
+opponents up the road are about a THIRD of the player kart's height.
+Distant karts are smaller, plainly, and I had built the opposite into
+the renderer and then matched the entities to it.
+
+Ported: karts and entities both scale with the projection, anchored so
+that an object at the player's own depth (the 61 px camera trail) draws
+at the SNES's own size, and shrinks from there - clamped so nothing
+exceeds that size up close.  The size tier now only selects the
+ARTWORK.  Measured on our own output: a Thwomp is 40 px at ~66 depth,
+18 px at ~156, 14 px at ~296.
+
+The continuous scale remains a labelled divergence: the hardware
+quantises to the sheet's tiers, we interpolate.
+
+---
+
+*(next entry: 101)*

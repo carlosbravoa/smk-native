@@ -371,6 +371,14 @@ bool smk_project(const smk_camera *cam, float wx, float wy,
 /* Blit one sprite frame, nearest-neighbour, index 0 transparent.
  * `hflip` mirrors horizontally - the game draws the far half of the
  * rotation circle this way. */
+/* Continuous-scale kart draw; `mirror_half` reflects the left half for
+ * the straight pose.  See NOTES 100. */
+void smk_draw_sprite_scaled(const smk_sprites *s, int frame,
+                            const uint32_t *palette, int pal_base,
+                            int cx, int cy, float scale, bool hflip,
+                            bool mirror_half,
+                            uint32_t *pixels, int w, int h, int pitch_px);
+
 void smk_draw_sprite(const smk_sprites *s, int frame, const uint32_t *palette,
                      int pal_base, int cx, int cy, int scale, bool hflip,
                      uint32_t *pixels, int w, int h, int pitch_px);
