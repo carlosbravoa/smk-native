@@ -318,7 +318,18 @@ static void draw_speedo(uint32_t *fb, int rw, int rh,
  * selects, the braking rate, and the steering rate.  The ROM picks its
  * target from per-character stats we have not decoded, and its steering is
  * a slew toward a target angle at $FA,x ($80AFBE). */
-#define FEEL_TARGET_IDX   3        /* which entry of the ROM target table  */
+/* Which entry of the ROM's target-speed table full throttle selects.
+ *
+ * MEASURED (NOTES 091): holding the throttle along open road, the game
+ * reaches **963**.  Entry 3 tops out at 672/816/880 for the three
+ * classes - well under that, and the kart felt slow (playtest).  Entry 6
+ * (896/912/992) brackets the measured top for every class and keeps the
+ * 50 < 100 < 150 ordering.
+ *
+ * It also repairs the surface caps: those were measured as FRACTIONS of
+ * a road top of ~951, so a top of 672 was shrinking every off-road cap
+ * along with it. */
+#define FEEL_TARGET_IDX   6        /* which entry of the ROM target table  */
 /* MEASURED (NOTES 088), not felt: braking in SMK is WEAK - from 589 the
  * game takes 85 frames to reach 99, about 5.8 units/frame, and simply
  * coasting loses 5.2/frame.  Braking is barely stronger than lifting off,
