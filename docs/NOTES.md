@@ -2849,4 +2849,35 @@ rendering but not by a live OAM capture (the demo never draws entities).
 
 ---
 
-*(next entry: 096)*
+**096** — The barrier stick was a "dead stop" I invented from a
+degenerate rig.  Every contact bounces.
+
+Playtest: "you hit it, you don't bounce, speed goes to 0, you are
+stuck", against the original where "you bounce back and can continue to
+accelerate towards it so you keep bouncing".
+
+Two things in our port were wrong, and both trace to the SAME bad
+measurement.  The surface battery (NOTES 088) filled every driveable
+tile with the class under test, so the kart was standing INSIDE a solid
+rather than driving into one - and an embedded kart reads as speed 0
+with ~3 px of travel no matter what the class does on contact.  From
+that I concluded a "dead stop family" ($20/$24/$26 -> speed 0) and later
+added a scrape that suppressed repeated impacts.  Zeroing the speed is
+exactly what pinned the kart to the barrier.
+
+The only clean impact capture (NOTES 092, wall tiles painted into the
+path of a normally-driving kart) shows reflect-and-halve, and the
+playtest says repeated bounces are real.  So: EVERY contact reflects the
+blocked component and halves the speed, on every solid class, with no
+family distinction and no scrape suppression.  Verified with the
+throttle held into a wall - impacts at f10/24/38/51/64, each bouncing
+back and re-accelerating between, speed never reaching zero.
+
+This is the third time the fill-the-map rig produced a confident wrong
+answer (the first two: the bogus wall displacement, and "speed preserved
+under sustained contact").  It only ever measures an embedded kart.
+Recorded in the skill file so it is not repeated.
+
+---
+
+*(next entry: 097)*

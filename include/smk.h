@@ -163,9 +163,6 @@ typedef struct {
     int32_t  z;             /* $1E..$20 - 24-bit, px in the top byte     */
     int16_t  zvel;          /* $26 - added as << 8 each frame            */
     bool     airborne;      /* $E2 bit 15                                */
-    uint8_t  touching;   /* frames of memory that we are ON a wall, so a
-                          * sustained push is one contact and not a train
-                          * of fresh impacts (NOTES 094)                 */
     /* horizontal knockback while bouncing off a wall (NOTES 044/045)    */
     int16_t  bvx, bvy;
     int8_t   bounce_cool;   /* suppresses immediate re-bounce after landing */

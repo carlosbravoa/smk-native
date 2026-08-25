@@ -204,9 +204,6 @@ void smk_kart_move(smk_kart *k, const smk_track *t)
          * the bit-7 bars, NOTES 044).  Port: reflect the blocked
          * component, keep the magnitude, run the 10-frame window. */
         {
-            uint8_t wv = bx
-                ? smk_track_surface(t, smk_kart_px(nx), smk_kart_px(k->y))
-                : smk_track_surface(t, smk_kart_px(k->x), smk_kart_px(ny));
             /* Wall response, MEASURED frame by frame (NOTES 092) by
              * painting wall tiles into the path of a kart that is
              * driving normally - the only rig that produced a real
@@ -232,25 +229,25 @@ void smk_kart_move(smk_kart *k, const smk_track *t)
              * not a series of impacts.  Halving on every contact frame
              * instead drove the speed to zero within a few bounces and
              * pinned the kart to the barrier (playtest, twice). */
-            bool fresh = (k->touching == 0);
-            /* long enough to span the knockback AND the drive back in,
-             * so holding the throttle against a barrier is ONE contact.
-             * With a short memory each return counted as a fresh impact
-             * and halved the speed again - 800, 400, 200, 100 - which is
-             * what pinned the kart to the wall (playtest). */
-            k->touching = 20;
-            if (!(wv & 0x80)) {              /* $20/$24/$26: dead stop  */
-                k->speed = 0; k->vx = 0; k->vy = 0;
-                k->bounce_cool = 9;
-            } else if (fresh) {              /* the measured impact     */
-                if (bx) k->vx = (int16_t)-k->vx;
-                if (by) k->vy = (int16_t)-k->vy;
-                k->speed = (int16_t)(k->speed / 2);
-                k->bounce_cool = 9;
-            } else {                         /* still on it: scrape     */
-                if (bx) k->vx = 0;
-                if (by) k->vy = 0;
-            }
+            /* EVERY contact is an impact: reflect the blocked
+             * component and halve the speed (NOTES 092, the one clean
+             * capture).  Playtest: "you bounce back, you can continue to
+             * accelerate towards it so you keep bouncing" - so repeated
+             * bounces are the real behaviour, and the speed recovers
+             * between them because the throttle is still on.
+             *
+             * Two things I had here were wrong, both from the same
+             * degenerate rig: a "dead stop" family ($20/$24/$26 -> speed
+             * 0) and a scrape that suppressed re-impacts.  The battery
+             * they came from filled every driveable tile with the class
+             * under test, so the kart was standing INSIDE a solid -
+             * which reads as speed 0 whatever the class really does on
+             * contact.  Zeroing the speed is precisely what left the
+             * kart stuck against a barrier. */
+            if (bx) k->vx = (int16_t)-k->vx;
+            if (by) k->vy = (int16_t)-k->vy;
+            k->speed = (int16_t)(k->speed / 2);
+            k->bounce_cool = 9;              /* the measured knockback  */
         }
         /* SLIDE ALONG: move on whichever axis is not blocked.  Returning
          * without moving threw away the along-wall component too, so a
@@ -263,7 +260,6 @@ void smk_kart_move(smk_kart *k, const smk_track *t)
         if (!by) k->y = ny;
         return;
     }
-    if (k->touching) k->touching--;      /* no contact this frame */
     k->x = nx;
     k->y = ny;
 }

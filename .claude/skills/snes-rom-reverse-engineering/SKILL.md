@@ -785,6 +785,15 @@ change is behavioural, print the behaviour.
   racers run a permanent split screen (view + rear-view/map); filter OAM by
   screen half, and remember the followed camera may not be the kart you
   think - and the world-forward sign is worth one render to verify.
+- Do not measure a CONTACT by putting the object inside the thing it is
+  supposed to contact. Filling a map with the surface class under test
+  puts the kart inside a solid, and an embedded object reads as
+  "stopped, no travel, speed zero" whatever the real contact response
+  is. It produced three confident wrong answers on SMK (a bogus rebound
+  distance, "speed preserved on sustained contact", and a whole invented
+  "dead stop" surface family) before a rig that painted obstacles into
+  the path of a normally-moving object gave the real numbers. Measure a
+  collision by arranging one, never by starting inside.
 - Do not decode a coprocessor protocol from its data stream when the
   game's own READER routine is findable: SMK's DSP-1 raster protocol
   (one command, one Vs, then pure reads with auto-increment, $8000 to
