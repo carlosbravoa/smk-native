@@ -48,6 +48,8 @@ static void input_edges_clear(input_state *in)
  * the d-pad through a deadzone (the game's steering is digital, so the
  * stick is thresholded, not scaled). */
 static SDL_GameController *pad;
+static bool pad_off;          /* --no-pad */
+static int  pad_lx;           /* last stick reading, for the HUD */
 
 static void pad_open(int idx)
 {
@@ -108,7 +110,7 @@ static void pump(input_state *in)
     in->shift = k[SDL_SCANCODE_LSHIFT] || k[SDL_SCANCODE_RSHIFT];
     in->hop_held = k[SDL_SCANCODE_SPACE];
 
-    if (pad) {
+    if (pad && !pad_off) {
         const int DEAD = 9000;      /* stick deadzone, SDL units */
         const int TRIG = 12000;     /* trigger press threshold   */
         int lx = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_LEFTX);
@@ -117,8 +119,15 @@ static void pump(input_state *in)
         #define BTN(b) SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_##b)
         in->up    |= BTN(A) || rt > TRIG;                 /* SNES B: accel */
         in->down  |= BTN(X) || BTN(B) || lt > TRIG;       /* SNES Y: brake */
-        in->left  |= BTN(DPAD_LEFT)  || lx < -DEAD;
-        in->right |= BTN(DPAD_RIGHT) || lx >  DEAD;
+        /* A stick is only believed once it has been seen at rest.  A
+         * pad that reports a stuck or miscalibrated axis would otherwise
+         * steer for ever with nothing touching it, and the player has no
+         * way to tell that from a bug in the driving code. */
+        static bool stick_ok;
+        if (lx > -DEAD && lx < DEAD) stick_ok = true;
+        in->left  |= BTN(DPAD_LEFT)  || (stick_ok && lx < -DEAD);
+        in->right |= BTN(DPAD_RIGHT) || (stick_ok && lx >  DEAD);
+        pad_lx = lx;
         in->hop_held |= BTN(LEFTSHOULDER) || BTN(RIGHTSHOULDER);
         in->shift |= BTN(Y);
         #undef BTN
@@ -131,6 +140,7 @@ static int player_airborne;
 static int hud_lap, hud_rank;
 static long hud_race_frames;             /* frames since the lights */
 static int  hud_countdown;               /* 3,2,1 while the lights run  */
+static int  hud_input;                   /* L/R/accel bits, for the HUD */
 /* The start sequence.  SMK holds the karts for a countdown, then runs;
  * our timing is the ROM's own 3-2-1-GO cadence in frames (60/step) -
  * LABELLED: the exact ROM start-frame count is not decoded yet, the
@@ -756,6 +766,20 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
     }
     draw_hud(fb, rw, rh, trk->palette, hud_lap, 5, hud_rank);
     draw_clock(fb, rw, rh, trk->palette, hud_race_frames);
+    /* live input state, so a stuck control is visible rather than
+     * looking like a physics bug */
+    if (hud_input) {
+        int sc2 = rw >= 640 ? 2 : 1;
+        int bx = 8, by = rh - 20 * sc2 - 8;
+        hud_glyph(fb, rw, rh, bx, by, hud_input & 1 ? 1 : 0,
+                  hud_input & 1 ? 0xFFFF6060 : 0xFF404048, sc2);      /* L */
+        hud_glyph(fb, rw, rh, bx + 6 * sc2, by, hud_input & 2 ? 1 : 0,
+                  hud_input & 2 ? 0xFF60FF60 : 0xFF404048, sc2);      /* R */
+        hud_glyph(fb, rw, rh, bx + 12 * sc2, by, hud_input & 4 ? 1 : 0,
+                  hud_input & 4 ? 0xFF6060FF : 0xFF404048, sc2);      /* A */
+        hud_number(fb, rw, rh, bx + 20 * sc2, by,
+                   pad_lx < 0 ? -pad_lx : pad_lx, 5, 0xFF909098, sc2);
+    }
     if (hud_countdown > 0) {              /* 3-2-1 in the game's digits */
         int sc = rw >= 640 ? 6 : 4;
         hud_tile(fb, rw, rh, rw / 2 - 4 * sc, rh / 3,
@@ -832,6 +856,7 @@ static void usage(const char *argv0)
            "                  5 Yoshi 6 Koopa 7 Toad              [0]\n"
            "  --no-kart       hide the player's kart\n"
            "  --no-grid       hide the rest of the starting grid\n"
+           "  --no-pad        ignore gamepads (keyboard only)\n"
            "  --width W       window width                 [1024]\n"
            "  --height H      window height                [896]\n"
            "  --pixel N       render at 1/N resolution     [2]\n"
@@ -881,6 +906,7 @@ int main(int argc, char **argv)
         ARG("--character", character)
         if (!strcmp(a, "--no-kart")) { show_kart = 0; continue; }
         if (!strcmp(a, "--no-grid")) { show_grid = 0; continue; }
+        if (!strcmp(a, "--no-pad")) { pad_off = true; continue; }
         ARG("--width", win_w) ARG("--height", win_h) ARG("--pixel", pixel)
         if (!strcmp(a, "--fullscreen")) { fullscreen = 1; continue; }
         if (!strcmp(a, "--frames") && i + 1 < argc) { max_frames = atol(argv[++i]); continue; }
@@ -1184,6 +1210,8 @@ int main(int argc, char **argv)
 
         if (tex && fb) {
             smk_render_mode7(&trk, &cam, fb, rw, rh, rw);
+            hud_input = (in.left ? 1 : 0) | (in.right ? 2 : 0)
+                      | (in.up ? 4 : 0);
             hud_lap = me->lap + 1;
             hud_rank = smk_race_rank(racers, 0, &crs);
             draw_scene(&rom, &trk, &karts, drv, &cam, fb, rw, rh,
