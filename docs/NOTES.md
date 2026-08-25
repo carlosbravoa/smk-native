@@ -2721,4 +2721,42 @@ state.
 
 ---
 
-*(next entry: 092)*
+**092** — The wall impact, finally captured; and NOTES 086's entity-art
+source was wrong.
+
+**The rig that worked.**  Two earlier attempts failed: filling the map
+with wall put the kart INSIDE a solid, and aiming it by writing the
+heading did not stick, because under player control the game rewrites
+the target angle from the pad every frame (NOTES 044 says so - I had
+read it and still made the mistake).  What works is to leave the kart
+driving normally and PAINT wall tiles into the tilemap ahead of it
+(`tools/labs/wall_impact.py`).  Tile 240 is class $80 on this track.
+
+    f20  845  vx -844          approaching
+    f21  845  vx +844  $C000   the into-wall component REFLECTS
+    f22  422  vx +422  $C000   the speed EXACTLY HALVES (845/2 = 422)
+    f22-29                     knockback, ~17 px travelled backwards
+    f30  423          $8000    control returns
+    f35  vx negative           driving forward again
+
+**The speed halving is the piece I never had.**  NOTES 044 read the
+speed as preserved (it sampled a kart that was re-accelerating), so our
+port reflected at FULL speed - a violent bounce - and when I "fixed"
+that by cancelling the component instead, the kart stuck to the wall.
+Reflect, halve, hold ~9 frames: total rebound about 20 px, which is the
+short bounce the playtest describes.  All three numbers are measured;
+nothing here is estimated any more.
+
+**Entity art: NOTES 086 was wrong.**  It named $C7:0000 as the source,
+inferred from a nearby decompress call.  A byte comparison
+(`tools/labs/entity_art.py`) kills it: the staging at $7F:4400 does not
+hold that blob, and the live VRAM tiles do not appear in it anywhere.
+The live tiles are a clean repeating pattern (16 27 16 27 ... - a pipe's
+vertical edges).  Searching the graphics banks for those bytes is the
+open thread; the DMA that fills the tiles ($85:81A9, 8192 bytes from
+$7F:A000) and the copy-16/zero-16 expander ($81:E5B7/$E5C7) are still
+good anchors, only the ROM stream behind them is unidentified.
+
+---
+
+*(next entry: 093)*
