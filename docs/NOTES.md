@@ -2818,4 +2818,35 @@ its speed intact and pulls away the moment you steer.
 
 ---
 
-*(next entry: 095)*
+**095** — Walls: you never SLID along them.  Pipes: we were drawing the
+smallest tier.
+
+**The barrier "stick", found by simulation.**  `tools/labs/bandsim.c`
+drives at a diagonal band from 72 angles: the kart never penetrates, so
+the collision test was fine and the screenshot's embedded kart came from
+somewhere else.  What the sim did show is that `smk_kart_move` RETURNED
+without moving on any contact - discarding the along-wall component with
+the blocked one.  A kart held against a barrier therefore froze in place
+instead of scraping past it, which from the driver's seat is exactly
+"stuck in the barriers".  The surface battery had already measured ~50 px
+of travel while against a wall (NOTES 088); I had the evidence and did
+not use it.  Now: move on whichever axis is not blocked.  A 70-degree
+approach bounces once (speed halves, as measured) and then slides along
+the wall with its speed intact.
+
+**The pipe was the wrong SIZE TIER.**  Rendering the whole object sheet
+shows the same pipe stored at many sizes - the SNES cannot scale a
+sprite, so it keeps a tier per distance band, and a live entity's tile
+list changes as you approach.  The tiles I had taken from one captured
+entity ($CE) are a small FAR tier, which is why our pipes were squat
+cans next to the original's tall cylinders.  Base 32 is the near tier -
+a 12x16 cylinder with a dark rim - and matches the reference screenshot.
+
+Two things stay labelled: we draw one tier scaled continuously rather
+than choosing a tier by distance (the same divergence we make for
+karts), and the 2x2 assembly uses the VRAM row stride of 16, verified by
+rendering but not by a live OAM capture (the demo never draws entities).
+
+---
+
+*(next entry: 096)*

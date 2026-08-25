@@ -577,7 +577,7 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
              * and shrinks with distance.  Flooring it at one screen pixel
              * per art pixel left far pipes full size, so their tops rose
              * above the horizon and they floated in the sky. */
-            float s2 = sc * 0.5f;
+            float s2 = sc;            /* a pipe is ~16 world px tall */
             int pw = (int)(SMK_OBJ_PIPE_W * s2 + 0.5f);
             int ph = (int)(SMK_OBJ_PIPE_H * s2 + 0.5f);
             if (pw < 2 || ph < 2) continue;          /* too far to matter */

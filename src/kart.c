@@ -252,6 +252,15 @@ void smk_kart_move(smk_kart *k, const smk_track *t)
                 if (by) k->vy = 0;
             }
         }
+        /* SLIDE ALONG: move on whichever axis is not blocked.  Returning
+         * without moving threw away the along-wall component too, so a
+         * kart held against a barrier froze in place instead of scraping
+         * past it - which is what "stuck in the barriers" looks like from
+         * the driver's seat.  The surface battery measured ~50 px of
+         * travel while against a wall, so the game clearly keeps moving
+         * you along it. */
+        if (!bx) k->x = nx;
+        if (!by) k->y = ny;
         return;
     }
     if (k->touching) k->touching--;      /* no contact this frame */

@@ -409,7 +409,17 @@ static inline int smk_hud_digit(int d)
  * ten consecutive tiles as 2 wide x 5 tall is what produced the
  * scrambled, offset column in playtest: consecutive tiles after 15 are
  * OTHER objects (each successively narrower), not more of this pipe. */
-#define SMK_OBJ_PIPE0   14        /* top-left tile                     */
+/* The sheet holds the same pipe at many SIZES - the SNES cannot scale a
+ * sprite, so it stores a tier per distance band, which is why a live
+ * entity's tile list changes as you approach.  Base 32 is the tier that
+ * matches the original screenshots (a 12x16 cylinder with a dark rim);
+ * base 14, which one captured entity happened to be using, is a small
+ * far tier and rendered as a squat can.
+ *
+ * We draw ONE tier scaled continuously - a labelled divergence, the same
+ * one we make for karts.  Choosing the tier by distance instead is the
+ * faithful behaviour and is still open. */
+#define SMK_OBJ_PIPE0   32        /* top-left tile of the near tier    */
 #define SMK_OBJ_STRIDE  16        /* VRAM tiles per row                */
 #define SMK_OBJ_PIPE_W  16        /* pixels                            */
 #define SMK_OBJ_PIPE_H  16
