@@ -1329,10 +1329,12 @@ int main(int argc, char **argv)
                 in.up = in.down = in.left = in.right = false;
                 in.hop_held = false;
             }
-            input_edges_clear(&in);
-
             if (race_state == RACE_RUN) { hud_race_frames++; hud_countdown = 0; }
             step_kart(&kart, &trk, &phys, &in);
+            /* edges are cleared AFTER the tick that consumes them.  Clearing
+             * first meant step_kart never saw in.hop, so a hop press did
+             * nothing at all - the "no jump" report, twice. */
+            input_edges_clear(&in);
             camera_from_kart(&cam, &kart);
             me->k = kart;
 
