@@ -79,10 +79,10 @@ used; C output is byte-identical to the game's loader on all 24 courses.
 | P0 oracle | **done** — 65816 interpreter, verified against the game's own decompressor |
 | P0.5 running machine | **mostly** — boots, uploads sound, runs races; no PPU picture, no SPC700, no HDMA |
 | P1 the track | **done** — themes, tilemaps, tilesets, palettes, surface table, all verified against VRAM |
-| P2 start / laps | **part** — the real starting grid is in; checkpoints and lap logic are not |
+| P2 start / laps | **mostly** — real grid, decoded lap rule (NOTES 052) with the monotonic guard, race clock and start countdown.  Residual: finish/results flow, GP points |
 | P3 physics | **part** — kinematics, speed model and the ROM's acceleration tables are in and verified; steering policy and per-surface response are not |
-| P4 sprites | **mostly** — sheets, projection, and the **measured frame-selection rule** (NOTES 041); residuals: tier boundaries assumed shared, hflip side unverified, player rel synthesised |
-| P5 race furniture | **data done** — object lists decoded (`$85:D000 + track*128`, NOTES 064), ported and selftest-pinned; rendered at true positions with placeholder visuals. Residual: the animated stamp tile graphics, collection behaviour |
+| P4 sprites | **done** — the projection is derived once from the ROM's own DSP-1 geometry (NOTES 083/084): depth(L)=4972/(L-20.36), scale=depth/256 (ratio = Les, the cross-check), camera trails the kart 61 px.  Pose ladder measured pixel-exact (NOTES 080/081).  Residual: kart-sheet rows 1-2 purpose, sprite size quantisation (ours is continuous, labelled) |
+| P5 race furniture | **part** — ground objects stamped with the ROM's own tiles (NOTES 074), sprite-obstacle entity list decoded and colliding (NOTES 078), HUD set + clock + lap counter on the game's own art, start countdown (NOTES 085).  Residual: entity sprite art and motion handlers, item behaviour, Lakitu, per-track horizon |
 | P6 opponents | **done to first order** — flow-field steering (95% byte-exact), ramp launches over jump gaps, wall escapes, and a Lakitu rescue: **20/20 strict laps** at 19-74 s (NOTES 057).  Residuals: ramp velocity placeholder, `$80ABxx` lane adjusters, rubber-banding, Lakitu animation |
 | P7 audio | **decided** — pre-recorded; `smk spc` dumps the driver, rendering not wired up |
 | P8 modes / menus | not started |
