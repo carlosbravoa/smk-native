@@ -121,6 +121,20 @@ bool smk_player_setup(const smk_rom *rom, int character, int engine_class,
     return true;
 }
 
+/* $80B46B/$80B47C/$80B489: a mushroom.  Refused in the spin states
+ * ($809E0B: $0A-$10 and $1A); otherwise 32 frames of boost. */
+bool smk_player_boost(smk_player *p)
+{
+    int st = p->state;
+    if ((st >= 0x0A && st <= 0x10) || st == 0x1A) return false;
+    p->vlag = 0;                 /* stz $A8: the slide's velocity lag is dropped */
+    p->state = 0x1C;             /* $A6 = $1C: settle (the pose offset decays)   */
+    p->fc = 0x20;
+    p->flags |= 0x0080;
+    p->drive = 0x10;
+    return true;
+}
+
 void smk_player_reset(smk_player *p, uint16_t heading)
 {
     p->heading = p->vel_angle = p->pose = heading;
@@ -433,8 +447,23 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
         }
     }
 
+    /* $80A553 -> $80A5E3 ($AC == $10) - the mushroom boost: +$32 per frame
+     * up to $7E0 for $FC frames, then $80A5FC ends it.  (The AI's table
+     * routes $10 to $80B015, which adds a sector test; the player's $A53B
+     * table does not - the demo boosts straight through a row-2 sector.) */
+    if (p->drive == 0x10) {
+        if (--p->fc != 0) {
+            int ee;
+            if (spd <= 0x7E0) ee = 0x32;
+            else { k->speed = 0x7E0; spd = 0x7E0; ee = 0; }
+            p->accel32 = ((int32_t)ee << 16) | (p->accel32 & 0xFFFF);
+        } else {
+            p->flags &= ~0x00C0u;
+            p->drive = 0;
+        }
+    }
     /* $80A553 -> $80A69D ($AC == 0) - drive */
-    if (p->drive == 0) {
+    else if (p->drive == 0) {
         /* the long-hold counter: shoulder + steer held 128 frames arms the
          * post-slide reward ($E2 bit 6) */
         if ((c4 & 0x30) && (c4 & 0x300)) {

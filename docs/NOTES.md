@@ -3362,3 +3362,29 @@ Also: seeding the resync's accel from `$EE` removed a 2.5 px offset that
 came from starting one frame late off the grid.  The residual after all
 this is positional - a 2 px offset can put the port on an edge tile with
 a cap for a few frames (seen after the mushroom) - and the +-1 sine.
+
+---
+
+**108** — The mushroom, and the replay is now exact but for one collision.
+
+The demo's P1 uses an item mushroom at frame 1465 (`$E0` bit 15, consumed
+inside the frame, road under the kart - not a zipper).  `$80B46B/$80B47C/
+$80B489`: the velocity lag `$A8` is zeroed and the slide state set to
+`$1C`, `$FC = $20`, `$E2 |= $80`, `$AC = $10`.  The player's drive table
+`$A53B` sends `$AC = $10` to `$80A5E3`: count `$FC` down, accel `+$32`
+per frame up to `$7E0`, then `$80A5FC` clears `$E2` bits 6-7 and `$AC`.
+(The AI's `$AD76` table routes `$10` to `$80B015`, which adds a "sector
+speed row == 3" test - I ported that first and the boost died in a row-2
+sector; the player has no such test.)  Refused in the spin states
+(`$809E0B`).  Ported as `smk_player_boost`; the replays fire it on the
+frame the log's `$AC` turns `$10`, since the item use itself is input the
+port cannot see yet.
+
+Demo replay after this (tools/demoreplay.c, in `make check`):
+
+    P1  99.8% within 1 px, mean 0.04 px, one divergence (frame 1736: a
+        kart-to-kart hit, speed 735 -> 384 in one frame; the demo's AI
+        karts are not in the port), clean run 1197 frames
+    P2  100% within 1 px for all 1240 frames, mean 0.01 px
+
+The game's own `--replay` shows the same with the real kart as a ghost.

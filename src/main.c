@@ -1064,6 +1064,10 @@ int main(int argc, char **argv)
                     in.hop_held = (r->c4 & 0x0030) != 0;
                     in.hop = (r->c4 & 0x000C) != 0;
                     player.coins = r->coins;
+                    /* the item use is an input the log only shows by its
+                     * effect: the boost state appearing */
+                    if (r->drive == 0x10 && replay.f[replay_i - 1].drive != 0x10)
+                        smk_player_boost(&player);
                     racers[1].k.x = r->x; racers[1].k.y = r->y;
                     racers[1].k.angle = r->pose;
                     racers[1].k.z = (int32_t)r->z << 8;

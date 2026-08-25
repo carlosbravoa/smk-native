@@ -72,6 +72,7 @@ int main(int argc, char **argv)
         uint16_t c4 = r->c4, held, pressed;
         smk_demolog_pad(r, &held, &pressed);
         p.coins = r->coins;
+        if (r->drive == 0x10 && log.f[i - 1].drive != 0x10) smk_player_boost(&p);
         smk_player_step(&p, &k, &trk, held, pressed);
         smk_collide_objects(&k, &crs);
 
@@ -87,9 +88,9 @@ int main(int argc, char **argv)
         int ds = k.speed - r->speed;
         n++;
         if (i >= trace_a && i <= trace_b)
-            printf("  f%4d pad %04X | spd %4d/%4d | B2 %5d/%5d | A4 %5d/%5d | A8 %5d/%5d | A6 %02X/%02X | pos game %8.3f,%8.3f port %8.3f,%8.3f err %.2f\n",
-                   i, c4, r->speed, k.speed, r->turn, p.turn, r->a4, p.heading,
-                   r->vlag, p.vlag, r->state, p.state, gx, gy, px, py, e);
+            printf("  f%4d pad %04X | spd %4d/%4d | AC %02X/%02X fc %d | A4 %5d/%5d | A6 %02X/%02X | pos game %8.3f,%8.3f port %8.3f,%8.3f err %.2f\n",
+                   i, c4, r->speed, k.speed, r->drive, p.drive, p.fc, r->a4, p.heading,
+                   r->state, p.state, gx, gy, px, py, e);
         sum_err += e;
         if (e <= 1.0) within1++;
         if (e <= tol) { within_tol++; streak++; if (streak > best_streak) best_streak = streak; }
@@ -111,10 +112,10 @@ int main(int argc, char **argv)
            "longest run within tol %d frames\n", head_bad, spd_bad, resyncs, best_streak);
     if (gate) {
         /* The gate: what the port achieves today, so a regression shows.
-         * The demo's mushroom and its two collisions are not modelled and
-         * cost P1 its resyncs; the rest of the race must stay on rails. */
-        bool ok = 100.0 * within_tol / n >= 99.0 && best_streak >= 800
-               && 100.0 * within1 / n >= 85.0;
+         * P1: one divergence left, a kart-to-kart collision near the end
+         * (the demo's AI karts are not in the port); P2 is exact. */
+        bool ok = 100.0 * within_tol / n >= 99.5 && best_streak >= 1100
+               && 100.0 * within1 / n >= 99.0;
         printf("demo replay gate (kart %d): %s\n", kart_id, ok ? "PASS" : "FAIL");
         return ok ? 0 : 1;
     }

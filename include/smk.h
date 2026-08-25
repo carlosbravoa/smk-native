@@ -277,6 +277,8 @@ typedef struct {
 
 bool smk_player_setup(const smk_rom *rom, int character, int engine_class,
                       smk_player *p);
+/* use a mushroom ($80B47C): false if the kart is spinning */
+bool smk_player_boost(smk_player *p);
 /* place the kart: all three angles, machine at rest */
 void smk_player_reset(smk_player *p, uint16_t heading);
 /* one frame.  held / pressed are SNES pad words: B $8000 Y $4000 Left $0200
