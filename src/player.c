@@ -220,7 +220,14 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
             p->jump_state = 2;
         }
     }
-    if (!k->airborne) p->jump_state = 0;
+    if (!k->airborne) {
+        p->jump_state = 0;
+        /* the wall/object knockback window (kart.c sets it on impact):
+         * count it down here - the old step did it inside smk_kart_face,
+         * which this path no longer calls, and a window that never closed
+         * kept the reflected velocity forever: infinite bouncing */
+        if (k->bounce_cool > 0) k->bounce_cool--;
+    }
 
     /* 3. $80A892 - heading, velocity angle, pose */
     {
