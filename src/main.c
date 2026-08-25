@@ -711,19 +711,12 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
             float a2 = (float)cam_heading * (float)(2.0 * M_PI) / 65536.0f;
             float depth = (gx - cam->x) * sinf(a2)
                         + (gy - cam->y) * -cosf(a2);
-            /* Kart size follows OUR projection (sc = screen px per world
-             * px), capped at the measured near canvas (32px art on a 256
-             * screen = a sprite twice its ~16px ground footprint).  The
-             * SNES pairs a FLATTER sprite-row law with its own ground
-             * law (NOTES 082); until our ground matches it, constant-
-             * canvas sprites on our steeper road read as gigantic
-             * (playtest).  Proportional-with-cap keeps the near range
-             * measured-exact and the far range road-proportional. */
-            int cap = rw / 256;
-            if (cap < 1) cap = 1;
-            int scale = (int)(sc + 0.5f);
+            /* MEASURED sizing (NOTES 076), now valid because the sprite
+             * projection is the game's own flat law: the canvas stays
+             * CONSTANT (1/8 screen width) at every depth, the ART steps
+             * full -> mini at depth ~84, and there is no distance cull. */
+            int scale = rw / 256;
             if (scale < 1) scale = 1;
-            if (scale > cap) scale = cap;
             const smk_driver *d2 = &SMK_DRIVERS[k];
             if (!loaded[k]) loaded[k] = smk_sprites_load(rom, d2->sheet, &other[k]);
             if (!loaded[k]) continue;
@@ -762,14 +755,15 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
         if (scale < 1) scale = 1;
         /* the hop lifts the sprite; the shadow stays on the ground */
         int lift = player_height_px * scale;
+        int prow = rh * 102 / 112;            /* the measured camera row */
         if (frame == 1000)                    /* the mirrored straight pose */
             smk_draw_sprite_mirror(karts, 0, trk->palette, drv->pal,
-                                   rw / 2, rh - rh / 12 - lift, scale,
+                                   rw / 2, prow - lift, scale,
                                    fb, rw, rh, rw);
         else {
             bool hf = frame < 0;
             smk_draw_sprite(karts, hf ? -frame : frame, trk->palette,
-                            drv->pal, rw / 2, rh - rh / 12 - lift, scale,
+                            drv->pal, rw / 2, prow - lift, scale,
                             hf, fb, rw, rh, rw);
         }
     }

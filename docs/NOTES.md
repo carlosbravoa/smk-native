@@ -2395,4 +2395,36 @@ made road-proportional.
 
 ---
 
-*(next entry: 083)*
+**083** — THE DSP RASTER DECODED END TO END; the game's exact ground
+projection now drives our renderer.
+
+The chain, each link measured:
+
+* The race never issues DSP command $0A at all - the "$0A"s in the live
+  stream were parameter bytes of $06 (project) calls.  Raster runs ONCE,
+  at BOOT: the builder at $81:F97D (hand-decoded) writes command $0A,
+  then exactly ONE Vs word ($1C - $9C = -74), then only READS: 96 groups
+  of 4 results, the DSP auto-incrementing the line; a $8000 write
+  terminates.  Our model's every-write-is-a-Vs parse was the desync.
+* The boot loop sweeps the AZIMUTH ($94 += $100, 128 steps), building
+  per-heading blocks of 96 per-line A and D words at $7E:4000/$A000
+  (192-byte blocks; C uses the quarter-turn-shifted block - the sine).
+  At race time the header builder ($81:FA9D, decoded earlier) just picks
+  block |heading byte| * 192.  Pitch and height are BAKED at boot.
+* With the protocol fixed and the $02/raster math rewritten to the
+  snes9x DSP-1 reference flow (floats; the DSP1ROM fixed-point tables
+  are Nintendo data and stay out of the repo), the generated tables read
+  out as an EXACT law:  A(i) = 4960/(i + 3.65) in 8.8, i = ground line.
+  Self-consistent constants: camera height 18.5 world px, pitch $3400,
+  Les 256, Vs base -74 -> the camera ground row is frame line 102 -
+  exactly the measured kart sprite row.  24 sky lines, 84 ground lines.
+* PORTED: smk_render_mode7 now renders the measured law -
+  scale(i) = 19.375/(i+3.65), forward = scale * (102 - line) - and
+  smk_project uses the game's flat SPRITE law (d = depth+256,
+  x = centre + 256*lat/d, row = 97 + 1250/d).  With both of the game's
+  projections in place, the measured constant-canvas kart sizing is
+  restored and finally looks right.  Physics verify: still exact.
+
+---
+
+*(next entry: 084)*

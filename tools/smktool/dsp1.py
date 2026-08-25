@@ -95,7 +95,7 @@ class DSP1:
         # structure (docs/NOTES.md 039).
         self.raster = False
         self.raster_vs = 0
-        self.raster_sentinel = False
+        self.raster_vs_pending = False
         self.calls: list[tuple[int, list[int], list[int]]] = []
         self.seen: dict[int, int] = {}
         self.unknown: dict[int, int] = {}
@@ -122,29 +122,28 @@ class DSP1:
             return
         val &= 0xFF
         if self.raster:
-            # After the terminator, a $00 byte is read as the start of a
-            # further $8000 sentinel word, not as the multiply command - the
-            # boot stream writes several sentinels back to back and the two
-            # are byte-ambiguous (NOTES 039).
-            if (self._pending_lo is None and self.raster_sentinel
-                    and val != 0x00 and val in self.SHAPES):
-                # terminator seen and this byte opens a known command:
-                # raster mode is over; fall through to command handling
-                self.raster = False
-            else:
-                if self._pending_lo is None:
-                    self._pending_lo = val
-                    return
-                vs = self._pending_lo | val << 8
-                self._pending_lo = None
-                if vs == 0x8000:
-                    self.raster_sentinel = True
-                else:
-                    self.raster_vs = s16(vs)
-                    self.raster_sentinel = False
-                    self.results = self._raster_group(self.raster_vs)
-                    self.out_index = 0
+            # MEASURED protocol (the game's own reader at $81:F97D,
+            # NOTES 083): the host writes command $0A and then exactly ONE
+            # Vs word; every further result group comes from the DSP
+            # auto-incrementing the line internally while the host only
+            # READS.  The stream ends when the host writes the $8000
+            # sentinel word; the next byte after that is a command.  The
+            # old model treated every raster-mode write as another Vs,
+            # which desynced the whole command stream.
+            if self._pending_lo is None:
+                self._pending_lo = val
                 return
+            word = self._pending_lo | val << 8
+            self._pending_lo = None
+            if self.raster_vs_pending:
+                self.raster_vs_pending = False
+                self.raster_vs = s16(word)
+                self.results = self._raster_group(self.raster_vs)
+                self.out_index = 0
+            elif word == 0x8000:
+                self.raster = False
+            # any other word while rastering is ignored (not observed)
+            return
         if self.cmd is None:
             self.seen[val] = self.seen.get(val, 0) + 1
             if val not in self.SHAPES:
@@ -194,6 +193,8 @@ class DSP1:
         if a == 0:
             return [0x7FFF, 0x002F]
         sign = -1 if a < 0 else 1
+        if b > 30: b = 30                 # hardware exponents are tiny;
+        if b < -30: b = -30               # clamp so garbage can't overflow
         value = abs(a) / 32768.0 * (2.0 ** b)
         inv = 1.0 / value
         e = math.ceil(math.log2(inv)) if inv > 0 else 0
@@ -293,68 +294,80 @@ class DSP1:
 
     # --- projection group ---
     def _op_02(self, p):
-        """Projection setup.
+        """Projection setup - the snes9x DSP1_Parameter flow in floats
+        (NOTES 083).  Angles are 65536 = full turn.  Derived state:
 
-        Read off the game's own usage (NOTES 039): F = (Fx,Fy,Fz) is the
-        FOCAL POINT on the ground - the kart itself during a race - not the
-        camera.  The eye sits Lfe away from F, raised at elevation Azs on
-        the far side of azimuth Aas; the screen is Les from the eye.  The
-        forward axis is (sin Aas, -cos Aas): angle 0 looks along -Y,
-        matching the kart heading convention verified in NOTES 017.
+            N = (sinAzs*-sinAas, sinAzs*cosAas, cosAzs)   view normal
+            Centre = F + Lfe*N ;  G (eye) = Centre - Les*N
+            VOffset = Les*cosAzs
+            raster(Vs): s = CentreZ / (Vs*sinAzs + VOffset)
+                        A =  s*cosAas   B = -s'*sinAas
+                        C =  s*sinAas   D =  s'*cosAas
+            (s' uses the secant-corrected scale; equal to s in the float
+            model)  - matching snes9x's DSP1_Raster arithmetic with the
+            2^-7 exponent folded into the 8.8 output scale.
         """
         fx, fy, fz, lfe, les, aas, azs = p
         self.fx, self.fy, self.fz = float(fx), float(fy), float(fz)
-        self.lfe = float(lfe) if lfe else 1.0
-        self.les = float(les) if les else 1.0
+        self.lfe = float(lfe)
+        self.les = float(les)
         self.aas = aas * ANG
         self.azs = azs * ANG
-        c, sn = math.cos(self.azs), math.sin(self.azs)
-        fwd = (math.sin(self.aas), -math.cos(self.aas))
-        # eye behind and above the focal point
-        self.eye = (self.fx - fwd[0] * self.lfe * c,
-                    self.fy - fwd[1] * self.lfe * c,
-                    self.fz + self.lfe * sn)
-        # orthonormal view basis
-        self.v_view = (fwd[0] * c, fwd[1] * c, -sn)
-        self.v_right = (math.cos(self.aas), math.sin(self.aas), 0.0)
+        sa, ca = math.sin(self.aas), math.cos(self.aas)
+        sz, cz = math.sin(self.azs), math.cos(self.azs)
+        self.sin_aas, self.cos_aas = sa, ca
+        self.sin_azs, self.cos_azs = sz, cz
+        nx, ny, nz = sz * -sa, sz * ca, cz
+        self.centre = (self.fx + self.lfe * nx,
+                       self.fy + self.lfe * ny,
+                       self.fz + self.lfe * nz)
+        self.eye = (self.centre[0] - self.les * nx,
+                    self.centre[1] - self.les * ny,
+                    self.centre[2] - self.les * nz)
+        self.voffset = self.les * cz
+        # view basis for op06/op0e (unchanged semantics)
+        self.v_view = (sz * sa, -sz * ca, -cz) if False else (-nx, -ny, -nz)
+        # forward on the ground for op0e
+        self.v_right = (ca, sa, 0.0)
         vw, rt = self.v_view, self.v_right
         self.v_up = (vw[1] * rt[2] - vw[2] * rt[1],
                      vw[2] * rt[0] - vw[0] * rt[2],
                      vw[0] * rt[1] - vw[1] * rt[0])
-        # horizon: a level ray leaves the view axis by Azs upward
-        self.hoff = self.les * math.tan(self.azs)
-        return [clamp16(-self.hoff), clamp16(-self.hoff),
-                clamp16(self.fx), clamp16(self.fy)]
+        self.hoff = 0.0
+        # results: Vof, Vva, Cx, Cy (screen-centre projection of Centre)
+        return [0, 0, clamp16(self.centre[0]), clamp16(self.centre[1])]
 
     def _ground_depth(self, vs: float) -> float:
-        """Depth along the view axis of the ground at screen row `vs`
-        (positive rows are below the view axis)."""
-        alpha = self.azs + math.atan2(vs, self.les)
-        t = math.tan(alpha)
-        eye_h = getattr(self, "eye", (0, 0, self.lfe))[2]
-        if abs(t) < 1e-6 or eye_h <= 0:
+        """Depth along the view axis of the ground at screen row vs
+        (the same denominator as the raster law)."""
+        cz = self.centre[2] if hasattr(self, "centre") else 0.0
+        den = vs * getattr(self, "sin_azs", 0.0) + getattr(self, "voffset", 1.0)
+        if den <= 1e-6 or cz <= 0.0:
             return 32767.0
-        d = eye_h / t
+        d = cz / den * self.les
         return d if d > 0 else 32767.0
 
     def _op_0a(self, p):                                   # raster
-        import os
-        if os.environ.get("SMK_RASTER_PLAIN") == "1":
-            # one Vs per command invocation - the host re-sends $0A per
-            # line (candidate protocol under test)
-            return self._raster_group(p[0])
         self.raster = True
-        self.raster_sentinel = False
+        self.raster_vs_pending = False
         self.raster_vs = p[0]
         return self._raster_group(self.raster_vs)
 
     def _raster_group(self, vs: int):
-        """Mode 7 matrix for one scanline, 8.8 fixed point."""
-        d = self._ground_depth(float(vs))
-        sc = d / self.les if self.les else 0.0              # world per pixel
-        ca, sa = math.cos(self.aas), math.sin(self.aas)
-        return [clamp16(sc * ca * 256), clamp16(-sc * sa * 256),
-                clamp16(sc * sa * 256), clamp16(sc * ca * 256)]
+        """Mode 7 matrix for one scanline - snes9x DSP1_Raster in floats.
+        Output is the SNES 8.8 latch value (the DSP's 2^-7 exponent folds
+        into the Q15->8.8 conversion: An_q15 * 2^-7 == s * 256)."""
+        cz = self.centre[2] if hasattr(self, "centre") else 0.0
+        den = float(vs) * getattr(self, "sin_azs", 0.0) \
+            + getattr(self, "voffset", 0.0)
+        if abs(den) < 1e-6 or cz <= 0.0:
+            sc = 32767.0
+        else:
+            sc = cz / den * 256.0
+        sa = getattr(self, "sin_aas", 0.0)
+        ca = getattr(self, "cos_aas", 1.0)
+        return [clamp16(sc * ca), clamp16(-sc * sa),
+                clamp16(sc * sa), clamp16(sc * ca)]
 
     def _op_06(self, p):                                   # project
         x, y, z = p

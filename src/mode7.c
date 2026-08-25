@@ -1,16 +1,20 @@
-/* Perspective ground-plane renderer.
+/* The MEASURED SMK ground projection (docs/NOTES.md 083).
  *
- * The SNES produces this with a per-scanline affine transform (M7A-M7D
- * rewritten by HDMA every line).  We are not bound by the PPU, so the same
- * geometry is computed directly and at whatever resolution the host wants -
- * the projection is identical, it just is not quantised to 256x224.
+ * The game precomputes its per-scanline Mode 7 tables through the DSP-1
+ * raster command at boot; with the DSP protocol decoded, the tables read
+ * out as an exact law.  In SNES frame lines (112-line view):
  *
- * For a screen row `sy` below the horizon, the ground distance is
+ *     lines  0..23   sky (the HDMA hold band)
+ *     lines 24..107  ground, i = line - 24:
+ *         scale(i)   = 19.375 / (i + 3.65)   world px per screen px
+ *         forward(i) = scale(i) * (102 - line)
+ *     line 102       the camera's own ground row (the kart sits here)
  *
- *     z = height * focal / (sy - horizon)
- *
- * and one screen pixel of horizontal travel covers z/focal of world space,
- * rotated into the camera's heading.  That is the whole renderer.
+ * Derived quantities (all from the ROM's own DSP $02 build call, fitted
+ * exactly against the generated table): camera height 18.5 world px,
+ * pitch Azs = $3400, Les = 256, VOffset/sinAzs = 77.6 lines, Vs base
+ * -74.  The scanline law is rendered at host resolution by mapping our
+ * rows onto the 112-line frame.
  */
 #include "smk.h"
 #include <math.h>
@@ -31,32 +35,35 @@ void smk_render_mode7(const smk_track *t, const smk_camera *cam,
                       uint32_t *pixels, int w, int h, int pitch_px)
 {
     const float sa = sinf(cam->angle), ca = cosf(cam->angle);
-    const float focal = cam->fov * (float)w;
-    const int   horizon = (int)(cam->horizon * (float)h);
 
-    /* Sky: a gradient between two colours sampled from the track palette so
-     * it always belongs to the same world as the ground. */
+    /* the measured frame geometry, in SNES frame lines */
+    const float SKY_LINE = 24.0f, CAM_LINE = 102.0f;
+    const float SCALE_K = 19.375f, SCALE_C = 3.65f;
+    const float l2h = (float)h / 112.0f;          /* our px per frame line */
+    const int horizon = (int)(SKY_LINE * l2h);
+
     const uint32_t sky_far  = t->palette[1];
     const uint32_t sky_near = t->palette[2];
 
     for (int sy = 0; sy < h; sy++) {
         uint32_t *row = pixels + (size_t)sy * (size_t)pitch_px;
 
-        if (sy <= horizon) {
+        float line = (float)sy / l2h;
+        if (line < SKY_LINE) {
             uint32_t c = sky_colour(sy, horizon, sky_near, sky_far);
             for (int sx = 0; sx < w; sx++) row[sx] = c;
             continue;
         }
 
-        float dy = (float)(sy - horizon);
-        float z  = cam->height * focal / dy;
+        float i = line - SKY_LINE;
+        float scale = SCALE_K / (i + SCALE_C);    /* world px / SNES px  */
+        float fwd = scale * (CAM_LINE - line);    /* ahead of the camera */
 
-        /* centre of this scanline in world space */
-        float cx = cam->x + ca * z;
-        float cy = cam->y + sa * z;
+        float cx = cam->x + ca * fwd;
+        float cy = cam->y + sa * fwd;
 
-        /* world-space step for one screen pixel to the right */
-        float step = z / focal;
+        /* one HOST pixel of horizontal travel */
+        float step = scale * 256.0f / (float)w;
         float sx_step = -sa * step;
         float sy_step =  ca * step;
 
@@ -71,23 +78,20 @@ void smk_render_mode7(const smk_track *t, const smk_camera *cam,
     }
 }
 
-
-/* The inverse of the ground-plane mapping in smk_render_mode7().
- *
- * Forward:   z  = height * focal / (sy - horizon)
- *            world = camera + forward*z + right*(sx - w/2)*z/focal
- * so given a world point, its forward and rightward components relative to
- * the camera give the row and column directly.  Everything an object needs
- * to sit on the plane at the right size goes through here.
- */
 bool smk_project(const smk_camera *cam, float wx, float wy,
                  int w, int h, float *sx, float *sy, float *scale)
 {
+    /* The SPRITE projection - a separate, much flatter law than the
+     * ground (both are the game's own: the DSP $02 for sprites has the
+     * eye 256 px behind the kart; fitted from hundreds of live OAM
+     * samples, docs/NOTES.md 082/083):
+     *
+     *     d   = depth + 256
+     *     x   = centre + 256 * lateral / d      (SNES px)
+     *     row = 97 + 1250 / d                   (frame lines)
+     */
     const float sa = sinf(cam->angle), ca = cosf(cam->angle);
-    const float focal = cam->fov * (float)w;
-    const float horizon = cam->horizon * (float)h;
 
-    /* shortest offset on a plane that wraps every SMK_WORLD_PX */
     float dx = wx - cam->x, dy = wy - cam->y;
     while (dx >  SMK_WORLD_PX / 2) dx -= SMK_WORLD_PX;
     while (dx < -SMK_WORLD_PX / 2) dx += SMK_WORLD_PX;
@@ -96,10 +100,12 @@ bool smk_project(const smk_camera *cam, float wx, float wy,
 
     float zf =  dx * ca + dy * sa;          /* along the camera's forward */
     float xr = -dx * sa + dy * ca;          /* to its right               */
-    if (zf < 1.0f) return false;            /* behind, or on top of, us   */
+    if (zf < -240.0f) return false;         /* behind the eye             */
 
-    *sy = horizon + cam->height * focal / zf;
-    *sx = (float)w * 0.5f + xr * focal / zf;
-    *scale = focal / zf;
-    return *sy < (float)h && *sy > horizon;
+    float d = zf + 256.0f;
+    float line = 97.0f + 1250.0f / d;
+    *sy = line * (float)h / 112.0f;
+    *sx = (float)w * 0.5f + xr * (float)w / d;
+    *scale = (float)w / d;                  /* screen px per world px     */
+    return *sy < (float)h && *sy > 0.0f && d > 16.0f;
 }
