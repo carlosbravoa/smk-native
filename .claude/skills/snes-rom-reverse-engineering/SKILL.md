@@ -736,6 +736,45 @@ checked against the BUILT ARTIFACT's output, not against the editor having
 run.  A test suite that passes proves only what it measures - if the
 change is behavioural, print the behaviour.
 
+## Step 24: measure the game, not the asset
+
+An asset tells you what art exists.  It does not tell you how the game
+draws it, and reasoning from the asset alone will produce a confident
+wrong answer that survives several rounds of playtest.
+
+In SMK the object sheet's biggest pipe is 12x16 px.  From that I
+concluded the SNES cannot scale a sprite, so 12x16 must be the largest
+a pipe ever appears - a "hardware cap" - and filed the playtester's
+complaint as a wish rather than a bug.  Four rounds of "still too
+small" later, the live entity block turned out to carry a scale field
+whose value is 0x4200/distance: the game magnifies the drawing, and the
+tier art is a base, not a ceiling.  One read of a running object would
+have settled in minutes what a week of staring at tiles did not.
+
+The tells that you are reasoning from the asset:
+
+* Your conclusion is a limit ("it cannot be bigger than this") rather
+  than a value.  Limits derived from art are almost always wrong,
+  because a game can compose, magnify, or re-upload at will.
+* You are trying assemblies.  When you find yourself rendering the
+  candidate layouts - 2x2, 4x4, stacked, offset - and none of them
+  join, that is not a puzzle to solve harder.  It means the layout is a
+  runtime decision you have not observed yet.
+* A user keeps reporting the same defect after you have "fixed" it.
+  Repetition is evidence about your model, not about their patience.
+
+What to do instead: find the object's live state block and diff it
+against a controlled input.  Move the object to a known distance and
+read every field; the ones that change with distance are the projection
+and the size.  Then confirm the constant on a second, independent
+object class - if karts and obstacles share it, you have the game's
+rule rather than one entity's quirk.
+
+Note also which way the rig points.  Driving to an object failed here
+(the attract demo never draws entities); moving the object to the kart
+worked immediately.  When the observation is expensive, move the thing
+you control.
+
 ## Order of work
 
 1. Identify the ROM; get mapping and mirrors right. Add a hash check.
