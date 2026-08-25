@@ -16,6 +16,87 @@ static void check(const char *name, int ok, const char *detail)
     ok ? pass++ : fail++;
 }
 
+
+/* The decoded player control (src/player.c) replayed against the game.
+ * Each fixture is a per-frame log of the attract race's P1 - a human-driven
+ * kart - captured field by field from MAME.  We feed the same pad words in
+ * and require the ROM's own values back. */
+typedef struct { uint16_t c4, ea, e8, a4, a8, aa, fa, b2, a6, e2; } replay_row;
+
+static void replay(const char *name, smk_player *p, const replay_row *F, int n,
+                   int32_t accel32, int speed_tol)
+{
+    static smk_track road;
+    memset(&road, 0, sizeof road);
+    road.surface[0] = 0x40;                 /* every cell: plain road */
+    smk_kart k;
+    memset(&k, 0, sizeof k);
+    k.x = 512 << SMK_POS_SHIFT; k.y = 512 << SMK_POS_SHIFT;
+    smk_player_reset(p, F[0].a4);
+    p->vlag = (int16_t)F[0].a8; p->plag = (int16_t)F[0].aa; p->spin = (int16_t)F[0].fa;
+    p->turn = (int16_t)F[0].b2; p->state = F[0].a6;
+    p->flags = F[0].e2 & 0x8008;
+    p->vel_angle = (uint16_t)(p->heading + p->vlag); p->pose = (uint16_t)(p->heading - p->plag);
+    k.speed = (int16_t)F[0].ea; k.speed_frac = F[0].e8;
+    k.airborne = (F[0].e2 & 0x8000) != 0;
+    p->accel32 = accel32;
+    int bad = 0, first = -1, maxds = 0;
+    for (int i = 1; i < n; i++) {
+        uint16_t c4 = F[i].c4;
+        uint16_t held = (uint16_t)(c4 & 0xFFF0);
+        uint16_t pressed = (uint16_t)(((c4 & 3) << 8) | ((c4 & 0xC) << 2));
+        smk_player_step(p, &k, &road, held, pressed);
+        int ds = k.speed - (int16_t)F[i].ea; if (ds < 0) ds = -ds;
+        if (ds > maxds) maxds = ds;
+        bool ok = p->heading == F[i].a4 && p->vlag == (int16_t)F[i].a8
+               && p->plag == (int16_t)F[i].aa && p->spin == (int16_t)F[i].fa
+               && p->turn == (int16_t)F[i].b2 && p->state == (int)F[i].a6
+               && ((p->flags ^ F[i].e2) & 0x8000) == 0;
+        if (!ok) {
+            bad++;
+            if (first < 0) {
+                first = i;
+                fprintf(stderr, "    replay miss at %d: c4 %04X got a4 %u a8 %d aa %d fa %d b2 %d a6 %02X spd %d | want %u %d %d %d %d %02X %d\n",
+                        i, c4, p->heading, p->vlag, p->plag, p->spin, p->turn, p->state, k.speed,
+                        F[i].a4, (int16_t)F[i].a8, (int16_t)F[i].aa, (int16_t)F[i].fa,
+                        (int16_t)F[i].b2, F[i].a6, (int16_t)F[i].ea);
+            }
+        }
+    }
+    char d[128];
+    snprintf(d, sizeof d, "%d/%d frames exact, first miss %d, speed within %d",
+             n - 1 - bad, n - 1, first, maxds);
+    check(name, bad == 0 && maxds <= speed_tol, d);
+}
+
+static void test_player_replay(const smk_rom *rom)
+{
+    static const replay_row SLIDE[] = {
+#include "selftest_slide.inc"
+    };
+    static const replay_row SPIN[] = {
+#include "selftest_spin.inc"
+    };
+    static smk_player p;
+    check("player tables load (Mario, 100cc)", smk_player_setup(rom, 0, 1, &p), NULL);
+    char d[160];
+    snprintf(d, sizeof d, "top %d accel[4] %d cap[10] %d steer[0] %d/%d/%d/%d row2[2] %d",
+             p.base_top, p.accel[4], p.cap[10], p.steer[0][0], p.steer[0][1],
+             p.steer[0][2], p.steer[0][3], p.drift[2][2]);
+    check("player tables match the live $0710 block / $B4 / $80AC36",
+          p.base_top == 912 && p.accel[4] == 0x0C00 && p.cap[10] == 0x250
+          && p.steer[0][0] == 0x995 && p.steer[0][1] == 0x98 && p.steer[0][2] == 0x68
+          && p.steer[0][3] == 0x70 && p.drift[2][2] == 0x1800 && p.drift[7][7] == 0x2900, d);
+    p.coins = 10;                           /* $D6 was 992 in both captures */
+    /* the slide capture's fraction steps $4000 per frame (accel $0040 << 8) */
+    replay("player replay: hop-into-left power slide, release, plain slide",
+           &p, SLIDE, (int)(sizeof SLIDE / sizeof SLIDE[0]), 0x4000, 0);
+    /* the spin capture starts inside the spin: accel -16 with the same stale
+     * low word; $E8 was not logged, so the speed may differ by one */
+    replay("player replay: spin-out, its end, and the $1C settle",
+           &p, SPIN, (int)(sizeof SPIN / sizeof SPIN[0]), (int32_t)(-16 * 65536) | 0x4000, 1);
+}
+
 int main(int argc, char **argv)
 {
     const char *path = argc > 1 ? argv[1] : "rom/smk_usa.sfc";
@@ -236,6 +317,8 @@ int main(int argc, char **argv)
             }
         }
     }
+
+    test_player_replay(&rom);
 
     printf("\n%d passed, %d failed\n", pass, fail);
     smk_rom_free(&rom);

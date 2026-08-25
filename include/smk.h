@@ -230,6 +230,62 @@ void smk_kart_move(smk_kart *k, const smk_track *t);
 #define SMK_RAMP_VEL     259        /* class $10 ramps (z peaked 247/224) */
 
 void smk_kart_gravity(smk_kart *k);
+
+/* ---- The player kart's control, DECODED (NOTES 103) --------------------
+ *
+ * Every table here is read from the ROM at setup: the character's top
+ * speed, acceleration curve, surface caps and steering rows ($81:8000..),
+ * and the global drift rows ($80AC36), row selectors ($80A4A0/$80A4C0),
+ * turn damping ($80A7FF) and the four deceleration tables ($80A65D..).
+ * The per-frame step is a transcription of $80A4D0 / $80B1BE / $80A892 /
+ * $80A3B7, verified frame-exact against the attract race (tools/labs). */
+typedef struct {
+    int character, engine_class;
+    /* the per-player block the ROM builds at $0710 (P1) / $0768 (P2) */
+    uint16_t accel[16];        /* by speed/64; A<<8 into accel32 ($80A7E1) */
+    int16_t  cap[16];          /* by surface type; -1 = no cap ($80A6F7)   */
+    uint16_t steer[3][4];      /* max, reversal, ramp, decay ($80A80F);
+                                  rows at block +$40/+$48/+$50: 0 = plain,
+                                  2 = shoulder/brake held ($DE = $50)       */
+    int16_t  base_top;         /* $B4: character top, class adjusted        */
+    uint16_t drift[8][8];      /* $80AC36 rows: window, spin rate, vlag max,
+                                  vlag rate, vlag decay, vlag entry, pose
+                                  rate, pose max */
+    int16_t  row_base[16], row_char[8];
+    uint16_t lowturn[9];
+    int16_t  damp[8], overcap[8], brake[8], coast[8], overtgt[8], hopcap[16];
+    /* state, named by the ROM field it mirrors */
+    uint16_t heading;          /* $A4 - the stick turns this, camera follows */
+    uint16_t vel_angle;        /* $A2 = heading + vlag: direction of travel */
+    uint16_t pose;             /* $2A = heading - plag: what the sprite shows */
+    int16_t  turn;             /* $B2 - turn rate, added >> 3 per frame     */
+    int16_t  vlag;             /* $A8 - the slide's velocity lag            */
+    int16_t  plag;             /* $AA - the slide's pose offset             */
+    int16_t  spin;             /* $FA - spin accumulator; +-$7A00 spins out */
+    int      state;            /* $A6 - slide machine state                 */
+    int      drive;            /* $AC - drive state (0 = normal)            */
+    int      jump_state;       /* $A0                                       */
+    uint16_t pad;              /* $C4 - the composed pad word               */
+    uint16_t flags;            /* $E2 - bit 15 airborne, 2/5 drift pose,
+                                  3 spinning, 6 reward armed                */
+    int      row, steer_row, type;   /* $28 >> 4, $DE row, surface type    */
+    int16_t  target;           /* $D6 = base_top + 8 * min(coins, 10)       */
+    int      coins;
+    int      fc, ca;           /* $FC countdown, $CA hold counter           */
+    int32_t  accel32;          /* $EE:$EC                                   */
+} smk_player;
+
+bool smk_player_setup(const smk_rom *rom, int character, int engine_class,
+                      smk_player *p);
+/* place the kart: all three angles, machine at rest */
+void smk_player_reset(smk_player *p, uint16_t heading);
+/* one frame.  held / pressed are SNES pad words: B $8000 Y $4000 Left $0200
+ * Right $0100 L $0020 R $0010. */
+void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
+                     uint16_t held, uint16_t pressed);
+/* the camera azimuth the ROM feeds DSP-1 ($808632): heading + $C0 */
+#define SMK_CAM_LEAD 0x00C0
+
 void smk_kart_launch(smk_kart *k, int16_t zvel);
 
 static inline int smk_kart_px(int32_t v) { return (int)(v >> SMK_POS_SHIFT); }

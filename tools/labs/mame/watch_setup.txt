@@ -1,0 +1,7 @@
+wpset 0010b0,8,w,1,{printf "B4W %04X <- %04X pc=%06X", wpaddr, wpdata, pc; g}
+wpset 7e10b0,8,w,1,{printf "B4W %04X <- %04X pc=%06X", wpaddr, wpdata, pc; g}
+wpset 000e00,4,w,1,{printf "COIN %04X <- %04X pc=%06X", wpaddr, wpdata, pc; g}
+wpset 7e0e00,4,w,1,{printf "COIN %04X <- %04X pc=%06X", wpaddr, wpdata, pc; g}
+wpset 000008,2,r,(pc==80aba7),{printf "R08A %04X FA=%04X", wpdata, w@0010fa; g}
+wpset 000008,2,r,(pc==80abb2),{printf "R08B %04X FA=%04X", wpdata, w@0010fa; g}
+go

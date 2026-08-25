@@ -3207,3 +3207,116 @@ the kart rather than the kart driven to the entity.
 
 *(next entry: 106)*
 
+
+---
+
+**106** — The player's physics DECODED: top speed, acceleration, steering,
+the slide, the power slide, the spin-out, the hop, and off-road.  Verified
+frame-exact against the running game.  MAME is the new oracle.
+
+**Method.**  MAME 0.285 runs the cart with the real DSP-1 (`upd7725` +
+`dsp1.bin`) at 350% headless and exposes memory per frame from Lua and the
+debugger (`tools/labs/mame/README.md` records what does and does not
+work).  The attract race is two HUMAN-recorded karts (Mario, Toad; 100cc)
+doing hops and power slides, so it was logged field by field
+(`demolog.lua`) and the decode was re-simulated from the logged pad words
+(`resim.py`): every field - `$B2 $A4 $A8 $AA $FA $A6 $EA` - matches on
+every frame of the race for both karts, except the frames inside a
+mushroom boost.  The C port replays the same captures in the selftest
+(`tools/selftest_slide.inc`, `_spin.inc`): 125/125 and 77/77 frames exact.
+
+**Three angles per kart** (`$80A892`, run every frame after the jump
+machine):
+
+    $A4 += $B2 >> 3          heading: the stick turns this; the CAMERA
+                             follows it (+$C0, measured: cam $94 - $A4 == 192
+                             every frame, $808632)
+    $A2  = $A4 + $A8         velocity direction (fed to the DSP-1 at $80A4D0)
+    $2A  = $A4 - $AA         pose: what the sprite shows
+
+`$A8` and `$AA` are the two halves of a slide.  In normal cornering both
+are zero - full grip, as NOTES 090 measured - and a slide is a state, not
+a force limit.
+
+**Turn rate `$B2`** (`$80A80F`), from a per-character steering row
+`[max, reversal, ramp, decay]`: holding a direction ramps `$B2` by `ramp`
+per frame to `max`, reversing subtracts `reversal`, releasing decays by
+`decay`.  Mario's plain row is `$0995/$98/$68/$70`: max `$995 >> 3` = 306
+per frame, the exact figure NOTES 090 measured.  Holding a shoulder button
+or Y selects the row at block+$50 (`$B00/$B0/$88/$90`): 352 per frame.
+Above speed `$300` the rate is damped each frame by a DSP-1 multiply,
+`$B2 += ($80A7FF[(speed-$300)>>5] * $B2) >> 15`, i.e. up to -2.7%/frame.
+
+**Speed** (`$80A6F7`, B held): `$D6 = $B4 + 8 * min(coins, 10)` is the
+target; `$B4` is the character's base top (`$81:8000`: Mario/Luigi 912,
+Bowser/DK 944, Peach/Toad 880, Yoshi/Koopa 864; 50cc -128, 150cc +160
+when `$2C == 0`).  Under it, accel = the character's 16-entry table by
+speed/64 (`$81:8010` pointers, bytes << 4, x1.5 at 150cc), written as
+`A << 8` into the 32-bit accel with a STALE low byte; over it, `$80A68D`
+by the excess.  B released: `$80A67D` by speed/256 (-10/frame at 900 -
+the capture's -9/-10 alternation is the stale `$EC` low word).  Y held:
+`$80A66D`.  On a capped surface (types 10-15, per-character caps from
+`$81:8060`, e.g. Mario dust 592, deep 288, +48 at 150cc) speed above the
+cap decays by `$80A65D` by speed/256: -112/frame at 5xx.  Types 0-9 are
+uncapped (`$FFFF`).  So "max speed goes below and acceleration is slower"
+is: coins, character, class, and the taper of the table (12 units/frame
+at mid speed, 0.25 at the top).
+
+**The slide machine `$A6`** (`$80AA18`), with a parameter row from
+`$80AC36` (8 rows x 8 words: `[window, spin rate, A8 max, A8 rate, A8
+decay, A8 entry, AA rate, AA max]`).  The row is chosen every frame at
+`$80A3CC`: shoulder or Y held -> row 7; else `$80A4A0[type]` (road $20 ->
+row 2, dust $30, ice `$00` = no slide) + `$80A4C0[character]` (Yoshi,
+Koopa -$10).
+
+    state 0   armed.  A slide can start when speed is within row[0] of
+              $B4 (road: 32 units; 150cc adds $120 to the speed first)
+              and |$B2| >= $300, or whenever speed >= $B4.  -> state 2.
+    state 2   sliding, steering held (B, or a shoulder above $1C0):
+              $A8 -> +-row[2] at row[5] then row[3] per frame (velocity
+              lags the heading: road 13.5 deg, power slide 18 deg, and
+              5x faster);  $AA -> +-row[7] at row[6] per frame (the pose
+              turns into the slide: road 46 deg, power slide 57 deg);
+              |$AA| >= $C00 / $1800 set $E2 bits 2 / 5 - the drift
+              sprites.  The spin accumulator $FA moves by row[1] per
+              frame while the velocity lag has the turn's sign (road
+              $100: 122 frames to spin; power slide $E0: 139), and by
+              the stale scratch $08 in the other phase.  Released:
+              $FA drains by row[1]+$E1, $A8/$AA decay at row[4]/row[6].
+    state $0E/$10  SPIN-OUT ($FA past +$7A00 / below -$8600): $E2 bit 3,
+              $AA spins +-$480 per frame, speed -16 per frame, steering
+              still works, until speed < $180 and the pose wraps through
+              zero.  -> $1C.
+    state $1C settle: row-0 decay, and the drive path accelerates from
+              the table regardless of B.  -> 0 when $A8 is spent.
+    state $12 the reward: holding shoulder + steer for 128 frames sets
+              $E2 bit 6; when the slide is spent, 48 frames at +2/frame
+              up to $D6 + $C0.  Small - "the power slide does not make
+              you considerable speed".
+
+**The hop** (`$80B49D`): a FRESH L or R press with the other shoulder
+free; `$26 = $E0`, gravity `$1A`, 17 frames in the air; on a capped
+surface at or over its threshold it costs $40 of speed.  The hop itself
+changes nothing in the slide machine - what the player feels as "jump into
+the slide" is the shoulder being HELD, which selects row 7 and the faster
+steering row for as long as it is down.
+
+**Order within the frame** matters for exactness: motion (`$80A4D0`),
+jump machine, heading, then control - and the jump machine and the
+low-speed heading branch read the pad word `$C4` composed at the END of
+the previous frame, so a hop lands one frame after the press.
+
+**Ported** as `src/player.c` (`smk_player_setup/reset/step`), tables read
+from the ROM at setup; `step_kart` in main.c now only translates SDL input
+into the SNES pad word.  The old feel model (breakaway, plow, grip table,
+slip ceiling) is deleted.  Camera = heading + $C0.  Sprite pose = `$2A`
+relative to the camera, i.e. -($AA + $C0), fed to the NOTES 080 pose bands
+(which were measured in exactly those units: $21C0 = row 2's $2100 + $C0).
+
+**Not yet done / labelled:** coins are not collected in the port
+(`coins = 0`, so the top is `$B4`); items, the `$60`/`$84` boost states and
+the water/lava landings are skipped; the steering lean of the sprite when
+turning without a slide is still the synthesised lag; the mini-boost
+state $12 and the shoulder-held long-hold are transcribed but not observed.
+MAME notes: Lua taps are blind to bank-$7E accesses, `bpset` never fires,
+debugger `wpset` needs the exact bank (`00`/`7e`/`81`).

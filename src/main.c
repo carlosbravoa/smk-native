@@ -329,224 +329,35 @@ static void draw_speedo(uint32_t *fb, int rw, int rh,
  * selects, the braking rate, and the steering rate.  The ROM picks its
  * target from per-character stats we have not decoded, and its steering is
  * a slew toward a target angle at $FA,x ($80AFBE). */
-/* Which entry of the ROM's target-speed table full throttle selects.
- *
- * MEASURED (NOTES 091): holding the throttle along open road, the game
- * reaches **963**.  Entry 3 tops out at 672/816/880 for the three
- * classes - well under that, and the kart felt slow (playtest).  Entry 6
- * (896/912/992) brackets the measured top for every class and keeps the
- * 50 < 100 < 150 ordering.
- *
- * It also repairs the surface caps: those were measured as FRACTIONS of
- * a road top of ~951, so a top of 672 was shrinking every off-road cap
- * along with it. */
-#define FEEL_TARGET_IDX   6        /* which entry of the ROM target table  */
-/* MEASURED (NOTES 088), not felt: braking in SMK is WEAK - from 589 the
- * game takes 85 frames to reach 99, about 5.8 units/frame, and simply
- * coasting loses 5.2/frame.  Braking is barely stronger than lifting off,
- * which is why you slow a kart by releasing rather than by braking.  Our
- * old 32/frame brake was 5.5x too strong (playtest).  These are applied
- * as dec<<8 and integrated, so the value is units/frame * 256. */
-#define FEEL_BRAKE   (6 * 256)
-#define FEEL_DRAG    (5 * 256)
-#define FEEL_TURN    420           /* angle units per frame                */
+/* The player's physics used to be a labelled feel model here; it is now
+ * the decoded control in src/player.c (NOTES 103). */
 
+static smk_player player;
+
+/* One frame of the player's kart: the DECODED control (src/player.c, NOTES
+ * 103).  This function only translates the SDL input into the SNES pad word
+ * the ROM composes at $80A3CC and publishes the HUD readouts. */
 static void step_kart(smk_kart *k, const smk_track *trk,
                       const smk_physics *phys, const input_state *in)
 {
-    int top = (int16_t)phys->w[SMK_PHYS_TARGET + FEEL_TARGET_IDX];
-    int target = 0;
-    if (in->up)   target = in->shift ? top + (top >> 2) : top;
-    if (in->down) target = -top / 2;
-
-    /* Drive the ROM's acceleration fields, not speed directly. */
-    /* off-track slows the kart: per-surface cap with the ROM's over-cap
-     * decel row ($80A65D) and coasting drag ($80A590).  Cap values are the
-     * labelled placeholders until measured (NOTES 048/053). */
-    uint8_t surf = smk_track_surface(trk, smk_kart_px(k->x), smk_kart_px(k->y));
-    /* MEASURED cap (NOTES 066): fraction of road speed, scaled by this
-     * engine class's own top so 50/100/150cc keep the ROM's ratios */
-    int frac = smk_surface_cap_frac(surf);
-    int cap = (frac < 1000) ? (top * frac) / 1000 : 0;
-    if (cap && target > cap) target = cap;
-    int32_t accel;
-    if (k->speed < target) {
-        /* The ROM's own acceleration table ($80B043) - our curve matches
-         * the game's frame for frame up to about half speed.  Above that
-         * the game TAPERS as it approaches the target while we did not,
-         * so we arrived early and then snapped against a hard clamp: top
-         * speed felt free instead of earned (playtest).
-         *
-         * The taper is a FIT to the measured approach (NOTES 088:
-         * 12, 9.2, 7.6, 4, 3, 2, 2, 1.8 units/frame at speeds 355..702),
-         * not a decode - the ROM's exact near-target law is open. */
-        int32_t a = (int32_t)smk_physics_accel(phys, k->speed) << 8;
-        if (target > 0) {
-            float head = (float)(target - k->speed) / (float)target * 1.6f;
-            if (head < 0.0f) head = 0.0f;
-            if (head < 1.0f) a = (int32_t)((float)a * head);
-        }
-        accel = a;
-    }
-    else if (k->speed > target) {
-        /* over the surface cap: the MEASURED per-class deceleration
-         * (NOTES 067) - a firm drag down to the cap, as the ROM does it */
-        int dec = (cap && k->speed > cap)
-                  ? (int)smk_surface_decel(surf) << 8
-                  : (target == 0 ? FEEL_DRAG : FEEL_BRAKE);
-        accel = -(int32_t)dec << 8;
-    } else
-        accel = 0;
-    k->accel      = (int16_t)(accel >> 16);
-    k->accel_frac = (uint16_t)(accel & 0xFFFF);
-
-    smk_kart_accelerate(k);      /* the ROM's 32-bit speed integration */
-
-    /* no hard clamp: the taper above brings the speed in asymptotically,
-     * the way the game does.  Snapping to the target was the other half
-     * of "acceleration is super fast" (playtest). */
-    if (k->speed > top) k->speed = (int16_t)top;   /* class ceiling only */
-
-    /* slip, computed up front: it gates steering authority (measured:
-     * in a plow the ROM's turn rate collapses from ~307 to ~20/frame) */
-    float slip_now;
-    {
-        float va0 = atan2f((float)k->vx, -(float)k->vy);
-        float ha0 = (float)k->angle * (float)(2.0 * M_PI) / 65536.0f;
-        slip_now = va0 - ha0;
-        while (slip_now >  (float)M_PI) slip_now -= 2.0f * (float)M_PI;
-        while (slip_now < -(float)M_PI) slip_now += 2.0f * (float)M_PI;
-    }
-    float slip_u0 = fabsf(slip_now) * 65536.0f / (2.0f * (float)M_PI);
-    /* below walking pace there is no meaningful velocity direction -
-     * atan2 of a near-zero vector against the heading is garbage (the
-     * "sideways at rest" bug) */
-    int spd_abs = k->speed < 0 ? -k->speed : k->speed;
-    if (spd_abs < 40) slip_now = 0.0f;
-    player_slip_deg = (int)(fabsf(slip_now) * 180.0f / (float)M_PI);
-    player_slip_units = (int)(slip_now * 65536.0f / (2.0f * (float)M_PI));
-
-    /* steering authority falls off as the kart slows, as it must */
-    int auth = (k->speed < 0 ? -k->speed : k->speed);
-    if (auth > top) auth = top;
-    int turn = top ? FEEL_TURN * auth / top : 0;
-    /* The kart ALWAYS turns at its full rate.  MEASURED (NOTES 090):
-     * holding full lock at pace, with or without throttle, the heading
-     * moves -307 every single frame for 120 frames while the velocity
-     * follows within a few units.  There is no progressive loss of
-     * steering in normal cornering - the "authority collapse" I had
-     * (307 -> 20 past a lateral limit) modelled a CRASH, not a corner,
-     * and latched: once entered, its own slip growth kept it entered,
-     * so the kart could never be steered again ("on-off switch, and you
-     * do not get control back" - playtest). */
-    if (in->left)  k->angle -= (uint16_t)turn;
-    if (in->right) k->angle += (uint16_t)turn;
-
-    /* Hop: the decoded launch ($80B69D - zvel $0080, needs speed).  A hop
-     * into a held turn starts a power slide. */
-    if (in->hop && !k->airborne)
-        smk_kart_launch(k, SMK_HOP_VEL);
-
-    /* THE BALLISTIC WINDOW.  After a wall impact the ROM runs `$42,x`
-     * frames with no steering and no thrust (NOTES 071) - the kart flies
-     * on the rebound velocity.  `smk_kart_face` honours that, which is
-     * why the AI bounces correctly, but the PLAYER computes its velocity
-     * here instead and did not check it.  With grip now 1.0, that meant
-     * the velocity was rewritten from the heading every single frame,
-     * wiping the rebound the frame it happened: the kart pressed
-     * straight back into the barrier and could never leave it.  That is
-     * the "hit it and get stuck" report - the collision was always
-     * right, the player just overwrote its result. */
-    if (k->bounce_cool == 0) {
-        int32_t tvx = (int32_t)(sinf((float)k->angle * (float)(2.0 * M_PI)
-                                     / 65536.0f) * (float)k->speed);
-        int32_t tvy = (int32_t)(-cosf((float)k->angle * (float)(2.0 * M_PI)
-                                      / 65536.0f) * (float)k->speed);
-        /* MEASURED (NOTES 090): in normal driving the velocity simply
-         * IS the heading direction - a full-lock lap shows the velocity
-         * within ~300 units (1.7 deg) of the heading at every speed,
-         * and that residual is just the one-frame lag between the
-         * heading update and the velocity update.  So: full grip.
-         *
-         * A slide is a separate, deliberate act - hop into a held turn
-         * - and only there does the velocity really lag (NOTES 089:
-         * slip opens toward a ~93 deg ceiling at 0.03 of the remaining
-         * gap per frame, speed sagging to ~0.70 of pace).
-         *
-         * Everything else I had here - a lateral-force limit, a
-         * breakaway, a progressive plow - described a phenomenon this
-         * game does not have. */
-        float g;
-        if (k->airborne)
-            g = 0.04f;                        /* hop: momentum carries    */
-        else if (in->hop_held && k->speed > 300 && (in->left || in->right))
-            g = 0.045f;                       /* the drift, see below     */
-        else
-            g = 1.0f;                         /* full grip - measured     */
-        float nvx = (float)k->vx + (float)(tvx - k->vx) * g;
-        float nvy = (float)k->vy + (float)(tvy - k->vy) * g;
-        if (in->hop_held && k->speed > 300 && (in->left || in->right)) {
-            /* MEASURED slide (NOTES 089, a 150-frame hop-drift):
-             *
-             *   f5 11.2 deg   f10 22.8   f20 43.0   f30 62.3
-             *   f45 75.0      f60 83.8   then it recovers
-             *
-             * The growth DECAYS as the slide opens up - per-frame steps
-             * of 423, 366, 352, 154, 106 - i.e. the slip approaches a
-             * ceiling near 17000 units (93 deg) at about 0.03 of the
-             * remaining gap per frame.  A CONSTANT 130/frame instead
-             * grew it without bound, so the kart swung past 90 degrees
-             * and ended up travelling backwards - "magically drifting
-             * opposite to where you are heading", and the side-on
-             * sprite that goes with it.
-             *
-             * Speed in the same capture holds (846..854) and then falls
-             * to about 0.70 of pace and stays there. */
-            /* A drift is the kart PIVOTING while the velocity keeps
-             * going: the heading turns at its full rate and the velocity
-             * rotates SLOWER, and the gap between them is the slide.
-             * Rotating the velocity away on top of the heading's own
-             * rotation double-counted, opening the slide twice as fast
-             * as measured and straight past 180 degrees.
-             *
-             * Measured growth of the gap (NOTES 089): ~410/frame while
-             * the slide is opening, holding near 350-420 until about
-             * 11000 units and then decaying to nothing by ~16500 - so
-             * the velocity ends up matching the heading's rate and the
-             * angle holds. */
-            const float SLIP_MAX  = 16500.0f;
-            const float SLIP_KNEE = 11000.0f;
-            const float SLIP_OPEN = 400.0f;     /* units/frame, measured */
-            float cur  = fabsf(slip_u0);
-            float taper = (SLIP_MAX - cur) / (SLIP_MAX - SLIP_KNEE);
-            if (taper > 1.0f) taper = 1.0f;
-            if (taper < 0.0f) taper = 0.0f;
-            float open = SLIP_OPEN * taper;
-            float vrate = (float)turn - open;   /* velocity lags heading */
-            if (vrate < 0.0f) vrate = 0.0f;
-            float mag = sqrtf((float)k->vx * k->vx + (float)k->vy * k->vy);
-            float dir = (in->left ? -1.0f : 1.0f);
-            float va2 = atan2f((float)k->vx, -(float)k->vy)
-                      + dir * vrate * (2.0f * (float)M_PI) / 65536.0f;
-            nvx = sinf(va2) * mag;
-            nvy = -cosf(va2) * mag;
-            /* the measured sag: pace holds while the slide opens, then
-             * settles around 0.70 of it (850 -> 595 over ~25 frames) */
-            int sag = top * 70 / 100;
-            if (cur > 6000.0f && k->speed > sag) k->speed -= 10;
-        }
-        k->vx = (int16_t)nvx;
-        k->vy = (int16_t)nvy;
-    }
-    /* Gravity, in the same place the AI runs it (src/ai.c) - the player
-     * simply never had it.  A hop set airborne and zvel, then nothing
-     * ever advanced z, so the kart never rose, never landed, and the
-     * airborne flag stayed set, which blocked every hop after the first.
-     * Reported as "no jump" three times; the selftest passed throughout
-     * because it calls smk_kart_gravity directly. */
-    smk_kart_gravity(k);
-    smk_kart_move(k, trk);       /* the ROM's position += velocity << 8 */
+    (void)phys;
+    uint16_t held = 0, pressed = 0;
+    if (in->up)       held |= 0x8000;        /* B: accelerate            */
+    if (in->down)     held |= 0x4000;        /* Y: brake                 */
+    if (in->left)     held |= 0x0200;
+    if (in->right)    held |= 0x0100;
+    if (in->hop_held) held |= 0x0020;        /* L (R is the same button) */
+    if (in->hop)      pressed |= 0x0020;     /* a fresh press hops       */
+    smk_player_step(&player, k, trk, held, pressed);
     if (course_for_step) smk_collide_objects(k, course_for_step);
+
+    /* The sprite's angle relative to the camera: pose ($2A) minus the
+     * azimuth the ROM feeds the camera (heading + $C0).  In a left slide
+     * the pose offset is positive, which the measured pose rule (NOTES
+     * 080) reads as a positive slip. */
+    int rel = (int16_t)(uint16_t)(player.plag + SMK_CAM_LEAD);
+    player_slip_units = rel;
+    player_slip_deg = (rel < 0 ? -rel : rel) * 360 / 65536;
     player_height_px = smk_kart_height_px(k);
     player_airborne = k->airborne;
 }
@@ -557,7 +368,10 @@ static void camera_from_kart(smk_camera *cam, const smk_kart *k)
 {
     cam->x = (float)k->x / (float)SMK_POS_ONE;
     cam->y = (float)k->y / (float)SMK_POS_ONE;
-    cam->angle = (float)k->angle * (2.0f * (float)M_PI / (float)SMK_ANGLE_TURN)
+    /* the ROM's camera azimuth is the heading plus a constant $C0 lead
+     * ($808632, measured on the live race: cam - $A4 == 192 every frame) */
+    uint16_t az = (uint16_t)(k->angle + SMK_CAM_LEAD);
+    cam->angle = (float)az * (2.0f * (float)M_PI / (float)SMK_ANGLE_TURN)
                  - (float)M_PI / 2.0f;
 }
 
@@ -981,6 +795,10 @@ int main(int argc, char **argv)
         fprintf(stderr, "warning: kart sprites did not load\n");
 
     static smk_physics phys;
+    if (!smk_player_setup(&rom, character, engine_class, &player)) {
+        fprintf(stderr, "error: cannot load the player physics tables\n");
+        return 1;
+    }
     if (!smk_physics_load(&rom, engine_class, &phys)) {
         fprintf(stderr, "error: cannot load physics tables\n");
         return 1;
@@ -1120,6 +938,7 @@ int main(int argc, char **argv)
         .y = (int32_t)(g0y * SMK_POS_ONE),
         .angle = g0h,
     };
+    smk_player_reset(&player, g0h);
     camera_from_kart(&cam, &kart);
 
     input_state in;
@@ -1178,6 +997,7 @@ int main(int argc, char **argv)
                     kart = (smk_kart){ .x = (int32_t)(sx * SMK_POS_ONE),
                                        .y = (int32_t)(sy * SMK_POS_ONE),
                                        .angle = sh };
+                    smk_player_reset(&player, sh);
                     for (int i = 0; i < SMK_CHARACTERS; i++)
                         smk_racer_start(&racers[i], &crs, i);
                     camera_from_kart(&cam, &kart);
@@ -1252,7 +1072,7 @@ int main(int argc, char **argv)
             draw_speedo(fb, rw, rh, &kart,
                         smk_track_surface(&trk, smk_kart_px(kart.x),
                                           smk_kart_px(kart.y)),
-                        (int16_t)phys.w[SMK_PHYS_TARGET + FEEL_TARGET_IDX]);
+                        player.target);
             SDL_UpdateTexture(tex, NULL, fb, rw * (int)sizeof *fb);
             SDL_RenderClear(ren);
             SDL_RenderCopy(ren, tex, NULL, NULL);
