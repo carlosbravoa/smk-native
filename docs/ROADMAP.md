@@ -57,7 +57,7 @@ re-investigating.
 | S6 | `src/kart.c` bounce | **decoded**: the bounce is a ballistic launch (`$80F8C0` sets `$26`=$0080), not a timed knockback (NOTES 045) | per-class differences; the horizontal knockback magnitude | P3 residual |
 | S7 | renderer | full-resolution smooth perspective | 256×224, per-scanline integer matrix | keep — named divergence, this is the point of a PC port. `--pixel` restores chunk. |
 | S8 | no audio | silence | SPC700 + S-DSP running its own program | P7 |
-| S10 | `src/main.c` draw | ENTITIES quantise to the sheet's real tiers (16->11 art px), as the hardware does; KARTS still scale continuously | the hardware quantises both; the kart sheet's own tier ladder is not identified yet | P4 residual |
+| S10 | `src/main.c` draw | karts AND entities quantise to their sheets' real size tiers, as the hardware does | same | closed — smooth scaling moved to P9 as an opt-in |
 | S11 | `src/main.c` start sequence | 3-2-1 countdown at 60 frames a step, karts held | the ROM's own start-frame count and Lakitu's light art | P5 |
 | S12 | `src/main.c` entities | the theme's own object art (pipes, Thwomps, ...) drawn from `$81:EBD3`, one size tier scaled continuously; entities do not move | the sheet stores a size TIER per distance band; `$84:DD15` drives type and motion (a Thwomp rises and slams) | P5 |
 | S9 | `tools/smktool/dsp1.py` | full command set implemented; stream never desyncs; camera model verified against the game's own usage. Residual: gyrate is a passthrough, and raster/`$08`/`$18` scalings are unchecked | the real chip's exact fixed-point pipeline | largely closed (NOTES 039); residuals logged on first contact |
@@ -241,6 +241,31 @@ cleanly and needs no ROM at all.
 - Decision to make when we get there: vendor an existing permissively-
   licensed SPC core vs. write one. Do not hand-convert music.
 - Acceptance: A/B a recording of the title theme against an emulator.
+
+### P9 — Quality of life  (AFTER the game is replicated correctly)
+
+Deliberate, opt-in departures from the original - things the hardware
+could not do and we can.  The rule for every entry here: **fidelity is
+the default and ships first**; a QoL option is only allowed once the
+faithful behaviour it replaces is decoded, implemented and verified, and
+it must be switchable so the original can always be seen.
+
+- **Smooth sprite scaling.**  The SNES cannot scale a sprite: it swaps
+  between a few pre-drawn sizes, so karts and objects POP between steps
+  as they approach (entities 16 -> 11 art px, karts 31 -> 28 -> 25 plus
+  a half-size drawing).  That popping is faithful and is what we render
+  now.  Smooth interpolation looks better at our resolution, and the
+  requirement is that it **matches the quantised sizes at the tier
+  distances** and only interpolates between them - so it is the same
+  scaling curve, without the steps.  Not a re-scaling: a smoothing of
+  the one we measured.
+- Higher internal resolution than 256x224 (already true of the ground;
+  the sprites are the remaining pixel-art constraint).
+- Wide-screen framing, which needs a decision about what the extra
+  horizontal field does to the AI's blind spots.
+
+Everything in this phase is off by default until the faithful path is
+green.
 
 ### P8 — Modes, menus, HUD, polish
 - Time trial first (no AI dependency), then GP structure, points, ranks.

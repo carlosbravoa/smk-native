@@ -691,19 +691,50 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
              * cannot scale sprites and quantises this to a few art
              * sizes; ours is continuous - a deliberate, labelled
              * divergence that keeps karts road-proportional.) */
-            /* MEASURED-BY-EYE against the original (NOTES 100): three
-             * opponents up the road are about a third of the player's
-             * height, so karts DO shrink with distance.  The constant
-             * canvas of NOTES 084 came from the same contaminated sweep
-             * as its neighbours.  Scale follows the projection, anchored
-             * so a kart at the player's own depth is the SNES's 32 px. */
+            /* QUANTISED to the kart sheet's own tiers, as the hardware
+             * does (NOTES 102).  The sheet carries three rotation sets
+             * at descending sizes - measured max art height:
+             *
+             *   frames  0-10   31 px      frames 11-21   28 px
+             *   frames 22-32   25 px      half-size drawing far out
+             *
+             * plus the 16 px switch NOTES 072 saw beyond those.  The
+             * tier is chosen by the height the projection asks for and
+             * then drawn at the fixed SNES proportion, so kart sizes POP
+             * between steps exactly like the entities. */
+            static const struct { int base, h; } KTIER[4] = {
+                { SMK_SPR_TIER0, 31 }, { SMK_SPR_TIER1, 28 },
+                { SMK_SPR_TIER2, 25 }, { -1,            13 },
+            };
             float kdep = depth + SMK_CAM_TRAIL;
             if (kdep < 8.0f) continue;
-            float kscale = (float)(rw / 256) * SMK_CAM_TRAIL / kdep;
-            if (kscale > (float)(rw / 256)) kscale = (float)(rw / 256);
-            smk_draw_sprite_scaled(&other[k], mirror ? 0 : f, trk->palette,
-                                   d2->pal, (int)px, (int)py, kscale,
-                                   hf, mirror, fb, rw, rh, rw);
+            float kwant = 16.0f * SMK_PROJ_LES / kdep;   /* SNES px */
+            int kt = 0;
+            for (int t = 1; t < 4; t++)
+                if (fabsf((float)KTIER[t].h - kwant)
+                    < fabsf((float)KTIER[kt].h - kwant)) kt = t;
+            int kscale = rw / 256;
+            if (kscale < 1) kscale = 1;
+            if (KTIER[kt].base < 0) {           /* the far, half-size draw */
+                smk_draw_sprite_mini(&other[k], f, trk->palette, d2->pal,
+                                     (int)px, (int)py, kscale, hf,
+                                     fb, rw, rh, rw);
+            } else {
+                /* re-pick the rotation frame inside the chosen tier */
+                uint16_t r16 = (uint16_t)rel;
+                bool hf2 = false;
+                int f2 = mirror ? KTIER[kt].base
+                                : smk_sprite_for_heading(KTIER[kt].base,
+                                                         r16, &hf2);
+                if (mirror)
+                    smk_draw_sprite_mirror(&other[k], f2, trk->palette,
+                                           d2->pal, (int)px, (int)py,
+                                           kscale, fb, rw, rh, rw);
+                else
+                    smk_draw_sprite(&other[k], f2, trk->palette, d2->pal,
+                                    (int)px, (int)py, kscale, hf2,
+                                    fb, rw, rh, rw);
+            }
         }
     }
     if (show_kart && karts->frames) {

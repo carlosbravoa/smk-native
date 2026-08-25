@@ -3028,4 +3028,37 @@ open in P4.
 
 ---
 
-*(next entry: 102)*
+**102** — Karts quantise to the kart sheet's own tiers too.
+
+The ladder was identified long ago (NOTES 030) and the constants have
+been sitting in the header the whole time - `SMK_SPR_TIER0/1/2` - as
+three 11-frame rotation sets.  Measured max art height per set:
+
+    frames  0-10   31 px
+    frames 11-21   28 px
+    frames 22-32   25 px
+    (frames 33-47 are the special poses: the leans and the mirrored
+     straight, all 32 px)
+
+plus the half-size drawing NOTES 072 saw beyond those, which is what
+makes the far range work: 31 -> 28 -> 25 alone is far too narrow to
+explain a reference shot where distant opponents are about half the
+player's height.
+
+Ported exactly like the entities: the tier is chosen from the height the
+projection asks for and drawn at the fixed SNES proportion, so kart
+sizes POP between steps.  The rotation frame is re-picked inside the
+chosen tier, so a kart keeps its correct facing as it changes size.
+
+With that, both the constant canvas (NOTES 084) and the continuous scale
+(NOTES 100) are gone - each was a half-truth: the hardware neither keeps
+one size nor glides between sizes; it swaps between a few drawings.
+
+Smooth scaling is not deleted, it is DEFERRED: recorded as the first
+entry of the new roadmap phase P9 (quality of life), where the rule is
+that it must reproduce the quantised sizes at the tier distances and
+only interpolate between them.
+
+---
+
+*(next entry: 103)*
