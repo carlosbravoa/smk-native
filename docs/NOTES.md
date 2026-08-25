@@ -2789,4 +2789,33 @@ and whether $C1:0F9B is global or selected per theme.
 
 ---
 
-*(next entry: 094)*
+**094** — Three playtest bugs, all mine, none of them physics.
+
+**The jump was never wired up.**  `smk_kart_gravity` is called by the AI
+(`src/ai.c`) and by the selftest - and NOT by `step_kart`.  So a hop set
+`airborne` and `zvel`, nothing ever advanced z, the kart never rose or
+landed, and because the flag stayed set every later hop was refused too.
+Reported as "no jump" three times, and the selftest passed throughout
+because it calls gravity directly - a test that exercised the primitive
+while the caller was missing.  One line.  The arc now lands on frame 19
+with a 10 px peak, against the measured 19 frames / 12 px.
+
+**The pipe was assembled wrong.**  I stacked ten consecutive tiles as
+2 wide x 5 tall.  A multi-tile SNES sprite steps by the VRAM ROW STRIDE
+of 16, not by its own width: the pipe is stream tiles 14,15 over 30,31 -
+2x2, 16x16 px - which renders as a clean cylinder with a base rim.  The
+consecutive tiles after 15 are OTHER objects, each successively
+narrower, which is why the column came out offset and scrambled.
+
+**Barriers pinned the kart** because every re-contact counted as a fresh
+impact and halved the speed again: 800, 400, 200, 100.  The measured
+evidence is one halving per IMPACT (NOTES 092) and speed PRESERVED under
+sustained contact (NOTES 088), so the kart now remembers it is touching
+a wall for 20 frames - long enough to span the knockback and the drive
+back in - and a continued contact just cancels the into-wall component
+and scrapes.  One clean bounce, then it rests against the barrier with
+its speed intact and pulls away the moment you steer.
+
+---
+
+*(next entry: 095)*

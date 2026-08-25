@@ -523,6 +523,13 @@ static void step_kart(smk_kart *k, const smk_track *trk,
         k->vx = (int16_t)nvx;
         k->vy = (int16_t)nvy;
     }
+    /* Gravity, in the same place the AI runs it (src/ai.c) - the player
+     * simply never had it.  A hop set airborne and zvel, then nothing
+     * ever advanced z, so the kart never rose, never landed, and the
+     * airborne flag stayed set, which blocked every hop after the first.
+     * Reported as "no jump" three times; the selftest passed throughout
+     * because it calls smk_kart_gravity directly. */
+    smk_kart_gravity(k);
     smk_kart_move(k, trk);       /* the ROM's position += velocity << 8 */
     if (course_for_step) smk_collide_objects(k, course_for_step);
     player_height_px = smk_kart_height_px(k);
@@ -571,18 +578,21 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
              * per art pixel left far pipes full size, so their tops rose
              * above the horizon and they floated in the sky. */
             float s2 = sc * 0.5f;
-            int pw = (int)(16.0f * s2 + 0.5f), ph = (int)(40.0f * s2 + 0.5f);
+            int pw = (int)(SMK_OBJ_PIPE_W * s2 + 0.5f);
+            int ph = (int)(SMK_OBJ_PIPE_H * s2 + 0.5f);
             if (pw < 2 || ph < 2) continue;          /* too far to matter */
             int x0 = (int)px - pw / 2, y0 = (int)py - ph;
             for (int dy = 0; dy < ph; dy++) {
                 int yy = y0 + dy;
                 if (yy < 0 || yy >= rh) continue;
-                int ty = dy * 40 / ph;
+                int ty = dy * SMK_OBJ_PIPE_H / ph;
                 for (int dx = 0; dx < pw; dx++) {
                     int xx = x0 + dx;
                     if (xx < 0 || xx >= rw) continue;
-                    int tx = dx * 16 / pw;
-                    int tile = SMK_OBJ_PIPE0 + (ty / 8) * 2 + (tx / 8);
+                    int tx = dx * SMK_OBJ_PIPE_W / pw;
+                    int tile = SMK_OBJ_PIPE0
+                             + (ty / 8) * SMK_OBJ_STRIDE + (tx / 8);
+                    if (tile >= SMK_OBJ_TILES) continue;
                     uint8_t v = obj_art.px[tile][(ty % 8) * 8 + (tx % 8)];
                     if (!v) continue;
                     fb[yy * rw + xx] = trk->palette[(SMK_OBJ_PAL + v) & 0xFF];

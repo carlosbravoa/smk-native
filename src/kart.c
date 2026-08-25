@@ -225,14 +225,36 @@ void smk_kart_move(smk_kart *k, const smk_track *t)
              *
              * $20/$24/$26 stop dead instead (speed -> 0, 3 px of travel,
              * NOTES 088). */
-            if (bx) k->vx = (int16_t)-k->vx;
-            if (by) k->vy = (int16_t)-k->vy;
-            if (wv & 0x80) k->speed = (int16_t)(k->speed / 2);
-            else { k->speed = 0; k->vx = 0; k->vy = 0; }
-            k->bounce_cool = 9;              /* the measured knockback   */
+            /* A FRESH impact reflects and halves; STAYING against the
+             * wall does not re-halve.  The surface battery drove a kart
+             * into $80 continuously and the speed came back 832 -> 832
+             * with ~50 px of travel, so sustained contact is a scrape,
+             * not a series of impacts.  Halving on every contact frame
+             * instead drove the speed to zero within a few bounces and
+             * pinned the kart to the barrier (playtest, twice). */
+            bool fresh = (k->touching == 0);
+            /* long enough to span the knockback AND the drive back in,
+             * so holding the throttle against a barrier is ONE contact.
+             * With a short memory each return counted as a fresh impact
+             * and halved the speed again - 800, 400, 200, 100 - which is
+             * what pinned the kart to the wall (playtest). */
+            k->touching = 20;
+            if (!(wv & 0x80)) {              /* $20/$24/$26: dead stop  */
+                k->speed = 0; k->vx = 0; k->vy = 0;
+                k->bounce_cool = 9;
+            } else if (fresh) {              /* the measured impact     */
+                if (bx) k->vx = (int16_t)-k->vx;
+                if (by) k->vy = (int16_t)-k->vy;
+                k->speed = (int16_t)(k->speed / 2);
+                k->bounce_cool = 9;
+            } else {                         /* still on it: scrape     */
+                if (bx) k->vx = 0;
+                if (by) k->vy = 0;
+            }
         }
         return;
     }
+    if (k->touching) k->touching--;      /* no contact this frame */
     k->x = nx;
     k->y = ny;
 }
