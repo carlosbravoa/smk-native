@@ -207,17 +207,26 @@ void smk_kart_move(smk_kart *k, const smk_track *t)
             uint8_t wv = bx
                 ? smk_track_surface(t, smk_kart_px(nx), smk_kart_px(k->y))
                 : smk_track_surface(t, smk_kart_px(k->x), smk_kart_px(ny));
-            /* MEASURED (NOTES 088): the two solid families behave
-             * DIFFERENTLY.  Head-on at pace:
-             *   $20/$24/$26  speed -> 0, the kart moves 3 px: a dead stop
-             *   $80/$82/$84  speed PRESERVED (832->832), 50 px of travel:
-             *                a wall you deflect along, state $C000
-             * Treating them alike made every barrier a full stop. */
-            if (bx) k->vx = (int16_t)-k->vx;
-            if (by) k->vy = (int16_t)-k->vy;
-            if (bx && by) { k->vx = (int16_t)-k->vx; } /* corner: full back */
-            if (!(wv & 0x80)) k->speed = 0;  /* $20/$24/$26: dead stop   */
-            k->bounce_cool = 10;             /* the $42 ballistic window */
+            /* MEASURED head-on at 820 (NOTES 089), tracking the
+             * displacement rather than just the velocity:
+             *
+             *   f0-6   fwd -1.8 px and held   pushed back under 2 px
+             *   f8+    fwd 2.7 .. 29.4 px     drives on, scraping along
+             *   speed  820 throughout         never lost
+             *
+             * So a wall does NOT throw the kart back: it stops the
+             * into-wall motion, holds briefly, and you scrape along it.
+             * Reflecting the velocity and then running ten ballistic
+             * frames sent the kart ~30 px backwards - the "bounce is a
+             * few meters long" report.  Cancel the blocked component,
+             * keep the tangential one, keep the speed.
+             *
+             * The $20/$24/$26 family still stops dead (speed -> 0, 3 px
+             * of travel in the same battery). */
+            if (bx) k->vx = 0;
+            if (by) k->vy = 0;
+            if (!(wv & 0x80)) { k->speed = 0; k->vx = 0; k->vy = 0; }
+            k->bounce_cool = 6;              /* the measured hold        */
         }
         return;
     }

@@ -42,6 +42,9 @@ shots: game $(BASE)
 selftest: game $(BASE)
 	@$(NATIVE)/smk_selftest $(BASE)
 
+ailap: game $(BASE)
+	@$(NATIVE)/smk_ailap $(BASE)
+
 ## verify the ported kinematics against the game running in the oracle (slow)
 verify-physics: $(BASE)
 	@$(PY) tools/verify_physics.py 120
@@ -118,5 +121,6 @@ help:
 check: $(BASE)
 	@cmake --build build-native -j$$(nproc)
 	@./build-native/smk_selftest rom/smk_usa.sfc | tail -1
+	@./build-native/smk_ailap rom/smk_usa.sfc | tail -1
 	@$(PY) tools/test.py | tail -1
 	@SDL_VIDEODRIVER=dummy ./build-native/smk --frames 60 >/dev/null && echo "smoke: game binary runs"

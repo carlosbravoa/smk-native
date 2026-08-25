@@ -389,6 +389,36 @@ bool smk_hud_load(const smk_rom *rom, smk_hud *out);
 static inline int smk_hud_digit(int d)
 { return (d < 5 ? 0xA7 + d : 0xB7 + (d - 5)) - SMK_HUD_TILE0; }
 
+/* ---- Opponent karts ---------------------------------------------------
+ *
+ * The DATA is the ROM's (sector map, waypoints, acceleration tables) and
+ * the steering law matches the decoded shape; the slew rate, the
+ * target-speed entry per kart and rubber-banding are PLACEHOLDERS,
+ * labelled in src/ai.c. */
+typedef struct {
+    smk_kart k;
+    int      sector;        /* last on-course sector                    */
+    int      lap;
+    int      progress_max;  /* $F8,x: max of (lap<<8)|sector, monotonic */
+    int      slow_frames;   /* stuck-at-a-wall recovery counter         */
+    int      escape;        /* frames left of hold-heading wall escape  */
+    int      was_fast;      /* escape only after the kart has driven    */
+    int      last_px, last_py, still;   /* position-stagnation detector  */
+    int      esc_len;       /* escalating escape duration               */
+    int      no_prog;       /* frames since monotonic progress          */
+    int      rescue_max;    /* rescue timer's own progress watermark    */
+    int      lap_cool;      /* one lap event per strip transit          */
+} smk_racer;
+
+/* Sprite-obstacle collision, shared by the player and the AI. */
+void smk_collide_objects(smk_kart *k, const smk_course *crs);
+extern const smk_course *course_for_step;
+
+int  smk_race_rank(const smk_racer *racers, int who, const smk_course *crs);
+void smk_racer_start(smk_racer *r, const smk_course *crs, int slot);
+void smk_racer_step(smk_racer *r, const smk_track *trk,
+                    const smk_course *crs, const smk_physics *phys);
+
 /* The projection constants, from the ROM's own DSP-1 geometry
  * (docs/NOTES.md 084).  depth(line) = K/(line - H) world px from the eye;
  * LES is the DSP's own screen distance and makes depth/scale exact. */

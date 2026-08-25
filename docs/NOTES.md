@@ -2590,4 +2590,50 @@ plow now rotates velocity away from the heading at the measured
 
 ---
 
-*(next entry: 089)*
+**089** — Playtest round: the wall is not a bounce, the slide saturates,
+and a verification claim I had been making was hollow.
+
+**The wall, measured by DISPLACEMENT** (head-on at 820, tracking where
+the kart actually ends up rather than just its velocity):
+
+    f0-6   fwd -1.8 px, held      pushed back under two pixels
+    f8+    fwd 2.7 .. 29.4 px     drives on, scraping along the wall
+    speed  820 the whole time     never lost
+
+A wall does not throw you back at all.  It cancels the into-wall motion,
+holds for about six frames, and then you scrape along it.  Our port
+REFLECTED the velocity and then ran ten ballistic frames, which is ~30 px
+of backward flight - the "bounce is a few meters long" report.  Ported:
+cancel the blocked component, keep the tangential one, keep the speed.
+($20/$24/$26 still stop dead, as NOTES 088 measured.)
+
+**The slide, measured over 150 frames of hop-drift:**
+
+    f5 11.2 deg  f10 22.8  f20 43.0  f30 62.3  f45 75.0  f60 83.8
+
+The growth DECAYS - per-frame steps of 423, 366, 352, 154, 106 - so slip
+approaches a ceiling near 17000 units (93 deg) at about 0.03 of the
+remaining gap each frame.  My constant 130/frame grew it without bound:
+the kart swung past 90 degrees and travelled backwards, which is exactly
+the reported "magically drifts opposite to where you are heading" and
+the side-on sprite that comes with it.  Speed in the same capture holds
+around 850 and then sags to ~0.70 of pace.  All three ported.
+
+**The hop never fired at all**: `input_edges_clear()` ran immediately
+before `step_kart()`, so `in.hop` was always false by the time the
+physics read it.  Reported as "no jump" twice; it was never a physics
+question.
+
+**And a correction about verification, not about the game.**  The "AI
+completes a lap on 20/20 tracks" gate I have been quoting all along ran
+from a harness outside the repo, and `racer_step` was `static` in
+main.c - so that harness could only have been exercising a SECOND COPY
+of the AI logic.  It could have passed while the shipped AI was broken.
+The AI now lives in `src/ai.c` in the library, the regression
+(`tools/ailap.c`) links the same code the game runs, and it is part of
+`make check`.  The labs themselves have moved into `tools/labs/` for the
+same reason: /tmp was cleaned this session and took every rig with it.
+
+---
+
+*(next entry: 090)*

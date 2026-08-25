@@ -17,6 +17,7 @@ add_library(smkcore STATIC
   src/mode7.c
   src/kart.c
   src/physics.c
+  src/ai.c
   src/sprite.c
   src/course.c
 )
@@ -32,6 +33,10 @@ target_compile_options(smk PRIVATE -Wall -Wextra -O2)
 add_executable(smk_selftest tools/selftest.c)
 target_link_libraries(smk_selftest PRIVATE smkcore)
 target_compile_options(smk_selftest PRIVATE -Wall -Wextra -O2)
+
+add_executable(smk_ailap tools/ailap.c)
+target_link_libraries(smk_ailap PRIVATE smkcore)
+target_compile_options(smk_ailap PRIVATE -Wall -Wextra -O2)
 
 enable_testing()
 add_test(NAME selftest COMMAND smk_selftest ${CMAKE_SOURCE_DIR}/rom/smk_usa.sfc)
