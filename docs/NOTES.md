@@ -2487,4 +2487,34 @@ start countdown.
 
 ---
 
-*(next entry: 086)*
+**086** — The entity (pipe) sprite chain located; art confirmed, source
+offset still to pin.
+
+What is now certain:
+
+* The live pipe on Mario Circuit is VRAM sprite tiles **$CE-$D7**,
+  arranged **2 wide x 5 tall** (16 x 40 px), sprite **palette 7**
+  ($80 + 7*16 = $F0) - rendered from the running machine's own VRAM and
+  CGRAM, unmistakably the green pipe.  The entity block at $1800 carries
+  exactly that tile list at offset **+$0A**.
+* The load chain: `$81:E592` decompresses **$C7:0000 -> $7F:4400**;
+  `$81:E5A0` then expands it into the sprite staging with a
+  copy-16-bytes / zero-16-bytes loop up to source $2000 - i.e. the
+  entity art is **2bpp** widened to 4bpp (planes 2-3 zero), which is why
+  only palette entries 1-3 are used.  `$85:81A9` DMAs 8192 bytes from
+  $7F:A000 to VRAM $8000 (tiles $00-$FF), after which the HUD blob
+  overwrites $40-$BF - so tiles $C0-$FF are the entity set.
+* Mapping: VRAM tile n <- staging $A000 + n*32 <- source $4400 + n*16.
+
+Open (next session, short): decompressing $C7:0000 gives 4096 bytes, but
+the loop consumes 8192 from $7F:4400, so a second stream fills
+$5400-$63FF; and tiles rendered from `blob[n*16]` do not yet match VRAM
+byte-for-byte, so the staging is not a plain 1:1 image of that one
+stream.  The reliable fix is to replicate the game's own sequence (both
+decompressions into a $7F image, then the expand loop) exactly as
+`smk_track_load` already does for tilesets - all anchors above are
+verified.
+
+---
+
+*(next entry: 087)*
