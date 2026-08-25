@@ -122,5 +122,7 @@ check: $(BASE)
 	@cmake --build build-native -j$$(nproc)
 	@./build-native/smk_selftest rom/smk_usa.sfc | tail -1
 	@./build-native/smk_ailap rom/smk_usa.sfc | tail -1
+	@./build-native/smk_demoreplay rom/smk_usa.sfc tools/labs/mame/demo_race.csv 1000 --gate | tail -1
+	@./build-native/smk_demoreplay rom/smk_usa.sfc tools/labs/mame/demo_race.csv 1100 --gate | tail -1
 	@$(PY) tools/test.py | tail -1
 	@SDL_VIDEODRIVER=dummy ./build-native/smk --frames 60 >/dev/null && echo "smoke: game binary runs"

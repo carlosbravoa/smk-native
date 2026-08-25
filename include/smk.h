@@ -283,6 +283,9 @@ void smk_player_reset(smk_player *p, uint16_t heading);
  * Right $0100 L $0020 R $0010. */
 void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
                      uint16_t held, uint16_t pressed);
+/* DSP-1 command $04: radius * (sin, cos) of a 16-bit angle, the chip's own
+ * table arithmetic (see player.c) - use it wherever the game does */
+void smk_dsp_sincos(uint16_t angle, int16_t radius, int16_t *sx, int16_t *cy);
 /* the camera azimuth the ROM feeds DSP-1 ($808632): heading + $C0 */
 #define SMK_CAM_LEAD 0x00C0
 

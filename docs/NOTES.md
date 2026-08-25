@@ -3320,3 +3320,45 @@ turning without a slide is still the synthesised lag; the mini-boost
 state $12 and the shoulder-held long-hold are transcribed but not observed.
 MAME notes: Lua taps are blind to bank-$7E accesses, `bpset` never fires,
 debugger `wpset` needs the exact bank (`00`/`7e`/`81`).
+
+---
+
+**107** — The demo race replayed through the port: an end-to-end accuracy
+gate, and the three things it caught.
+
+`tools/demoreplay.c` sets the port up from the attract race's first moving
+frame (track 7, Mario/Toad, 100cc, coins from the log since the port does
+not collect them yet) and drives it with the recorded pad words only,
+comparing position, heading and speed with the game every frame and
+resyncing from the log whenever the position error passes 4 px - so each
+divergence is located and described.  Part of `make check`.
+
+Before any fix P1 needed 21 resyncs; now (P1 / P2):
+
+    within 1 px   93.0% / 95%+     mean error 0.20 px
+    within 4 px   99.4% / 99.9%    longest clean run 930 / 902 frames
+    resyncs       7 (mushroom x6, one collision) / 1
+
+What the replay found, none of it visible in the field-level replays:
+
+1. **Surface type comes only from driveable classes.**  `$80B3B7` updates
+   `$B0` for classes >= `$40`; `$20-$3F` are the wall/hazard handlers and
+   `$00-$1F` the object classes (item box `$14`, coin `$16`, `$1A` a no-op).
+   Our `(s>>1)&$F` turned a one-frame `$1A` under the kart into "type 13"
+   and applied the off-road bite; the game applies nothing.
+2. **The DSP-1's sine is table arithmetic**, not a floating sine.  Fitted
+   against all 2381 velocity samples of the race: 256-entry 1.15 tables,
+   slope interpolation, negative angles by symmetry, `$7FFF` clamp, floored
+   radius product - 2317 bit-exact, the rest +-1 (the `dsp1.bin` dump's
+   own table does worse with that interpolation, so the exact microcode
+   remains open; LABELLED).  A double sin/cos matched 22%.
+   `smk_dsp_sincos` in player.c.
+3. **Position integrates with the PREVIOUS frame's velocity**:
+   `pos(N+1) = pos(N) + v(N)` - `$80879D` runs before the kart loop
+   recomputes `$22/$24`.  Moving with the new velocity crept 0.08 px per
+   frame with identical velocities.
+
+Also: seeding the resync's accel from `$EE` removed a 2.5 px offset that
+came from starting one frame late off the grid.  The residual after all
+this is positional - a 2 px offset can put the port on an edge tile with
+a cap for a few frames (seen after the mushroom) - and the +-1 sine.

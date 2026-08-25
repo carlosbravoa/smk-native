@@ -39,6 +39,10 @@ add_executable(smk_ailap tools/ailap.c)
 target_link_libraries(smk_ailap PRIVATE smkcore)
 target_compile_options(smk_ailap PRIVATE -Wall -Wextra -O2)
 
+add_executable(smk_demoreplay tools/demoreplay.c)
+target_link_libraries(smk_demoreplay PRIVATE smkcore m)
+target_compile_options(smk_demoreplay PRIVATE -Wall -Wextra -O2)
+
 enable_testing()
 add_test(NAME selftest COMMAND smk_selftest ${CMAKE_SOURCE_DIR}/rom/smk_usa.sfc)
 

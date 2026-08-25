@@ -134,6 +134,48 @@ void smk_player_reset(smk_player *p, uint16_t heading)
     p->target = p->base_top;
 }
 
+/* ---- the DSP-1's sine ------------------------------------------------- */
+/* Command $04 on the DSP-1 does not compute a floating sine: it
+ * interpolates a 256-entry 1.15 table with a slope table (the algorithm
+ * the DSP-1 emulators use, tables generated here - no chip ROM data),
+ * negative angles by symmetry, results clamped to $7FFF, and the radius
+ * product floored.  Fitted against every velocity sample of the demo
+ * race (tools/labs/mame/demo_race.csv): 2317/2381 frames bit-exact, the
+ * rest +-1 - a double sin/cos matches only 22%.  LABELLED: the residual
+ * +-1 needs the uPD7725 microcode itself. */
+static int16_t SIN_T[256], COS_T[256], MUL_T[256];
+static bool sin_ready;
+static void sin_init(void)
+{
+    if (sin_ready) return;
+    for (int i = 0; i < 256; i++) {
+        double a = 2.0 * M_PI * i / 256.0;
+        long sv = lround(32768.0 * sin(a)), cv = lround(32768.0 * cos(a));
+        SIN_T[i] = (int16_t)(sv > 32767 ? 32767 : sv);
+        COS_T[i] = (int16_t)(cv > 32767 ? 32767 : cv);
+        MUL_T[i] = (int16_t)lround(i * M_PI);
+    }
+    sin_ready = true;
+}
+static int16_t dsp_sin(int16_t a)
+{
+    if (a < 0) { if (a == -32768) return 0; return (int16_t)-dsp_sin((int16_t)-a); }
+    int s = SIN_T[a >> 8] + ((MUL_T[a & 0xFF] * COS_T[a >> 8]) >> 15);
+    return (int16_t)(s > 32767 ? 32767 : s);
+}
+static int16_t dsp_cos(int16_t a)
+{
+    if (a < 0) { if (a == -32768) return -32768; a = (int16_t)-a; }
+    int s = COS_T[a >> 8] - ((MUL_T[a & 0xFF] * SIN_T[a >> 8]) >> 15);
+    return (int16_t)(s < -32768 ? -32767 : s);
+}
+void smk_dsp_sincos(uint16_t angle, int16_t radius, int16_t *sx, int16_t *cy)
+{
+    sin_init();
+    *sx = (int16_t)(((int32_t)radius * dsp_sin((int16_t)angle)) >> 15);
+    *cy = (int16_t)(((int32_t)radius * dsp_cos((int16_t)angle)) >> 15);
+}
+
 /* ---- helpers --------------------------------------------------------- */
 static inline int16_t s16(int v) { return (int16_t)(uint16_t)v; }
 static inline int abs16(int v) { return v < 0 ? -v : v; }
@@ -177,15 +219,22 @@ static void decay(smk_player *p, const uint16_t *row)
 void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
                      uint16_t held, uint16_t pressed)
 {
+    /* 0. $80879D - the position integration runs BEFORE the kart loop
+     *    recomputes the velocity: pos(N+1) = pos(N) + v(N).  Verified by
+     *    the demo replay - integrating with the new velocity crept ~0.08
+     *    px per frame away from the game with identical velocities. */
+    smk_kart_move(k, t);
+
     /* 1. $80A4D0 - speed and velocity.  The velocity angle is $A2, the
      *    heading plus the slide's velocity lag, from LAST frame's update. */
     k->accel      = (int16_t)(p->accel32 >> 16);
     k->accel_frac = (uint16_t)(p->accel32 & 0xFFFF);
     smk_kart_accelerate(k);
     if (k->bounce_cool == 0) {
-        double a = (double)p->vel_angle * (2.0 * M_PI / 65536.0);
-        k->vx = (int16_t)lrint(sin(a) * (double)k->speed);
-        k->vy = (int16_t)lrint(-cos(a) * (double)k->speed);
+        int16_t sx, cy;
+        smk_dsp_sincos(p->vel_angle, k->speed, &sx, &cy);   /* DSP-1 cmd $04 */
+        k->vx = sx;
+        k->vy = (int16_t)-cy;                                /* eor/inc: -cos */
     }
     int spd = k->speed;
 
@@ -196,7 +245,13 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
 
     /* 2. $80B1BE - the jump machine */
     uint8_t surf = smk_track_surface(t, smk_kart_px(k->x), smk_kart_px(k->y));
-    p->type = smk_surface_type(surf);
+    /* $80B3B7: the surface TYPE $B0 is taken only from driveable classes
+     * ($40 and up: `cmp #$40 / bcs`).  $20-$3F are the wall/hazard
+     * handlers and $00-$1F the object classes (item box $14, coin $16,
+     * $1A a no-op), none of which touch $B0 - so a stamped object tile
+     * under the kart keeps the road's type.  (Verified by the demo
+     * replay: the game applies no bite for a $1A frame.) */
+    if (surf >= 0x40) p->type = smk_surface_type(surf);
     if (k->airborne) {
         /* $80B1D5: gravity $1A, z += zvel << 8, land on the sign of $1F */
         smk_kart_gravity(k);
@@ -444,7 +499,5 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
         }
     }
 
-    /* the rest of the frame: integration, walls, objects (shared code) */
-    smk_kart_move(k, t);
     k->angle = p->heading;   /* the camera follows the heading ($808632) */
 }

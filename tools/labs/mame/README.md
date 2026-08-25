@@ -31,3 +31,6 @@ Files:
   the mushroom frames).
 * `camlog.lua` - the camera azimuth `$94` against the kart's angles.
 * `watch_setup.txt` - the debugscript that found the block writer.
+* `demo_race.csv` - the full per-frame log of the attract race (both
+  karts) that `tools/demoreplay.c` replays as the accuracy gate in
+  `make check` (NOTES 107).  Regenerate with `DEMOLOG=... demolog.lua`.
