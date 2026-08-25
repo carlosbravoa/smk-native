@@ -3435,3 +3435,45 @@ Ported as `src/effects.c`, drawn after the player sprite from its anchor;
 verified on the demo replay (smoke exactly over the game's `$E2 = $24`
 frames) and by eye (`SMK_REPLAY_SHOT=1130:out.ppm`).  Labelled: the
 drift-onset sheet frame 47 counts as `$BC` band 1 for the template choice.
+
+---
+
+**110** — Coins and item boxes, decoded and ported; and the surface lookup
+had been one row off all along.
+
+The collector (`$81B73B..$81B7D6`) runs once per frame for ONE human
+player, alternating - every P1 pickup in the demo lands on an odd frame,
+every P2 pickup on an even one - after the position integration and before
+the kart update, so it sees the new cell with the previous height (`$1F`
+== 0; a coin on the hop's launch frame still counts, demo frame 919).
+It reads the CLASS of the cell under the kart (`$68,x`, from `$58,x`):
+
+    $1A  coin:  $0E00,y += 1 wrapping at 100 (`cmp #$64 / lda #0`), the
+                cell rewritten with the theme's erase tile ($81:8BBD by
+                theme), $0FC0,y = 1 for the sound
+    $14  box:   if no item is running, the roulette starts ($0D70,y =
+                $A000) and the 2x2 stamp becomes the "used box" tiles:
+                tile & 3 is the quadrant, $81B723 corrects to the top-left
+                cell, tiles $81B72B + (tile & $C) - $D0.., road class, so
+                a used box is inert until the game respawns it
+
+Coins are tile `$FE` / class `$1A` (the `$16` band is something else).  No
+code in banks $80-$85 ever decrements `$0E00` through any addressing form
+- coin loss on a hit is elsewhere or not what it looks like; LABELLED with
+the box respawn and the roulette.  Starting coins come from `$81E3DA` by
+the kart's `$E6` (2,2,3,3,4,4,5,5; the demo starts at 5): the port starts
+with 2, labelled.
+
+**The lookup rule.**  Matching the game's coin count frame for frame
+failed on a coin one row up until the game's own `$58` was logged: at
+y = 232.76 the game is on row 28, not 29.  `$80FA62` computes the row from
+**y - 1** (`lda $1C,x / dec A` before the shift), the column from x as is
+- and a kart 4 px or more up reads plain road (`$40`).  `smk_track_surface`
+claimed to mirror that routine and lacked the `dec`; fixed for everything
+that uses it (walls, caps, effects, pickups).  The demo replay's position
+score did not move.
+
+Result: `tools/demoreplay` now checks the coin count too (the other
+player's pickups are applied from its own log, since it takes coins off
+the same map): 0 mismatches on both karts, and the gate requires that.
+The HUD shows the real count.

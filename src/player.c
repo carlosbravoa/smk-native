@@ -259,6 +259,8 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
 
     /* 2. $80B1BE - the jump machine */
     uint8_t surf = smk_track_surface(t, smk_kart_px(k->x), smk_kart_px(k->y));
+    /* $80FA5A: four or more pixels up, the kart reads plain road ($40) */
+    if ((k->z >> 16) >= 4) surf = 0x40;
     /* $80B3B7: the surface TYPE $B0 is taken only from driveable classes
      * ($40 and up: `cmp #$40 / bcs`).  $20-$3F are the wall/hazard
      * handlers and $00-$1F the object classes (item box $14, coin $16,

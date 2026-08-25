@@ -303,6 +303,7 @@ typedef struct {
     int      state, drive;     /* $A6, $AC                               */
     uint16_t flags, flags10;   /* $E2, $10                               */
     int      z, zvel, coins;
+    uint8_t  surf;             /* $AE: the class byte under the kart      */
 } smk_demo_frame;
 typedef struct {
     smk_demo_frame *f;
@@ -614,6 +615,12 @@ void smk_draw_sprite_mini(const smk_sprites *s, int frame,
                           int cx, int cy, int scale, bool hflip,
                           uint32_t *pixels, int w, int h, int pitch_px);
 
+
+/* ---- Coins and item boxes (src/pickup.c, NOTES 110) ----------------------
+ * The collector at $81B73B: the tilemap cell under a grounded player decides.
+ * Returns true when something was picked up (the map is rewritten). */
+bool smk_pickup_step(const smk_rom *rom, smk_track *t, smk_player *p, const smk_kart *k,
+                     bool grounded_before);
 
 /* ---- Ground effects: tyre smoke and dust (src/effects.c, NOTES 109) ---- */
 typedef struct { int n; int8_t x[8], y[8]; uint8_t tile[8], attr[8]; } smk_effect_template;

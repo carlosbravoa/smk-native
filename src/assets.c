@@ -302,6 +302,11 @@ uint8_t smk_track_surface(const smk_track *t, int wx, int wy)
      * set the off-course flag and clamp ($80FAAE) - they do NOT wrap.
      * Wrapping here tiled the plane infinitely (playtest, NOTES 063).
      * Outside the world everything is solid wall. */
+    /* $80FA62: the ROW is taken from y - 1 (`lda $1C,x / dec A` before the
+     * shift), the column from x as is.  Verified against the game's own
+     * $58/$68 per frame (NOTES 110): at y = 232.76 the game is on row 28,
+     * not 29.  Without the -1 the port missed coins one row up. */
+    wy -= 1;
     if (wx < 0 || wx >= SMK_WORLD_PX || wy < 0 || wy >= SMK_WORLD_PX)
         return SMK_SURF_SOLID;
     unsigned tile = t->map[(wy >> 3) * SMK_MAP_DIM + (wx >> 3)];

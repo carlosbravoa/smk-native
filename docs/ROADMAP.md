@@ -50,7 +50,7 @@ re-investigating.
 
 | # | where | what we do | what the game does | phase |
 |---|---|---|---|---|
-| S1 | `src/main.c` `step_kart` | the acceleration curve and target speeds are now the ROM's, read at runtime; what is invented is the *policy* — which target entry input selects, the braking rate, the steering rate | per-character stats choose the target; steering is a slew toward `$FA,x`; plus drift, hop and per-surface response | P3 |
+| S1 | `src/player.c` | **RESOLVED** — the player's control is the ROM's own, transcribed and verified frame-exact against the demo race (NOTES 106-108): per-character top speed, acceleration table, surface caps, steering rows and drift row, the slide machine, spin-out, hop, coins on the target, the mushroom boost. Residual, labelled: coins are not collected yet (P5), the sprite's steering lean is synthesised, the DSP-1 sine is +-1 on 3% of frames, snow/splash effects | same | closed |
 | S2 | `src/assets.c` `smk_track_guess_start` | longest-road-run heuristic for the start position | per-track start line + grid layout, undecoded | P2 |
 | S4 | `src/mode7.c` camera | **RESOLVED** — the projection is derived from the ROM's own DSP-1 geometry: `depth(L)=4972/(L-20.36)`, `scale=depth/256` (the ratio is exactly `Les`=256, the cross-check), camera trails the kart 61 world px (NOTES 083/084) | the DSP-1 builds per-heading scanline tables at boot; HDMA feeds them to M7A-D | closed |
 | S5 | `src/mode7.c` `sky_colour` | invented vertical gradient from palette entries 1–2 | BG2 backdrop / per-track horizon graphics | P5 |
@@ -60,6 +60,7 @@ re-investigating.
 | S10 | `src/main.c` draw | karts AND entities sized by the game's own measured law (+$06 = 0x4200/kart distance), the sheet tier choosing only which drawing; the 2x magnification cap comes from the reference screenshot, not the ROM | same | **open, parked** — playable, but playtest 2026-08-25: distant pipes draw too small, and a pipe beside the kart may still be slightly small (not yet measured). The ROM-side answer is wherever the game turns `+$06` into a tile choice; the demo never draws entities, so it needs a rig that is not the attract race (NOTES 105) |
 | S11 | `src/main.c` start sequence | 3-2-1 countdown at 60 frames a step, karts held | the ROM's own start-frame count and Lakitu's light art | P5 |
 | S12 | `src/main.c` entities | the theme's own object art (pipes, Thwomps, ...) drawn from `$81:EBD3`, one size tier scaled continuously; entities do not move | the sheet stores a size TIER per distance band; `$84:DD15` drives type and motion (a Thwomp rises and slams) | P5 |
+| S13 | `src/player.c` per character | **decoded and read from the ROM** for the five tables the game has: base top speed (`$81:8000`), acceleration curve (`$81:8010`), off-road caps (`$81:8060`), steering rows (`$81:8088`) and the drift-row adjust (`$80A4C0`: Yoshi/Koopa slide one row lower). Only Mario (P1) and Toad (P2) are VERIFIED against the game so far - the other six characters run on the same code with their own tables but have not been replayed | every character handles differently; there may be further per-character factors (kart-to-kart weight, item odds) not yet found | P3 residual: replay each character (needs a log per character - a real race, not the attract demo) |
 | S9 | `tools/smktool/dsp1.py` | full command set implemented; stream never desyncs; camera model verified against the game's own usage. Residual: gyrate is a passthrough, and raster/`$08`/`$18` scalings are unchecked | the real chip's exact fixed-point pipeline | largely closed (NOTES 039); residuals logged on first contact |
 
 *Resolved:* **S9 for command `$04` (sin/cos)** — pinned by unit analysis in
@@ -83,7 +84,7 @@ used; C output is byte-identical to the game's loader on all 24 courses.
 | P0.5 running machine | **mostly** — boots, uploads sound, runs races; no PPU picture, no SPC700, no HDMA |
 | P1 the track | **done** — themes, tilemaps, tilesets, palettes, surface table, all verified against VRAM |
 | P2 start / laps | **mostly** — real grid, decoded lap rule (NOTES 052) with the monotonic guard, race clock and start countdown.  Residual: finish/results flow, GP points |
-| P3 physics | **mostly** — kinematics verified exact against the running game; acceleration/steering tables read from the ROM; per-surface caps and decel MEASURED (NOTES 060-069); grip/breakaway measured across 12 classes with one absolute lateral limit (NOTES 079); wall rebound and pipe-crash response measured (NOTES 071/072).  Residual: what the slide counter `$C2` actually drives (SMK has NO mini-turbo - that is a Mario Kart 64 mechanic; do not import it), pipe-crash spin, collision state-machine details |
+| P3 physics | **done for the player** — the control is transcribed from the ROM and replays the attract race's human inputs frame-exact: 99.8% / 100% of frames within 1 px (NOTES 106-108), with tyre smoke and dust from the game's own effect object (NOTES 109).  Residual: kart-to-kart collision (the one divergence left in the replay), the other six characters unverified (S13), water/snow effects, pipe-crash spin |
 | P4 sprites | **done** — the projection is derived once from the ROM's own DSP-1 geometry (NOTES 083/084): depth(L)=4972/(L-20.36), scale=depth/256 (ratio = Les, the cross-check), camera trails the kart 61 px.  Pose ladder measured pixel-exact (NOTES 080/081).  Residual: kart-sheet rows 1-2 purpose, sprite size quantisation (ours is continuous, labelled) |
 | P5 race furniture | **part** — ground objects stamped with the ROM's own tiles (NOTES 074), sprite-obstacle entity list decoded and colliding (NOTES 078), HUD set + clock + lap counter on the game's own art, start countdown (NOTES 085).  Residual: entity sprite art and motion handlers, item behaviour, Lakitu, per-track horizon |
 | P6 opponents | **done to first order** — flow-field steering (95% byte-exact), ramp launches over jump gaps, wall escapes, and a Lakitu rescue: **20/20 strict laps** at 19-74 s (NOTES 057).  Residuals: ramp velocity placeholder, `$80ABxx` lane adjusters, rubber-banding, Lakitu animation |
@@ -159,7 +160,13 @@ call frequency (R1).
 - Acceptance: our lap counter agrees with the checkpoint data on a hand-driven
   path around each track.
 
-### P3 — Kart physics (the core of "feel")   [kinematics ✅, control next]
+### P3 — Kart physics (the core of "feel")   ✅ DONE for the player (NOTES 106-109)
+
+**Per-character behaviour (note, 2026-08-25):** every kart differs - top
+speed, acceleration, off-road caps, steering rows, drift row - and all five
+are decoded and read per character (S13).  Two characters are verified by
+replay; the rest need their own captured races.  Keep an eye out for
+factors we have not seen yet (weight in kart collisions, item odds).
 Done: the motion primitive, the RAM layout, the units, and the exact
 integration (NOTES 016-017), ported to `src/kart.c`. Remaining: the
 acceleration curve, steering/drift/hop, per-surface response and the

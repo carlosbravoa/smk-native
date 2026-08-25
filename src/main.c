@@ -343,7 +343,11 @@ static smk_player player;
 /* One frame of the player's kart: the DECODED control (src/player.c, NOTES
  * 103).  This function only translates the SDL input into the SNES pad word
  * the ROM composes at $80A3CC and publishes the HUD readouts. */
-static void step_kart(smk_kart *k, const smk_track *trk,
+static const smk_rom *rom_for_step;
+static const char *replay_path;         /* --replay: drive the kart from the game's log */
+static int replay_kart = 1000;          /* 1000 = P1 (Mario), 1100 = P2 (Toad)        */
+static int replay_i;
+static void step_kart(smk_kart *k, smk_track *trk,
                       const smk_physics *phys, const input_state *in)
 {
     (void)phys;
@@ -354,8 +358,20 @@ static void step_kart(smk_kart *k, const smk_track *trk,
     if (in->right)    held |= 0x0100;
     if (in->hop_held) held |= 0x0020;        /* L (R is the same button) */
     if (in->hop)      pressed |= 0x0020;     /* a fresh press hops       */
+    bool grounded = k->z == 0;                   /* $1F,x before this frame's jump update */
     smk_player_step(&player, k, trk, held, pressed);
     if (course_for_step) smk_collide_objects(k, course_for_step);
+    /* the collector ($81B73B) serves ONE player per frame, alternating:
+     * every P1 pickup in the demo lands on an odd frame, every P2 pickup
+     * on an even one, with the cell the kart is on after that frame's
+     * move (NOTES 110).  A coin crossed on the other parity is missed if
+     * the kart has left its cell by the next frame - as in the game. */
+    {
+        unsigned parity = replay_path ? (unsigned)replay_i : fx_ticks;
+        unsigned mine = (replay_path && replay_kart == 1100) ? 0u : 1u;
+        if (rom_for_step && (parity & 1u) == mine)
+            smk_pickup_step(rom_for_step, trk, &player, k, grounded);
+    }
 
     /* the ground effect object ($80CF7B..$80D4A3): what the surface under
      * the kart and the slide/spin state ask for this frame */
@@ -633,7 +649,7 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
                          rw / 2 - 16 * scale, prow - lift - 16 * scale, scale,
                          trk->palette, fb, rw, rh);
     }
-    draw_hud(fb, rw, rh, trk->palette, hud_lap, 5, hud_rank);
+    draw_hud(fb, rw, rh, trk->palette, hud_lap, player.coins, hud_rank);
     draw_clock(fb, rw, rh, trk->palette, hud_race_frames);
     /* live input state, so a stuck control is visible rather than
      * looking like a physics bug */
@@ -762,8 +778,7 @@ int main(int argc, char **argv)
     int win_w = 1024, win_h = 896, pixel = 2, fullscreen = 0;
     const char *dump = NULL;          /* write raw track data and exit      */
     const char *shot = NULL;          /* render one frame to a BMP and exit */
-    const char *replay_path = NULL;   /* --replay: drive the kart from the game's log */
-    int replay_kart = 1000;           /* 1000 = P1 (Mario), 1100 = P2 (Toad)        */
+    replay_path = NULL;
     float shot_x = 512, shot_y = 512, shot_a = 0;
     int have_at = 0;
     long max_frames = 0;              /* >0: run headless for N frames, then exit */
@@ -969,6 +984,10 @@ int main(int argc, char **argv)
 
     smk_camera cam = { 0 };
     course_for_step = &crs;
+    rom_for_step = &rom;
+    /* starting coins: the ROM's table at $81E3DA by the kart's $E6 field,
+     * entry 0 = 2 (LABELLED: $E6 is not modelled; the demo starts with 5) */
+    player.coins = 2;
     static smk_racer racers[SMK_CHARACTERS];
     for (int i = 0; i < SMK_CHARACTERS; i++)
         smk_racer_start(&racers[i], &crs, i);
@@ -984,7 +1003,7 @@ int main(int argc, char **argv)
         .angle = g0h,
     };
     smk_player_reset(&player, g0h);
-    int replay_i = 0;
+    replay_i = 0;
     if (replay_path) {
         replay_i = replay.start;
         smk_demolog_sync(&replay, replay_i, &player, &kart);
@@ -1086,8 +1105,8 @@ int main(int argc, char **argv)
                     in.right = (r->c4 & 0x0100) != 0;
                     in.hop_held = (r->c4 & 0x0030) != 0;
                     in.hop = (r->c4 & 0x000C) != 0;
-                    player.coins = r->coins;
-                    /* the item use is an input the log only shows by its
+                    /* coins are collected by the port itself now; the
+                     * item use is an input the log only shows by its
                      * effect: the boost state appearing */
                     if (r->drive == 0x10 && replay.f[replay_i - 1].drive != 0x10)
                         smk_player_boost(&player);
@@ -1101,8 +1120,8 @@ int main(int argc, char **argv)
             if (replay_path && getenv("SMK_REPLAY_TRACE") && replay_i < replay.n) {
                 const smk_demo_frame *r = &replay.f[replay_i];
                 double dx = (kart.x - r->x) / 65536.0, dy = (kart.y - r->y) / 65536.0;
-                fprintf(stderr, "replay f%d fx %d pad %04X off %.2f px spd %d/%d head %u/%u st %02X/%02X v %d,%d/%d,%d vlag %d/%d turn %d/%d pos %.3f,%.3f\n",
-                        replay_i, fx_state.kind, r->c4, sqrt(dx * dx + dy * dy), kart.speed, r->speed,
+                fprintf(stderr, "replay f%d fx %d coins %d/%d pad %04X off %.2f px spd %d/%d head %u/%u st %02X/%02X v %d,%d/%d,%d vlag %d/%d turn %d/%d pos %.3f,%.3f\n",
+                        replay_i, fx_state.kind, player.coins, r->coins, r->c4, sqrt(dx * dx + dy * dy), kart.speed, r->speed,
                         player.heading, r->a4, player.state, r->state, kart.vx, kart.vy, r->vx, r->vy,
                         player.vlag, r->vlag, player.turn, r->turn, kart.x / 65536.0, kart.y / 65536.0);
             }

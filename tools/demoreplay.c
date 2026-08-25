@@ -37,8 +37,11 @@ int main(int argc, char **argv)
         else kart_id = atoi(argv[i]);
     }
 
-    static smk_demolog log;
+    static smk_demolog log, other;
     if (!smk_demolog_load(csv, kart_id, &log)) { fprintf(stderr, "cannot read %s for kart %d\n", csv, kart_id); return 2; }
+    /* the other player takes coins off the same map: apply its pickups
+     * from its own log, or this kart collects coins that were gone */
+    bool have_other = smk_demolog_load(csv, kart_id == 1000 ? 1100 : 1000, &other);
 
     smk_rom rom;
     char err[256];
@@ -66,15 +69,30 @@ int main(int argc, char **argv)
 
     int n = 0, within1 = 0, within_tol = 0, resyncs = 0, streak = 0, best_streak = 0;
     double sum_err = 0, max_err = 0;
-    int max_err_frame = -1, head_bad = 0, spd_bad = 0;
+    int max_err_frame = -1, head_bad = 0, spd_bad = 0, coin_bad = 0, coin_diff = 0;
     for (int i = i0 + 1; i < nrows; i++) {
         const smk_demo_frame *r = &log.f[i];
         uint16_t c4 = r->c4, held, pressed;
         smk_demolog_pad(r, &held, &pressed);
-        p.coins = r->coins;
         if (r->drive == 0x10 && log.f[i - 1].drive != 0x10) smk_player_boost(&p);
+        if (have_other && i < other.n && other.f[i].coins > other.f[i - 1].coins) {
+            int ox = (other.f[i].x >> 16) & 1023, oy = ((other.f[i].y >> 16) - 1) & 1023;
+            int oc = (oy >> 3) * 128 + (ox >> 3);
+            if (trk.surface[trk.map[oc]] == 0x1A)
+                trk.map[oc] = rom.data[smk_snes_to_pc(&rom, 0x818BBDu + (uint32_t)trk.theme)];
+        }
+        bool grounded = k.z == 0;                   /* $1F,x BEFORE this frame's jump update: the launch frame still counts */
         smk_player_step(&p, &k, &trk, held, pressed);
         smk_collide_objects(&k, &crs);
+        /* the collector serves P1 on odd frames and P2 on even ones */
+        if ((i & 1) == (kart_id == 1000 ? 1 : 0))
+            smk_pickup_step(&rom, &trk, &p, &k, grounded);
+        if (p.coins != r->coins) {
+            coin_bad++;
+            if (coin_diff != p.coins - r->coins)
+                printf("  coins differ from frame %d: port %d game %d\n", i, p.coins, r->coins);
+        }
+        coin_diff = p.coins - r->coins;
 
         double gx = r->x / 65536.0, gy = r->y / 65536.0;
         double px = k.x / 65536.0, py = k.y / 65536.0;
@@ -87,10 +105,12 @@ int main(int argc, char **argv)
         int dh = s16((int)p.heading - r->a4);
         int ds = k.speed - r->speed;
         n++;
-        if (i >= trace_a && i <= trace_b)
-            printf("  f%4d pad %04X | spd %4d/%4d | AC %02X/%02X fc %d | A4 %5d/%5d | A6 %02X/%02X | pos game %8.3f,%8.3f port %8.3f,%8.3f err %.2f\n",
-                   i, c4, r->speed, k.speed, r->drive, p.drive, p.fc, r->a4, p.heading,
-                   r->state, p.state, gx, gy, px, py, e);
+        if (i >= trace_a && i <= trace_b) {
+            int cx = smk_kart_px(k.x) & 1023, cy = smk_kart_px(k.y) & 1023;
+            int cell = (cy >> 3) * 128 + (cx >> 3);
+            printf("  f%4d coins %d/%d | class port %02X game %02X | cell %d tile %02X | pos game %8.3f,%8.3f port %8.3f,%8.3f err %.2f\n",
+                   i, p.coins, r->coins, trk.surface[trk.map[cell]], r->surf, cell, trk.map[cell], gx, gy, px, py, e);
+        }
         sum_err += e;
         if (e <= 1.0) within1++;
         if (e <= tol) { within_tol++; streak++; if (streak > best_streak) best_streak = streak; }
@@ -109,13 +129,13 @@ int main(int argc, char **argv)
            "max %.1f px at %d\n", n, within1, 100.0 * within1 / n, tol, within_tol,
            100.0 * within_tol / n, sum_err / n, max_err, max_err_frame);
     printf("heading off by >8 on %d frames, speed off by >2 on %d frames, resyncs %d, "
-           "longest run within tol %d frames\n", head_bad, spd_bad, resyncs, best_streak);
+           "longest run within tol %d frames, coins wrong on %d frames\n", head_bad, spd_bad, resyncs, best_streak, coin_bad);
     if (gate) {
         /* The gate: what the port achieves today, so a regression shows.
          * P1: one divergence left, a kart-to-kart collision near the end
          * (the demo's AI karts are not in the port); P2 is exact. */
         bool ok = 100.0 * within_tol / n >= 99.5 && best_streak >= 1100
-               && 100.0 * within1 / n >= 99.0;
+               && 100.0 * within1 / n >= 99.0 && coin_bad == 0;
         printf("demo replay gate (kart %d): %s\n", kart_id, ok ? "PASS" : "FAIL");
         return ok ? 0 : 1;
     }
