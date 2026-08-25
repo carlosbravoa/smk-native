@@ -2342,4 +2342,30 @@ wrong interpretation - uploads are 512-byte STRIPS, not frames.
 
 ---
 
-*(next entry: 081)*
+**081** — Playtest round on the pose rule: three sign/gate bugs, each
+against data already in hand.
+
+* "Sideways at rest": at speed 0 the slip angle is atan2 of a zero
+  vector vs the heading - garbage that fed the ladder (and was also the
+  ORIGINAL "head lean at rest" of NOTES 073).  Slip now gates to zero
+  below walking pace.
+* "Wrong side, only head lean": the slide term entered the ladder as
+  velocity-minus-heading; the ROM's input is heading-minus-camera, so
+  slides contribute MINUS the slip.  Wrong sign cancelled the steer
+  lean.  Also lag and slip combine as the LARGER magnitude, not the sum
+  (the lab pins drift rel ~= slip alone: $1640 -> frame 2).
+* Steady steer lag re-bracketed: the lab shows frame 1 (band
+  $1000-$1800) after 8 frames of slip-free steering, so the lag target
+  is $1400, not $0C00 (which sat in 47's band - "turning only leans the
+  head").
+* Slide dynamics refitted to the lab's own slip trajectory (1024@6f,
+  5696@20f, 8640@40f): hop-drift g = 0.045 (0.10 capped slip below the
+  sideways poses), turn-authority collapse does NOT apply during a
+  hop-drift (the lab drifts steer at full rate), and the plow's
+  negative-g growth requires HELD steering - released steering recovers
+  (measured ~150/frame).  Sim-verified phase table now walks
+  MIRROR -> 47 -> 1 -> 2+ and back.
+
+---
+
+*(next entry: 082)*

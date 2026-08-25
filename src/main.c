@@ -532,6 +532,11 @@ static void step_kart(smk_kart *k, const smk_track *trk,
         while (slip_now < -(float)M_PI) slip_now += 2.0f * (float)M_PI;
     }
     float slip_u0 = fabsf(slip_now) * 65536.0f / (2.0f * (float)M_PI);
+    /* below walking pace there is no meaningful velocity direction -
+     * atan2 of a near-zero vector against the heading is garbage (the
+     * "sideways at rest" bug) */
+    int spd_abs = k->speed < 0 ? -k->speed : k->speed;
+    if (spd_abs < 40) slip_now = 0.0f;
     player_slip_deg = (int)(fabsf(slip_now) * 180.0f / (float)M_PI);
     player_slip_units = (int)(slip_now * 65536.0f / (2.0f * (float)M_PI));
 
@@ -539,8 +544,12 @@ static void step_kart(smk_kart *k, const smk_track *trk,
     int auth = (k->speed < 0 ? -k->speed : k->speed);
     if (auth > top) auth = top;
     int turn = top ? FEEL_TURN * auth / top : 0;
-    if (slip_u0 > 4000.0f)
-        turn = turn * 6 / 100;               /* measured plow: ~-20 vs -307 */
+    if (slip_u0 > 4000.0f && !in->hop_held)
+        turn = turn * 6 / 100;               /* measured plow: ~-20 vs -307.
+                                                NOT during a hop-drift: the
+                                                lab's drift phases steer at
+                                                full rate (slip walks 1024 ->
+                                                8640 under held Left) */
     if (in->left)  k->angle -= (uint16_t)turn;
     if (in->right) k->angle += (uint16_t)turn;
 
@@ -602,12 +611,23 @@ static void step_kart(smk_kart *k, const smk_track *trk,
         if (k->airborne)
             g = 0.04f;                        /* hop: momentum carries    */
         else if (in->hop_held && k->speed > 300)
-            g = 0.10f;                        /* held slide (drift)       */
-        else if (lateral > limit || slip_u > 4000.0f)
-            g = 0.02f;                        /* plow: slip grows, as
-                                                 measured (+130/frame) -
-                                                 0.08 equilibrated and felt
-                                                 like grip (playtest) */
+            g = 0.045f;                       /* held slide: FIT to the
+                                                 lab's drift slip curve
+                                                 (1024@6f, 5696@20f,
+                                                 8640@40f - NOTES 080);
+                                                 0.10 capped slip at
+                                                 ~4200, below the
+                                                 sideways poses */
+        else if ((lateral > limit || slip_u > 4000.0f)
+                 && (in->left || in->right))
+            g = -0.026f;                      /* plow: slip GROWS, fit to
+                                                 the measured +130/frame
+                                                 at slip ~4000; positive
+                                                 g always decays and the
+                                                 plow self-recovered.
+                                                 Release steering ->
+                                                 branch below, decay
+                                                 ~150/frame as measured */
         else
             g = 0.50f * class_grip;           /* measured convergence     */
         k->vx = (int16_t)(k->vx + (float)(tvx - k->vx) * g);
@@ -759,17 +779,30 @@ static int frame_for(const input_state *in, float *lean)
      *         < $3000   frame 4       drift slip $1640 showed 2, $21C0
      *         ...                     showed 4 - pixel-exact matches)
      *
-     * Our camera is rigid, so the lag is synthesised: it ramps toward
-     * ~$0C00 over ~8 frames of held steer (the lab shows frame 1 after
-     * 8 frames of steering with zero slip, so the steady lag sits in
-     * 47's band's far side, $0800-$1000; $0C00 ramped at $180/frame is
-     * the labelled bracket midpoint).  Slides add the real slip angle. */
+     * Our camera is rigid, so the lag is synthesised: the lab shows
+     * frame 1 (band $1000-$1800) after 8 frames of slip-free steering,
+     * so the steady lag sits IN that band - target $1400, its middle
+     * (labelled bracket).  Slides contribute minus the slip angle, and
+     * lag/slip combine as the larger magnitude (drift rel ~= slip alone
+     * per the lab). */
     float want = (in->left ? -1.0f : 0.0f) + (in->right ? 1.0f : 0.0f);
     if (want != 0.0f)
-        *lean += ((want * 3072.0f) - *lean) * 0.22f;   /* -> $0C00 in ~8f */
+        *lean += ((want * 5120.0f) - *lean) * 0.22f;   /* -> $1400 in ~8f */
     else
         *lean *= 0.78f;
-    int rel = (int)*lean + player_slip_units;
+    /* The ROM's input is heading minus CAMERA; the camera aligns with
+     * the direction of travel, so the slide contribution is heading
+     * minus velocity = MINUS our slip (velocity minus heading).  Added
+     * with the wrong sign it cancels the steer lean - the "wrong side,
+     * never sideways" bug.  The lab pins drift rel ~= slip ALONE (slip
+     * $1640 -> frame 2, its own band), so lag and slide combine as the
+     * larger of the two, not the sum. */
+    int a1 = (int)*lean, a2 = -player_slip_units;
+    int rel;
+    if ((a1 >= 0) == (a2 >= 0))
+        rel = (a1 < 0 ? -a1 : a1) >= (a2 < 0 ? -a2 : a2) ? a1 : a2;
+    else
+        rel = a1 + a2;
     int a = rel < 0 ? -rel : rel;
     if (a < 0x0400) return 1000;                       /* mirrored straight */
     if (a < 0x1000) return rel > 0 ? -47 : 47;         /* 47 base = left    */
