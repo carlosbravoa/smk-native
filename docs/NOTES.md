@@ -2682,4 +2682,43 @@ the measured 11.2 / 22.8 / 43.0 / 62.3 / 75.0 / 83.8.
 
 ---
 
-*(next entry: 091)*
+**091** — Top speed was capped too low, and the surface table is
+verified byte-exact against the running game.
+
+**Top speed.**  `tools/labs/wall_top.py` holds the throttle along open
+road: the game reaches **963**.  We selected entry 3 of the ROM's
+target-speed table, which tops out at 672/816/880 for the three classes,
+so the kart was limited well under the game's own top - the "still feels
+slower than the real game" report.  Entry 6 (896/912/992) brackets the
+measured value for every class and keeps the 50 < 100 < 150 ordering.
+It also repairs the surface caps: those were measured as fractions of a
+road top of ~951, so a top of 672 shrank every off-road cap with it.
+`tools/labs/curve.c` prints our curve in the ROM battery's format for
+direct comparison.  Residual, labelled: our tail runs slightly fast, and
+963 sits above class 1's entry-6 value, so the exact entry is uncertain.
+
+**The surface table is right.**  `tools/labs/surftable.py` dumps the
+live $0B00 table and it is **byte-identical** to what our loader builds
+for track 7 - classes $26, $40, $52, $54, no bit-7 anywhere in the 192
+theme tiles.  Mario Circuit's barrier blocks are NOT theme tiles: they
+are tiles **240-243**, in the object range, whose classes come from the
+live $0BC0+ capture and are $80.  A lab that stopped scanning at tile
+192 therefore reported "no bit-7 wall on this track at all" - it was
+looking in the wrong half of the table.
+
+**The wall, third attempt.**  Two earlier tries failed in opposite
+directions: reflect + a 10-frame ballistic window threw the kart ~30 px
+backwards, and cancelling the component instead made it STICK.  The two
+clean captures are NOTES 044 (the into-wall component reflects, speed
+preserved) and NOTES 088 (a kart held against $80 still covers ~50 px
+per 40 frames, so it is not pinned).  Ported: reflect, keep the speed,
+and hand control back after a short window.  LABELLED - the reflection
+and speed preservation are measured, the 3-frame window is an estimate
+bracketed by those two captures.  Both attempts to capture the impact
+directly missed: filling the map with wall put the kart INSIDE a solid,
+and the aimed run drove past the block without ever setting the contact
+state.
+
+---
+
+*(next entry: 092)*

@@ -207,26 +207,32 @@ void smk_kart_move(smk_kart *k, const smk_track *t)
             uint8_t wv = bx
                 ? smk_track_surface(t, smk_kart_px(nx), smk_kart_px(k->y))
                 : smk_track_surface(t, smk_kart_px(k->x), smk_kart_px(ny));
-            /* MEASURED head-on at 820 (NOTES 089), tracking the
-             * displacement rather than just the velocity:
+            /* Wall response, from the two measurements that ARE clean:
              *
-             *   f0-6   fwd -1.8 px and held   pushed back under 2 px
-             *   f8+    fwd 2.7 .. 29.4 px     drives on, scraping along
-             *   speed  820 throughout         never lost
+             *   NOTES 044 (live trace, class $80): the into-wall velocity
+             *   component REFLECTS (-770 -> +770) and the speed is
+             *   preserved; a short knockback state follows, then normal
+             *   driving resumes.
+             *   NOTES 088 (surface battery): a kart held against $80
+             *   still travels ~50 px per 40 frames, so it is not pinned.
              *
-             * So a wall does NOT throw the kart back: it stops the
-             * into-wall motion, holds briefly, and you scrape along it.
-             * Reflecting the velocity and then running ten ballistic
-             * frames sent the kart ~30 px backwards - the "bounce is a
-             * few meters long" report.  Cancel the blocked component,
-             * keep the tangential one, keep the speed.
+             * Two earlier attempts got this wrong in opposite directions:
+             * reflecting AND holding a 10-frame ballistic window threw
+             * the kart ~30 px backwards ("the bounce is a few meters"),
+             * and then CANCELLING the component instead made it stick to
+             * the wall.  Reflect, keep the speed, and hand control back
+             * almost immediately - a short bounce.
              *
-             * The $20/$24/$26 family still stops dead (speed -> 0, 3 px
-             * of travel in the same battery). */
-            if (bx) k->vx = 0;
-            if (by) k->vy = 0;
+             * LABELLED: the reflection and the speed preservation are
+             * measured; the 3-frame window is an estimate bracketed by
+             * the two captures above, not a decoded value.
+             *
+             * $20/$24/$26 remain a dead stop (speed -> 0, 3 px of travel
+             * in the same battery). */
+            if (bx) k->vx = (int16_t)-k->vx;
+            if (by) k->vy = (int16_t)-k->vy;
             if (!(wv & 0x80)) { k->speed = 0; k->vx = 0; k->vy = 0; }
-            k->bounce_cool = 6;              /* the measured hold        */
+            k->bounce_cool = 3;              /* short, then steering back */
         }
         return;
     }

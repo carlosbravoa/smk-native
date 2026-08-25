@@ -21,7 +21,10 @@ if L.pace():
     for cy in range(128):
         for cx in range(128):
             tile = L.b.wram[0x10000 + cy * 128 + cx]
-            cls = L.b.wram[0x0B00 + tile] if tile < 0xC0 else 0
+            # the table runs past 192 into the object tiles at $0BC0 -
+            # which is exactly where the barrier blocks live, and where
+            # the first version of this lab stopped looking
+            cls = L.b.wram[0x0B00 + tile]
             if cls & 0x80:
                 d = (cx * 8 - x) ** 2 + (cy * 8 - y) ** 2
                 if best is None or d < best[0]:
