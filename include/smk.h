@@ -614,4 +614,25 @@ void smk_draw_sprite_mini(const smk_sprites *s, int frame,
                           int cx, int cy, int scale, bool hflip,
                           uint32_t *pixels, int w, int h, int pitch_px);
 
+
+/* ---- Ground effects: tyre smoke and dust (src/effects.c, NOTES 109) ---- */
+typedef struct { int n; int8_t x[8], y[8]; uint8_t tile[8], attr[8]; } smk_effect_template;
+typedef struct { int n; uint8_t dur[8], tpl[8]; smk_effect_template t[8]; } smk_effect_script;
+typedef struct { bool valid; uint8_t attr_xor; smk_effect_script script[12]; } smk_effect_kind;
+typedef struct {
+    bool ok;
+    uint8_t tiles[32][64];         /* VRAM $100..$11F, palette indices */
+    int16_t wobble[8];             /* $80D46F, by frame counter & 7     */
+    smk_effect_kind kind[8];       /* by record offset / 6              */
+} smk_effects;
+typedef struct { int kind, frame_idx, pos, dur; } smk_effect_state;
+bool smk_effects_load(const smk_rom *rom, smk_effects *fx);
+/* $80D4A3 + class handlers: the kind to show, or -1 */
+int  smk_effects_pick(uint8_t surf, bool grounded, bool spinning, bool deep_drift, int speed);
+void smk_effects_step(smk_effect_state *st, int kind, int frame_idx);
+/* base = the kart sprite's top-left + (0, 16), in framebuffer pixels */
+void smk_effects_draw(const smk_effects *fx, const smk_effect_state *st, bool mirror,
+                      unsigned frame_counter, int base_x, int base_y, int scale,
+                      const uint32_t *palette, uint32_t *fb, int w, int h);
+
 #endif /* SMK_H */

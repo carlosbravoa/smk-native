@@ -3388,3 +3388,50 @@ Demo replay after this (tools/demoreplay.c, in `make check`):
     P2  100% within 1 px for all 1240 frames, mean 0.01 px
 
 The game's own `--replay` shows the same with the real kart as a ghost.
+
+---
+
+**109** — Tyre smoke and dust: the ground-effect object, decoded and ported.
+
+Playtest: "when the kart slides at that angle there is smoke from the
+wheels, and smoke off-road".  Found by dumping the game's OAM shadow
+(WRAM `$0200`, DMA'd each frame) during the demo's slide and diffing it
+against straight driving: six 16x16 sprites, tiles `$100/$102/$104`
+(small/medium/large puff) in two mirrored groups at fixed offsets from the
+kart sprite, cycling on the frame counter.
+
+The mechanism (`$80CF7B..$80D4A3`, one effect OBJECT per player at
+`$1E00/$1E20`): every frame a grounded kart dispatches on the surface
+class under it through the jump table at `$80D31A`.  The road handler
+(`$80D37A`, classes `$00-$1E` and `$40-$52`) shows kind `$24` only while
+**`$E2` bit 5** is set (|`$AA`| >= `$1800`, the deep-drift stage - the
+boost frames with `$AA` = 2560 show none), kind `$18` while spinning
+(`$80D44E`: `$E4` >= `$400` or `$E2` bit 3).  The dust handler (`$80D3B6`,
+classes `$54-$58`) shows kind `$2A` when deep-drifting, kind `$00` at any
+speed >= `$80`, `$1E` spinning.  Airborne or z >= `$200`: off.  Snow,
+splash and water classes use other template blocks - not ported yet.
+
+A kind is a record at `$80D1CE` [template block, script list, XOR]: the
+list has one animation script per KART SPRITE FRAME (`$BC` -> `$1E3C`
+through `$80CF2F`), so the puffs sit under the wheels of the pose drawn;
+scripts at `$80D030` are `[duration, template]` pairs looping via `$80 lo
+hi` (the interpreter at `$80D530` shows entry 1 first, then 2, 3, 0...);
+templates are `[count][x, y, tile, attr]` OAM entries relative to the
+kart sprite's top-left + (0, 16), the group mirrored with the sprite (x ^
+`$FF`, attr ^ `$40`, `$80BFC8`) and XORed with the record's flags: `$05`
+gives palette 5 (white/grey) on road, `$01` palette 7 (tan) on dust - the
+same templates and tiles.  X wobbles by `$80D46F[frame & 7]` = 0,1,2,1,0,
+-1,-2,-1.
+
+Sources: templates from the stream at `$C5:EE00` (decompresses to WRAM
+`$2000`; the block address is an offset into it), puff tiles from
+`$C4:9C1A` (subtiles for VRAM `$101..` at 20 + 32k; VRAM `$100` is the 12
+bytes before plus the stream's header - the game really shows that; VRAM
+`$110` is subtile 15 with its two junk rows masked, LABELLED: one more
+pixel differs from a source no stream contains).  Confirmed off-road with
+the Python oracle: same tiles, palette 7.
+
+Ported as `src/effects.c`, drawn after the player sprite from its anchor;
+verified on the demo replay (smoke exactly over the game's `$E2 = $24`
+frames) and by eye (`SMK_REPLAY_SHOT=1130:out.ppm`).  Labelled: the
+drift-onset sheet frame 47 counts as `$BC` band 1 for the template choice.

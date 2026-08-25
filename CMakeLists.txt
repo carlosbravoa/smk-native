@@ -18,6 +18,7 @@ add_library(smkcore STATIC
   src/kart.c
   src/player.c
   src/demolog.c
+  src/effects.c
   src/physics.c
   src/ai.c
   src/sprite.c

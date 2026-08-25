@@ -135,6 +135,11 @@ static void pump(input_state *in)
 }
 
 static int racer_draw_mask = 0xFE;      /* which racer slots draw_scene draws */
+static smk_effects fx;                  /* tyre smoke / dust (NOTES 109)      */
+static smk_effect_state fx_state = { -1, 0, 0, 0 };
+static int fx_frame_idx;                /* the kart sprite frame the puffs follow */
+static bool fx_mirror;
+static unsigned fx_ticks;
 static int player_slip_deg;
 static int player_slip_units;   /* signed, $10000 = full turn */
 static int player_airborne;
@@ -351,6 +356,17 @@ static void step_kart(smk_kart *k, const smk_track *trk,
     if (in->hop)      pressed |= 0x0020;     /* a fresh press hops       */
     smk_player_step(&player, k, trk, held, pressed);
     if (course_for_step) smk_collide_objects(k, course_for_step);
+
+    /* the ground effect object ($80CF7B..$80D4A3): what the surface under
+     * the kart and the slide/spin state ask for this frame */
+    {
+        uint8_t surf = smk_track_surface(trk, smk_kart_px(k->x), smk_kart_px(k->y));
+        int kind = smk_effects_pick(surf, !k->airborne && k->z == 0,
+                                    (player.flags & 0x0008) != 0,
+                                    (player.flags & 0x0020) != 0, k->speed);
+        smk_effects_step(&fx_state, kind, fx_frame_idx);
+        fx_ticks++;
+    }
 
     /* The sprite's angle relative to the camera: pose ($2A) minus the
      * azimuth the ROM feeds the camera (heading + $C0).  In a left slide
@@ -611,6 +627,11 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
                             drv->pal, rw / 2, prow - lift, scale,
                             hf, fb, rw, rh, rw);
         }
+        /* the puffs sit relative to the kart sprite's top-left + (0,16)
+         * and draw over the wheels (lower OAM slots than the kart) */
+        smk_effects_draw(&fx, &fx_state, fx_mirror, fx_ticks,
+                         rw / 2 - 16 * scale, prow - lift - 16 * scale, scale,
+                         trk->palette, fb, rw, rh);
     }
     draw_hud(fb, rw, rh, trk->palette, hud_lap, 5, hud_rank);
     draw_clock(fb, rw, rh, trk->palette, hud_race_frames);
@@ -866,6 +887,8 @@ int main(int argc, char **argv)
 
     smk_track_place_objects(&rom, &trk);
     smk_objgfx_load(&rom, trk.theme, &obj_art);   /* the theme's objects */
+    if (!smk_effects_load(&rom, &fx))
+        fprintf(stderr, "warning: ground effects not loaded\n");
 
     /* Headless single-frame render: no window, no event loop.  Also the
      * cheapest way to eyeball the renderer from a script. */
@@ -1078,8 +1101,8 @@ int main(int argc, char **argv)
             if (replay_path && getenv("SMK_REPLAY_TRACE") && replay_i < replay.n) {
                 const smk_demo_frame *r = &replay.f[replay_i];
                 double dx = (kart.x - r->x) / 65536.0, dy = (kart.y - r->y) / 65536.0;
-                fprintf(stderr, "replay f%d pad %04X off %.2f px spd %d/%d head %u/%u st %02X/%02X v %d,%d/%d,%d vlag %d/%d turn %d/%d pos %.3f,%.3f\n",
-                        replay_i, r->c4, sqrt(dx * dx + dy * dy), kart.speed, r->speed,
+                fprintf(stderr, "replay f%d fx %d pad %04X off %.2f px spd %d/%d head %u/%u st %02X/%02X v %d,%d/%d,%d vlag %d/%d turn %d/%d pos %.3f,%.3f\n",
+                        replay_i, fx_state.kind, r->c4, sqrt(dx * dx + dy * dy), kart.speed, r->speed,
                         player.heading, r->a4, player.state, r->state, kart.vx, kart.vy, r->vx, r->vy,
                         player.vlag, r->vlag, player.turn, r->turn, kart.x / 65536.0, kart.y / 65536.0);
             }
@@ -1127,13 +1150,44 @@ int main(int argc, char **argv)
                       | (in.up ? 4 : 0);
             hud_lap = me->lap + 1;
             hud_rank = smk_race_rank(racers, 0, &crs);
+            int pframe = frame_for(&in, &lean);
+            {
+                int af = pframe < 0 ? -pframe : pframe;
+                /* the game's $BC frame index: 0 straight, 1..7 the rotation
+                 * bands; the drift-onset sheet frame 47 counts as band 1
+                 * (LABELLED: its $BC index is not measured) */
+                fx_frame_idx = (pframe == 1000) ? 0 : (af == 47 ? 1 : af);
+                fx_mirror = pframe != 1000 && pframe < 0;
+            }
             draw_scene(&rom, &trk, &karts, drv, &cam, fb, rw, rh,
-                       show_grid, show_kart, frame_for(&in, &lean),
+                       show_grid, show_kart, pframe,
                        kart.angle, racers, &crs);
             draw_speedo(fb, rw, rh, &kart,
                         smk_track_surface(&trk, smk_kart_px(kart.x),
                                           smk_kart_px(kart.y)),
                         player.target);
+            /* SMK_REPLAY_SHOT=frame:path - save the rendered frame of a replay */
+            if (replay_path && getenv("SMK_REPLAY_SHOT")) {
+                static int shot_frame = -2; static char shot_path[512];
+                if (shot_frame == -2) {
+                    shot_frame = -1;
+                    const char *e = getenv("SMK_REPLAY_SHOT");
+                    const char *c = strchr(e, ':');
+                    if (c) { shot_frame = atoi(e); snprintf(shot_path, sizeof shot_path, "%s", c + 1); }
+                }
+                if (shot_frame >= 0 && replay_i >= shot_frame) {
+                    FILE *pf = fopen(shot_path, "wb");
+                    if (pf) {
+                        fprintf(pf, "P6\n%d %d\n255\n", rw, rh);
+                        for (int i = 0; i < rw * rh; i++) {
+                            uint32_t c = fb[i];
+                            fputc((c >> 16) & 255, pf); fputc((c >> 8) & 255, pf); fputc(c & 255, pf);
+                        }
+                        fclose(pf);
+                    }
+                    in.quit = true;
+                }
+            }
             SDL_UpdateTexture(tex, NULL, fb, rw * (int)sizeof *fb);
             SDL_RenderClear(ren);
             SDL_RenderCopy(ren, tex, NULL, NULL);
