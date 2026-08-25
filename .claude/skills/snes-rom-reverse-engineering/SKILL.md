@@ -785,6 +785,15 @@ change is behavioural, print the behaviour.
   racers run a permanent split screen (view + rear-view/map); filter OAM by
   screen half, and remember the followed camera may not be the kart you
   think - and the world-forward sign is worth one render to verify.
+- Do not test a primitive and call the FEATURE verified. Twice on SMK a
+  library-level test passed for rounds while the caller was broken: the
+  hop arc was pinned by a selftest that called the gravity routine
+  directly, while nothing in the player's tick called it at all; and the
+  wall bounce passed every library test while the player's own velocity
+  update overwrote the rebound each frame. If two code paths drive the
+  same primitive (a player and an AI, a game loop and a screenshot
+  path), test the one the user actually runs, or make them share code so
+  there is only one.
 - Do not measure a CONTACT by putting the object inside the thing it is
   supposed to contact. Filling a map with the surface class under test
   puts the kart inside a solid, and an embedded object reads as

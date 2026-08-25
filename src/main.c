@@ -437,12 +437,17 @@ static void step_kart(smk_kart *k, const smk_track *trk,
     if (in->hop && !k->airborne)
         smk_kart_launch(k, SMK_HOP_VEL);
 
-    /* Grip.  smk_kart_face() gives the ROM's (sin,-cos)*speed - full grip.
-     * The real kart's velocity LAGS its heading (the drift measurement in
-     * NOTES 055 showed ~13 degrees of slip with the shoulder held), so
-     * blend toward the facing direction instead of snapping: PLACEHOLDER
-     * grip constants, labelled, pending the drift-state decode. */
-    {
+    /* THE BALLISTIC WINDOW.  After a wall impact the ROM runs `$42,x`
+     * frames with no steering and no thrust (NOTES 071) - the kart flies
+     * on the rebound velocity.  `smk_kart_face` honours that, which is
+     * why the AI bounces correctly, but the PLAYER computes its velocity
+     * here instead and did not check it.  With grip now 1.0, that meant
+     * the velocity was rewritten from the heading every single frame,
+     * wiping the rebound the frame it happened: the kart pressed
+     * straight back into the barrier and could never leave it.  That is
+     * the "hit it and get stuck" report - the collision was always
+     * right, the player just overwrote its result. */
+    if (k->bounce_cool == 0) {
         int32_t tvx = (int32_t)(sinf((float)k->angle * (float)(2.0 * M_PI)
                                      / 65536.0f) * (float)k->speed);
         int32_t tvy = (int32_t)(-cosf((float)k->angle * (float)(2.0 * M_PI)

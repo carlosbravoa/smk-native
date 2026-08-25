@@ -2880,4 +2880,30 @@ Recorded in the skill file so it is not repeated.
 
 ---
 
-*(next entry: 097)*
+**097** — The stick was never in the collision.  The player overwrote
+its own rebound.
+
+After a wall impact the ROM runs `$42,x` frames with no steering and no
+thrust (NOTES 071) - the kart flies on the rebound velocity.
+`smk_kart_face` honours that window, which is why the AI has always
+bounced correctly and why every library-level test of the bounce passed.
+
+The PLAYER does not go through `smk_kart_face`: `step_kart` computes the
+velocity itself.  It never checked `bounce_cool`.  With grip at 1.0
+(NOTES 090) that line is `velocity = heading * speed` every frame, so
+the rebound was wiped the frame it was applied and the kart pressed
+straight back into the barrier for ever.  Four rounds of "still stuck"
+reports, and each time I re-measured the COLLISION - which was right the
+whole way - because my tests exercised the library primitives and the
+bug was in the caller.  The same shape as the missing gravity call: the
+piece under test was fine, the thing that uses it was not.
+
+Fixed by gating the player's velocity update on the ballistic window.
+`tools/labs/playerwall.c` now drives the PLAYER'S tick order into a wall
+and asserts it travels: impacts at f10/33/54, each rebounding ~26 px and
+re-accelerating between, which is the "bounce back and keep bouncing"
+the playtest describes.
+
+---
+
+*(next entry: 098)*
