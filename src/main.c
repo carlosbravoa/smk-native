@@ -522,10 +522,24 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
 
     if (show_grid && karts->frames && racers) {
         static smk_sprites other[SMK_CHARACTERS];
-        static bool loaded[SMK_CHARACTERS];
+        static int loaded[SMK_CHARACTERS];      /* character + 1 whose sheet is in other[k] */
+        /* painter's order: the farthest kart first, so a near kart is
+         * never drawn under a far one (the SNES sorts OAM by distance
+         * for the same reason) */
+        int order[SMK_CHARACTERS], nord = 0;
+        float dep[SMK_CHARACTERS];
         for (int k = 1; k < SMK_CHARACTERS; k++) {
-            float px, py, sc;
             if (!(racer_draw_mask & (1 << k))) continue;
+            float a2 = (float)cam_heading * (float)(2.0 * M_PI) / 65536.0f;
+            float gx = (float)smk_kart_px(racers[k].k.x), gy = (float)smk_kart_px(racers[k].k.y);
+            dep[k] = (gx - cam->x) * sinf(a2) + (gy - cam->y) * -cosf(a2);
+            int j = nord++;
+            while (j > 0 && dep[order[j - 1]] < dep[k]) { order[j] = order[j - 1]; j--; }
+            order[j] = k;
+        }
+        for (int oi = 0; oi < nord; oi++) {
+            int k = order[oi];
+            float px, py, sc;
             float gx = (float)smk_kart_px(racers[k].k.x);
             float gy = (float)smk_kart_px(racers[k].k.y);
             if (!smk_project(cam, gx, gy, rw, rh, &px, &py, &sc)) continue;
@@ -548,8 +562,10 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
             if (dep_eye < 12.0f) continue;
             int scale = (int)((float)(rw / 256) * SMK_CAM_TRAIL / dep_eye + 0.5f);
             if (scale < 1) scale = 1;
-            const smk_driver *d2 = &SMK_DRIVERS[k];
-            if (!loaded[k]) loaded[k] = smk_sprites_load(rom, d2->sheet, &other[k]);
+            int ch = racers[k].character;
+            if (ch < 0 || ch >= SMK_CHARACTERS) ch = k;
+            const smk_driver *d2 = &SMK_DRIVERS[ch];
+            if (loaded[k] != ch + 1) loaded[k] = smk_sprites_load(rom, d2->sheet, &other[k]) ? ch + 1 : 0;
             if (!loaded[k]) continue;
             /* same measured pose ladder as the player (NOTES 080):
              * mirrored straight < $400, 47 half-lean < $1000, then the
@@ -989,8 +1005,12 @@ int main(int argc, char **argv)
      * entry 0 = 2 (LABELLED: $E6 is not modelled; the demo starts with 5) */
     player.coins = 2;
     static smk_racer racers[SMK_CHARACTERS];
-    for (int i = 0; i < SMK_CHARACTERS; i++)
+    int grid[8];
+    smk_grid_order(&rom, character, 0, false, grid);
+    for (int i = 0; i < SMK_CHARACTERS; i++) {
         smk_racer_start(&racers[i], &crs, i);
+        racers[i].character = grid[i];
+    }
     smk_racer *me = &racers[0];
 
     float lean = 0.0f;
@@ -1070,8 +1090,10 @@ int main(int argc, char **argv)
                                        .y = (int32_t)(sy * SMK_POS_ONE),
                                        .angle = sh };
                     smk_player_reset(&player, sh);
-                    for (int i = 0; i < SMK_CHARACTERS; i++)
+                    for (int i = 0; i < SMK_CHARACTERS; i++) {
                         smk_racer_start(&racers[i], &crs, i);
+                        racers[i].character = grid[i];
+                    }
                     camera_from_kart(&cam, &kart);
                 } else {
                     fprintf(stderr, "skipped: %s\n", err);

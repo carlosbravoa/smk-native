@@ -3477,3 +3477,29 @@ Result: `tools/demoreplay` now checks the coin count too (the other
 player's pickups are applied from its own log, since it takes coins off
 the same map): 0 mismatches on both karts, and the gate requires that.
 The HUD shows the real count.
+
+---
+
+**111** — The starting grid's characters: the ROM's per-character order
+table.  And the karts are drawn far-to-near now.
+
+Playtest: AI karts rendered on top of each other.  Two causes.  The port
+put character i in slot i, so with any player but Mario an AI copy of the
+player shared its slot; and the karts were drawn in index order with no
+depth sort.
+
+The game (`$81EE07..$81EE58`): a table of eight 16-byte rows at
+`$81:EE97`, one per character, each a list of eight characters.  The row
+is P1's in 1P mode and P2's in 2P (`$81EE72` by `$2E`); in 1P mode the
+row's 7th entry becomes kart `$1100` - the designated RIVAL (`$81EE78`)
+- and then karts `$1700` down to `$1200` take the row's entries in order,
+skipping the two humans' characters.  Verified: the demo (2P, Mario and
+Toad) fills Luigi, Koopa, Bowser, Peach, DK, Yoshi from `$1200` up, which
+is Toad's row minus the humans.  Mario's row: DK, Peach, Toad, Luigi,
+Koopa, Bowser, Yoshi, Mario - so a 1P Mario race has Yoshi as rival in
+slot 1 and DK at the back.  The eight-kart log (`allkarts.csv`) also
+shows the grid POSITIONS come from a per-track record (`[$0C],y` at
+`$819207`, cell + 4/10 px offsets) - S2, decoded in location, not ported.
+
+Ported: `smk_grid_order`, `smk_racer.character`, sheets by character,
+painter's order in `draw_scene`.  Selftest pins the demo's row.

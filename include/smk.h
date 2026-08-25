@@ -565,6 +565,7 @@ bool smk_objgfx_load(const smk_rom *rom, int theme, smk_objgfx *out);
  * labelled in src/ai.c. */
 typedef struct {
     smk_kart k;
+    int      character;     /* who drives this slot (SMK_DRIVERS index)  */
     int      sector;        /* last on-course sector                    */
     int      lap;
     int      progress_max;  /* $F8,x: max of (lap<<8)|sector, monotonic */
@@ -584,6 +585,10 @@ extern const smk_course *course_for_step;
 
 int  smk_race_rank(const smk_racer *racers, int who, const smk_course *crs);
 void smk_racer_start(smk_racer *r, const smk_course *crs, int slot);
+/* The starting grid's characters ($81EE33, NOTES 111): slot 0 is P1, slot
+ * 1 the rival (2P: P2), slots 2..7 the rest in the ROM's order for the
+ * row character, skipping the humans.  out[8] = character per slot. */
+void smk_grid_order(const smk_rom *rom, int p1, int p2, bool two_players, int out[8]);
 void smk_racer_step(smk_racer *r, const smk_track *trk,
                     const smk_course *crs, const smk_physics *phys);
 

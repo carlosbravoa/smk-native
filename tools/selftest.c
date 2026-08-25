@@ -319,6 +319,18 @@ int main(int argc, char **argv)
     }
 
     test_player_replay(&rom);
+    {
+        /* the demo race is 2P: Mario and Toad; the game filled the grid
+         * Luigi, Koopa, Bowser, Peach, DK, Yoshi (tools/labs/mame log) */
+        int g[8];
+        smk_grid_order(&rom, 0, 7, true, g);
+        char d[64];
+        snprintf(d, sizeof d, "%d %d %d %d %d %d %d %d", g[0], g[1], g[2], g[3], g[4], g[5], g[6], g[7]);
+        check("grid order for P1 Mario / P2 Toad matches the demo race",
+              g[0] == 0 && g[1] == 7 && g[2] == 1 && g[3] == 6 && g[4] == 2 && g[5] == 3 && g[6] == 4 && g[7] == 5, d);
+        smk_grid_order(&rom, 0, 0, false, g);
+        check("1P Mario: the rival in slot 1 is the row's 7th entry (Yoshi)", g[1] == 5 && g[7] == 4 && g[2] == 2, NULL);
+    }
 
     printf("\n%d passed, %d failed\n", pass, fail);
     smk_rom_free(&rom);

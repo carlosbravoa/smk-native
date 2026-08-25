@@ -88,11 +88,34 @@ void smk_collide_objects(smk_kart *k, const smk_course *crs)
     }
 }
 
+/* $81EE07..$81EE58: rows of 8 characters at $81:EE97, 16 bytes per
+ * character; 1P mode uses P1's row, 2P mode P2's ($81EE72 by $2E).  In
+ * 1P mode kart $1100 gets the row's 7th entry (the rival, $81EE78); then
+ * karts $1700 down to $1200 take the row's entries in order, skipping the
+ * two humans' characters. */
+#define T_GRID_ROWS 0x81EE97u
+void smk_grid_order(const smk_rom *rom, int p1, int p2, bool two_players, int out[8])
+{
+    int row_char = two_players ? p2 : p1;
+    uint32_t row = smk_snes_to_pc(rom, T_GRID_ROWS + (uint32_t)row_char * 16u);
+    int list[8];
+    for (int i = 0; i < 8; i++) list[i] = rom->data[row + (uint32_t)i * 2u] / 2;
+    if (!two_players) p2 = list[6];
+    out[0] = p1;
+    out[1] = p2;
+    int slot = 7;
+    for (int i = 0; i < 8 && slot >= 2; i++) {
+        if (list[i] == p1 || list[i] == p2) continue;
+        out[slot--] = list[i];
+    }
+}
+
 void smk_racer_start(smk_racer *r, const smk_course *crs, int slot)
 {
     float x, y;
     uint16_t heading;
     memset(r, 0, sizeof *r);
+    r->character = slot;
     smk_course_start(crs, slot, &x, &y, &heading);
     r->k.x = (int32_t)(x * SMK_POS_ONE);
     r->k.y = (int32_t)(y * SMK_POS_ONE);
