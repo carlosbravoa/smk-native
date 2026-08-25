@@ -69,6 +69,7 @@ static void pump(input_state *in)
 static const smk_course *course_for_step;
 static int player_slip_deg;
 static int player_slip_units;   /* signed, $10000 = full turn */
+static int player_airborne;
 static int hud_lap, hud_rank;
 static int player_height_px;
 
@@ -544,12 +545,16 @@ static void step_kart(smk_kart *k, const smk_track *trk,
     int auth = (k->speed < 0 ? -k->speed : k->speed);
     if (auth > top) auth = top;
     int turn = top ? FEEL_TURN * auth / top : 0;
-    if (slip_u0 > 4000.0f && !in->hop_held)
-        turn = turn * 6 / 100;               /* measured plow: ~-20 vs -307.
-                                                NOT during a hop-drift: the
-                                                lab's drift phases steer at
-                                                full rate (slip walks 1024 ->
-                                                8640 under held Left) */
+    /* Breakaway with HYSTERESIS: enter past the measured threshold,
+     * leave only once the slip has clearly recovered.  A single
+     * threshold flapped the turn rate (420 <-> 25) every frame at the
+     * boundary, and the camera - which follows the heading - juddered
+     * with it (playtest). */
+    static bool plowing;
+    if (slip_u0 > 4000.0f) plowing = true;
+    else if (slip_u0 < 2800.0f) plowing = false;
+    if (plowing && !in->hop_held)
+        turn = turn * 6 / 100;               /* measured plow: ~-20 vs -307 */
     if (in->left)  k->angle -= (uint16_t)turn;
     if (in->right) k->angle += (uint16_t)turn;
 
@@ -618,7 +623,7 @@ static void step_kart(smk_kart *k, const smk_track *trk,
                                                  0.10 capped slip at
                                                  ~4200, below the
                                                  sideways poses */
-        else if ((lateral > limit || slip_u > 4000.0f)
+        else if ((lateral > limit || plowing)
                  && (in->left || in->right))
             g = -0.026f;                      /* plow: slip GROWS, fit to
                                                  the measured +130/frame
@@ -636,6 +641,7 @@ static void step_kart(smk_kart *k, const smk_track *trk,
     smk_kart_move(k, trk);       /* the ROM's position += velocity << 8 */
     if (course_for_step) collide_objects(k, course_for_step);
     player_height_px = smk_kart_height_px(k);
+    player_airborne = k->airborne;
 }
 
 /* The ROM's angle is 0 = -Y increasing clockwise; the renderer wants
@@ -716,10 +722,11 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
             int rel = (int16_t)(uint16_t)(racers[k].k.angle - cam_heading);
             int ar = rel < 0 ? -rel : rel;
             bool hf = false, mirror = false;
-            int f;
-            if (ar < 0x0400) { f = 0; mirror = true; }
-            else if (ar < 0x1000) { f = 47; hf = rel > 0; }
+            int f = 0;
+            if (ar < 0x0400) mirror = true;    /* aligned: mirrored pose */
             else {
+                /* the measured rotation rule handles every other band
+                 * (AI karts do not hop, so no 47 lean here) */
                 uint16_t r16 = (uint16_t)rel;
                 f = smk_sprite_for_heading(SMK_SPR_TIER0, r16, &hf);
             }
@@ -767,36 +774,26 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
  * steering input.  Encoded as negative-for-hflip in one int. */
 static int frame_for(const input_state *in, float *lean)
 {
-    /* MEASURED pose rule (framelab6, NOTES 080).  The displayed pose is
-     * the kart's heading relative to the LAGGING camera, on a ladder:
+    /* MEASURED pose rule (framelab6 + the NOTES 041 rotation bands -
+     * which the lab's drift samples confirm for the player: slip $1640
+     * shows frame 2, $21C0 frame 4, both in their ORIGINAL bands):
      *
-     *   |rel| < $0400   the mirrored straight pose (frame 0's left half
-     *                   reflected - no full frame is symmetric)
-     *         < $1000   frame 47, the half-lean       (base art LEANS LEFT)
-     *         < $1800   frame 1, the turning pose     (base art TURNS RIGHT)
-     *         < $2000   frame 2      (the rotation set continues exactly
-     *         < $2800   frame 3       as the measured AI rule from here:
-     *         < $3000   frame 4       drift slip $1640 showed 2, $21C0
-     *         ...                     showed 4 - pixel-exact matches)
+     *   |rel| < $0400  mirrored straight (frame 0's left half)
+     *         < $1000  frame 1 - or frame 47 while hopping/drifting
+     *                  (the lab's hop+steer phase showed 47 there)
+     *         < $1800  frame 2
+     *         < $2000  frame 3
+     *         < $2800  frame 4 ... (the AI rule continues)
      *
-     * Our camera is rigid, so the lag is synthesised: the lab shows
-     * frame 1 (band $1000-$1800) after 8 frames of slip-free steering,
-     * so the steady lag sits IN that band - target $1400, its middle
-     * (labelled bracket).  Slides contribute minus the slip angle, and
-     * lag/slip combine as the larger magnitude (drift rel ~= slip alone
-     * per the lab). */
+     * rel = heading minus the lagging camera; our camera is rigid so
+     * held steering synthesises a lag toward $0A00 (inside frame 1's
+     * band, reached in ~8 frames as the lab shows); slides contribute
+     * MINUS the slip angle, combined as the larger magnitude. */
     float want = (in->left ? -1.0f : 0.0f) + (in->right ? 1.0f : 0.0f);
     if (want != 0.0f)
-        *lean += ((want * 5120.0f) - *lean) * 0.22f;   /* -> $1400 in ~8f */
+        *lean += ((want * 2560.0f) - *lean) * 0.22f;   /* -> $0A00 in ~8f */
     else
         *lean *= 0.78f;
-    /* The ROM's input is heading minus CAMERA; the camera aligns with
-     * the direction of travel, so the slide contribution is heading
-     * minus velocity = MINUS our slip (velocity minus heading).  Added
-     * with the wrong sign it cancels the steer lean - the "wrong side,
-     * never sideways" bug.  The lab pins drift rel ~= slip ALONE (slip
-     * $1640 -> frame 2, its own band), so lag and slide combine as the
-     * larger of the two, not the sum. */
     int a1 = (int)*lean, a2 = -player_slip_units;
     int rel;
     if ((a1 >= 0) == (a2 >= 0))
@@ -805,14 +802,19 @@ static int frame_for(const input_state *in, float *lean)
         rel = a1 + a2;
     int a = rel < 0 ? -rel : rel;
     if (a < 0x0400) return 1000;                       /* mirrored straight */
-    if (a < 0x1000) return rel > 0 ? -47 : 47;         /* 47 base = left    */
-    int f2 = a < 0x1800 ? 1
-           : a < 0x2000 ? 2
-           : a < 0x2800 ? 3
-           : a < 0x3000 ? 4
-           : a < 0x3800 ? 5 : 6;
-    return rel < 0 ? -f2 : f2;                         /* 1+ base = right   */
+    if (a < 0x1000) {
+        if (in->hop_held || player_airborne)
+            return rel > 0 ? -47 : 47;                 /* 47 base = left    */
+        return rel < 0 ? -1 : 1;                       /* 1 base = right    */
+    }
+    int f2 = a < 0x1800 ? 2
+           : a < 0x2000 ? 3
+           : a < 0x2800 ? 4
+           : a < 0x3000 ? 5
+           : a < 0x3800 ? 6 : 7;
+    return rel < 0 ? -f2 : f2;
 }
+
 
 
 /* ------------------------------------------------------------------ */
