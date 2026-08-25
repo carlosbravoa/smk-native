@@ -442,7 +442,7 @@ static inline int smk_hud_digit(int d)
  * the kart (playtest).  Now: constant SNES proportion like the karts,
  * with the tier chosen by distance. */
 #define SMK_OBJ_PIPE0   32        /* the near tier's top-left tile     */
-#define SMK_OBJ_TIERS   3
+#define SMK_OBJ_TIERS   4
 /* Half-width for collision, from the ART (12 px across at the near
  * tier), not measured in-game: the 12 px radius I had invented sealed
  * the gap between two entities 16 px apart that you are meant to drive

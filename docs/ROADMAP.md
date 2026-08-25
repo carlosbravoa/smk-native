@@ -57,7 +57,7 @@ re-investigating.
 | S6 | `src/kart.c` bounce | **decoded**: the bounce is a ballistic launch (`$80F8C0` sets `$26`=$0080), not a timed knockback (NOTES 045) | per-class differences; the horizontal knockback magnitude | P3 residual |
 | S7 | renderer | full-resolution smooth perspective | 256×224, per-scanline integer matrix | keep — named divergence, this is the point of a PC port. `--pixel` restores chunk. |
 | S8 | no audio | silence | SPC700 + S-DSP running its own program | P7 |
-| S10 | `src/main.c` draw | kart and entity size is CONTINUOUS with distance, anchored so an object at the player's own depth matches the SNES size | the hardware cannot scale sprites; it quantises to the sheet's size tiers | P4 residual |
+| S10 | `src/main.c` draw | ENTITIES quantise to the sheet's real tiers (16->11 art px), as the hardware does; KARTS still scale continuously | the hardware quantises both; the kart sheet's own tier ladder is not identified yet | P4 residual |
 | S11 | `src/main.c` start sequence | 3-2-1 countdown at 60 frames a step, karts held | the ROM's own start-frame count and Lakitu's light art | P5 |
 | S12 | `src/main.c` entities | the theme's own object art (pipes, Thwomps, ...) drawn from `$81:EBD3`, one size tier scaled continuously; entities do not move | the sheet stores a size TIER per distance band; `$84:DD15` drives type and motion (a Thwomp rises and slams) | P5 |
 | S9 | `tools/smktool/dsp1.py` | full command set implemented; stream never desyncs; camera model verified against the game's own usage. Residual: gyrate is a passthrough, and raster/`$08`/`$18` scalings are unchecked | the real chip's exact fixed-point pipeline | largely closed (NOTES 039); residuals logged on first contact |

@@ -583,31 +583,42 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
              * projection asks for, then draw it at the SNES proportion -
              * the hardware's own mechanism.  desired = 16 world px seen
              * at this depth, expressed in art pixels. */
-            static const struct { int base, w, h; } TIER[SMK_OBJ_TIERS] = {
-                { SMK_OBJ_PIPE0,      12, 15 },
-                { SMK_OBJ_PIPE0 + 2,  11, 13 },
-                { SMK_OBJ_PIPE0 + 4,  10, 11 },
+            /* QUANTISED to the sheet's real tiers, as the hardware does.
+             * The SNES cannot scale a sprite: it swaps to a smaller
+             * drawing.  Measured off the sheet - the same descending
+             * family exists in every theme:
+             *
+             *   theme 1  b0 12x15  b32 12x16  b34 11x14  b36 10x12
+             *   theme 7  b0 12x16  b32 12x15  b34 11x13  b36 10x11
+             *
+             * so the true range is only 16 -> 11 art pixels.  Distant
+             * objects settle at the smallest drawing rather than
+             * dwindling away, and the size POPS between steps instead of
+             * gliding - which is what the original does. */
+            static const struct { int base, h; } TIER[SMK_OBJ_TIERS] = {
+                { 0,                 16 },
+                { SMK_OBJ_PIPE0,     15 },
+                { SMK_OBJ_PIPE0 + 2, 13 },
+                { SMK_OBJ_PIPE0 + 4, 11 },
             };
-            /* smk_project gives sc = (LES*rw/256)/depth, so recover the
-             * depth from it rather than recomputing the projection */
-            float dep_eye = (SMK_PROJ_LES * (float)rw / 256.0f) / (sc > 0.0001f ? sc : 0.0001f);
+            float dep_eye = (SMK_PROJ_LES * (float)rw / 256.0f)
+                          / (sc > 0.0001f ? sc : 0.0001f);
             if (dep_eye < 8.0f) continue;
-            float want = 4096.0f / dep_eye;          /* in art pixels */
+            /* The height the projection asks for, in SNES pixels:
+             * an object H world px tall subtends H * LES / depth.  (I
+             * first anchored this on the camera TRAIL, a factor of four
+             * too small, so `want` never reached the upper tiers and
+             * every object drew at the smallest one - the flat sizes.) */
+            float want = (float)SMK_OBJ_PIPE_H * SMK_PROJ_LES / dep_eye;
             int ti = 0;
             for (int t = 1; t < SMK_OBJ_TIERS; t++)
                 if (fabsf((float)TIER[t].h - want)
                     < fabsf((float)TIER[ti].h - want)) ti = t;
             int obase = TIER[ti].base;
-            /* Same anchor as the karts: an object at the player's own
-             * depth draws at the SNES's own size, and shrinks from
-             * there.  The tier only picks the ARTWORK; the size comes
-             * from the projection, otherwise near and far render
-             * identically and the far ones read as too big (playtest). */
-            float oscale = (float)(rw / 256) * SMK_CAM_TRAIL / dep_eye;
-            if (oscale > (float)(rw / 256)) oscale = (float)(rw / 256);
-            int pw = (int)(SMK_OBJ_PIPE_W * oscale + 0.5f);
-            int ph = (int)(SMK_OBJ_PIPE_H * oscale + 0.5f);
-            if (pw < 2 || ph < 2) continue;
+            /* drawn at the fixed SNES proportion - the tier IS the size */
+            int oscale = rw / 256;
+            if (oscale < 1) oscale = 1;
+            int pw = SMK_OBJ_PIPE_W * oscale, ph = SMK_OBJ_PIPE_H * oscale;
             int x0 = (int)px - pw / 2, y0 = (int)py - ph;
             for (int dy = 0; dy < ph; dy++) {
                 int yy = y0 + dy;

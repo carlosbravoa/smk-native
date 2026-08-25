@@ -2998,4 +2998,34 @@ quantises to the sheet's tiers, we interpolate.
 
 ---
 
-*(next entry: 101)*
+**101** — Entities quantise to the sheet's real size tiers.
+
+The SNES cannot scale a sprite; it swaps to a smaller drawing.  The
+sheet carries that ladder, and the same descending family exists in
+every theme:
+
+    theme 1   b0 12x15   b32 12x16   b34 11x14   b36 10x12
+    theme 7   b0 12x16   b32 12x15   b34 11x13   b36 10x11
+
+So the whole range is 16 -> 11 art pixels: an object grows to the
+largest drawing and stops, and distant ones settle at the smallest
+rather than dwindling away.  Ported as four tiers drawn at the fixed
+SNES proportion, so the size POPS between steps.
+
+One arithmetic slip worth recording, because the symptom was so
+misleading: the apparent height of an object H world px tall is
+H * LES / depth, and I first anchored it on the camera TRAIL (61)
+instead of LES (256).  A factor of four meant `want` never reached the
+upper tiers, so EVERY object drew at the smallest one - which looks
+exactly like "no scaling at all" and sent me hunting the draw code
+rather than the one line that chooses the tier.  Verified by
+instrumenting the choice: depth 111 -> tier 0, 221 -> tier 0, 341 ->
+tier 2, 461 -> tier 3.
+
+Karts still scale continuously (NOTES 100); quantising them needs their
+own tier ladder off the kart sheet, which is the rows-1-2 question still
+open in P4.
+
+---
+
+*(next entry: 102)*
