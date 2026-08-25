@@ -3061,4 +3061,36 @@ only interpolate between them.
 
 ---
 
-*(next entry: 103)*
+**103** — The "largest tier" was a skewed drawing.  Torn sprites, and
+no scaling.
+
+Playtest: objects still not scaling, and the near ones visibly torn.
+
+Rendering EVERY candidate base side by side settles what the sheet holds
+(`/tmp/bases.png` from the lab): bases **0, 2, 4, 6 are skewed
+perspective variants** - the object seen at an angle, sheared - and
+bases 8/10/12/14 and 32/34/36 are the clean front-facing drawings.  I
+had put base 0 at the top of the ladder because its opaque bounding box
+was the biggest (12x16), which it is: a sheared drawing fills more of
+its box than an upright one.  Measuring extent found the largest
+rectangle, not the right sprite.
+
+That single wrong entry caused both symptoms: everything nearer than
+about 250 depth selected tier 0, so it drew the sheared art (the
+"tearing") AND every near object used one tier, so nothing scaled in the
+range where scaling is most visible.
+
+The clean ladder, by art height:
+
+    base 32  12x15      base 34  11x13
+    base 36  10x11      base 12  14x9    (the far drawing)
+
+Verified in place: at depth 121 the tier is now base 32, at 537 base 12,
+and the render shows a large clean near Thwomp with a small one behind.
+
+Lesson for the sheet work: a bounding box tells you how much of a box is
+inked, not whether the drawing is the one you want.  Look at the art.
+
+---
+
+*(next entry: 104)*

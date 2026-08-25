@@ -605,11 +605,17 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
              * objects settle at the smallest drawing rather than
              * dwindling away, and the size POPS between steps instead of
              * gliding - which is what the original does. */
+            /* Only the FRONT-FACING drawings.  Rendering every
+             * candidate base side by side shows bases 0/2/4/6 are
+             * skewed perspective variants - the object seen at an angle
+             * - and drawing one as the "largest tier" is what looked
+             * like a torn sprite in playtest.  The clean ladder, by art
+             * height: */
             static const struct { int base, h; } TIER[SMK_OBJ_TIERS] = {
-                { 0,                 16 },
-                { SMK_OBJ_PIPE0,     15 },
-                { SMK_OBJ_PIPE0 + 2, 13 },
-                { SMK_OBJ_PIPE0 + 4, 11 },
+                { SMK_OBJ_PIPE0,     15 },   /* 12x15 */
+                { SMK_OBJ_PIPE0 + 2, 13 },   /* 11x13 */
+                { SMK_OBJ_PIPE0 + 4, 11 },   /* 10x11 */
+                { 12,                 9 },   /* 14x9, the far drawing */
             };
             float dep_eye = (SMK_PROJ_LES * (float)rw / 256.0f)
                           / (sc > 0.0001f ? sc : 0.0001f);
