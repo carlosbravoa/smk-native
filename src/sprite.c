@@ -100,6 +100,37 @@ void smk_draw_sprite(const smk_sprites *s, int frame, const uint32_t *palette,
 }
 
 
+/* The straight rear view: the game stores only the LEFT HALF (frame 0's
+ * left 16 columns) and mirrors it - measured pixel-exact against the
+ * live P1 sprite (NOTES 080).  Drawing any full rotation frame as
+ * "straight" gives the head-leaning look, because none is symmetric. */
+void smk_draw_sprite_mirror(const smk_sprites *s, int frame,
+                            const uint32_t *palette, int pal_base,
+                            int cx, int cy, int scale,
+                            uint32_t *pixels, int w, int h, int pitch_px)
+{
+    if (frame < 0 || frame >= s->frames || scale < 1) return;
+    const uint8_t *src = s->px[frame];
+    int size = SMK_SPR_PX * scale;
+    int x0 = cx - size / 2, y0 = cy - size;
+
+    for (int y = 0; y < size; y++) {
+        int sy = y0 + y;
+        if (sy < 0 || sy >= h) continue;
+        const uint8_t *row = src + (y / scale) * SMK_SPR_PX;
+        uint32_t *dst = pixels + (size_t)sy * (size_t)pitch_px;
+        for (int x = 0; x < size; x++) {
+            int sx = x0 + x;
+            if (sx < 0 || sx >= w) continue;
+            int col = x / scale;
+            if (col >= SMK_SPR_PX / 2) col = SMK_SPR_PX - 1 - col;
+            uint8_t v = row[col];
+            if (v == 0) continue;
+            dst[sx] = palette[(pal_base + v) & 0xFF];
+        }
+    }
+}
+
 /* Far karts: the game COMPOSES a ~16px sprite at runtime (the small art
  * is in no ROM bank - a software minifier builds it in WRAM, NOTES 076).
  * Until that composer is decoded, sample the full frame 2:1 - a labelled

@@ -68,6 +68,7 @@ static void pump(input_state *in)
 
 static const smk_course *course_for_step;
 static int player_slip_deg;
+static int player_slip_units;   /* signed, $10000 = full turn */
 static int hud_lap, hud_rank;
 static int player_height_px;
 
@@ -532,6 +533,7 @@ static void step_kart(smk_kart *k, const smk_track *trk,
     }
     float slip_u0 = fabsf(slip_now) * 65536.0f / (2.0f * (float)M_PI);
     player_slip_deg = (int)(fabsf(slip_now) * 180.0f / (float)M_PI);
+    player_slip_units = (int)(slip_now * 65536.0f / (2.0f * (float)M_PI));
 
     /* steering authority falls off as the kart slows, as it must */
     int auth = (k->speed < 0 ? -k->speed : k->speed);
@@ -688,12 +690,27 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
             const smk_driver *d2 = &SMK_DRIVERS[k];
             if (!loaded[k]) loaded[k] = smk_sprites_load(rom, d2->sheet, &other[k]);
             if (!loaded[k]) continue;
-            bool hf = false;
-            uint16_t rel = (uint16_t)(racers[k].k.angle - cam_heading);
-            int f = smk_sprite_for_heading(SMK_SPR_TIER0, rel, &hf);
+            /* same measured pose ladder as the player (NOTES 080):
+             * mirrored straight < $400, 47 half-lean < $1000, then the
+             * rotation frames */
+            int rel = (int16_t)(uint16_t)(racers[k].k.angle - cam_heading);
+            int ar = rel < 0 ? -rel : rel;
+            bool hf = false, mirror = false;
+            int f;
+            if (ar < 0x0400) { f = 0; mirror = true; }
+            else if (ar < 0x1000) { f = 47; hf = rel > 0; }
+            else {
+                uint16_t r16 = (uint16_t)rel;
+                f = smk_sprite_for_heading(SMK_SPR_TIER0, r16, &hf);
+            }
             /* height lifts the sprite on screen, scaled like everything else */
             py -= (float)smk_kart_height_px(&racers[k].k) * sc;
-            if (depth > 84.0f)
+            if (mirror)
+                smk_draw_sprite_mirror(&other[k], 0, trk->palette, d2->pal,
+                                       (int)px, (int)py,
+                                       depth > 84.0f ? (scale + 1) / 2 : scale,
+                                       fb, rw, rh, rw);
+            else if (depth > 84.0f)
                 smk_draw_sprite_mini(&other[k], f, trk->palette,
                                      d2->pal, (int)px, (int)py, scale, hf,
                                      fb, rw, rh, rw);
@@ -706,11 +723,18 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
     if (show_kart && karts->frames) {
         int scale = rw / 256;                 /* the SNES 32px proportion */
         if (scale < 1) scale = 1;
-        bool hf = frame < 0;
         /* the hop lifts the sprite; the shadow stays on the ground */
         int lift = player_height_px * scale;
-        smk_draw_sprite(karts, hf ? -frame : frame, trk->palette, drv->pal,
-                        rw / 2, rh - rh / 12 - lift, scale, hf, fb, rw, rh, rw);
+        if (frame == 1000)                    /* the mirrored straight pose */
+            smk_draw_sprite_mirror(karts, 0, trk->palette, drv->pal,
+                                   rw / 2, rh - rh / 12 - lift, scale,
+                                   fb, rw, rh, rw);
+        else {
+            bool hf = frame < 0;
+            smk_draw_sprite(karts, hf ? -frame : frame, trk->palette,
+                            drv->pal, rw / 2, rh - rh / 12 - lift, scale,
+                            hf, fb, rw, rh, rw);
+        }
     }
 }
 
@@ -723,22 +747,40 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
  * steering input.  Encoded as negative-for-hflip in one int. */
 static int frame_for(const input_state *in, float *lean)
 {
-    /* Player frames (measured + visual identification, NOTES 073):
-     * frame 2 is the straight rear view (frame 1 is visibly turned - the
-     * "starts turning right" report), frame 1/hflip the normal steering
-     * pose, and 47/hflip the slide/oversteer pose the uploads showed. */
+    /* MEASURED pose rule (framelab6, NOTES 080).  The displayed pose is
+     * the kart's heading relative to the LAGGING camera, on a ladder:
+     *
+     *   |rel| < $0400   the mirrored straight pose (frame 0's left half
+     *                   reflected - no full frame is symmetric)
+     *         < $1000   frame 47, the half-lean       (base art LEANS LEFT)
+     *         < $1800   frame 1, the turning pose     (base art TURNS RIGHT)
+     *         < $2000   frame 2      (the rotation set continues exactly
+     *         < $2800   frame 3       as the measured AI rule from here:
+     *         < $3000   frame 4       drift slip $1640 showed 2, $21C0
+     *         ...                     showed 4 - pixel-exact matches)
+     *
+     * Our camera is rigid, so the lag is synthesised: it ramps toward
+     * ~$0C00 over ~8 frames of held steer (the lab shows frame 1 after
+     * 8 frames of steering with zero slip, so the steady lag sits in
+     * 47's band's far side, $0800-$1000; $0C00 ramped at $180/frame is
+     * the labelled bracket midpoint).  Slides add the real slip angle. */
     float want = (in->left ? -1.0f : 0.0f) + (in->right ? 1.0f : 0.0f);
     if (want != 0.0f)
-        *lean += (want - *lean) * 0.2f;
+        *lean += ((want * 3072.0f) - *lean) * 0.22f;   /* -> $0C00 in ~8f */
     else
-        *lean *= 0.7f;
-    bool sliding = in->hop_held && want != 0.0f;
-    if (sliding || player_slip_deg > 12)
-        return (*lean < 0 || (want < 0)) ? -47 : 47;
-    if (*lean <= -0.4f) return -1;
-    if (*lean >= 0.4f) return 1;
-    return 2;
+        *lean *= 0.78f;
+    int rel = (int)*lean + player_slip_units;
+    int a = rel < 0 ? -rel : rel;
+    if (a < 0x0400) return 1000;                       /* mirrored straight */
+    if (a < 0x1000) return rel > 0 ? -47 : 47;         /* 47 base = left    */
+    int f2 = a < 0x1800 ? 1
+           : a < 0x2000 ? 2
+           : a < 0x2800 ? 3
+           : a < 0x3000 ? 4
+           : a < 0x3800 ? 5 : 6;
+    return rel < 0 ? -f2 : f2;                         /* 1+ base = right   */
 }
+
 
 /* ------------------------------------------------------------------ */
 static void usage(const char *argv0)

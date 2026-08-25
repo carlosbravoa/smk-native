@@ -2310,4 +2310,36 @@ preserves the cap-vs-limit relationship at 50cc speeds.
 
 ---
 
-*(next entry: 080)*
+**080** — The player pose rule, finally measured PIXEL-EXACT.  The
+straight pose is a MIRRORED HALF; the drift poses are the rotation set.
+
+Method that settled it (framelab6 after five broken attempts): drive the
+un-demo player through scripted phases with flow-steering keeping it on
+the road, assemble the P1 sprite's pixels from its OAM entries (tiles
+$140-$1FF at screen centre) + VRAM, and pixel-match against every sheet
+frame under both flips.  Exact 0.00-mismatch identifications:
+
+* STRAIGHT: a left-right symmetric sprite matching NO full frame - it is
+  **frame 0's left half, mirrored** (0.000 on the half-compare).  Frame 0
+  stores only the half; that is why it renders as fragments.  Every
+  previous "centre frame" pick (1, then 2) was a rotation pose - the
+  "head leaning right at rest" bug.
+* STEERING (held, no slip): **frame 1** - hflip 1 for LEFT, 0 for RIGHT.
+  Frame 1's base art is the RIGHT-turn pose.
+* DRIFT ONSET (slip $400): **frame 47**, hflip 0 for LEFT - its base art
+  leans LEFT, mirrored sense vs the rotation frames.
+* DEEP SLIDES: the ROTATION set by relative angle - slip $1640 -> frame
+  2, $21C0 -> frame 4, matching the measured AI bands ($1800/$2000/$2800
+  boundaries).  The kart visibly goes sideways as slip grows.
+
+The input is heading minus the LAGGING camera.  Ladder: <$0400 mirrored
+straight, <$1000 frame 47, <$1800 frame 1, then 2/3/4... per the AI
+rule.  Ported for player AND peers; our rigid camera synthesises the
+steer lag (~$0C00 over ~8 frames - bracketed by the lab: 8 frames of
+slip-free steering already shows frame 1; labelled).  The old
+"frames 1 and 47" upload reading (NOTES 072) was correct data,
+wrong interpretation - uploads are 512-byte STRIPS, not frames.
+
+---
+
+*(next entry: 081)*
