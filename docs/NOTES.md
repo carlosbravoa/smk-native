@@ -2427,4 +2427,43 @@ The chain, each link measured:
 
 ---
 
-*(next entry: 084)*
+**084** — HUD CONTAMINATION found: NOTES 076/077 were measuring the
+scoreboard.  The projection is now one self-consistent law.
+
+Chasing the "far kart art" led to the DMA at $81:E89C, which uploads
+$7F:C200 (the blob decompressed from **$C1:0000**) to the sprite tiles.
+Rendering that blob shows what it really is: **the HUD set** - the
+digits 0-9, "LAP", "FINAL LAP".  The tiles I had measured as "the far
+kart" ($4E $4F $5E $5F) are scoreboard sprites, which is exactly why
+they came back as a constant ~18x15 at every depth from 96 to 470: a
+HUD element does not move.
+
+Re-analysing the natural-motion capture with a MOVING-vs-STATIC filter
+(a HUD sprite's (tile,x,y) never changes; a kart's does) separates them
+cleanly: static = {$4E,$4F,$5E,$5F}, moving = {$40,$42,$44,$46,$48,$4C}.
+The moving clusters give kart bottom-row 72 at depth 150 and 43 at depth
+330 - a real 1/depth curve, not a flat line.
+
+SUPERSEDED: 076's "binary near/far law", 077's "runtime minifier" (the
+art was never missing - I was looking at the wrong sprites), and the
+depth-84 mini switch.
+
+**The projection, now derived once and used everywhere.** From the boot
+raster stream (Vs = line - 98) with the race camera (Les 256, Lfe 256,
+Azs $3400 -> camera height 18.6 world px), the DSP's own arithmetic
+gives, per SNES frame line L:
+
+    depth(L) = 4972 / (L - 20.36)        world px from the EYE
+    scale(L) = depth(L) / 256            world px per SNES pixel
+
+The depth/scale ratio comes out at **exactly Les = 256** - the
+cross-check that the chain is right.  The player's kart at line 102
+(measured) is therefore 61 world px from the eye: the camera TRAILS the
+kart by 61 px, which is why sprites and ground finally agree.  Ported to
+both smk_render_mode7 and smk_project, with kart size following the same
+law anchored on the player's 32 px (labelled divergence: the SNES cannot
+scale sprites and quantises to a few art sizes; ours is continuous).
+
+---
+
+*(next entry: 085)*

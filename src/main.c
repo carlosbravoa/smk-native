@@ -715,7 +715,9 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
              * projection is the game's own flat law: the canvas stays
              * CONSTANT (1/8 screen width) at every depth, the ART steps
              * full -> mini at depth ~84, and there is no distance cull. */
-            int scale = rw / 256;
+            float dep_eye = depth + SMK_CAM_TRAIL;
+            if (dep_eye < 12.0f) continue;
+            int scale = (int)((float)(rw / 256) * SMK_CAM_TRAIL / dep_eye + 0.5f);
             if (scale < 1) scale = 1;
             const smk_driver *d2 = &SMK_DRIVERS[k];
             if (!loaded[k]) loaded[k] = smk_sprites_load(rom, d2->sheet, &other[k]);
@@ -736,14 +738,18 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
             }
             /* height lifts the sprite on screen, scaled like everything else */
             py -= (float)smk_kart_height_px(&racers[k].k) * sc;
+            /* Size follows the SAME projection as everything else,
+             * anchored on the ONE unambiguous measurement: the player's
+             * kart is 32 SNES px at the trail distance (NOTES 084).  So
+             * a kart at depth d draws 32 * TRAIL/d.  (The SNES itself
+             * cannot scale sprites and quantises this to a few art
+             * sizes; ours is continuous - a deliberate, labelled
+             * divergence that keeps karts road-proportional.) */
+            (void)depth;
             if (mirror)
-                smk_draw_sprite_mirror2(&other[k], 0, trk->palette, d2->pal,
-                                        (int)px, (int)py, scale,
-                                        depth > 84.0f, fb, rw, rh, rw);
-            else if (depth > 84.0f)
-                smk_draw_sprite_mini(&other[k], f, trk->palette,
-                                     d2->pal, (int)px, (int)py, scale, hf,
-                                     fb, rw, rh, rw);
+                smk_draw_sprite_mirror(&other[k], 0, trk->palette, d2->pal,
+                                       (int)px, (int)py, scale,
+                                       fb, rw, rh, rw);
             else
                 smk_draw_sprite(&other[k], f, trk->palette,
                                 d2->pal, (int)px, (int)py, scale, hf,
@@ -755,7 +761,7 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
         if (scale < 1) scale = 1;
         /* the hop lifts the sprite; the shadow stays on the ground */
         int lift = player_height_px * scale;
-        int prow = rh * 102 / 112;            /* the measured camera row */
+        int prow = (int)(SMK_PLAYER_LINE * (float)rh / 112.0f);
         if (frame == 1000)                    /* the mirrored straight pose */
             smk_draw_sprite_mirror(karts, 0, trk->palette, drv->pal,
                                    rw / 2, prow - lift, scale,

@@ -351,6 +351,16 @@ void smk_draw_sprite(const smk_sprites *s, int frame, const uint32_t *palette,
                      int pal_base, int cx, int cy, int scale, bool hflip,
                      uint32_t *pixels, int w, int h, int pitch_px);
 
+/* The projection constants, from the ROM's own DSP-1 geometry
+ * (docs/NOTES.md 084).  depth(line) = K/(line - H) world px from the eye;
+ * LES is the DSP's own screen distance and makes depth/scale exact. */
+#define SMK_PROJ_K    4972.0f
+#define SMK_PROJ_H      20.36f
+#define SMK_PROJ_LES   256.0f
+#define SMK_SKY_LINES   24.0f
+#define SMK_CAM_TRAIL   61.0f     /* eye sits this far behind the kart */
+#define SMK_PLAYER_LINE 102.0f    /* measured row of the player's kart */
+
 /* The mirrored straight pose: frame 0's left half reflected (the game
  * stores only the half - measured, NOTES 080). */
 void smk_draw_sprite_mirror(const smk_sprites *s, int frame,
