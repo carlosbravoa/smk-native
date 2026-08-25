@@ -573,19 +573,34 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
             if (!smk_project(cam, (float)course->ent[i].x,
                              (float)course->ent[i].y, rw, rh, &px, &py, &sc))
                 continue;
-            /* The pipe, in the game's own art (NOTES 093): stream
-             * tiles 14-23, 2 wide x 5 tall, palette $F0.  It scales with
-             * the same projection as everything else, anchored so the
-             * base sits on the ground point. */
+            /* The theme's own object art (NOTES 098/099). */
             if (!obj_art.ok) continue;
             /* Continuous scale, like the karts: the art is 16x40 SNES px
              * and shrinks with distance.  Flooring it at one screen pixel
              * per art pixel left far pipes full size, so their tops rose
              * above the horizon and they floated in the sky. */
-            float s2 = sc;            /* a pipe is ~16 world px tall */
-            int pw = (int)(SMK_OBJ_PIPE_W * s2 + 0.5f);
-            int ph = (int)(SMK_OBJ_PIPE_H * s2 + 0.5f);
-            if (pw < 2 || ph < 2) continue;          /* too far to matter */
+            /* Pick the size tier whose art height matches what the
+             * projection asks for, then draw it at the SNES proportion -
+             * the hardware's own mechanism.  desired = 16 world px seen
+             * at this depth, expressed in art pixels. */
+            static const struct { int base, w, h; } TIER[SMK_OBJ_TIERS] = {
+                { SMK_OBJ_PIPE0,      12, 15 },
+                { SMK_OBJ_PIPE0 + 2,  11, 13 },
+                { SMK_OBJ_PIPE0 + 4,  10, 11 },
+            };
+            /* smk_project gives sc = (LES*rw/256)/depth, so recover the
+             * depth from it rather than recomputing the projection */
+            float dep_eye = (SMK_PROJ_LES * (float)rw / 256.0f) / (sc > 0.0001f ? sc : 0.0001f);
+            if (dep_eye < 8.0f) continue;
+            float want = 4096.0f / dep_eye;          /* in art pixels */
+            int ti = 0;
+            for (int t = 1; t < SMK_OBJ_TIERS; t++)
+                if (fabsf((float)TIER[t].h - want)
+                    < fabsf((float)TIER[ti].h - want)) ti = t;
+            int obase = TIER[ti].base;
+            int scale = rw / 256;
+            if (scale < 1) scale = 1;
+            int pw = SMK_OBJ_PIPE_W * scale, ph = SMK_OBJ_PIPE_H * scale;
             int x0 = (int)px - pw / 2, y0 = (int)py - ph;
             for (int dy = 0; dy < ph; dy++) {
                 int yy = y0 + dy;
@@ -595,8 +610,7 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
                     int xx = x0 + dx;
                     if (xx < 0 || xx >= rw) continue;
                     int tx = dx * SMK_OBJ_PIPE_W / pw;
-                    int tile = SMK_OBJ_PIPE0
-                             + (ty / 8) * SMK_OBJ_STRIDE + (tx / 8);
+                    int tile = obase + (ty / 8) * SMK_OBJ_STRIDE + (tx / 8);
                     if (tile >= SMK_OBJ_TILES) continue;
                     uint8_t v = obj_art.px[tile][(ty % 8) * 8 + (tx % 8)];
                     if (!v) continue;

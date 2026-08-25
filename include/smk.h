@@ -422,7 +422,24 @@ static inline int smk_hud_digit(int d)
  * We draw ONE tier scaled continuously - a labelled divergence, the same
  * one we make for karts.  Choosing the tier by distance instead is the
  * faithful behaviour and is still open. */
-#define SMK_OBJ_PIPE0   32        /* top-left tile of the near tier    */
+/* The size TIERS.  The SNES cannot scale a sprite, so the sheet stores
+ * the object at several sizes and the game picks one by distance - which
+ * is why a live entity's tile list changes as you approach.  Measured
+ * off the sheet (identical layout in every theme):
+ *
+ *     base 32 -> 12x15    base 34 -> 11x13    base 36 -> 10x11
+ *
+ * Drawing ONE tier scaled continuously made near objects balloon to
+ * twice the kart's height, where the original keeps them smaller than
+ * the kart (playtest).  Now: constant SNES proportion like the karts,
+ * with the tier chosen by distance. */
+#define SMK_OBJ_PIPE0   32        /* the near tier's top-left tile     */
+#define SMK_OBJ_TIERS   3
+/* Half-width for collision, from the ART (12 px across at the near
+ * tier), not measured in-game: the 12 px radius I had invented sealed
+ * the gap between two entities 16 px apart that you are meant to drive
+ * through. */
+#define SMK_OBJ_RADIUS  6
 #define SMK_OBJ_STRIDE  16        /* VRAM tiles per row                */
 #define SMK_OBJ_PIPE_W  16        /* pixels                            */
 #define SMK_OBJ_PIPE_H  16

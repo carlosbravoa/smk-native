@@ -2937,4 +2937,33 @@ and slam), and we draw one size tier scaled rather than choosing a tier.
 
 ---
 
-*(next entry: 099)*
+**099** — Entity size and passability: two invented numbers replaced.
+
+Side by side with the original on Rainbow Road, our Thwomps were about
+twice the kart's height where the game keeps them SMALLER than the kart,
+and the row of four sealed the road.
+
+**Size.**  We drew one tier scaled continuously with the projection, so
+a near object ballooned - while the karts beside them use a constant
+SNES-proportion canvas.  The hardware cannot scale a sprite at all: the
+sheet stores the object at several sizes and the game picks one, which
+is exactly why a live entity's tile list changes as you approach (an
+observation from NOTES 078 I had noted and not used).  Measured off the
+sheet, identical in every theme:
+
+    base 32 -> 12x15     base 34 -> 11x13     base 36 -> 10x11
+
+Ported: the tier whose art height best matches 4096/depth (16 world px
+seen at that depth, in art pixels), drawn at the constant SNES
+proportion like the karts.
+
+**Passability.**  The collision half-width was 12 px - invented back
+when entities were placeholder billboards and never revisited.  Rainbow
+Road's Thwomps sit 8 and 16 px apart, so a 12 px radius sealed the 16 px
+gap you are meant to thread.  The near tier's art is 12 px across, so
+the half-width is 6.  `tools/labs` harness confirms lanes 40-48 now pass
+between the Thwomps while the entities themselves still block.
+
+---
+
+*(next entry: 100)*

@@ -70,7 +70,7 @@ void smk_collide_objects(smk_kart *k, const smk_course *crs)
     for (int i = 0; i < crs->nent; i++) {
         int dx = kx - (int)crs->ent[i].x, dy = ky - (int)crs->ent[i].y;
         int d2 = dx * dx + dy * dy;
-        if (d2 >= 12 * 12 || d2 == 0) continue;
+        if (d2 >= SMK_OBJ_RADIUS * SMK_OBJ_RADIUS || d2 == 0) continue;
         float d = sqrtf((float)d2);
         float nx2 = (float)dx / d, ny2 = (float)dy / d;
         float dot = (float)k->vx * nx2 + (float)k->vy * ny2;
@@ -82,7 +82,7 @@ void smk_collide_objects(smk_kart *k, const smk_course *crs)
             k->speed = (int16_t)(k->speed * 308 / 581);
             k->bounce_cool = 10;
         }
-        float push = (12.0f - d) + 1.0f;
+        float push = ((float)SMK_OBJ_RADIUS - d) + 1.0f;
         k->x += (int32_t)(nx2 * push * SMK_POS_ONE);
         k->y += (int32_t)(ny2 * push * SMK_POS_ONE);
     }
