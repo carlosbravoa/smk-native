@@ -102,7 +102,12 @@ uint32_t smk_track_texel(const smk_track *t, int wx, int wy);
 /* Surface byte under a world position, exactly as $80FA62 computes it:
  * index = (y >> 3) * 128 + (x >> 3), then map -> surface table. */
 uint8_t smk_track_surface(const smk_track *t, int wx, int wy);
-static inline bool smk_surface_solid(uint8_t s) { return (s & SMK_SURF_SOLID) != 0; }
+/* Solid: bit 5 ($20) is the ordinary wall bit, and bit 7 ($80) is the
+ * barrier class NOTES 044 measured head-on as a wall (reflect + knockback,
+ * speed preserved).  Both block - Mario Circuit's barrier blocks are $80,
+ * and treating them as ramps let karts vault them (NOTES 088). */
+static inline bool smk_surface_solid(uint8_t s)
+{ return (s & (SMK_SURF_SOLID | 0x80u)) != 0; }
 
 /* The surface byte's low nibble is a TYPE index (even values, so type =
  * (s >> 1) & 7 for the drag rows).  DECODED:

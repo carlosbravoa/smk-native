@@ -158,21 +158,13 @@ void smk_kart_move(smk_kart *k, const smk_track *t)
     int32_t nx = advance(k->x, k->vx);
     int32_t ny = advance(k->y, k->vy);
 
-    /* Jump bars: the bit-7 surface classes ($80/$82/$84) are the ramps.
-     * Driving onto one launches the kart - the class-$80 response measured
-     * in NOTES 044 - and the flight carries it over the $22/$24 gap
-     * beyond.  Correction from playtest (NOTES 058): the gaps themselves
-     * are NOT self-vaulting; without a bar you stop at the edge, and rails
-     * ($22 on Ghost Valley) block driving entirely. */
-    {
-        uint8_t here = smk_track_surface(t, smk_kart_px(nx), smk_kart_px(ny));
-        if ((here & 0x80) && !k->airborne && k->speed >= 200) {
-            smk_kart_launch(k, 0x0140);
-            k->x = nx;
-            k->y = ny;
-            return;
-        }
-    }
+    /* CORRECTION (NOTES 088): the bit-7 classes are WALLS, not ramps.
+     * NOTES 044 measured class $80 head-on and got a wall - the into-wall
+     * component reflects, a knockback follows, speed is preserved.  The
+     * later "bit-7 bars launch you" rule was invented to explain jumps and
+     * contradicted that measurement: it let a kart at speed vault Mario
+     * Circuit's barrier blocks and fly off the world (playtest).  Bit-7
+     * now falls through to the wall response below, where it belongs. */
 
     /* Wall response, ported from measurement (NOTES 044): reflect the
      * into-wall component and kick away for a few frames.  MEASURED on one
@@ -200,16 +192,11 @@ void smk_kart_move(smk_kart *k, const smk_track *t)
             uint8_t wv = bx
                 ? smk_track_surface(t, smk_kart_px(nx), smk_kart_px(k->y))
                 : smk_track_surface(t, smk_kart_px(k->x), smk_kart_px(ny));
-            if (wv & 0x80) {                 /* jump bar: measured launch */
-                smk_kart_launch(k, SMK_HOP_VEL);
-                if (bx) { k->vx = (int16_t)-k->vx; }
-                if (by) { k->vy = (int16_t)-k->vy; }
-            } else {
-                if (bx) k->vx = (int16_t)-k->vx;
-                if (by) k->vy = (int16_t)-k->vy;
-                if (bx && by) { k->vx = (int16_t)-k->vx; } /* corner: full back */
-                k->bounce_cool = 10;         /* the $42 ballistic window */
-            }
+            (void)wv;                    /* every solid class walls here */
+            if (bx) k->vx = (int16_t)-k->vx;
+            if (by) k->vy = (int16_t)-k->vy;
+            if (bx && by) { k->vx = (int16_t)-k->vx; } /* corner: full back */
+            k->bounce_cool = 10;             /* the $42 ballistic window */
         }
         return;
     }

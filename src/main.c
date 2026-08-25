@@ -759,18 +759,35 @@ static void step_kart(smk_kart *k, const smk_track *trk,
                                                  sideways poses */
         else if ((lateral > limit || plowing)
                  && (in->left || in->right))
-            g = -0.026f;                      /* plow: slip GROWS, fit to
-                                                 the measured +130/frame
-                                                 at slip ~4000; positive
-                                                 g always decays and the
-                                                 plow self-recovered.
-                                                 Release steering ->
-                                                 branch below, decay
-                                                 ~150/frame as measured */
+            g = 0.0f;                         /* plow: see the ROTATION
+                                                 below - a negative g
+                                                 shrank the velocity
+                                                 vector, so the kart lost
+                                                 speed in steps and then
+                                                 regained grip: the
+                                                 stutter cycle (playtest).
+                                                 The ROM keeps speed
+                                                 through a plow (measured
+                                                 791 -> 801). */
         else
             g = 0.50f * class_grip;           /* measured convergence     */
-        k->vx = (int16_t)(k->vx + (float)(tvx - k->vx) * g);
-        k->vy = (int16_t)(k->vy + (float)(tvy - k->vy) * g);
+        float nvx = (float)k->vx + (float)(tvx - k->vx) * g;
+        float nvy = (float)k->vy + (float)(tvy - k->vy) * g;
+        if (plowing && (in->left || in->right)) {
+            /* MEASURED plow (NOTES 068): slip grows ~130/frame while the
+             * SPEED IS KEPT.  So rotate the velocity away from the
+             * heading at that rate and renormalise - never shrink it.
+             * Blending toward the heading with a negative gain shrank the
+             * vector instead, which is what made cornering stutter. */
+            float mag = sqrtf((float)k->vx * k->vx + (float)k->vy * k->vy);
+            float rate = 130.0f * (2.0f * (float)M_PI) / 65536.0f;
+            float dir  = slip_now >= 0.0f ? 1.0f : -1.0f;
+            float va2  = atan2f((float)k->vx, -(float)k->vy) + dir * rate;
+            nvx = sinf(va2) * mag;
+            nvy = -cosf(va2) * mag;
+        }
+        k->vx = (int16_t)nvx;
+        k->vy = (int16_t)nvy;
     }
     smk_kart_move(k, trk);       /* the ROM's position += velocity << 8 */
     if (course_for_step) collide_objects(k, course_for_step);
