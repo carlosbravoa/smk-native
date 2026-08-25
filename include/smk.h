@@ -351,6 +351,20 @@ void smk_draw_sprite(const smk_sprites *s, int frame, const uint32_t *palette,
                      int pal_base, int cx, int cy, int scale, bool hflip,
                      uint32_t *pixels, int w, int h, int pitch_px);
 
+/* The game's own HUD sprite set (docs/NOTES.md 085): $81:E856
+ * decompresses $C1:0000 to $7F:C000 and DMAs offset $200 (4096 bytes =
+ * 128 tiles) into the sprite tiles $40-$BF.  Digits 0-4 are tiles
+ * $A7-$AB and 5-9 are $B7-$BB - the strip is 5 wide and wraps by the
+ * 16-tile VRAM row.  Sprite palette $C0 (from the live OAM attribute). */
+#define SMK_HUD_TILES   128
+#define SMK_HUD_TILE0   0x40
+#define SMK_HUD_PAL     0xC0
+typedef struct { uint8_t px[SMK_HUD_TILES][64]; bool ok; } smk_hud;
+bool smk_hud_load(const smk_rom *rom, smk_hud *out);
+/* tile index for one decimal digit */
+static inline int smk_hud_digit(int d)
+{ return (d < 5 ? 0xA7 + d : 0xB7 + (d - 5)) - SMK_HUD_TILE0; }
+
 /* The projection constants, from the ROM's own DSP-1 geometry
  * (docs/NOTES.md 084).  depth(line) = K/(line - H) world px from the eye;
  * LES is the DSP's own screen distance and makes depth/scale exact. */

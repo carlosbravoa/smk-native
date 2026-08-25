@@ -71,6 +71,45 @@ static int player_slip_deg;
 static int player_slip_units;   /* signed, $10000 = full turn */
 static int player_airborne;
 static int hud_lap, hud_rank;
+static smk_hud hud_art;                  /* the game's own HUD sprites */
+
+/* Draw one HUD tile at 8x8 * scale, palette $C0, index 0 transparent. */
+static void hud_tile(uint32_t *fb, int rw, int rh, int x, int y, int tile,
+                     const uint32_t *palette, int sc)
+{
+    if (!hud_art.ok || tile < 0 || tile >= SMK_HUD_TILES) return;
+    const uint8_t *px = hud_art.px[tile];
+    for (int ty = 0; ty < 8 * sc; ty++) {
+        int sy = y + ty;
+        if (sy < 0 || sy >= rh) continue;
+        for (int tx = 0; tx < 8 * sc; tx++) {
+            int sx = x + tx;
+            if (sx < 0 || sx >= rw) continue;
+            uint8_t v = px[(ty / sc) * 8 + (tx / sc)];
+            if (v) fb[sy * rw + sx] = palette[(SMK_HUD_PAL + v) & 0xFF];
+        }
+    }
+}
+
+/* "LAP n/N" in the game's own art, top-right like the original. */
+static void draw_hud(uint32_t *fb, int rw, int rh, const uint32_t *palette,
+                     int lap, int laps, int rank)
+{
+    if (!hud_art.ok) return;
+    int sc = rw >= 640 ? 3 : 2;
+    int x = rw - 8 * sc * 5 - 8, y = 8;
+    /* the LAP word: tiles $B0/$B1 (the strip the ROM draws beside the
+     * digit), then the lap number */
+    hud_tile(fb, rw, rh, x, y, 0xB0 - SMK_HUD_TILE0, palette, sc);
+    hud_tile(fb, rw, rh, x + 8 * sc, y, 0xB1 - SMK_HUD_TILE0, palette, sc);
+    int d = lap < 1 ? 1 : (lap > 9 ? 9 : lap);
+    hud_tile(fb, rw, rh, x + 8 * sc * 3, y, smk_hud_digit(d), palette, sc);
+    /* position, under it */
+    int r = rank < 1 ? 1 : (rank > 8 ? 8 : rank);
+    hud_tile(fb, rw, rh, x + 8 * sc * 3, y + 9 * sc, smk_hud_digit(r),
+             palette, sc);
+    (void)laps;
+}
 static int player_height_px;
 
 static void collide_objects(smk_kart *k, const smk_course *crs)
@@ -773,6 +812,7 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
                             hf, fb, rw, rh, rw);
         }
     }
+    draw_hud(fb, rw, rh, trk->palette, hud_lap, 5, hud_rank);
 }
 
 /* The player's own view angle.
@@ -933,6 +973,7 @@ int main(int argc, char **argv)
         return 1;
     }
     static smk_track trk;
+    smk_hud_load(&rom, &hud_art);
     if (!smk_track_load(&rom, track, theme, &trk, err, sizeof err)) {
         fprintf(stderr, "error: %s\n", err);
         smk_rom_free(&rom);
@@ -984,6 +1025,7 @@ int main(int argc, char **argv)
                                           / (2.0f * (float)M_PI)
                                           + SMK_ANGLE_TURN / 4);
             memset(&none, 0, sizeof none);
+            hud_lap = 1; hud_rank = 1;
             static smk_racer shot_racers[SMK_CHARACTERS];
             for (int i = 0; i < SMK_CHARACTERS; i++)
                 racer_start(&shot_racers[i], &crs, i);
@@ -1159,11 +1201,11 @@ int main(int argc, char **argv)
 
         if (tex && fb) {
             smk_render_mode7(&trk, &cam, fb, rw, rh, rw);
+            hud_lap = me->lap + 1;
+            hud_rank = race_rank(racers, 0, &crs);
             draw_scene(&rom, &trk, &karts, drv, &cam, fb, rw, rh,
                        show_grid, show_kart, frame_for(&in, &lean),
                        kart.angle, racers, &crs);
-            hud_lap = me->lap + 1;
-            hud_rank = race_rank(racers, 0, &crs);
             draw_speedo(fb, rw, rh, &kart,
                         smk_track_surface(&trk, smk_kart_px(kart.x),
                                           smk_kart_px(kart.y)),
