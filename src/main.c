@@ -37,11 +37,54 @@ static void input_edges_clear(input_state *in)
     in->hop = false;
 }
 
+/* Gamepad.
+ *
+ * Mapped to the SNES pad the game itself reads ($4218/$4219): B
+ * accelerates, Y brakes, the SHOULDERS hop - which is how you drift in
+ * SMK, by hopping into a held turn - and the d-pad steers.  On an
+ * Xbox-style controller SDL's "A" is the bottom face button, so A is
+ * the natural B; the triggers double as accelerate/brake because that
+ * is what hands expect on a modern pad, and the left stick doubles for
+ * the d-pad through a deadzone (the game's steering is digital, so the
+ * stick is thresholded, not scaled). */
+static SDL_GameController *pad;
+
+static void pad_open(int idx)
+{
+    if (pad || !SDL_IsGameController(idx)) return;
+    pad = SDL_GameControllerOpen(idx);
+    if (pad)
+        printf("gamepad: %s\n", SDL_GameControllerName(pad));
+}
+
+static void pad_close(SDL_JoystickID which)
+{
+    if (!pad) return;
+    SDL_Joystick *j = SDL_GameControllerGetJoystick(pad);
+    if (j && SDL_JoystickInstanceID(j) == which) {
+        SDL_GameControllerClose(pad);
+        pad = NULL;
+        printf("gamepad: disconnected\n");
+    }
+}
+
 static void pump(input_state *in)
 {
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
         if (e.type == SDL_QUIT) in->quit = true;
+        if (e.type == SDL_CONTROLLERDEVICEADDED) pad_open(e.cdevice.which);
+        if (e.type == SDL_CONTROLLERDEVICEREMOVED) pad_close(e.cdevice.which);
+        if (e.type == SDL_CONTROLLERBUTTONDOWN) {
+            switch (e.cbutton.button) {
+            case SDL_CONTROLLER_BUTTON_LEFTSHOULDER:
+            case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: in->hop = true; break;
+            case SDL_CONTROLLER_BUTTON_RIGHTSTICK:    in->toggle_filter = true; break;
+            case SDL_CONTROLLER_BUTTON_BACK:          in->prev_track = true; break;
+            case SDL_CONTROLLER_BUTTON_START:         in->next_track = true; break;
+            default: break;
+            }
+        }
         /* Fold in key events as well as polling: a tap shorter than one
          * iteration is invisible to SDL_GetKeyboardState alone. */
         if (e.type == SDL_KEYDOWN && e.key.repeat == 0) {
@@ -64,6 +107,22 @@ static void pump(input_state *in)
     in->right = k[SDL_SCANCODE_RIGHT] || k[SDL_SCANCODE_D];
     in->shift = k[SDL_SCANCODE_LSHIFT] || k[SDL_SCANCODE_RSHIFT];
     in->hop_held = k[SDL_SCANCODE_SPACE];
+
+    if (pad) {
+        const int DEAD = 9000;      /* stick deadzone, SDL units */
+        const int TRIG = 12000;     /* trigger press threshold   */
+        int lx = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_LEFTX);
+        int lt = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_TRIGGERLEFT);
+        int rt = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
+        #define BTN(b) SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_##b)
+        in->up    |= BTN(A) || rt > TRIG;                 /* SNES B: accel */
+        in->down  |= BTN(X) || BTN(B) || lt > TRIG;       /* SNES Y: brake */
+        in->left  |= BTN(DPAD_LEFT)  || lx < -DEAD;
+        in->right |= BTN(DPAD_RIGHT) || lx >  DEAD;
+        in->hop_held |= BTN(LEFTSHOULDER) || BTN(RIGHTSHOULDER);
+        in->shift |= BTN(Y);
+        #undef BTN
+    }
 }
 
 static const smk_course *course_for_step;
@@ -929,13 +988,18 @@ static void usage(const char *argv0)
            "  --shot PATH     render one frame to a BMP and exit\n"
            "  --dump PATH     write map+tiles+palette and exit (verification)\n"
            "  --at X Y DEG    camera placement for --shot\n"
-           "  --height-cam H  eye height above the plane   [15]\n"
-           "  --horizon F     horizon row, 0..1            [0.36]\n"
-           "  --fov F         focal length scale           [0.55]\n\n"
-           "  arrows/WASD steer and accelerate, shift = boost\n"
-           "  space = hop; hold it through a turn to power slide\n"
-           "  [ ] change track, o p override the theme\n"
-           "  f toggles linear filtering, esc quits\n", argv0);
+           "  o p             override the course theme\n"
+           "\n"
+           "controls (keyboard / gamepad, mapped to the SNES pad):\n"
+           "  accelerate    Up or W      / A button or right trigger\n"
+           "  brake         Down or S    / X or B button, left trigger\n"
+           "  steer         Left Right   / d-pad or left stick\n"
+           "  hop and drift Space        / either shoulder button\n"
+           "  next track    ]            / Start\n"
+           "  prev track    [            / Back\n"
+           "  filter        F            / right stick click\n"
+           "  quit          Esc\n"
+           , argv0);
 }
 
 int main(int argc, char **argv)
@@ -952,7 +1016,10 @@ int main(int argc, char **argv)
     float shot_x = 512, shot_y = 512, shot_a = 0;
     int have_at = 0;
     long max_frames = 0;              /* >0: run headless for N frames, then exit */
-    float cam_height = 15.0f, cam_horizon = 0.36f, cam_fov = 0.55f;
+    /* The camera shape is no longer tunable: it is the ROM's own DSP-1
+     * geometry (SMK_PROJ_*, NOTES 083/084).  The old --height-cam /
+     * --horizon / --fov knobs tuned a projection that no longer exists,
+     * so they are removed rather than left lying around as dead controls. */
 
     for (int i = 1; i < argc; i++) {
         const char *a = argv[i];
@@ -968,7 +1035,6 @@ int main(int argc, char **argv)
         if (!strcmp(a, "--shot") && i + 1 < argc) { shot = argv[++i]; continue; }
         if (!strcmp(a, "--dump") && i + 1 < argc) { dump = argv[++i]; continue; }
         #define FARG(name, var) if (!strcmp(a, name) && i + 1 < argc) { var = (float)atof(argv[++i]); continue; }
-        FARG("--height-cam", cam_height) FARG("--horizon", cam_horizon) FARG("--fov", cam_fov)
         #undef FARG
         if (!strcmp(a, "--at") && i + 3 < argc) {
             shot_x = (float)atof(argv[++i]);
@@ -1055,8 +1121,7 @@ int main(int argc, char **argv)
         int sw = win_w / pixel, sh = win_h / pixel;
         uint32_t *px = malloc((size_t)sw * (size_t)sh * sizeof *px);
         smk_camera c = { .x = shot_x, .y = shot_y, .angle = shot_a,
-                         .height = cam_height, .horizon = cam_horizon,
-                         .fov = cam_fov };
+                       };
         smk_render_mode7(&trk, &c, px, sw, sh, sw);
         {
             input_state none;
@@ -1100,6 +1165,16 @@ int main(int argc, char **argv)
         fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
         return 1;
     }
+
+    /* The pad is optional: a machine with no controller (or no udev
+     * permissions) must still run, so this failing is not fatal. */
+    if (SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER) == 0) {
+        for (int i = 0; i < SDL_NumJoysticks(); i++) pad_open(i);
+        if (!pad) printf("gamepad: none connected (keyboard active)\n");
+    } else {
+        fprintf(stderr, "gamepad: unavailable (%s)\n", SDL_GetError());
+    }
+
     SDL_Window *win = SDL_CreateWindow("Super Mario Kart",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, win_w, win_h,
         SDL_WINDOW_RESIZABLE | (fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0));
@@ -1117,8 +1192,7 @@ int main(int argc, char **argv)
     SDL_Texture *tex = NULL;
     uint32_t *fb = NULL;
 
-    smk_camera cam = { .height = cam_height, .horizon = cam_horizon,
-                       .fov = cam_fov };
+    smk_camera cam = { 0 };
     course_for_step = &crs;
     static smk_racer racers[SMK_CHARACTERS];
     for (int i = 0; i < SMK_CHARACTERS; i++)
