@@ -3503,3 +3503,35 @@ shows the grid POSITIONS come from a per-track record (`[$0C],y` at
 
 Ported: `smk_grid_order`, `smk_racer.character`, sheets by character,
 painter's order in `draw_scene`.  Selftest pins the demo's row.
+
+---
+
+**112** — Kart-to-kart collision: not in the data.  `$42,x` is the rank
+animation timer.  The demo replay is now exact end to end.
+
+Hunting the last divergence (P1, frame 1736) as a kart bump found three
+things instead:
+
+* **`$42,x` is not a knockback window.**  Its only writer is `$84EF20`,
+  the HUD position display: when a kart's RANK (`$E6,y`) differs from the
+  last shown (`$40,y`) the number animates up (`$84D9AB`) or down
+  (`$84D98D`) and `$42` counts 10 frames.  NOTES 071/092 read the same
+  countdown during wall hits as a ballistic window; the hit changed the
+  rank.  The measured ~9-frame velocity freeze (NOTES 092) stands on its
+  own displacement data and stays as `bounce_cool`, LABELLED without the
+  `$42` attribution.
+* **No kart-to-kart response exists in the demo.**  The eight-kart log
+  (`allkarts.csv`) has two AI karts passing within 3 px of each other and
+  P2 within 7 px of an AI kart; no velocity, flag or position reacts, and
+  the P1/P2 replays are exact through those frames.  Whatever contact
+  response the game has (star, battle mode?) does not fire here; nothing
+  to port from this evidence.
+* **The frame-1736 divergence was ours**: track 7's entity 3 (a pipe)
+  stands at (252,124), 5 px from P1's line, and the port's cylinder
+  bounced the kart - but the attract race never spawns entities
+  (NOTES 105), so the game drove straight through.  The replay tool no
+  longer collides with entities; the gate now requires zero resyncs.
+
+    P1  1208/1208 frames within 1 px, mean 0.03 px, max 0.1 px
+    P2  1240/1240 frames within 1 px, mean 0.01 px
+    coins exact on both, no resync anywhere

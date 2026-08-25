@@ -83,7 +83,10 @@ int main(int argc, char **argv)
         }
         bool grounded = k.z == 0;                   /* $1F,x BEFORE this frame's jump update: the launch frame still counts */
         smk_player_step(&p, &k, &trk, held, pressed);
-        smk_collide_objects(&k, &crs);
+        /* no smk_collide_objects here: the attract race never spawns the
+         * sprite entities (NOTES 105), so its karts drive through where
+         * the pipes stand in a real race - track 7's entity 3 sits 5 px
+         * from P1's line at frame 1734 */
         /* the collector serves P1 on odd frames and P2 on even ones */
         if ((i & 1) == (kart_id == 1000 ? 1 : 0))
             smk_pickup_step(&rom, &trk, &p, &k, grounded);
@@ -134,8 +137,7 @@ int main(int argc, char **argv)
         /* The gate: what the port achieves today, so a regression shows.
          * P1: one divergence left, a kart-to-kart collision near the end
          * (the demo's AI karts are not in the port); P2 is exact. */
-        bool ok = 100.0 * within_tol / n >= 99.5 && best_streak >= 1100
-               && 100.0 * within1 / n >= 99.0 && coin_bad == 0;
+        bool ok = resyncs == 0 && 100.0 * within1 / n >= 99.5 && coin_bad == 0;
         printf("demo replay gate (kart %d): %s\n", kart_id, ok ? "PASS" : "FAIL");
         return ok ? 0 : 1;
     }
