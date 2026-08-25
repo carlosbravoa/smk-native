@@ -457,6 +457,16 @@ static inline int smk_hud_digit(int d)
 /* MEASURED (NOTES 105) from the live entity block: +$06 = 0x4200 / d,
  * an 8.8 scale, so 1.0 at d = 0x4200/256 world px from the kart. */
 #define SMK_OBJ_SCALE_K 66.0f
+/* The scale field itself never saturates, but the drawn PIXELS must:
+ * the largest pipe the original is ever seen to draw is 22x32 SNES px,
+ * exactly twice the near tier's 12x16, and its outline is 2 art pixels
+ * where the kart's is 1.  So objects magnify by at most 2, and karts -
+ * where a peer alongside you is the same size as your own - not at all.
+ * Without this the pipe fills the screen as you draw level with it. */
+#define SMK_OBJ_MAG_MAX 2.0f
+/* Closest approach: object collision pushes the kart out to
+ * SMK_OBJ_RADIUS, so the centres never come nearer than that. */
+#define SMK_OBJ_NEAR    ((float)SMK_OBJ_RADIUS)
 typedef struct { uint8_t px[SMK_OBJ_TILES][64]; bool ok; } smk_objgfx;
 bool smk_objgfx_load(const smk_rom *rom, int theme, smk_objgfx *out);
 

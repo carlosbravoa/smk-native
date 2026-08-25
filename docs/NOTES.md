@@ -3175,6 +3175,25 @@ over the kart distance; the tier only decides which drawing, never how
 big.  The kart path had its own invented anchor (16 * LES / camera
 depth) which held distant karts too large - now the measured law.
 
+**Two corrections from the next playtest** ("the pipes zoom in as I get
+closer, without cap"):
+
+* The law is against the EUCLIDEAN distance from the kart, which is how
+  it was measured.  I applied it to the along-axis depth, which collapses
+  toward zero as an object draws level with you - so the pipe grew until
+  it filled the screen.  Both draws now use the real distance.
+* The scale FIELD never saturates (0x1038 at d=4), but the drawn PIXELS
+  must.  The largest pipe the original is ever seen to draw is 22x32 -
+  exactly twice the near tier, with an outline two art pixels thick
+  where the kart's is one - so objects magnify by at most 2, and karts,
+  where a peer alongside you is the same size as your own kart, not at
+  all.  Cap taken from the reference, not invented, and labelled as
+  such: it is the largest draw observed, not a constant read out of the
+  ROM.
+
+That puts a pipe at 32 SNES px from d=33 inward against the kart's 31 -
+the reference's 1.03 height ratio.
+
 Dead ends worth not repeating: the sheet has no tall pipe.  A 4x4-tile
 assembly, a two-piece cap-over-body stack, and an alignment search over
 horizontal offsets all fail to join, and the one 14x31 connected

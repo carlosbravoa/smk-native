@@ -631,9 +631,17 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
              * the KART - not from the camera - so undo the trail first.
              * "The tier IS the size" was wrong: it capped every near
              * object at 16 SNES px, half of what the original draws. */
-            float d = dep_eye - SMK_CAM_TRAIL;
-            if (d < 4.0f) d = 4.0f;
+            /* EUCLIDEAN distance from the kart, which is what the law
+             * was measured against.  Using the along-axis depth instead
+             * makes it collapse toward zero as an object draws level
+             * with you, and the pipe fills the screen (playtest). */
+            float odx = (float)course->ent[i].x - cam->x;
+            float ody = (float)course->ent[i].y - cam->y;
+            float d = sqrtf(odx * odx + ody * ody);
+            if (d < SMK_OBJ_NEAR) d = SMK_OBJ_NEAR;
             float want = (float)SMK_OBJ_PIPE_H * SMK_OBJ_SCALE_K / d;
+            float omax = (float)TIER[0].h * SMK_OBJ_MAG_MAX;
+            if (want > omax) want = omax;
             int ti = 0;
             for (int t = 1; t < SMK_OBJ_TIERS; t++)
                 if (fabsf((float)TIER[t].h - want)
@@ -738,9 +746,11 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
              * from the player, the same rule the entities follow
              * (NOTES 105).  The old anchor used the camera depth and so
              * held distant karts too large. */
-            float kd = depth;
-            if (kd < 4.0f) kd = 4.0f;
+            float kdx = gx - cam->x, kdy = gy - cam->y;
+            float kd = sqrtf(kdx * kdx + kdy * kdy);
+            if (kd < SMK_OBJ_NEAR) kd = SMK_OBJ_NEAR;
             float kwant = (float)KTIER[0].h * SMK_OBJ_SCALE_K / kd;
+            if (kwant > (float)KTIER[0].h) kwant = (float)KTIER[0].h;
             int kt = 0;
             for (int t = 1; t < 4; t++)
                 if (fabsf((float)KTIER[t].h - kwant)
