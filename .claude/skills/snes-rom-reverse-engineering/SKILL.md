@@ -785,6 +785,15 @@ change is behavioural, print the behaviour.
   racers run a permanent split screen (view + rear-view/map); filter OAM by
   screen half, and remember the followed camera may not be the kart you
   think - and the world-forward sign is worth one render to verify.
+- Do not decode a coprocessor protocol from its data stream when the
+  game's own READER routine is findable: SMK's DSP-1 raster protocol
+  (one command, one Vs, then pure reads with auto-increment, $8000 to
+  terminate) took four failed stream-parsing attempts and fell out of
+  fifteen minutes of hand-decoding the game's reader at $81:F97D.  The
+  reader IS the protocol spec.  Related: reference emulator source
+  (snes9x dsp1.cpp) is the authority for coprocessor MATH - port the
+  algorithm structure in floats and keep the chip's internal ROM tables
+  (Nintendo data) out of the repo.
 - Do not assume a per-track data list holds every entity kind. SMK's object
   list is stamped GROUND features only (boxes, coins, oil - even the
   kinds >= $C0, which stamp coin scatters); the solid obstacles live in a
