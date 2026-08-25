@@ -134,6 +134,7 @@ static void pump(input_state *in)
     }
 }
 
+static int racer_draw_mask = 0xFE;      /* which racer slots draw_scene draws */
 static int player_slip_deg;
 static int player_slip_units;   /* signed, $10000 = full turn */
 static int player_airborne;
@@ -492,6 +493,7 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
         static bool loaded[SMK_CHARACTERS];
         for (int k = 1; k < SMK_CHARACTERS; k++) {
             float px, py, sc;
+            if (!(racer_draw_mask & (1 << k))) continue;
             float gx = (float)smk_kart_px(racers[k].k.x);
             float gy = (float)smk_kart_px(racers[k].k.y);
             if (!smk_project(cam, gx, gy, rw, rh, &px, &py, &sc)) continue;
@@ -795,6 +797,19 @@ int main(int argc, char **argv)
     if (!rom.recognised)
         fprintf(stderr, "warning: %s\ncontinuing anyway; assets may be wrong.\n\n", err);
 
+    static smk_demolog replay;
+    if (replay_path) {
+        if (!smk_demolog_load(replay_path, replay_kart, &replay)) {
+            fprintf(stderr, "error: cannot read the replay log %s (kart %d)\n",
+                    replay_path, replay_kart);
+            return 1;
+        }
+        track = replay.track; theme = -1;
+        character = replay.character;
+        engine_class = replay.engine_class;
+        printf("replay: track %d, character %d, class %d, %d frames\n",
+               track, character, engine_class, replay.n);
+    }
     if (character < 0 || character >= SMK_CHARACTERS) character = 0;
     const smk_driver *drv = &SMK_DRIVERS[character];
     static smk_sprites karts;
@@ -811,19 +826,6 @@ int main(int argc, char **argv)
         return 1;
     }
     static smk_course crs;
-    static smk_demolog replay;
-    if (replay_path) {
-        if (!smk_demolog_load(replay_path, replay_kart, &replay)) {
-            fprintf(stderr, "error: cannot read the replay log %s (kart %d)\n",
-                    replay_path, replay_kart);
-            return 1;
-        }
-        track = replay.track; theme = -1;
-        character = replay.character;
-        engine_class = replay.engine_class;
-        printf("replay: track %d, character %d, class %d, %d frames\n",
-               track, character, engine_class, replay.n);
-    }
     if (!smk_course_load(&rom, track, &crs)) {
         fprintf(stderr, "error: cannot load course data for track %d\n", track);
         return 1;
@@ -964,6 +966,8 @@ int main(int argc, char **argv)
         replay_i = replay.start;
         smk_demolog_sync(&replay, replay_i, &player, &kart);
         race_state = RACE_RUN;             /* the log starts at the lights */
+        racer_draw_mask = 0x02;            /* only the ghost, grid or not */
+        show_grid = 1;
     }
     camera_from_kart(&cam, &kart);
 
@@ -1067,6 +1071,14 @@ int main(int argc, char **argv)
                 }
             }
             step_kart(&kart, &trk, &phys, &in);
+            if (replay_path && getenv("SMK_REPLAY_TRACE") && replay_i < replay.n) {
+                const smk_demo_frame *r = &replay.f[replay_i];
+                double dx = (kart.x - r->x) / 65536.0, dy = (kart.y - r->y) / 65536.0;
+                fprintf(stderr, "replay f%d pad %04X off %.2f px spd %d/%d head %u/%u st %02X/%02X v %d,%d/%d,%d vlag %d/%d turn %d/%d pos %.3f,%.3f\n",
+                        replay_i, r->c4, sqrt(dx * dx + dy * dy), kart.speed, r->speed,
+                        player.heading, r->a4, player.state, r->state, kart.vx, kart.vy, r->vx, r->vy,
+                        player.vlag, r->vlag, player.turn, r->turn, kart.x / 65536.0, kart.y / 65536.0);
+            }
             /* edges are cleared AFTER the tick that consumes them.  Clearing
              * first meant step_kart never saw in.hop, so a hop press did
              * nothing at all - the "no jump" report, twice. */
