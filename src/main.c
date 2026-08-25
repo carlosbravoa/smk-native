@@ -867,7 +867,7 @@ int main(int argc, char **argv)
     }
     static smk_track trk;
     smk_hud_load(&rom, &hud_art);
-    smk_objgfx_load(&rom, &obj_art);
+
     if (!smk_track_load(&rom, track, theme, &trk, err, sizeof err)) {
         fprintf(stderr, "error: %s\n", err);
         smk_rom_free(&rom);
@@ -900,6 +900,7 @@ int main(int argc, char **argv)
     }
 
     smk_track_place_objects(&rom, &trk);
+    smk_objgfx_load(&rom, trk.theme, &obj_art);   /* the theme's objects */
 
     /* Headless single-frame render: no window, no event loop.  Also the
      * cheapest way to eyeball the renderer from a script. */
@@ -1046,6 +1047,7 @@ int main(int argc, char **argv)
                     float sx, sy;
                     uint16_t sh;
                     smk_track_place_objects(&rom, &trk);
+                    smk_objgfx_load(&rom, trk.theme, &obj_art);
                     track = nt; theme = nth;
                     smk_course_start(&crs, 0, &sx, &sy, &sh);
                     kart = (smk_kart){ .x = (int32_t)(sx * SMK_POS_ONE),

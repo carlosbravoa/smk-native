@@ -260,13 +260,19 @@ bool smk_hud_load(const smk_rom *rom, smk_hud *out)
 }
 
 /* The entity sprite set - pipes and friends. */
-bool smk_objgfx_load(const smk_rom *rom, smk_objgfx *out)
+bool smk_objgfx_load(const smk_rom *rom, int theme, smk_objgfx *out)
 {
     static uint8_t buf[WRAM_SIZE];
     memset(out, 0, sizeof *out);
     memset(buf, 0, sizeof buf);
+    if (theme < 0) theme = 0;
+    if (theme >= SMK_THEME_COUNT) theme %= SMK_THEME_COUNT;
+    uint32_t tp = smk_snes_to_pc(rom, SMK_OBJ_TABLE) + (uint32_t)theme * 3u;
+    uint32_t src = (uint32_t)rom->data[tp]
+                 | ((uint32_t)rom->data[tp + 1] << 8)
+                 | ((uint32_t)rom->data[tp + 2] << 16);
     long n = smk_decompress_into(rom->data, rom->size,
-                                 smk_snes_to_pc(rom, 0xC10F9Bu),
+                                 smk_snes_to_pc(rom, src),
                                  buf, WRAM_SIZE, 0, NULL);
     if (n < SMK_OBJ_TILES * 32) return false;
     for (int t = 0; t < SMK_OBJ_TILES; t++) {

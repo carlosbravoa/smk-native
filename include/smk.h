@@ -399,6 +399,12 @@ static inline int smk_hud_digit(int d)
  *
  * NOTES 086's $C7:0000 was wrong - refuted by a byte comparison against
  * the running game (NOTES 092). */
+/* The set is PER THEME, from the pointer table at $81:EBD3 (3 bytes an
+ * entry, beside the tilemap/tileset/palette tables).  Every theme uses
+ * the same tile layout, so only the artwork changes: Mario Circuit gets
+ * pipes, Rainbow Road gets Thwomps, and so on.  Hardcoding the Mario
+ * Circuit stream drew green pipes on Rainbow Road (playtest). */
+#define SMK_OBJ_TABLE   0x81EBD3u
 #define SMK_OBJ_TILES   57
 #define SMK_OBJ_PAL     0xF0
 /* The pipe is 2x2 tiles with the SNES's 16-tile VRAM ROW STRIDE - so
@@ -421,7 +427,7 @@ static inline int smk_hud_digit(int d)
 #define SMK_OBJ_PIPE_W  16        /* pixels                            */
 #define SMK_OBJ_PIPE_H  16
 typedef struct { uint8_t px[SMK_OBJ_TILES][64]; bool ok; } smk_objgfx;
-bool smk_objgfx_load(const smk_rom *rom, smk_objgfx *out);
+bool smk_objgfx_load(const smk_rom *rom, int theme, smk_objgfx *out);
 
 /* ---- Opponent karts ---------------------------------------------------
  *

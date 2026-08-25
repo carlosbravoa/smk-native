@@ -2906,4 +2906,35 @@ the playtest describes.
 
 ---
 
-*(next entry: 098)*
+**098** — The object graphics are PER THEME.  Rainbow Road gets Thwomps.
+
+Playtest compared Rainbow Road against the original: the game draws
+**Thwomps** - grey blocks with faces - where we drew the Mario Circuit
+pipe tinted grey by the track palette.
+
+The open question from NOTES 093 ("is $C1:0F9B global or per theme?") is
+answered.  Searching the ROM for pointers to that stream lands on
+**$81:EBD3**, a 3-byte-per-entry table sitting right beside the tilemap
+($81:EB5B), tileset ($81:EBA3) and palette ($81:EBBB) tables - the same
+per-theme family:
+
+    theme 0 $C0:0000   theme 4 $C1:0F9B
+    theme 1 $C1:0F9B   theme 5 $C1:1706
+    theme 2 $C0:05D6   theme 6 $C0:1070
+    theme 3 $C1:0AA5   theme 7 $C0:1070   (Rainbow Road: Thwomps)
+
+Every theme's set decompresses to the same 57-tile, 1824-byte shape with
+the same tier layout, so only the artwork changes - which is why the
+2x2/stride-16 assembly and base tile 32 carry over unchanged.  Themes 6
+and 7 share a set, and theme 1 and 4 share the pipes.
+
+Ported: `smk_objgfx_load` takes the theme and reads the table; the game
+reloads it on every track change.  Verified on track 5 (theme 7) -
+Thwomps with faces, in the game's own art.
+
+Still open, unchanged: the entities do not MOVE (a Thwomp should rise
+and slam), and we draw one size tier scaled rather than choosing a tier.
+
+---
+
+*(next entry: 099)*
