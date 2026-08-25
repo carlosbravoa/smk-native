@@ -2536,4 +2536,58 @@ roadmap's principle 4 exists to prevent.
 
 ---
 
-*(next entry: 088)*
+**088** — Playtest round: four measurement batteries, and the bit-7
+"ramp" rule finally killed.
+
+**Surface battery** (drive head-on into each class at pace, 40 frames):
+
+    $20 $24 $26   speed -> 0,   moved  3 px, z 0      DEAD STOP
+    $80 $82 $84   speed KEPT,   moved 50 px, z 0      WALL, state $C000
+    $10           608 -> 701,   moved108 px, z 247    RAMP (the launcher)
+    $22           885 ->  14,   moved 64 px, z 141    fall/pit
+    $40 $42 $44 $4C  speed held/rising, 100-134 px    road
+    $4E $54 $56 $5A  big speed loss, 79-100 px        off-road
+
+This inverts the rule I had: **bit-7 is a WALL, not a ramp** - which is
+also what NOTES 044 measured head-on long ago, and what the playtest
+reported ("impossible to trespass").  The invented "bit-7 bars launch
+you" rule let a kart at speed vault Mario Circuit's barrier blocks and
+fly off the world.  `smk_surface_solid` tested only bit 5, so `$80` was
+not even solid.  Both fixed; the launcher is class **$10**.  The two
+solid families are now distinct: `$20/$24/$26` stop dead, `$80/$82/$84`
+deflect with the speed preserved.
+
+**Acceleration battery** (from a standstill, throttle held, on road):
+speed climbs 0 -> 711 over ~150 frames (2.5 s) on an S-curve, still
+rising at the end.  Our curve matched the game frame-for-frame to about
+half speed and then ran ahead and SNAPPED against a hard clamp.  Fitting
+the measured approach (12, 9.2, 7.6, 4, 3, 2, 2, 1.8 units/frame at
+speeds 355..702) gives a taper on the remaining headroom; with it our
+class-1 curve tracks the ROM within 1-2% the whole way (f90 506 vs 507,
+f120 649 vs 653, f150 717 vs 711) and keeps climbing instead of
+clamping.  LABELLED: the taper is a fit to measured behaviour, not a
+decode of the ROM's near-target law.
+
+**Braking battery**: from 589 the game reaches 99 in 85 frames - about
+**5.8 units/frame** - while merely coasting loses 5.2/frame.  Braking in
+SMK is barely stronger than lifting off.  Ours was 32/frame, 5.5x too
+strong.
+
+**Hop battery** (sprite row through a hop): the kart rises **12 screen
+pixels** and is back down after **~19 frames**.  The old pair
+($0080 launch, gravity 26, height = z>>16) peaked under ONE pixel in 10
+frames - the hop happened but was invisible ("no jump").  The captured
+arc in NOTES 045 is a **wall bounce**, a different event: same gravity,
+different launch.  So `SMK_BOUNCE_VEL` keeps the captured arc (still
+selftest-pinned) and `SMK_HOP_VEL` is 247 = 9.5*26, with one screen
+pixel = 25029 z-units.
+
+Also fixed from the same round: the cornering stutter (my plow used a
+negative grip gain, which SHRANK the velocity vector - speed fell in
+steps, grip returned, repeat; the ROM keeps speed through a plow, so the
+plow now rotates velocity away from the heading at the measured
+130/frame and renormalises), and the hop is no longer gated on speed.
+
+---
+
+*(next entry: 089)*

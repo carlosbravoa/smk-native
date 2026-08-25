@@ -211,15 +211,34 @@ void smk_kart_move(smk_kart *k, const smk_track *t);
 /* Height, decoded at $80B1D6 (NOTES 045).  Gravity is 26 units per frame;
  * a second mode at $80DFED uses 18.  Landing clears height, velocity and
  * the airborne flag. */
-#define SMK_GRAVITY      26         /* $001A */
+#define SMK_GRAVITY      26         /* $001A - the captured bounce arc  */
 #define SMK_GRAVITY_ALT  18         /* $0012 - the $80DFED mode */
-#define SMK_HOP_VEL      0x0080     /* $80B6A5 hop, and $80F8C0 wall bounce */
+/* Two DIFFERENT vertical events, and conflating them is what made the
+ * hop invisible (playtest "no jump"):
+ *
+ *   BOUNCE ($80F8C0) - launch $0080, captured z-for-z from the running
+ *   game in NOTES 045 and pinned in the selftest: lands on frame 8.
+ *
+ *   HOP ($80B6A5) - measured on SCREEN (NOTES 088): the player's sprite
+ *   rises 12 px and is back down after ~19 frames.  With the game's own
+ *   gravity 26 that means a launch of 9.5*26 = 247, not $0080, which
+ *   peaked under one pixel.
+ *
+ * Both use the same gravity; only the launch differs. */
+#define SMK_BOUNCE_VEL   0x0080     /* $80F8C0, the captured arc         */
+#define SMK_HOP_VEL      247        /* $80B6A5: 19 frames, 12 px on screen */
+#define SMK_RAMP_VEL     259        /* class $10 ramps (z peaked 247/224) */
 
 void smk_kart_gravity(smk_kart *k);
 void smk_kart_launch(smk_kart *k, int16_t zvel);
 
 static inline int smk_kart_px(int32_t v) { return (int)(v >> SMK_POS_SHIFT); }
-static inline int smk_kart_height_px(const smk_kart *k) { return (int)(k->z >> 16); }
+/* z -> SCREEN pixels, fixed by the measured hop: a 247 launch under
+ * gravity 26 peaks at z = 300288 and reads as 12 px on the SNES screen,
+ * so one screen pixel is 25029 z-units.  (The old z>>16 made the whole
+ * hop less than one pixel tall.) */
+static inline int smk_kart_height_px(const smk_kart *k)
+{ return (int)(k->z / 25029); }
 
 /* ---- Kart sprites ------------------------------------------------------
  *

@@ -615,8 +615,14 @@ static void racer_step(smk_racer *r, const smk_track *trk,
  * target from per-character stats we have not decoded, and its steering is
  * a slew toward a target angle at $FA,x ($80AFBE). */
 #define FEEL_TARGET_IDX   3        /* which entry of the ROM target table  */
-#define FEEL_BRAKE   (0x2000)
-#define FEEL_DRAG    (0x0400)
+/* MEASURED (NOTES 088), not felt: braking in SMK is WEAK - from 589 the
+ * game takes 85 frames to reach 99, about 5.8 units/frame, and simply
+ * coasting loses 5.2/frame.  Braking is barely stronger than lifting off,
+ * which is why you slow a kart by releasing rather than by braking.  Our
+ * old 32/frame brake was 5.5x too strong (playtest).  These are applied
+ * as dec<<8 and integrated, so the value is units/frame * 256. */
+#define FEEL_BRAKE   (6 * 256)
+#define FEEL_DRAG    (5 * 256)
 #define FEEL_TURN    420           /* angle units per frame                */
 
 static void step_kart(smk_kart *k, const smk_track *trk,
@@ -638,8 +644,24 @@ static void step_kart(smk_kart *k, const smk_track *trk,
     int cap = (frac < 1000) ? (top * frac) / 1000 : 0;
     if (cap && target > cap) target = cap;
     int32_t accel;
-    if (k->speed < target)
-        accel = (int32_t)smk_physics_accel(phys, k->speed) << 8;   /* $80B043 */
+    if (k->speed < target) {
+        /* The ROM's own acceleration table ($80B043) - our curve matches
+         * the game's frame for frame up to about half speed.  Above that
+         * the game TAPERS as it approaches the target while we did not,
+         * so we arrived early and then snapped against a hard clamp: top
+         * speed felt free instead of earned (playtest).
+         *
+         * The taper is a FIT to the measured approach (NOTES 088:
+         * 12, 9.2, 7.6, 4, 3, 2, 2, 1.8 units/frame at speeds 355..702),
+         * not a decode - the ROM's exact near-target law is open. */
+        int32_t a = (int32_t)smk_physics_accel(phys, k->speed) << 8;
+        if (target > 0) {
+            float head = (float)(target - k->speed) / (float)target * 1.6f;
+            if (head < 0.0f) head = 0.0f;
+            if (head < 1.0f) a = (int32_t)((float)a * head);
+        }
+        accel = a;
+    }
     else if (k->speed > target) {
         /* over the surface cap: the MEASURED per-class deceleration
          * (NOTES 067) - a firm drag down to the cap, as the ROM does it */
@@ -654,7 +676,10 @@ static void step_kart(smk_kart *k, const smk_track *trk,
 
     smk_kart_accelerate(k);      /* the ROM's 32-bit speed integration */
 
-    if (k->speed > target && target > 0) { k->speed = (int16_t)target; }
+    /* no hard clamp: the taper above brings the speed in asymptotically,
+     * the way the game does.  Snapping to the target was the other half
+     * of "acceleration is super fast" (playtest). */
+    if (k->speed > top) k->speed = (int16_t)top;   /* class ceiling only */
 
     /* slip, computed up front: it gates steering authority (measured:
      * in a plow the ROM's turn rate collapses from ~307 to ~20/frame) */
@@ -694,7 +719,7 @@ static void step_kart(smk_kart *k, const smk_track *trk,
 
     /* Hop: the decoded launch ($80B69D - zvel $0080, needs speed).  A hop
      * into a held turn starts a power slide. */
-    if (in->hop && !k->airborne && k->speed >= 0x100)
+    if (in->hop && !k->airborne)
         smk_kart_launch(k, SMK_HOP_VEL);
 
     /* Grip.  smk_kart_face() gives the ROM's (sin,-cos)*speed - full grip.

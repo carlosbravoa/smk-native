@@ -77,7 +77,7 @@ int main(int argc, char **argv)
         smk_kart k;
         memset(&k, 0, sizeof k);
         k.z = 0x0100;
-        smk_kart_launch(&k, SMK_HOP_VEL);
+        smk_kart_launch(&k, SMK_BOUNCE_VEL);   /* the BOUNCE, not the hop */
         int ok = 1, landed_at = -1;
         for (int i = 0; i < (int)(sizeof ARC / sizeof *ARC); i++) {
             smk_kart_gravity(&k);

@@ -158,6 +158,21 @@ void smk_kart_move(smk_kart *k, const smk_track *t)
     int32_t nx = advance(k->x, k->vx);
     int32_t ny = advance(k->y, k->vy);
 
+    /* Ramps: class $10 is the launcher.  MEASURED (NOTES 088 surface
+     * battery): driving onto $10 sends z to 247 while the speed RISES
+     * (608 -> 701) and the kart keeps moving; every other class either
+     * blocks, drags or does nothing vertical.  The old rule had bit-7
+     * launching, which is backwards - see below. */
+    {
+        uint8_t here = smk_track_surface(t, smk_kart_px(nx), smk_kart_px(ny));
+        if ((here & 0xFE) == 0x10 && !k->airborne) {
+            smk_kart_launch(k, SMK_RAMP_VEL);
+            k->x = nx;
+            k->y = ny;
+            return;
+        }
+    }
+
     /* CORRECTION (NOTES 088): the bit-7 classes are WALLS, not ramps.
      * NOTES 044 measured class $80 head-on and got a wall - the into-wall
      * component reflects, a knockback follows, speed is preserved.  The
@@ -192,10 +207,16 @@ void smk_kart_move(smk_kart *k, const smk_track *t)
             uint8_t wv = bx
                 ? smk_track_surface(t, smk_kart_px(nx), smk_kart_px(k->y))
                 : smk_track_surface(t, smk_kart_px(k->x), smk_kart_px(ny));
-            (void)wv;                    /* every solid class walls here */
+            /* MEASURED (NOTES 088): the two solid families behave
+             * DIFFERENTLY.  Head-on at pace:
+             *   $20/$24/$26  speed -> 0, the kart moves 3 px: a dead stop
+             *   $80/$82/$84  speed PRESERVED (832->832), 50 px of travel:
+             *                a wall you deflect along, state $C000
+             * Treating them alike made every barrier a full stop. */
             if (bx) k->vx = (int16_t)-k->vx;
             if (by) k->vy = (int16_t)-k->vy;
             if (bx && by) { k->vx = (int16_t)-k->vx; } /* corner: full back */
+            if (!(wv & 0x80)) k->speed = 0;  /* $20/$24/$26: dead stop   */
             k->bounce_cool = 10;             /* the $42 ballistic window */
         }
         return;
