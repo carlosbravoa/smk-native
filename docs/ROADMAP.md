@@ -57,7 +57,7 @@ re-investigating.
 | S6 | `src/kart.c` bounce | **decoded**: the bounce is a ballistic launch (`$80F8C0` sets `$26`=$0080), not a timed knockback (NOTES 045) | per-class differences; the horizontal knockback magnitude | P3 residual |
 | S7 | renderer | full-resolution smooth perspective | 256×224, per-scanline integer matrix | keep — named divergence, this is the point of a PC port. `--pixel` restores chunk. |
 | S8 | no audio | silence | SPC700 + S-DSP running its own program | P7 |
-| S10 | `src/main.c` draw | karts AND entities quantise to their sheets' real size tiers, as the hardware does | same | closed — smooth scaling moved to P9 as an opt-in |
+| S10 | `src/main.c` draw | karts AND entities sized by the game's own measured law (+$06 = 0x4200/kart distance), the sheet tier choosing only which drawing | same | closed — NOTES 105 |
 | S11 | `src/main.c` start sequence | 3-2-1 countdown at 60 frames a step, karts held | the ROM's own start-frame count and Lakitu's light art | P5 |
 | S12 | `src/main.c` entities | the theme's own object art (pipes, Thwomps, ...) drawn from `$81:EBD3`, one size tier scaled continuously; entities do not move | the sheet stores a size TIER per distance band; `$84:DD15` drives type and motion (a Thwomp rises and slams) | P5 |
 | S9 | `tools/smktool/dsp1.py` | full command set implemented; stream never desyncs; camera model verified against the game's own usage. Residual: gyrate is a passthrough, and raster/`$08`/`$18` scalings are unchecked | the real chip's exact fixed-point pipeline | largely closed (NOTES 039); residuals logged on first contact |
@@ -250,12 +250,6 @@ the default and ships first**; a QoL option is only allowed once the
 faithful behaviour it replaces is decoded, implemented and verified, and
 it must be switchable so the original can always be seen.
 
-- **Object size relative to the karts.**  The ROM's biggest pipe drawing
-  is 12x16 SNES px against a 30x31 kart, so on hardware a pipe is barely
-  half a kart's height at any distance and ours matches that (NOTES
-  104).  Drawing objects at their true perspective size - bigger than
-  any artwork the cartridge holds - reads better on a large screen but
-  is a change to the game, not a decode.  Same switch as smooth scaling.
 - **Smooth sprite scaling.**  The SNES cannot scale a sprite: it swaps
   between a few pre-drawn sizes, so karts and objects POP between steps
   as they approach (entities 16 -> 11 art px, karts 31 -> 28 -> 25 plus

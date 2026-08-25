@@ -437,10 +437,13 @@ static inline int smk_hud_digit(int d)
  *
  *     base 32 -> 12x15    base 34 -> 11x13    base 36 -> 10x11
  *
- * Drawing ONE tier scaled continuously made near objects balloon to
- * twice the kart's height, where the original keeps them smaller than
- * the kart (playtest).  Now: constant SNES proportion like the karts,
- * with the tier chosen by distance. */
+ * The tier art is the BASE drawing, not a size cap.  NOTES 105: the
+ * game keeps a per-entity scale at block+$06 and it is 0x4200/d in 8.8,
+ * so an object stands at its natural art size SMK_OBJ_SCALE_K world px
+ * from the kart and at DOUBLE that from half as far.  Measured on the
+ * reference screenshot, a pipe beside the kart draws 22x32 SNES px
+ * against the kart's own 30x31 - it is magnified, and the outline that
+ * is one art pixel on the kart is two on the pipe. */
 #define SMK_OBJ_PIPE0   32        /* the near tier's top-left tile     */
 #define SMK_OBJ_TIERS   3
 /* Half-width for collision, from the ART (12 px across at the near
@@ -451,6 +454,9 @@ static inline int smk_hud_digit(int d)
 #define SMK_OBJ_STRIDE  16        /* VRAM tiles per row                */
 #define SMK_OBJ_PIPE_W  16        /* pixels                            */
 #define SMK_OBJ_PIPE_H  16
+/* MEASURED (NOTES 105) from the live entity block: +$06 = 0x4200 / d,
+ * an 8.8 scale, so 1.0 at d = 0x4200/256 world px from the kart. */
+#define SMK_OBJ_SCALE_K 66.0f
 typedef struct { uint8_t px[SMK_OBJ_TILES][64]; bool ok; } smk_objgfx;
 bool smk_objgfx_load(const smk_rom *rom, int theme, smk_objgfx *out);
 

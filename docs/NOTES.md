@@ -3093,7 +3093,8 @@ inked, not whether the drawing is the one you want.  Look at the art.
 
 ---
 
-**104** — The object sheet, analysed properly instead of one tier at a
+**104** *(size conclusion SUPERSEDED by 105 - the tier is the base
+drawing, not a size cap)* — The object sheet, analysed properly instead of one tier at a
 time.  And a hard limit worth stating.
 
 We had circled this three times, so: render the whole sheet in its VRAM
@@ -3130,4 +3131,60 @@ a decode any more, it is a change to the game - so it belongs in P9
 
 ---
 
-*(next entry: 105)*
+**105** — Object size: the game SCALES its billboards, and the law is a
+single constant.  NOTES 104's "hardware cap" was wrong.
+
+Playtest, four rounds running: "pipes are still same small size".  I had
+concluded from the object sheet that 12x16 art was a hardware ceiling -
+the SNES cannot scale a sprite, so the tier IS the size - and moved the
+complaint to the quality-of-life phase.  That was wrong, and it was
+wrong because I measured the ART instead of the GAME.
+
+**The measurement.**  The live entity block carries a scale at +$06.
+Moving a real entity to a chosen distance straight ahead of the kart
+and reading it back (`tools/labs/pipe_tier.py`):
+
+      d    +$06    0x4200/d
+    320   $0035        53
+    176   $0060        96
+     64   $0108       264
+     32   $0212       530
+
+    +$06 = 0x4200 / d   (8.8 fixed point, ratio 1.000-1.004)
+
+So an object stands at its NATURAL art size when it is 66 world px from
+the kart, and at DOUBLE that from half as far.  No saturation down to
+d = 4.  The distance is from the KART, not the camera: adding the 61 px
+trail destroys the fit.
+
+**It holds for karts too.**  The kart blocks carry the same field and
+the same constant (ratio 1.009-1.018 over four opponents at 256-355 px),
+which makes this the game's universal billboard rule rather than a pipe
+quirk.
+
+**Cross-checked against the reference screenshot.**  The player kart is
+four 16x16 sprites - a 32x32 cell, ink 30x31 - confirmed from a live OAM
+capture, which gives a ruler that does not depend on the capture's crop
+or aspect.  Against it the original's near pipe measures 22x32, and the
+outline that is one art pixel on the kart is 2.4 on the pipe: the pipe
+is MAGNIFIED, not drawn from bigger art.  Our render put it at 16 px
+flat - the 0.57-vs-1.03 height ratio the playtest kept reporting.
+
+Ported: object and kart size both come from `SMK_OBJ_SCALE_K` (66.0)
+over the kart distance; the tier only decides which drawing, never how
+big.  The kart path had its own invented anchor (16 * LES / camera
+depth) which held distant karts too large - now the measured law.
+
+Dead ends worth not repeating: the sheet has no tall pipe.  A 4x4-tile
+assembly, a two-piece cap-over-body stack, and an alignment search over
+horizontal offsets all fail to join, and the one 14x31 connected
+component is two separate drawings touching across a tile-row boundary.
+The tile list at block+$0A is never read by the game (traced) - it is
+initialisation data, not a live tier selector, and the demo never draws
+entities at all, which is why the OAM route needed the entity moved to
+the kart rather than the kart driven to the entity.
+
+---
+
+*(next entry: 106)*
+

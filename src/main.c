@@ -626,21 +626,26 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
             float dep_eye = (SMK_PROJ_LES * (float)rw / 256.0f)
                           / (sc > 0.0001f ? sc : 0.0001f);
             if (dep_eye < 8.0f) continue;
-            /* The height the projection asks for, in SNES pixels:
-             * an object H world px tall subtends H * LES / depth.  (I
-             * first anchored this on the camera TRAIL, a factor of four
-             * too small, so `want` never reached the upper tiers and
-             * every object drew at the smallest one - the flat sizes.) */
-            float want = (float)SMK_OBJ_PIPE_H * SMK_PROJ_LES / dep_eye;
+            /* The size the GAME asks for.  Its own per-entity scale
+             * (block+$06) is 0x4200/d in 8.8 against the distance from
+             * the KART - not from the camera - so undo the trail first.
+             * "The tier IS the size" was wrong: it capped every near
+             * object at 16 SNES px, half of what the original draws. */
+            float d = dep_eye - SMK_CAM_TRAIL;
+            if (d < 4.0f) d = 4.0f;
+            float want = (float)SMK_OBJ_PIPE_H * SMK_OBJ_SCALE_K / d;
             int ti = 0;
             for (int t = 1; t < SMK_OBJ_TIERS; t++)
                 if (fabsf((float)TIER[t].h - want)
                     < fabsf((float)TIER[ti].h - want)) ti = t;
             int obase = TIER[ti].base;
-            /* drawn at the fixed SNES proportion - the tier IS the size */
-            int oscale = rw / 256;
-            if (oscale < 1) oscale = 1;
-            int pw = SMK_OBJ_PIPE_W * oscale, ph = SMK_OBJ_PIPE_H * oscale;
+            /* Stretch the chosen drawing to the size the law asks for,
+             * so the tier only decides which pixels, never how big. */
+            float k = want / (float)TIER[ti].h;
+            float ppx = (float)rw / 256.0f;     /* render px per SNES px */
+            int pw = (int)((float)SMK_OBJ_PIPE_W * k * ppx + 0.5f);
+            int ph = (int)((float)SMK_OBJ_PIPE_H * k * ppx + 0.5f);
+            if (pw < 1 || ph < 1) continue;
             int x0 = (int)px - pw / 2, y0 = (int)py - ph;
             for (int dy = 0; dy < ph; dy++) {
                 int yy = y0 + dy;
@@ -728,9 +733,14 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
                 { SMK_SPR_TIER0, 31 }, { SMK_SPR_TIER1, 28 },
                 { SMK_SPR_TIER2, 25 }, { -1,            13 },
             };
-            float kdep = depth + SMK_CAM_TRAIL;
-            if (kdep < 8.0f) continue;
-            float kwant = 16.0f * SMK_PROJ_LES / kdep;   /* SNES px */
+            /* Sized by the game's OWN scale law, measured on the kart
+             * blocks themselves: +$06 = 0x4200 / d against the distance
+             * from the player, the same rule the entities follow
+             * (NOTES 105).  The old anchor used the camera depth and so
+             * held distant karts too large. */
+            float kd = depth;
+            if (kd < 4.0f) kd = 4.0f;
+            float kwant = (float)KTIER[0].h * SMK_OBJ_SCALE_K / kd;
             int kt = 0;
             for (int t = 1; t < 4; t++)
                 if (fabsf((float)KTIER[t].h - kwant)
