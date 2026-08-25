@@ -2466,4 +2466,25 @@ scale sprites and quantises to a few art sizes; ours is continuous).
 
 ---
 
-*(next entry: 085)*
+**085** — Race furniture on the game's own art: HUD set, clock, lap,
+start countdown.
+
+* The blob at **$C1:0000** (decompressed to $7F:C000 by $81:E856, offset
+  $200 DMAd to sprite tiles $40-$BF by $81:E89C) is the HUD sprite set:
+  digits, "LAP", "FINAL LAP", separators.  Ported as `smk_hud_load`.
+* Digit mapping, read off the rendered sheet: **0-4 = tiles $A7-$AB,
+  5-9 = $B7-$BB** - a 5-wide strip that wraps by the 16-tile VRAM row.
+  Separator tile $A2.  Sprite palette **$C0**, from the live HUD OAM
+  attribute ($28 -> (a>>1)&7 = 4 -> $80 + 4*16).
+* Ported: the lap counter and race clock (M ' SS " HH) draw with the
+  ROM's own tiles, inside `draw_scene` so the interactive loop and
+  --shot cannot drift.  The clock counts frames, which is what the
+  console's own timer counts.
+* Start sequence: karts (player AND AI) are held for a countdown, then
+  released, with 3-2-1 shown in the ROM's digits.  LABELLED interim -
+  the observable cadence (60 frames a step) is right, the exact ROM
+  start-frame count and Lakitu's light art are not decoded.
+
+---
+
+*(next entry: 086)*

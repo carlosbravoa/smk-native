@@ -71,6 +71,16 @@ static int player_slip_deg;
 static int player_slip_units;   /* signed, $10000 = full turn */
 static int player_airborne;
 static int hud_lap, hud_rank;
+static long hud_race_frames;             /* frames since the lights */
+static int  hud_countdown;               /* 3,2,1 while the lights run  */
+/* The start sequence.  SMK holds the karts for a countdown, then runs;
+ * our timing is the ROM's own 3-2-1-GO cadence in frames (60/step) -
+ * LABELLED: the exact ROM start-frame count is not decoded yet, the
+ * cadence is the observable one. */
+enum { RACE_COUNTDOWN, RACE_RUN };
+static int race_state = RACE_COUNTDOWN;
+static int race_count;                   /* frames spent counting down  */
+#define RACE_COUNT_FRAMES 180
 static smk_hud hud_art;                  /* the game's own HUD sprites */
 
 /* Draw one HUD tile at 8x8 * scale, palette $C0, index 0 transparent. */
@@ -89,6 +99,32 @@ static void hud_tile(uint32_t *fb, int rw, int rh, int x, int y, int tile,
             if (v) fb[sy * rw + sx] = palette[(SMK_HUD_PAL + v) & 0xFF];
         }
     }
+}
+
+/* The race clock, in the game's own art: M ' SS " HH.
+ *
+ * SMK counts FRAMES (the timer advances once per rendered frame, which
+ * is the console's 60 Hz) and formats minutes/seconds/hundredths for
+ * display; hundredths are frames * 100 / 60.  The separator uses the
+ * ROM's own tile $A2. */
+static void draw_clock(uint32_t *fb, int rw, int rh, const uint32_t *palette,
+                       long frames)
+{
+    if (!hud_art.ok || frames < 0) return;
+    int sc = rw >= 640 ? 3 : 2;
+    long total_cs = frames * 100 / 60;          /* hundredths */
+    int cs = (int)(total_cs % 100);
+    long secs = total_cs / 100;
+    int ss = (int)(secs % 60);
+    int mm = (int)(secs / 60); if (mm > 9) mm = 9;
+    int x = 8, y = 8, adv = 8 * sc;
+    hud_tile(fb, rw, rh, x, y, smk_hud_digit(mm), palette, sc);
+    hud_tile(fb, rw, rh, x + adv, y, 0xA2 - SMK_HUD_TILE0, palette, sc);
+    hud_tile(fb, rw, rh, x + adv * 2, y, smk_hud_digit(ss / 10), palette, sc);
+    hud_tile(fb, rw, rh, x + adv * 3, y, smk_hud_digit(ss % 10), palette, sc);
+    hud_tile(fb, rw, rh, x + adv * 4, y, 0xA2 - SMK_HUD_TILE0, palette, sc);
+    hud_tile(fb, rw, rh, x + adv * 5, y, smk_hud_digit(cs / 10), palette, sc);
+    hud_tile(fb, rw, rh, x + adv * 6, y, smk_hud_digit(cs % 10), palette, sc);
 }
 
 /* "LAP n/N" in the game's own art, top-right like the original. */
@@ -813,6 +849,12 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
         }
     }
     draw_hud(fb, rw, rh, trk->palette, hud_lap, 5, hud_rank);
+    draw_clock(fb, rw, rh, trk->palette, hud_race_frames);
+    if (hud_countdown > 0) {              /* 3-2-1 in the game's digits */
+        int sc = rw >= 640 ? 6 : 4;
+        hud_tile(fb, rw, rh, rw / 2 - 4 * sc, rh / 3,
+                 smk_hud_digit(hud_countdown), trk->palette, sc);
+    }
 }
 
 /* The player's own view angle.
@@ -1163,14 +1205,24 @@ int main(int argc, char **argv)
                 SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, filter ? "1" : "0");
                 if (tex) { SDL_DestroyTexture(tex); tex = NULL; rw = rh = 0; }
             }
+            if (race_state == RACE_COUNTDOWN) {
+                /* the lights: no throttle, no steering, kart held */
+                if (++race_count >= RACE_COUNT_FRAMES) race_state = RACE_RUN;
+                hud_countdown = 3 - race_count / 60;
+                if (hud_countdown < 1) hud_countdown = 1;
+                in.up = in.down = in.left = in.right = false;
+                in.hop_held = false;
+            }
             input_edges_clear(&in);
 
+            if (race_state == RACE_RUN) { hud_race_frames++; hud_countdown = 0; }
             step_kart(&kart, &trk, &phys, &in);
             camera_from_kart(&cam, &kart);
             me->k = kart;
 
-            for (int i = 1; i < SMK_CHARACTERS; i++)
-                racer_step(&racers[i], &trk, &crs, &phys);
+            if (race_state == RACE_RUN)
+                for (int i = 1; i < SMK_CHARACTERS; i++)
+                    racer_step(&racers[i], &trk, &crs, &phys);
 
             /* player lap counting - the decoded rule via racer state */
             {
