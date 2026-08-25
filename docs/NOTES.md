@@ -2517,4 +2517,23 @@ verified.
 
 ---
 
-*(next entry: 087)*
+**087** — Correction: **Super Mario Kart has no mini-turbo.**
+
+The drift state machine and its `$C2` counter are measured facts - `$E2`
+walks `$8000` (hop) -> `$8004` (slide) -> `$8024`, and `$C2` charges
+~85/frame toward the cap at `$0E20`.  Calling that charge a
+"mini-turbo", as ROADMAP did, was NOT decoded: it imported a **Mario
+Kart 64** mechanic that this game does not have.  SMK's drift is a
+hop-slide with no charge-and-release boost.
+
+What `$C2` actually drives is therefore OPEN, not "the mini-turbo we
+have not ported yet".  Candidates to test against the running game
+before anything is ported: slide duration or its exit condition, the
+hop/slide animation phase, or the sound trigger.  Recorded here because
+a wrong label on a real measurement is worse than no label - it reads
+like a decoded fact six months later, which is exactly what the
+roadmap's principle 4 exists to prevent.
+
+---
+
+*(next entry: 088)*
