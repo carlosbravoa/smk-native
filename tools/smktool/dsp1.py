@@ -338,6 +338,11 @@ class DSP1:
         return d if d > 0 else 32767.0
 
     def _op_0a(self, p):                                   # raster
+        import os
+        if os.environ.get("SMK_RASTER_PLAIN") == "1":
+            # one Vs per command invocation - the host re-sends $0A per
+            # line (candidate protocol under test)
+            return self._raster_group(p[0])
         self.raster = True
         self.raster_sentinel = False
         self.raster_vs = p[0]

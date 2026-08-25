@@ -2368,4 +2368,31 @@ against data already in hand.
 
 ---
 
-*(next entry: 082)*
+**082** — The race projection decoded from the DSP-1 stream; kart size
+made road-proportional.
+
+* SMK is a DSP-1 cart and the whole camera lives in DSP command $02.
+  Our DSP model's "streaming raster" parse swallowed interleaved
+  commands (garbage vs values, saturated M7 tables); a raw DR/SR access
+  trace let the $02 frames be read directly:
+  **F = kart, Lfe = 256, Les = 256, Azs = $3400** - sent twice per frame
+  (top view + rear view).  A PPU-multiply model ($211B x $211C ->
+  $2134-36, previously unmodelled) was added along the way.
+* Sprite-row law measured from natural data + the P1 sprite: far karts
+  pin at screen line ~99 while the player's sprite bottom sits at ~102 -
+  with Lfe=256 the fit y = 97 + 1250/(256+depth) is self-consistent
+  (eye ~5px above ground, ~1 degree pitch).  KEY INSIGHT: this sprite
+  law is far FLATTER than the visible ground perspective - the SNES
+  pairs different projections for sprites and ground.  Blindly porting
+  the constant-canvas sprite rule onto OUR steeper ground is what made
+  AI karts look gigantic at distance (playtest).
+* Ported: AI kart size now follows our own projection (screen px per
+  world px), capped at the measured near canvas (a sprite twice its
+  ~16px ground footprint), full art to the measured depth 84 then the
+  mini - including a mirrored-mini for the straight pose.  Labelled: the
+  true fix is matching our ground to the SNES M7 line law, which needs
+  the DSP raster protocol finished (open).
+
+---
+
+*(next entry: 083)*

@@ -357,6 +357,10 @@ void smk_draw_sprite_mirror(const smk_sprites *s, int frame,
                             const uint32_t *palette, int pal_base,
                             int cx, int cy, int scale,
                             uint32_t *pixels, int w, int h, int pitch_px);
+void smk_draw_sprite_mirror2(const smk_sprites *s, int frame,
+                             const uint32_t *palette, int pal_base,
+                             int cx, int cy, int scale, bool mini,
+                             uint32_t *pixels, int w, int h, int pitch_px);
 
 /* Half-size kart sprite for the far range (see sprite.c - the game
  * composes this at runtime; ours is a labelled 2:1 approximation). */

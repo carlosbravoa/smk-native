@@ -711,8 +711,19 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
             float a2 = (float)cam_heading * (float)(2.0 * M_PI) / 65536.0f;
             float depth = (gx - cam->x) * sinf(a2)
                         + (gy - cam->y) * -cosf(a2);
-            int scale = rw / 256;
+            /* Kart size follows OUR projection (sc = screen px per world
+             * px), capped at the measured near canvas (32px art on a 256
+             * screen = a sprite twice its ~16px ground footprint).  The
+             * SNES pairs a FLATTER sprite-row law with its own ground
+             * law (NOTES 082); until our ground matches it, constant-
+             * canvas sprites on our steeper road read as gigantic
+             * (playtest).  Proportional-with-cap keeps the near range
+             * measured-exact and the far range road-proportional. */
+            int cap = rw / 256;
+            if (cap < 1) cap = 1;
+            int scale = (int)(sc + 0.5f);
             if (scale < 1) scale = 1;
+            if (scale > cap) scale = cap;
             const smk_driver *d2 = &SMK_DRIVERS[k];
             if (!loaded[k]) loaded[k] = smk_sprites_load(rom, d2->sheet, &other[k]);
             if (!loaded[k]) continue;
@@ -733,10 +744,9 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
             /* height lifts the sprite on screen, scaled like everything else */
             py -= (float)smk_kart_height_px(&racers[k].k) * sc;
             if (mirror)
-                smk_draw_sprite_mirror(&other[k], 0, trk->palette, d2->pal,
-                                       (int)px, (int)py,
-                                       depth > 84.0f ? (scale + 1) / 2 : scale,
-                                       fb, rw, rh, rw);
+                smk_draw_sprite_mirror2(&other[k], 0, trk->palette, d2->pal,
+                                        (int)px, (int)py, scale,
+                                        depth > 84.0f, fb, rw, rh, rw);
             else if (depth > 84.0f)
                 smk_draw_sprite_mini(&other[k], f, trk->palette,
                                      d2->pal, (int)px, (int)py, scale, hf,

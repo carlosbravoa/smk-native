@@ -81,6 +81,7 @@ class Bus:
         self.m7_ofs = [0, 0, 0, 0]      # M7HOFS, M7VOFS, M7X, M7Y
         self.m7_ofs_lo = [0, 0, 0, 0]
         self.m7 = [0, 0, 0, 0]          # $211B-$211E latches (8.8)
+        self.m7_mul_b = 0               # last byte written to $211C
         self.m7_lines: list[tuple[int, int, int, int, int]] = []   # per-scanline
         self.log_m7 = False
         self.log_m7_raw = False
@@ -107,6 +108,14 @@ class Bus:
         if low <= 0x3F:
             if addr < 0x2000:
                 return self.wram[addr]
+            if 0x2134 <= addr <= 0x2136:
+                # PPU signed multiply: M7A (16-bit latch) x the LAST BYTE
+                # written to $211C (signed 8-bit), 24-bit signed product.
+                # SMK computes its perspective HDMA tables with this.
+                a = self.m7[0] - 0x10000 if self.m7[0] & 0x8000 else self.m7[0]
+                m = self.m7_mul_b - 0x100 if self.m7_mul_b & 0x80 else self.m7_mul_b
+                prod = (a * m) & 0xFFFFFF
+                return (prod >> ((addr - 0x2134) * 8)) & 0xFF
             if 0x2140 <= addr <= 0x2143:
                 return self.apu.read(addr)
             if addr in (0x4016, 0x4017):
@@ -252,6 +261,8 @@ class Bus:
             # each is a write-twice 8.8 latch (low byte then high)
             i = addr - 0x211B
             self.m7[i] = ((self.m7[i] << 8) | val) & 0xFFFF
+            if addr == 0x211C:
+                self.m7_mul_b = val          # the multiply operand byte
             if self.log_m7_raw:
                 self.m7_raw.append((self.vcount, addr, val))
             return
