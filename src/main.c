@@ -408,16 +408,15 @@ static void step_kart(smk_kart *k, const smk_track *trk,
     int auth = (k->speed < 0 ? -k->speed : k->speed);
     if (auth > top) auth = top;
     int turn = top ? FEEL_TURN * auth / top : 0;
-    /* Breakaway with HYSTERESIS: enter past the measured threshold,
-     * leave only once the slip has clearly recovered.  A single
-     * threshold flapped the turn rate (420 <-> 25) every frame at the
-     * boundary, and the camera - which follows the heading - juddered
-     * with it (playtest). */
-    static bool plowing;
-    if (slip_u0 > 4000.0f) plowing = true;
-    else if (slip_u0 < 2800.0f) plowing = false;
-    if (plowing && !in->hop_held)
-        turn = turn * 6 / 100;               /* measured plow: ~-20 vs -307 */
+    /* The kart ALWAYS turns at its full rate.  MEASURED (NOTES 090):
+     * holding full lock at pace, with or without throttle, the heading
+     * moves -307 every single frame for 120 frames while the velocity
+     * follows within a few units.  There is no progressive loss of
+     * steering in normal cornering - the "authority collapse" I had
+     * (307 -> 20 past a lateral limit) modelled a CRASH, not a corner,
+     * and latched: once entered, its own slip growth kept it entered,
+     * so the kart could never be steered again ("on-off switch, and you
+     * do not get control back" - playtest). */
     if (in->left)  k->angle -= (uint16_t)turn;
     if (in->right) k->angle += (uint16_t)turn;
 
@@ -436,73 +435,30 @@ static void step_kart(smk_kart *k, const smk_track *trk,
                                      / 65536.0f) * (float)k->speed);
         int32_t tvy = (int32_t)(-cosf((float)k->angle * (float)(2.0 * M_PI)
                                       / 65536.0f) * (float)k->speed);
-        /* MEASURED slip dynamics (NOTES 068, both grip batteries):
-         *   - steady cornering slip is ~200-310 units at the saturated
-         *     turn rate, on EVERY class - convergence ~0.5/frame;
-         *   - breakaway is by LATERAL ACCELERATION (speed x turn rate):
-         *     950x307 breaks away, 770x307 and 585x307 hold, so the
-         *     limit sits near 250k unit^2; past it slip grows ~130/frame
-         *     and steering authority collapses - a progressive plow, no
-         *     threshold switch;
-         *   - slip recovers at ~150/frame below the limit;
-         *   - the drift state ($E2: $8000 hop -> $8004 slide -> $8024
-         *     charged) is entered by hopping into a held turn: airborne
-         *     grip is near zero, and landing steered holds the slide.
-         * Grip is CLASS-INDEPENDENT - now measured across BOTH grip
-         * batteries (12 classes): every class shows the same steady
-         * slip (~200-330) and convergence, and one ABSOLUTE lateral
-         * limit (~250k demo-scale) explains exactly which classes break
-         * away: $4E/$48/$4A (caps .89-.97, fast enough to cross the
-         * limit - VL ice among them) do, $56/$58/$5A/$5C (slow caps)
-         * cannot.  "Ice feel" is EMERGENT from cap vs limit, not a grip
-         * multiplier.  Our limit scales with class top (labelled feel
-         * adaptation, NOTES 069) which keeps that relationship at every
-         * engine class. */
-        float va = atan2f((float)k->vx, -(float)k->vy);
-        float ha = (float)k->angle * (float)(2.0 * M_PI) / 65536.0f;
-        float slip = va - ha;
-        while (slip >  (float)M_PI) slip -= 2.0f * (float)M_PI;
-        while (slip < -(float)M_PI) slip += 2.0f * (float)M_PI;
-        float slip_u = fabsf(slip) * 65536.0f / (2.0f * (float)M_PI);
-
-        float class_grip = 1.0f;         /* uniform - measured, see above */
-
-        /* The breakaway limit was MEASURED at the demo's speed scale
-         * (top ~951, limit ~250k -> breakaway at ~86% of top under full
-         * lock).  Shipped as an absolute it was unreachable at 50cc -
-         * playtest: "no difference" - so it scales by the class top,
-         * preserving the measured ratio across 50/100/150cc. */
-        float limit = (float)top * 264.0f;
-        float lateral = (float)k->speed * 307.0f *
-                        ((in->left || in->right) ? 1.0f : 0.3f);
+        /* MEASURED (NOTES 090): in normal driving the velocity simply
+         * IS the heading direction - a full-lock lap shows the velocity
+         * within ~300 units (1.7 deg) of the heading at every speed,
+         * and that residual is just the one-frame lag between the
+         * heading update and the velocity update.  So: full grip.
+         *
+         * A slide is a separate, deliberate act - hop into a held turn
+         * - and only there does the velocity really lag (NOTES 089:
+         * slip opens toward a ~93 deg ceiling at 0.03 of the remaining
+         * gap per frame, speed sagging to ~0.70 of pace).
+         *
+         * Everything else I had here - a lateral-force limit, a
+         * breakaway, a progressive plow - described a phenomenon this
+         * game does not have. */
         float g;
         if (k->airborne)
             g = 0.04f;                        /* hop: momentum carries    */
-        else if (in->hop_held && k->speed > 300)
-            g = 0.045f;                       /* held slide: FIT to the
-                                                 lab's drift slip curve
-                                                 (1024@6f, 5696@20f,
-                                                 8640@40f - NOTES 080);
-                                                 0.10 capped slip at
-                                                 ~4200, below the
-                                                 sideways poses */
-        else if ((lateral > limit || plowing)
-                 && (in->left || in->right))
-            g = 0.0f;                         /* plow: see the ROTATION
-                                                 below - a negative g
-                                                 shrank the velocity
-                                                 vector, so the kart lost
-                                                 speed in steps and then
-                                                 regained grip: the
-                                                 stutter cycle (playtest).
-                                                 The ROM keeps speed
-                                                 through a plow (measured
-                                                 791 -> 801). */
+        else if (in->hop_held && k->speed > 300 && (in->left || in->right))
+            g = 0.045f;                       /* the drift, see below     */
         else
-            g = 0.50f * class_grip;           /* measured convergence     */
+            g = 1.0f;                         /* full grip - measured     */
         float nvx = (float)k->vx + (float)(tvx - k->vx) * g;
         float nvy = (float)k->vy + (float)(tvy - k->vy) * g;
-        if (plowing && (in->left || in->right)) {
+        if (in->hop_held && k->speed > 300 && (in->left || in->right)) {
             /* MEASURED slide (NOTES 089, a 150-frame hop-drift):
              *
              *   f5 11.2 deg   f10 22.8   f20 43.0   f30 62.3
@@ -519,20 +475,38 @@ static void step_kart(smk_kart *k, const smk_track *trk,
              *
              * Speed in the same capture holds (846..854) and then falls
              * to about 0.70 of pace and stays there. */
-            const float SLIP_MAX  = 17000.0f;   /* ~93 deg, measured    */
-            const float SLIP_RATE = 0.03f;      /* of the gap, per frame */
+            /* A drift is the kart PIVOTING while the velocity keeps
+             * going: the heading turns at its full rate and the velocity
+             * rotates SLOWER, and the gap between them is the slide.
+             * Rotating the velocity away on top of the heading's own
+             * rotation double-counted, opening the slide twice as fast
+             * as measured and straight past 180 degrees.
+             *
+             * Measured growth of the gap (NOTES 089): ~410/frame while
+             * the slide is opening, holding near 350-420 until about
+             * 11000 units and then decaying to nothing by ~16500 - so
+             * the velocity ends up matching the heading's rate and the
+             * angle holds. */
+            const float SLIP_MAX  = 16500.0f;
+            const float SLIP_KNEE = 11000.0f;
+            const float SLIP_OPEN = 400.0f;     /* units/frame, measured */
+            float cur  = fabsf(slip_u0);
+            float taper = (SLIP_MAX - cur) / (SLIP_MAX - SLIP_KNEE);
+            if (taper > 1.0f) taper = 1.0f;
+            if (taper < 0.0f) taper = 0.0f;
+            float open = SLIP_OPEN * taper;
+            float vrate = (float)turn - open;   /* velocity lags heading */
+            if (vrate < 0.0f) vrate = 0.0f;
             float mag = sqrtf((float)k->vx * k->vx + (float)k->vy * k->vy);
-            float cur = fabsf(slip_u0);
-            float step = (SLIP_MAX - cur) * SLIP_RATE;
-            if (step < 0.0f) step = 0.0f;
-            float rate = step * (2.0f * (float)M_PI) / 65536.0f;
-            float dir  = slip_now >= 0.0f ? 1.0f : -1.0f;
-            float va2  = atan2f((float)k->vx, -(float)k->vy) + dir * rate;
+            float dir = (in->left ? -1.0f : 1.0f);
+            float va2 = atan2f((float)k->vx, -(float)k->vy)
+                      + dir * vrate * (2.0f * (float)M_PI) / 65536.0f;
             nvx = sinf(va2) * mag;
             nvy = -cosf(va2) * mag;
-            /* the measured speed sag through a long slide */
+            /* the measured sag: pace holds while the slide opens, then
+             * settles around 0.70 of it (850 -> 595 over ~25 frames) */
             int sag = top * 70 / 100;
-            if (k->speed > sag) k->speed -= 3;
+            if (cur > 6000.0f && k->speed > sag) k->speed -= 10;
         }
         k->vx = (int16_t)nvx;
         k->vy = (int16_t)nvy;
@@ -723,6 +697,11 @@ static int frame_for(const input_state *in, float *lean)
             return rel > 0 ? -47 : 47;                 /* 47 base = left    */
         return rel < 0 ? -1 : 1;                       /* 1 base = right    */
     }
+    /* The bands to frame 4 are MEASURED (framelab6: slip $1640 showed
+     * frame 2, $21C0 showed frame 4).  Past that the sprite is only
+     * reached by a spin after a hit or a very long slide - the side-on
+     * poses are never seen in ordinary driving - so the continuation is
+     * the rotation rule's own spacing, LABELLED as extrapolation. */
     int f2 = a < 0x1800 ? 2
            : a < 0x2000 ? 3
            : a < 0x2800 ? 4

@@ -2636,4 +2636,50 @@ same reason: /tmp was cleaned this session and took every rig with it.
 
 ---
 
-*(next entry: 090)*
+**090** — There is no grip loss in normal cornering.  The whole
+breakaway model described something this game does not do.
+
+The playtest report was "past the orange zone you cannot turn at all,
+it is an on-off switch, and you never get control back".  Two of those
+are straightforward bugs in my model; the third turned out to be the
+model itself.
+
+**The measurement** (`tools/labs/authority.py`): hold full lock at pace
+and record, per frame, the change in HEADING and the change in VELOCITY
+DIRECTION, so understeer and oversteer can be told apart.
+
+    full lock, throttle held   dHead -307 every frame, dVel -300..-320
+    full lock, no throttle     dHead -307 every frame, dVel -300..-320
+    slip in both               ~300 units (1.7 deg), steady, 120 frames
+
+The kart turns at its full rate the whole time, at every speed from 850
+down to 171, and the velocity follows within a few units.  The residual
+~300 is just the one-frame lag between the heading update and the
+velocity update.  The only large slips in the capture appear AFTER a
+collision (speed collapsing 589 -> 368, slip jumping to 110 deg).
+
+So: **no lateral-force limit, no breakaway, no progressive plow.**  The
+"authority collapse 307 -> 20" of NOTES 068 was a crash being read as a
+corner.  All of it is deleted.  Normal driving is full grip - the
+velocity IS the heading direction, which is also what `smk_kart_face`
+does in the ROM.
+
+Two consequential bugs went with it: the breakaway state LATCHED (enter
+above 4000 slip, leave below 2800, while the branch itself kept slip
+growing - so it could never leave: "you do not get control back"), and
+the drift rotated the velocity away from the heading ON TOP OF the
+heading's own rotation, double-counting the slide and opening it twice
+as fast as measured, straight past 180 degrees.
+
+**What a slide really is**, kept from NOTES 089 and now modelled the
+right way round: the kart PIVOTS while the velocity keeps going.  The
+heading turns at its full rate, the velocity rotates slower, and the gap
+is the slide - opening ~410 units/frame, holding that rate to about
+11000 units and then tapering to nothing by ~16500 as the velocity comes
+back up to the heading's rate.  Simulated against the capture: 11.0 /
+22.0 / 43.9 / 65.6 / 82.6 / 88.0 degrees at f5/10/20/30/45/60 against
+the measured 11.2 / 22.8 / 43.0 / 62.3 / 75.0 / 83.8.
+
+---
+
+*(next entry: 091)*
