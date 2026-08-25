@@ -52,11 +52,14 @@ re-investigating.
 |---|---|---|---|---|
 | S1 | `src/main.c` `step_kart` | the acceleration curve and target speeds are now the ROM's, read at runtime; what is invented is the *policy* — which target entry input selects, the braking rate, the steering rate | per-character stats choose the target; steering is a slew toward `$FA,x`; plus drift, hop and per-surface response | P3 |
 | S2 | `src/assets.c` `smk_track_guess_start` | longest-road-run heuristic for the start position | per-track start line + grid layout, undecoded | P2 |
-| S4 | `src/mode7.c` camera (`height 15, horizon 0.36, fov 0.55`) | hand-tuned to look right | M7A–D matrix + HDMA table computed per frame by the game | P3 |
+| S4 | `src/mode7.c` camera | **RESOLVED** — the projection is derived from the ROM's own DSP-1 geometry: `depth(L)=4972/(L-20.36)`, `scale=depth/256` (the ratio is exactly `Les`=256, the cross-check), camera trails the kart 61 world px (NOTES 083/084) | the DSP-1 builds per-heading scanline tables at boot; HDMA feeds them to M7A-D | closed |
 | S5 | `src/mode7.c` `sky_colour` | invented vertical gradient from palette entries 1–2 | BG2 backdrop / per-track horizon graphics | P5 |
 | S6 | `src/kart.c` bounce | **decoded**: the bounce is a ballistic launch (`$80F8C0` sets `$26`=$0080), not a timed knockback (NOTES 045) | per-class differences; the horizontal knockback magnitude | P3 residual |
 | S7 | renderer | full-resolution smooth perspective | 256×224, per-scanline integer matrix | keep — named divergence, this is the point of a PC port. `--pixel` restores chunk. |
 | S8 | no audio | silence | SPC700 + S-DSP running its own program | P7 |
+| S10 | `src/main.c` peer draw | kart sprite size is CONTINUOUS with distance | the SNES cannot scale sprites; it quantises to a few art sizes | P4 residual |
+| S11 | `src/main.c` start sequence | 3-2-1 countdown at 60 frames a step, karts held | the ROM's own start-frame count and Lakitu's light art | P5 |
+| S12 | `src/main.c` entities | pipes/Thwomps collide but are drawn as placeholder billboards and never move | per-track handler table `$84:DD15` drives type and motion; art is tiles `$CE-$D7` (NOTES 086) | P5 |
 | S9 | `tools/smktool/dsp1.py` | full command set implemented; stream never desyncs; camera model verified against the game's own usage. Residual: gyrate is a passthrough, and raster/`$08`/`$18` scalings are unchecked | the real chip's exact fixed-point pipeline | largely closed (NOTES 039); residuals logged on first contact |
 
 *Resolved:* **S9 for command `$04` (sin/cos)** — pinned by unit analysis in
@@ -94,7 +97,7 @@ early (see "Risks probed" lines — a risk we discover in phase 6 that
 invalidates phase 3 work is the failure mode to avoid).
 
 ### P0 — Verification infrastructure (the oracle)  ✅ DONE
-### P0.5 — Make the oracle *run the game*  ⬅ NEXT, and it gates P2-P6
+### P0.5 — Make the oracle *run the game*  ✅ DONE (it gated P2-P6)
 
 Static decoding has a structural ceiling: 258 dispatches in the ROM jump
 through a pointer already held in a register (NOTES 018). Behaviour has to
@@ -149,7 +152,7 @@ call frequency (R1).
 - Acceptance: render all 24 tracks with correct themes; overlay the surface
   classes as colour; the overlay must visibly match roads/walls.
 
-### P2 — Start line, checkpoints, lap logic
+### P2 — Start line, checkpoints, lap logic  ✅ MOSTLY
 - Real start positions and grid (kills S2).
 - Lap counting is checkpoint-based (the game detects backwards driving), so
   there is per-track checkpoint data. Find it near the object lists.
@@ -185,28 +188,24 @@ The largest decode. Sub-order:
 - Acceptance: oracle diff = 0 over the swept state space for each ported
   routine; then a human lap of Mario Circuit 1 that feels right.
 
-### P4 — Sprites: karts and objects on the plane  (kart frames ✅)
+### P4 — Sprites: karts and objects on the plane  ✅ DONE
 Done: kart sprite frames located and read from the ROM at runtime, the
 player's kart is drawn (NOTES 028), and the sheet's three size tiers are
 identified (NOTES 030).
 
-Blocked: the frame-selection rule, which needs a state where karts are
-actually drawn. Current understanding (NOTES 032-034):
+Since done: the frame-selection rule was measured pixel-exact by matching
+the live P1 sprite's pixels against every sheet frame (NOTES 080/081) - the
+straight pose is frame 0's LEFT HALF mirrored, steering is frame 1, drift
+onset frame 47, deeper slides walk the rotation set.  The projection is the
+ROM's own (NOTES 083/084).  Residual: what the sheet's rows 1-2 are for.
 
-* mode 1 is most likely the **pre-race course intro**, not the demo race —
-  karts sit on the grid and the per-kart dispatcher never runs;
-* a forced mode 6 runs the kart updates but never draws them;
-* the difference between the two mode handlers is `$83F37F`/`$83F360`
-  (mode 6) against `$80FC`/`$80EC`/`$A120` (mode 1) — start there;
-* the attract sequence continues past mode 1 and has not been followed to
-  its end.
 - Kart sprite sheets (many rotation frames), character palettes, the
   world→screen projection for sprites (scale by distance — the game has a
   table for it), sprite sorting against the ground plane.
 - Acceptance: contact sheet of every character's rotation frames; a kart
   rendered on-track at the right scale for its distance.
 
-### P5 — Race furniture
+### P5 — Race furniture  (part)
 - Item boxes, coins, pipes/obstacles behaving; the real horizon/backdrop
   per track (kills S5); start-light sequence.
 
