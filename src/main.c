@@ -611,11 +611,17 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
              * - and drawing one as the "largest tier" is what looked
              * like a torn sprite in playtest.  The clean ladder, by art
              * height: */
+            /* Measured across both themes, the complete drawings with a
+             * BODY are bases 32/34/36 (h/w about 1.2-1.3).  Bases
+             * 8/10/12/14 are squat (h/w 0.6-0.8) - almost entirely rim -
+             * and using base 12 as the far tier is why distant pipes
+             * rendered as a lid with no length (playtest).  Beyond the
+             * smallest we keep drawing the smallest, which is what the
+             * hardware does; it never runs out of pipe. */
             static const struct { int base, h; } TIER[SMK_OBJ_TIERS] = {
-                { SMK_OBJ_PIPE0,     15 },   /* 12x15 */
-                { SMK_OBJ_PIPE0 + 2, 13 },   /* 11x13 */
-                { SMK_OBJ_PIPE0 + 4, 11 },   /* 10x11 */
-                { 12,                 9 },   /* 14x9, the far drawing */
+                { SMK_OBJ_PIPE0,     16 },   /* 12x16 near  */
+                { SMK_OBJ_PIPE0 + 2, 14 },   /* 11x14       */
+                { SMK_OBJ_PIPE0 + 4, 12 },   /* 10x12 far   */
             };
             float dep_eye = (SMK_PROJ_LES * (float)rw / 256.0f)
                           / (sc > 0.0001f ? sc : 0.0001f);

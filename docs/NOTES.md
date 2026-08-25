@@ -3093,4 +3093,41 @@ inked, not whether the drawing is the one you want.  Look at the art.
 
 ---
 
-*(next entry: 104)*
+**104** — The object sheet, analysed properly instead of one tier at a
+time.  And a hard limit worth stating.
+
+We had circled this three times, so: render the whole sheet in its VRAM
+layout, measure EVERY 2x2 origin, and check each for aspect and for
+touching the box edge.  Both themes give the same structure.
+
+    theme 1 (pipes)                theme 7 (Thwomps)
+    b0  12x15  h/w 1.25  edge      b0  12x16  h/w 1.33  edge
+    b2  11x16  h/w 1.45  edge      b2  12x16  h/w 1.33  edge
+    b8  16x11  h/w 0.69  edge      b8  16x10  h/w 0.62  edge
+    b10 14x11  h/w 0.79            b10 16x11  h/w 0.69  edge
+    b12 14x9   h/w 0.64            b12 14x9   h/w 0.64
+    b32 12x16  h/w 1.33            b32 12x15  h/w 1.25
+    b34 11x14  h/w 1.27            b34 11x13  h/w 1.18
+    b36 10x12  h/w 1.20            b36 10x11  h/w 1.10
+
+* The "edge" flag is NOT a fragment marker: assembling four tiles wide
+  shows two separate pipes side by side, each merely RIGHT-ALIGNED in
+  its own box.  Bases 0-6 are complete drawings - a second view of the
+  object (obvious on the Thwomps, which are visibly skewed there;
+  invisible on a cylinder).
+* The squat family (h/w 0.6-0.8, bases 8/10/12/14) is almost entirely
+  RIM.  Using base 12 as the far tier is why distant pipes rendered as a
+  lid with no length.  Dropped: the ladder is 32/34/36 and beyond the
+  smallest we keep drawing the smallest.
+
+**The hard limit.**  The biggest pipe drawing in the ROM is 12x16 SNES
+px; the biggest kart drawing is 30x31.  A pipe is therefore 0.52 of a
+kart's height ON THE HARDWARE, at any distance, because the SNES cannot
+scale a sprite and no larger pipe exists in the data.  Our render is at
+that cap already.  Drawing objects larger than their own artwork is not
+a decode any more, it is a change to the game - so it belongs in P9
+(quality of life) next to smooth scaling, not in the faithful path.
+
+---
+
+*(next entry: 105)*

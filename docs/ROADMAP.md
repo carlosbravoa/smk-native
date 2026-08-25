@@ -250,6 +250,12 @@ the default and ships first**; a QoL option is only allowed once the
 faithful behaviour it replaces is decoded, implemented and verified, and
 it must be switchable so the original can always be seen.
 
+- **Object size relative to the karts.**  The ROM's biggest pipe drawing
+  is 12x16 SNES px against a 30x31 kart, so on hardware a pipe is barely
+  half a kart's height at any distance and ours matches that (NOTES
+  104).  Drawing objects at their true perspective size - bigger than
+  any artwork the cartridge holds - reads better on a large screen but
+  is a change to the game, not a decode.  Same switch as smooth scaling.
 - **Smooth sprite scaling.**  The SNES cannot scale a sprite: it swaps
   between a few pre-drawn sizes, so karts and objects POP between steps
   as they approach (entities 16 -> 11 art px, karts 31 -> 28 -> 25 plus
