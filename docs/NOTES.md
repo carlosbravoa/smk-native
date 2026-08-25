@@ -2759,4 +2759,34 @@ good anchors, only the ROM stream behind them is unidentified.
 
 ---
 
-*(next entry: 093)*
+**093** — The entity art found, and it was not where NOTES 086 said.
+
+NOTES 086 named `$C7:0000`, inferred from a decompress call near the
+expander.  A byte comparison against the running game refuted it
+(NOTES 092).  The way to find it was to stop reasoning about call sites
+and SEARCH: decompress every plausible stream in the graphics banks and
+look for the bytes of a live VRAM entity tile
+(`tools/labs/find_entity_gfx.py`).
+
+    stream $C1:0F9B -> 1824 bytes = 57 tiles of 4bpp
+    stream tile 14 == VRAM $CE, 15 == $CF, 16 == $D0
+    so VRAM sprite tile $C0 + n is stream tile n
+
+Two of my earlier readings were wrong together: the source (not $C7) and
+the format (4bpp already, not 2bpp widened by the copy-16/zero-16 loop -
+that loop belongs to some other asset).  The pipe is stream tiles 14-23,
+2 wide x 5 tall, palette base **$F0** - its pixels use indices $A-$E,
+which land on the greens at $FA-$FD.
+
+Ported: `smk_objgfx_load`, and the entity billboards now draw the real
+art, scaled continuously with the projection like the karts.  Flooring
+the scale at one screen pixel per art pixel left distant pipes at full
+size with their tops above the horizon, floating in the sky - the same
+mistake as the kart mini-art, in miniature.
+
+Still open: the entity MOTION handlers (Thwomps and moles are static),
+and whether $C1:0F9B is global or selected per theme.
+
+---
+
+*(next entry: 094)*

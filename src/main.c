@@ -139,7 +139,8 @@ enum { RACE_COUNTDOWN, RACE_RUN };
 static int race_state = RACE_COUNTDOWN;
 static int race_count;                   /* frames spent counting down  */
 #define RACE_COUNT_FRAMES 180
-static smk_hud hud_art;                  /* the game's own HUD sprites */
+static smk_hud hud_art;
+static smk_objgfx obj_art;          /* pipes and other entities */                  /* the game's own HUD sprites */
 
 /* Draw one HUD tile at 8x8 * scale, palette $C0, index 0 transparent. */
 static void hud_tile(uint32_t *fb, int rw, int rh, int x, int y, int tile,
@@ -560,17 +561,31 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
             if (!smk_project(cam, (float)course->ent[i].x,
                              (float)course->ent[i].y, rw, rh, &px, &py, &sc))
                 continue;
-            int bw = (int)(10.0f * sc) + 1, bh = (int)(16.0f * sc) + 1;
-            for (int dy = 0; dy < bh; dy++) {
-                int yy = (int)py - dy;
+            /* The pipe, in the game's own art (NOTES 093): stream
+             * tiles 14-23, 2 wide x 5 tall, palette $F0.  It scales with
+             * the same projection as everything else, anchored so the
+             * base sits on the ground point. */
+            if (!obj_art.ok) continue;
+            /* Continuous scale, like the karts: the art is 16x40 SNES px
+             * and shrinks with distance.  Flooring it at one screen pixel
+             * per art pixel left far pipes full size, so their tops rose
+             * above the horizon and they floated in the sky. */
+            float s2 = sc * 0.5f;
+            int pw = (int)(16.0f * s2 + 0.5f), ph = (int)(40.0f * s2 + 0.5f);
+            if (pw < 2 || ph < 2) continue;          /* too far to matter */
+            int x0 = (int)px - pw / 2, y0 = (int)py - ph;
+            for (int dy = 0; dy < ph; dy++) {
+                int yy = y0 + dy;
                 if (yy < 0 || yy >= rh) continue;
-                for (int dx = -bw / 2; dx <= bw / 2; dx++) {
-                    int xx = (int)px + dx;
+                int ty = dy * 40 / ph;
+                for (int dx = 0; dx < pw; dx++) {
+                    int xx = x0 + dx;
                     if (xx < 0 || xx >= rw) continue;
-                    int edge = (dx < -bw / 2 + 1 || dx > bw / 2 - 1);
-                    int lip = (dy > bh - 3);
-                    fb[yy * rw + xx] = lip ? 0xFF77E077
-                                    : edge ? 0xFF1E6B1E : 0xFF2E9B2E;
+                    int tx = dx * 16 / pw;
+                    int tile = SMK_OBJ_PIPE0 + (ty / 8) * 2 + (tx / 8);
+                    uint8_t v = obj_art.px[tile][(ty % 8) * 8 + (tx % 8)];
+                    if (!v) continue;
+                    fb[yy * rw + xx] = trk->palette[(SMK_OBJ_PAL + v) & 0xFF];
                 }
             }
         }
@@ -837,6 +852,7 @@ int main(int argc, char **argv)
     }
     static smk_track trk;
     smk_hud_load(&rom, &hud_art);
+    smk_objgfx_load(&rom, &obj_art);
     if (!smk_track_load(&rom, track, theme, &trk, err, sizeof err)) {
         fprintf(stderr, "error: %s\n", err);
         smk_rom_free(&rom);

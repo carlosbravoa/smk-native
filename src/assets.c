@@ -259,6 +259,37 @@ bool smk_hud_load(const smk_rom *rom, smk_hud *out)
     return true;
 }
 
+/* The entity sprite set - pipes and friends. */
+bool smk_objgfx_load(const smk_rom *rom, smk_objgfx *out)
+{
+    static uint8_t buf[WRAM_SIZE];
+    memset(out, 0, sizeof *out);
+    memset(buf, 0, sizeof buf);
+    long n = smk_decompress_into(rom->data, rom->size,
+                                 smk_snes_to_pc(rom, 0xC10F9Bu),
+                                 buf, WRAM_SIZE, 0, NULL);
+    if (n < SMK_OBJ_TILES * 32) return false;
+    for (int t = 0; t < SMK_OBJ_TILES; t++) {
+        const uint8_t *src = buf + (size_t)t * 32u;
+        uint8_t tile[64];
+        memset(tile, 0, sizeof tile);
+        for (int pair = 0; pair < 2; pair++) {
+            const uint8_t *q = src + pair * 16;
+            for (int y = 0; y < 8; y++) {
+                uint8_t lo = q[y * 2], hi = q[y * 2 + 1];
+                for (int x = 0; x < 8; x++) {
+                    int bit = 7 - x;
+                    int v = ((lo >> bit) & 1) | (((hi >> bit) & 1) << 1);
+                    tile[y * 8 + x] |= (uint8_t)(v << (pair * 2));
+                }
+            }
+        }
+        memcpy(out->px[t], tile, 64);
+    }
+    out->ok = true;
+    return true;
+}
+
 uint8_t smk_track_surface(const smk_track *t, int wx, int wy)
 {
     /* The ROM's world is a single 1024x1024 plane: coordinates beyond it

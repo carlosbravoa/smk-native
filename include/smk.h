@@ -389,6 +389,22 @@ bool smk_hud_load(const smk_rom *rom, smk_hud *out);
 static inline int smk_hud_digit(int d)
 { return (d < 5 ? 0xA7 + d : 0xB7 + (d - 5)) - SMK_HUD_TILE0; }
 
+/* The object/entity sprite set (docs/NOTES.md 093).
+ *
+ * Found by searching the graphics banks for the bytes of a live VRAM
+ * entity tile: the stream at **$C1:0F9B** decompresses to 1824 bytes =
+ * 57 tiles of 4bpp, and stream tile n is VRAM sprite tile $C0 + n.  The
+ * pipe is VRAM $CE-$D7 = stream tiles 14-23, arranged 2 wide x 5 tall,
+ * palette base $F0 (its pixels use indices $A-$E).
+ *
+ * NOTES 086's $C7:0000 was wrong - refuted by a byte comparison against
+ * the running game (NOTES 092). */
+#define SMK_OBJ_TILES   57
+#define SMK_OBJ_PAL     0xF0
+#define SMK_OBJ_PIPE0   14        /* first pipe tile, 2 wide x 5 tall */
+typedef struct { uint8_t px[SMK_OBJ_TILES][64]; bool ok; } smk_objgfx;
+bool smk_objgfx_load(const smk_rom *rom, smk_objgfx *out);
+
 /* ---- Opponent karts ---------------------------------------------------
  *
  * The DATA is the ROM's (sector map, waypoints, acceleration tables) and

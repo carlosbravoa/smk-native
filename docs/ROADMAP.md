@@ -59,7 +59,7 @@ re-investigating.
 | S8 | no audio | silence | SPC700 + S-DSP running its own program | P7 |
 | S10 | `src/main.c` peer draw | kart sprite size is CONTINUOUS with distance | the SNES cannot scale sprites; it quantises to a few art sizes | P4 residual |
 | S11 | `src/main.c` start sequence | 3-2-1 countdown at 60 frames a step, karts held | the ROM's own start-frame count and Lakitu's light art | P5 |
-| S12 | `src/main.c` entities | pipes/Thwomps collide but are drawn as placeholder billboards and never move | per-track handler table `$84:DD15` drives type and motion; art is tiles `$CE-$D7` (NOTES 086) | P5 |
+| S12 | `src/main.c` entities | pipes draw in the ROM's own art and collide; movers (Thwomps, moles) are still static | per-track handler table `$84:DD15` drives type and motion | P5 |
 | S9 | `tools/smktool/dsp1.py` | full command set implemented; stream never desyncs; camera model verified against the game's own usage. Residual: gyrate is a passthrough, and raster/`$08`/`$18` scalings are unchecked | the real chip's exact fixed-point pipeline | largely closed (NOTES 039); residuals logged on first contact |
 
 *Resolved:* **S9 for command `$04` (sin/cos)** — pinned by unit analysis in
