@@ -3875,3 +3875,43 @@ plus a `$DC` - and those are the counts and places the blocks occupy.  So
 the breakable blocks are sprite OBJECTS, and the next measurement is to
 drive into one in the oracle and watch its object block at `$1800+` for
 the despawn, rather than watching the tilemap.
+
+---
+
+**121** — Breakable blocks: four negative results, and what they rule out.
+
+Chasing Ghost Valley's and Vanilla Lake's one-hit blocks, with a rig that
+finally drives a REAL kart into a chosen surface class on a chosen track:
+force `$0150`/`$0152` for the course, run 600 frames so the countdown
+finishes and the field is moving, pick a cell of the wanted class that has
+four cells of road south of it, drop the kart 28 px short of it at speed
+`$300` heading north, hold B, and watch every byte of the tilemap.
+
+    Ghost Valley $82 (602 cells, the rails)   contact, $10 = $C000, speed
+                                              falls 774 -> 600.  Tilemap
+                                              unchanged.
+    Ghost Valley $1E (32 cells)               a BUMP: $A0 = 2, $E2 bit 15,
+                                              the kart hops ($80B69D).
+                                              Tilemap unchanged.
+    Vanilla Lake $80 (1168 cells)             contact, $10 = $C000.
+                                              Tilemap unchanged.
+    Vanilla Lake $84 (30 cells)               no cell has a run-up; not
+                                              reachable head-on.
+
+And the objects are not blocks either: rendering what each object kind
+stamps on Ghost Valley gives kind `$03` -> tiles `$CC-$CF` class `$14`
+(item boxes), `$EC`/`$F0` -> tile `$FE` class `$1A` (coins), `$54` ->
+`$F4-$F6` class `$10` (a ramp).  No obstacle kinds at all.
+
+So the blocks are static tilemap features of class `$82`/`$80`, and a
+head-on hit at speed does not remove them in any state I can reach.  The
+removal must be driven by the tile-change queue at `$7F:DF80` - three-byte
+records `[kind][cell]` drained by `$81BEE0`, which writes the 2x2 block
+into both the tilemap and VRAM - but that queue has no producer anywhere
+in banks `$80-$85` under any absolute or long store form, so it is written
+through a pointer.
+
+Next, and it is a bounded job: hook the oracle's bus to log every WRITE to
+`$7F:0000-$7F:1FFF` and `$7F:DF80+` with its PC while a player kart rams
+`$82` blocks at a range of speeds and angles.  The first write identifies
+the routine; everything else follows from it.
