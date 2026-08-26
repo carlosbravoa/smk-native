@@ -39,6 +39,11 @@ void smk_render_mode7(const smk_track *t, const smk_camera *cam,
     const float l2h = (float)h / 112.0f;          /* host px per frame line */
     const int horizon = (int)(SMK_SKY_LINES * l2h);
 
+    /* The sky is the BACKDROP colour, palette entry 0 - measured from a
+     * real race frame (MAME pixel dump, NOTES 114): Mario Circuit's band
+     * above the horizon is $4BBF = (248,232,144), which is exactly
+     * CGRAM[0].  The old vertical gradient from entries 1-2 was invented.
+     * The theme's HILL graphics that sit on it are still missing (S5). */
     const uint32_t sky_far  = t->palette[1];
     const uint32_t sky_near = t->palette[2];
 
@@ -47,7 +52,8 @@ void smk_render_mode7(const smk_track *t, const smk_camera *cam,
 
         float line = (float)sy / l2h;
         if (line < SMK_SKY_LINES) {
-            uint32_t c = sky_colour(sy, horizon, sky_near, sky_far);
+            uint32_t c = t->palette[0];
+            (void)sky_colour; (void)horizon; (void)sky_far; (void)sky_near;
             for (int sx = 0; sx < w; sx++) row[sx] = c;
             continue;
         }

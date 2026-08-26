@@ -3598,3 +3598,36 @@ both sides, so the difference is in the decay itself - not chased yet.
 (`$81B75D` tests `$0D70,y`), which is why the port collected boxes the
 demo ignored; and `$80B79E`'s ramp clamp (mode `$0126 == $0C` floors the
 speed at $400, everything else at $2E0).
+
+---
+
+**114** — The sky is the backdrop colour and the plane repeats character 0.
+The black void was ours.
+
+Captured a real race frame from MAME headlessly (`screen:pixels()` into a
+PPM, `tools/labs/mame/pix.lua`) and read the PPU setup:
+
+* **`M7SEL = $80`** at race init (`$84FF67`), i.e. screen-over `10`:
+  outside the 128x128 Mode 7 map the PPU **repeats character 0**, it does
+  not go transparent.  That is why the original shows ground all the way
+  to the horizon where we drew a dark void.  The per-frame value comes
+  from the WRAM shadows `$D4`/`$D6` (`$808ACC`/`$808B4F`), so the split
+  screen can use a different setting per field.
+* **The sky band is CGRAM[0]** - the backdrop colour, palette entry 0.
+  On Mario Circuit the captured band is `(255,239,148)`, which is the
+  track palette's entry 0 (`$4BBF`) as MAME scales it.  Our vertical
+  gradient from entries 1-2 was invented (ledger S5).
+
+Ported: `smk_track_texel` fills outside the plane from tile 0's own 8x8
+pixels (the PPU's fill, and it tiles the same way), and the sky rows take
+`palette[0]`.  The port's frame now matches the game's above and below
+the horizon except for one thing.
+
+**Still missing (S5): the horizon ART.**  The captured frame has a green
+hill silhouette over the sand band, scrolling with the camera - a
+separate layer, not the Mode 7 plane.  Mode 7 has no second BG, so the
+game must switch BG mode mid-screen by HDMA on `$2105` (there are four
+`sta $2105` sites, `$84F45E` and three in bank `$85`) and draw the hills
+as ordinary tiles above the split.  CPU write taps see none of it during
+a race, so the next step is to reconstruct VRAM from the DMA stream at
+race setup and find the tilemap the top of the screen reads.

@@ -315,9 +315,15 @@ uint8_t smk_track_surface(const smk_track *t, int wx, int wy)
 
 uint32_t smk_track_texel(const smk_track *t, int wx, int wy)
 {
-    /* the world does not wrap (NOTES 063): beyond the plane, void */
-    if (wx < 0 || wx >= SMK_WORLD_PX || wy < 0 || wy >= SMK_WORLD_PX)
-        return 0xFF101018u;
+    /* Beyond the 1024x1024 plane the SNES repeats CHARACTER 0: the race
+     * sets M7SEL = $80 ($84FF67), screen-over 10 (NOTES 114).  The world
+     * itself still does not wrap for the physics (NOTES 063) - this is
+     * the PPU's fill, and it is why the original shows ground out to the
+     * horizon where we drew a black void. */
+    if (wx < 0 || wx >= SMK_WORLD_PX || wy < 0 || wy >= SMK_WORLD_PX) {
+        unsigned tx = (unsigned)wx & 7u, ty = (unsigned)wy & 7u;
+        return t->palette[t->tiles[(ty << 3) + tx]];      /* tile 0 */
+    }
     unsigned tile = t->map[(wy >> 3) * SMK_MAP_DIM + (wx >> 3)];
     if (tile >= SMK_TILE_TOTAL) return t->palette[0];
     return t->palette[t->tiles[tile * SMK_TILE_BYTES + ((wy & 7) << 3) + (wx & 7)]];
