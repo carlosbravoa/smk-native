@@ -4041,3 +4041,16 @@ sink-at-once below `$200` and 1/2/3 skips at 512/768/1024 - the stone
 skipping.  `$60,x` bit 15 is the SHRUNK kart (`$80B77B` hops it $70
 instead of $E0, `$80A48F` clears it and zeroes $DA/$FE): a small kart
 always drowns.  Not ported - we have no lightning.  LABELLED.
+
+**123a** — correction to 123.  "A broken block leaves a hole" is true of
+GHOST VALLEY only.  Verified in the selftest across both themes:
+
+    Ghost Valley  theme 0  tile $1F class $82 -> $26 $27 $28 $00  class $20 (void)
+    Vanilla Lake  theme 4  tile $7A class $84 -> $7B $7C $7D $08  class $4E (ice)
+
+So the ice blocks crumble away and leave ordinary ice - you do not fall
+through where one stood; Vanilla Lake's holes are map features that were
+always there.  The two classes also take different branches at $80FBBC
+($84 -> $84D7BA, $82 and above -> $84D7FA), which is the tell.
+
+Both themes confirmed in play by the user before this was pinned.

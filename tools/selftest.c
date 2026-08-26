@@ -387,6 +387,31 @@ int main(int argc, char **argv)
                   was == 0x1F && seq[0] == 0x26 && seq[1] == 0x27 && seq[2] == 0x28
                   && seq[3] == 0x00 && gv.surface[seq[3]] == 0x20, d2);
         }
+        /* Vanilla Lake's ice, theme 4, the OTHER sequence at $80FC6C -
+         * decoded from the ROM and confirmed in play by the user */
+        static smk_track vl;
+        if (smk_track_load(&rom, 4, -1, &vl, err2, sizeof err2)) {
+            smk_blocks_bind(&vl);
+            int cell = -1;
+            for (int i = 0; i < SMK_MAP_BYTES && cell < 0; i++)
+                if (smk_blocks_breakable(vl.surface[vl.map[i]])) cell = i;
+            uint8_t was = cell >= 0 ? vl.map[cell] : 0;
+            uint8_t seq[4] = {0};
+            if (cell >= 0) {
+                smk_blocks_hit(cell, true);
+                for (int i = 0; i < 4; i++) {
+                    for (int k = 0; k < 8; k++) smk_blocks_step();
+                    seq[i] = vl.map[cell];
+                }
+            }
+            char d3[96];
+            snprintf(d3, sizeof d3, "%02X -> %02X %02X %02X %02X (class %02X)",
+                     was, seq[0], seq[1], seq[2], seq[3], vl.surface[seq[3]]);
+            check("a broken Vanilla Lake ice block crumbles $7B $7C $7D $08",
+                  was == 0x7A && vl.surface[was] == 0x84
+                  && seq[0] == 0x7B && seq[1] == 0x7C && seq[2] == 0x7D
+                  && seq[3] == 0x08, d3);
+        }
     }
     {
         /* the demo race is 2P: Mario and Toad; the game filled the grid
