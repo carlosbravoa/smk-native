@@ -4164,15 +4164,31 @@ null pointer - so Ghost Valley has no static obstacles at all, exactly as
 our decode always said.  The four things visible there come from the
 OTHER system.
 
-*Still open, and now properly understood.*  `$84DC80`/`$84DC98` reposition
-the same slots from paths held in ROM - `$84DD15[$0D2C]` -> a block whose
-first word points at a waypoint->keyframe index list, followed by the
-path itself as position words.  Three blocks: `$84DD1B` (list `$84DD91`),
-`$84DDB2` (`$84DE2E`), `$84DE5E` (`$84DF08`).  Block 0's path drifts
-(924,172) (900,148) (868,140) (864,140)... 4 px a keyframe, and the index
-list repeats values so it pauses and accelerates.  Consecutive slots read
-consecutive words, so they follow each other along one path.  NOT ported:
-it needs a forced-track capture to confirm, and the boot for that has not
-completed.  Bowser Castle's own static slices show what the movers look
-like standing still - segment 1 is four positions 8 px apart in a row at
-y=708, a line of Thwomps.
+*Correction, same day.*  The paragraph that stood here claimed Ghost
+Valley's "four objects at runtime" come from a second, moving system.
+That was wrong twice over, and the user said so: **Ghost Valley has no
+moving track objects.**  The ghosts there are BACKGROUND - the near
+parallax plane (S5), which the user had already described: "ghost valley
+had some ghosts in the front plane and some sort of hills or
+constructions in black".  Nothing on the driving surface moves.
+
+The "shows four at runtime" line came from an earlier session's note and
+was never verified; it should not have been built on.  What IS verified
+is the opposite and simpler: Ghost Valley's `$85:C800` row is all zeroes
+and `$81:8B73` gives it `$0D28` = 0, whose `$84DB83` entry is a null
+pointer.  It has no track obstacles, static or otherwise.
+
+*What is actually still open.*  `$84DC80`/`$84DC98` reposition the object
+slots from paths in ROM - `$84DD15[$0D2C]` -> a block whose first word
+points at a waypoint->keyframe index list, then the path as position
+words (`$84DD1B`/`$84DDB2`/`$84DE5E`).  Block 0 drifts (924,172) (900,148)
+(868,140) 4 px a keyframe.  But **`$84DC80` has no JSR or JSL anywhere in
+banks $80-$87** - it is reached only by indirect dispatch, and I have not
+found the dispatcher.  So what it drives, and on which tracks, is
+unknown.  On track 7 it demonstrably did NOT run: positions held constant
+across waypoints 0-9 and only jumped at the segment change.
+
+Real movers to look for when this is picked up again: Bowser Castle's
+Thwomps and Donut Plains' moles.  Both are more likely per-object type
+handlers (a Thwomp rises and slams in place - a Z animation, not an x/y
+path) than this repositioner.  Do not assume they are the same system.
