@@ -48,3 +48,23 @@ Files:
 * `vshadow.lua` - a VRAM/CGRAM shadow built from the write and DMA
   stream.  INCOMPLETE: it sees only one 1 KB upload, so the bulk VRAM
   traffic goes through a path the `$420B` tap misses.
+
+## Recording a real session (the player's own hands)
+
+Some things the rigs cannot reach - breaking a Ghost Valley block, a
+proper lap of a track the attract mode never shows - are trivial for a
+human with a pad.  `play.sh` records such a session so it can be replayed
+HERE, deterministically, with any instrumentation attached:
+
+    tools/labs/mame/play.sh gv        # play; Esc when done
+    tools/labs/mame/replay.sh gv tools/labs/mame/watch_blocks.lua 180
+
+`play.sh` writes the input recording and any save states into
+`tools/labs/mame/sessions/`.  In game, Shift+F7 then 1 saves a state
+(park it just before the interesting moment), F7 then 1 loads it back.
+
+`replay.sh` runs the recording headless with a Lua script attached, so
+the same moment can be watched as many times as needed with different
+watches.  `watch_blocks.lua` reports any change in the live tilemap with
+the kart's position and state - which is exactly what a block vanishing
+should look like.
