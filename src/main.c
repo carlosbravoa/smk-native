@@ -507,9 +507,17 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
         while (ody >  SMK_WORLD_PX / 2) ody -= SMK_WORLD_PX;
         while (ody < -SMK_WORLD_PX / 2) ody += SMK_WORLD_PX;
         float zf = odx * cosf(cam->angle) + ody * sinf(cam->angle);
-        if (zf < 1.0f) return;                       /* level with us or behind */
+        /* Behind the EYE is the only thing that culls a near object -
+         * smk_project has already returned false for that.  The port used
+         * to drop anything nearer than $4200/$300 = 22 px along the axis,
+         * reading $80C883's `sta $30,x` as parking the sprite, and pipes
+         * vanished as you drove up to one: you could not stop beside it
+         * (user, NOTES 130).  The size cannot run away here in any case -
+         * the BANDS bound it, and band 0 is a fixed drawing however close
+         * you get - so the scale is simply clamped into band 0. */
+        if (zf < 1.0f) zf = 1.0f;
         int oscale = (int)(SMK_OBJ_SCALE_K / zf + 0.5f);
-        if (oscale >= SMK_OBJ_SCALE_HIDE) return;    /* $80C883: parked off-screen */
+        if (oscale > SMK_OBJ_SCALE_HIDE) oscale = SMK_OBJ_SCALE_HIDE;
         /* $84DA18 walks $84DA3C = C0 60 30 00: the first threshold the
          * scale is ABOVE picks the drawing, and past the last one the
          * loop hits the terminator and the object is not drawn. */

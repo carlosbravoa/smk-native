@@ -4283,3 +4283,53 @@ The KART path is deliberately untouched: kart blocks carry the same
 `+$06` from the same routine, but which drawing each scale picks is a
 different table nobody has measured, so it keeps its own constant and
 stays in the ledger.
+
+---
+
+**130** — Two playtest reports, both real, both with the answer in the ROM.
+
+*"Pipes disappear when you get close - I cannot even stop near one."*
+NOTES 129 read `$80C883` (`cmp #$0300 / bcs $80C8AB`, which writes `$0140`
+into `$30,x`) as parking the sprite off-screen, and the port dropped any
+object nearer than `$4200/$300` = 22 px along the view axis.  22 px is
+about where a kart comes to rest against one, so they blinked out exactly
+when you arrived.
+
+That reading cannot be what the branch is FOR: the drawing is quantised
+into bands, and band 0 is a fixed-size drawing however close you get, so
+nothing needs protecting from a runaway scale.  The port now clamps the
+scale into band 0 instead, and the only thing that culls a near object is
+being behind the EYE - which `smk_project` already handles.  LABELLED:
+what `$30,x = $0140` really means is still unsettled; a lab that logged it
+on track 7 found it reading `$0140` at every scale, so it did not
+discriminate and cannot be the whole story.
+
+*"Acceleration after bouncing is too fast, so bouncing is too aggressive -
+hitting a barrier had a cost."*  Right, and the capture in NOTES 125
+already showed it: after the hit `$EA` sat at **418 for all eight frames**
+of the window and only moved when control came back.  The port held the
+VELOCITY but kept calling the accelerator, so it came off the wall already
+back up to speed - bouncing was free.  Speed is now frozen for the window
+too.
+
+The rest of the cost is `$80B3DD`: while `$10` bit 12 is up, `$80A0C7`
+runs before anything else and
+
+    $80A0D4  takes the ANGLE of the bounce velocity ($81F638)
+    $80A0E7  slip = that angle - the heading
+    $80A0F0  $A8 (the slide's velocity lag) = slip
+    $80A0F6  within 45 degrees and throttle held: $A2 = the bounce angle,
+             $A6 = $1C
+    $80A108  more than 45 degrees off: $AC = $A6 = $16, a drive state of
+             its own
+    $80A10F  $C2 >>= 1, floored at $0100
+
+So you come out of a bounce pointing the wrong way, with the slide
+machine holding a large lag to unwind.  Ported except `$C2`, which the
+port has no field for - LABELLED.
+
+Port trace of a head-on hit at 835, next to the game's own shape:
+
+    f7   835 -> vx reflects, speed UNTOUCHED, drive $16
+    f8   357 (714 * $80/256), speed re-derived from the vector
+    f9-15 357 held to the end of the window

@@ -103,6 +103,8 @@ void     smk_render_set_plane_mask(uint8_t *mask, int pitch);
 /* Sprite priority under the Mode 7 plane: while set, sprite pixels are
  * dropped where the mask marks the plane opaque (NOTES 128). */
 void     smk_draw_set_clip_mask(const uint8_t *mask, int pitch);
+/* $81F638: the angle of a velocity vector, the game's own octant atan2 */
+uint16_t smk_angle_of(int16_t vx, int16_t vy);
 
 /* Surface byte under a world position, exactly as $80FA62 computes it:
  * index = (y >> 3) * 128 + (x >> 3), then map -> surface table. */
@@ -176,6 +178,7 @@ typedef struct {
     int8_t   bounce_cool;   /* $5C: the 8-frame window with the velocity held */
     uint8_t  bounce_dir;    /* $56: which way the wall pushed (0/2/4/6)       */
     uint8_t  bounce_pend;   /* $52's $C000 bits: damp on the NEXT frame       */
+    uint8_t  bounce_hit;    /* $10 bit 12: hit a wall, $80A0C7 owes a cost   */
     /* Speed and acceleration are both 32-bit, split across two words,
      * and the *high* word is the 8.8 value handed to DSP-1 as the radius. */
     int16_t  speed;         /* $EA */

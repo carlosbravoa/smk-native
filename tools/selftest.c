@@ -320,12 +320,50 @@ int main(int argc, char **argv)
 
     test_player_replay(&rom);
     {
+        /* Hitting a wall must COST something (NOTES 130): the impact frame
+         * leaves the speed alone, the next frame damps it once, and it
+         * then stays put for the whole window - measured in the game as
+         * 418 held for eight frames.  Accelerating through the window is
+         * what made bouncing free. */
+        static smk_track tw; static smk_player pw; smk_kart kw = {0};
+        char e[256];
+        if (smk_track_load(&rom, 7, -1, &tw, e, sizeof e)) {
+            int rx = -1, ry = -1;
+            for (int cy = 1; cy < 127 && rx < 0; cy++)
+                for (int cx = 1; cx < 120; cx++)
+                    if (!smk_surface_solid(tw.surface[tw.map[cy * 128 + cx]])
+                        && smk_surface_solid(tw.surface[tw.map[cy * 128 + cx + 3]])) {
+                        rx = cx * 8 + 4; ry = cy * 8 + 4; break;
+                    }
+            smk_player_setup(&rom, 0, 1, &pw); smk_player_reset(&pw, 0);
+            kw.x = (int32_t)rx << 16; kw.y = (int32_t)ry << 16; kw.speed = 835;
+            pw.heading = pw.vel_angle = pw.pose = 0x4000;
+            int hit = -1, at_hit = 0, after = 0, held = 1, drive = 0;
+            for (int f = 0; f < 24; f++) {
+                int before = kw.speed;
+                smk_player_step(&pw, &kw, &tw, 0x8000, 0);
+                if (hit < 0 && kw.bounce_cool > 0) {
+                    hit = f; at_hit = kw.speed == before; drive = pw.drive;
+                } else if (hit >= 0 && f == hit + 1) {
+                    after = kw.speed;
+                } else if (hit >= 0 && f > hit + 1 && kw.bounce_cool > 0) {
+                    if (kw.speed != after) held = 0;
+                }
+            }
+            char d[128];
+            snprintf(d, sizeof d, "hit f%d speed kept %d, damped to %d, held %d, drive $%02X",
+                     hit, at_hit, after, held, drive);
+            check("a wall hit costs speed and the window holds it", 
+                  hit > 0 && at_hit && after > 0 && after < 500 && held && drive == 0x16, d);
+        }
+    }
+    {
         /* The object scale law and its ladder (NOTES 129), pinned at the
          * distances the bands fall on: scale = $4200 / axis depth, hidden
          * at $0300 and above, drawings chosen by $84DA3C = C0 60 30 00. */
         struct { float zf; int scale, tier; } W[] = {
-            {  20.0f, 845, -1 },   /* nearer than $4200/$300 = 22 px: hidden */
-            {  22.0f, 768, -1 },
+            {  20.0f, 768,  0 },   /* clamped into band 0, still DRAWN        */
+            {  22.0f, 768,  0 },
             {  23.0f, 735,  0 },
             {  88.0f, 192,  1 },   /* exactly $C0 is NOT above it            */
             {  87.0f, 194,  0 },
@@ -342,8 +380,8 @@ int main(int argc, char **argv)
         for (size_t i = 0; i < sizeof W / sizeof W[0]; i++) {
             int sc = (int)(SMK_OBJ_SCALE_K / W[i].zf + 0.5f);
             int ti;
-            if (sc >= SMK_OBJ_SCALE_HIDE) ti = -1;
-            else if (sc > SMK_OBJ_BAND0)  ti = 0;
+            if (sc > SMK_OBJ_SCALE_HIDE) sc = SMK_OBJ_SCALE_HIDE;
+            if (sc > SMK_OBJ_BAND0)       ti = 0;
             else if (sc > SMK_OBJ_BAND1)  ti = 1;
             else if (sc > SMK_OBJ_BAND2)  ti = 2;
             else ti = -1;

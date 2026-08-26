@@ -157,6 +157,17 @@ static void bounce_damp(smk_kart *k)
     k->bounce_pend = 0;
 }
 
+/* $81F638 reduced to what the port needs: the direction of a velocity
+ * vector in the game's 65536-unit angles, 0 = north.  The ROM reads it
+ * out of a boot-time octant table; ours is the same geometry in floating
+ * point and is only ever used to set the post-bounce lag. */
+uint16_t smk_angle_of(int16_t vx, int16_t vy)
+{
+    double a = atan2((double)vx, -(double)vy);
+    long v = lround(a * 65536.0 / (2.0 * 3.14159265358979323846));
+    return (uint16_t)(v & 0xFFFF);
+}
+
 void smk_kart_bounce_damp_for_test(smk_kart *k) { bounce_damp(k); }
 
 void smk_kart_move_ex(smk_kart *k, const smk_track *t, bool auto_ramp)
@@ -312,6 +323,7 @@ void smk_kart_move_ex(smk_kart *k, const smk_track *t, bool auto_ramp)
             if (by) k->vy = (int16_t)-k->vy;
             k->bounce_dir = bx ? (k->vx < 0 ? 2 : 0) : (k->vy < 0 ? 6 : 4);
             k->bounce_pend = 1;
+            k->bounce_hit = 1;            /* $10 bit 12, read by $80A0C7 */
             k->bounce_cool = 9;              /* $5C = 8, released on the 9th */
         }
         /* SLIDE ALONG: move on whichever axis is not blocked.  Returning
