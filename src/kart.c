@@ -115,8 +115,53 @@ void smk_kart_launch(smk_kart *k, int16_t zvel)
 
 void smk_kart_move(smk_kart *k, const smk_track *t) { smk_kart_move_ex(k, t, true); }
 
+/* $80FC74: (v * f) >> 8, the SNES multiplier with the sign put back - an
+ * arithmetic shift, so it floors toward minus infinity. */
+static int16_t scale8(int16_t v, int f)
+{
+    return (int16_t)(((int32_t)v * f) >> 8);
+}
+
+static int16_t vec_len(int16_t vx, int16_t vy)
+{
+    int32_t m = (int32_t)vx * vx + (int32_t)vy * vy, r = 0, bit = 1 << 30;
+    while (bit > m) bit >>= 2;
+    while (bit) {                                   /* integer sqrt */
+        if (m >= r + bit) { m -= r + bit; r = (r >> 1) + bit; }
+        else r >>= 1;
+        bit >>= 2;
+    }
+    return (int16_t)r;
+}
+
+/* $80F99A -> $80F9DF, MEASURED frame by frame in the running game
+ * (tools/labs/wall.py, NOTES 125).  The frame AFTER a wall hit, each
+ * velocity component is scaled by the pair the bounce direction $56
+ * selects - the reflected axis by $80/256, the other by $F0/256 - and the
+ * speed scalar $EA is then RE-DERIVED from the vector, not damped.  Three
+ * captures at different approach angles agree to the unit. */
+static void bounce_damp(smk_kart *k)
+{
+    static const uint8_t TBL_VX[4] = { 0x80, 0x80, 0xF0, 0xF0 };   /* $80FA4A */
+    static const uint8_t TBL_VY[4] = { 0xF0, 0xF0, 0x80, 0x80 };   /* $80FA52 */
+    int d = (k->bounce_dir >> 1) & 3;
+    if (k->speed >= 0x500) {                      /* $80FA33: a fast hit */
+        k->vx = scale8(k->vx, 0x40);
+        k->vy = scale8(k->vy, 0x40);
+    } else {
+        k->vx = scale8(k->vx, TBL_VX[d]);
+        k->vy = scale8(k->vy, TBL_VY[d]);
+    }
+    k->speed = vec_len(k->vx, k->vy);
+    k->speed_frac = 0;
+    k->bounce_pend = 0;
+}
+
+void smk_kart_bounce_damp_for_test(smk_kart *k) { bounce_damp(k); }
+
 void smk_kart_move_ex(smk_kart *k, const smk_track *t, bool auto_ramp)
 {
+    if (k->bounce_pend) bounce_damp(k);           /* $52's $C000 bits */
     /* Airborne: the kart flies over most solids - that is what makes jumps
      * work - but a hard WALL (surface type 0, e.g. $20) still blocks, or a
      * bounced kart can land embedded inside one and lock up (NOTES 053).
@@ -258,10 +303,16 @@ void smk_kart_move_ex(smk_kart *k, const smk_track *t, bool auto_ramp)
                     smk_blocks_hit(cell, true);
                 }
             }
+            /* $80FB7D/$80FB90/$80FB9A: the blocked component MIRRORS,
+             * and $56 records which way the kart is now pushed.  The
+             * speed scalar is untouched on the impact frame itself -
+             * measured: 835 in, 835 out, the halving comes a frame
+             * later through bounce_damp (NOTES 125). */
             if (bx) k->vx = (int16_t)-k->vx;
             if (by) k->vy = (int16_t)-k->vy;
-            k->speed = (int16_t)(k->speed / 2);
-            k->bounce_cool = 9;              /* the measured knockback  */
+            k->bounce_dir = bx ? (k->vx < 0 ? 2 : 0) : (k->vy < 0 ? 6 : 4);
+            k->bounce_pend = 1;
+            k->bounce_cool = 9;              /* $5C = 8, released on the 9th */
         }
         /* SLIDE ALONG: move on whichever axis is not blocked.  Returning
          * without moving threw away the along-wall component too, so a

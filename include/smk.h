@@ -168,7 +168,9 @@ typedef struct {
     bool     airborne;      /* $E2 bit 15                                */
     /* horizontal knockback while bouncing off a wall (NOTES 044/045)    */
     int16_t  bvx, bvy;
-    int8_t   bounce_cool;   /* suppresses immediate re-bounce after landing */
+    int8_t   bounce_cool;   /* $5C: the 8-frame window with the velocity held */
+    uint8_t  bounce_dir;    /* $56: which way the wall pushed (0/2/4/6)       */
+    uint8_t  bounce_pend;   /* $52's $C000 bits: damp on the NEXT frame       */
     /* Speed and acceleration are both 32-bit, split across two words,
      * and the *high* word is the 8.8 value handed to DSP-1 as the radius. */
     int16_t  speed;         /* $EA */
@@ -334,6 +336,7 @@ void smk_demolog_sync(const smk_demolog *d, int i, smk_player *p, smk_kart *k);
 void smk_demolog_pad(const smk_demo_frame *r, uint16_t *held, uint16_t *pressed);
 
 void smk_kart_launch(smk_kart *k, int16_t zvel);
+void smk_kart_bounce_damp_for_test(smk_kart *k);   /* NOTES 125 gate */
 
 static inline int smk_kart_px(int32_t v) { return (int)(v >> SMK_POS_SHIFT); }
 /* z -> SCREEN pixels, fixed by the measured hop: a 247 launch under

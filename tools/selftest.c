@@ -320,6 +320,34 @@ int main(int argc, char **argv)
 
     test_player_replay(&rom);
     {
+        /* The wall response, replaying three captures from the running
+         * game (tools/labs/wall.py, NOTES 125).  Each row is the impact
+         * frame's velocity and speed, then what the game had a frame
+         * later - the damping and the re-derived scalar. */
+        static const struct { int vx, vy, spd, dvx, dvy, dspd; } W[] = {
+            {  833,   45,  835,  416,   42,  418 },
+            {  573, -633,  855,  286, -594,  659 },
+            {  879,  -80,  883,  439,  -75,  445 },
+            {  662, -276,  718,  331, -259,  420 },
+        };
+        int bad = 0;
+        char d[128];
+        d[0] = 0;
+        for (size_t i = 0; i < sizeof W / sizeof W[0]; i++) {
+            smk_kart k = {0};
+            k.vx = (int16_t)W[i].vx; k.vy = (int16_t)W[i].vy;
+            k.speed = (int16_t)W[i].spd;
+            k.bounce_dir = 0; k.bounce_pend = 1; k.bounce_cool = 9;
+            smk_kart_bounce_damp_for_test(&k);
+            if (k.vx != W[i].dvx || k.vy != W[i].dvy || k.speed != W[i].dspd) {
+                bad++;
+                snprintf(d, sizeof d, "row %d: got %d,%d spd %d want %d,%d spd %d",
+                         (int)i, k.vx, k.vy, k.speed, W[i].dvx, W[i].dvy, W[i].dspd);
+            }
+        }
+        check("the wall bounce damps and re-derives speed as the game does", !bad, d);
+    }
+    {
         /* The sector map and Lakitu's rescue (NOTES 124), both measured
          * against the running game's own WRAM. */
         static smk_course c7;

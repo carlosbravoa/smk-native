@@ -4054,3 +4054,65 @@ always there.  The two classes also take different branches at $80FBBC
 ($84 -> $84D7BA, $82 and above -> $84D7FA), which is the tell.
 
 Both themes confirmed in play by the user before this was pinned.
+
+---
+
+**125** — S6 closed: the wall response, measured frame by frame instead of
+inferred from displacement.
+
+The rig (`tools/labs/wall.py`) is the one that finally worked: pace the
+player up on the game's own flow field, then PAINT a solid tile into the
+cell it is about to enter and log the kart block while the game reacts.
+Four captures at different approach angles.  One of them:
+
+    f-1  $22=FCBF (-833)  $24=0030   $EA=0343 (835)  $10=8000
+    f0   $22=FCBF          $24=002D   $EA=0343        $10=8000
+    f1   $22=0341 (+833)   $24=002D   $EA=0343        $10=C000
+         $52=C007  $56=0000  $5A=8001  $5C=0008   <- the impact
+    f2   $22=01A0 ( 416)   $24=002A   $EA=01A2 (418)  $52=0007 $5C=0007
+    f3..f9  velocity FROZEN, $5C counting down
+    f10  $10=8000, control returns
+
+**The impact frame does not touch the speed.**  835 in, 835 out.  The
+component simply MIRRORS - `$80FB7D` negates `$22`, `$80FB9A` negates
+`$24`, `$80FB90` both - and which one is picked comes from the tilemap
+CELL DELTA (`$80FADC`: `$02` minus the previous cell `$58,x`, mapped
+through `$80FB11`), with a diagonal step probing both orthogonal
+neighbours for solidity (`$80FB49`, offsets `$80FB29`/`$80FB39`).  `$56`
+records the push direction, `$52` = `$C007`, `$5C` = 8.
+
+**The halving arrives a frame later, and it is per axis.**  `$80F9DF`
+scales each component by the pair `$56` selects - `$80FA4A` = `80 80 F0
+F0` for `$22`, `$80FA52` = `F0 F0 80 80` for `$24` - through `$80FC74`,
+an arithmetic `(v * f) >> 8`.  So the REFLECTED axis keeps half and the
+other keeps `$F0`/256 = 0.9375.
+
+**And `$EA` is RE-DERIVED from the vector, not damped.**  This is the bit
+two hypotheses agreed on in the first capture and only a diagonal hit
+could separate:
+
+    impact (573,-633) spd 855 -> (286,-594) spd 659   |v| = 659.3   0.5*855 = 427
+    impact (879, -80) spd 883 -> (439, -75) spd 445   |v| = 445.4   0.5*883 = 441
+    impact (662,-276) spd 718 -> (331,-259) spd 420   |v| = 420.3   0.5*718 = 359
+
+All four rows are now a selftest.  Superseding NOTES 092's "the speed
+exactly halves": it halves only when the hit is square, because then the
+vector is the reflected axis.
+
+Two more paths, ported and labelled:
+* `$EA >= $500` at the hit: both axes by `$40`/256 = 0.25 (`$80FA33`).
+* `$12,x` negative takes `$80FA06` instead - each component over `$200`
+  by `$E0`/256.  Every capture had `$12` = 0, so this is the ROM's text,
+  not a measurement; what selects it is unproven (it also picks
+  `$84D73A` over `$84D77A`, the two hit sounds).
+
+Not ported, logged for later: the STUCK handler.  `$5A,x` counts frames
+spent inside a wall and at 8 (`$80F95F`) the game shoves the kart out
+along its pose quadrant at +-`$100` (`$80F98A`/`$80F992`), and below
+`$C0` on both axes it snaps to +-`$100` to unstick.  Our port prevents
+entry instead, so nothing has been observed to need it - but it is the
+ROM's answer to "embedded in a barrier" if that ever returns.
+
+Confirmed in passing: `$1F`/`$26` stay 0 on a plain wall (no launch - the
+hop belongs to the bit-7 bars), `$42` stays 0 (the HUD rank timer, NOTES
+112), and `$80FA5A` builds its cell from **y - 1** like everything else.
