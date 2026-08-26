@@ -425,7 +425,15 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
         }
 
         if (p->hazard == 6) {                             /* still falling */
-            if (p->resc_t < 60) { p->resc_t++; k->z -= (int32_t)0x0180 << 8; }
+            /* $80B5CD sets `$1F` = 1 and the game LEAVES IT THERE for all
+             * 60 countdown frames - the physics stops and waits, and the
+             * drop you see is the sprite (measured in the user's Ghost
+             * Valley run, NOTES 135a).  We used to lower z instead, which
+             * put the kart under the plane and, once sprites below the
+             * plane were clipped, hid it behind the track.  The visual
+             * drop is now the renderer's business alone (NOTES 142). */
+            k->z = (int32_t)1 << 8;                       /* $1F = 1 */
+            if (p->resc_t < 60) p->resc_t++;
             else { k->z = (int32_t)0x3000 << 8; p->hazard = 0x0C; }
             return;
         }

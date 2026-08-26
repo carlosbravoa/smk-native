@@ -745,6 +745,13 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
         if (scale < 1) scale = 1;
         /* the hop lifts the sprite; the shadow stays on the ground */
         int lift = player_height_px * scale;
+        /* The fall is a RENDERING effect here and nowhere else (NOTES
+         * 142).  The game holds `$1F` at 1 for the whole countdown and
+         * animates the sprite; we have no fall animation, so the kart is
+         * simply drawn lower each frame.  It is NOT clipped against the
+         * plane - that only ever applied because our physics used to put
+         * the kart underneath it. */
+        if (player.hazard == 6) lift -= player.resc_t * 2 * scale;
         /* Fallen through the track: the kart goes UNDER the plane, so it
          * is hidden by the track and shows only through the hole it fell
          * into - the SNES drops the sprite below BG1 (NOTES 128). */
@@ -1306,7 +1313,7 @@ int main(int argc, char **argv)
                 plane_mask = malloc(plane_mask_sz);
             }
             smk_render_set_plane_mask(plane_mask, rw);
-            player_below = kart.z < 0;
+            player_below = kart.z < 0;   /* a real drop, not the fall countdown */
             smk_render_mode7(&trk, &cam, fb, rw, rh, rw);
             hud_input = (in.left ? 1 : 0) | (in.right ? 2 : 0)
                       | (in.up ? 4 : 0);

@@ -320,6 +320,27 @@ int main(int argc, char **argv)
 
     test_player_replay(&rom);
     {
+        /* $80B5CD sets $1F = 1 and the game leaves it there for the whole
+         * 60-frame countdown - the physics stops and waits (NOTES 135a).
+         * Ours used to sink the kart under the plane instead (NOTES 142). */
+        static smk_track tf; static smk_player pf; smk_kart kf = {0};
+        char e[256];
+        if (smk_track_load(&rom, 16, -1, &tf, e, sizeof e)) {
+            smk_player_setup(&rom, 0, 1, &pf); smk_player_reset(&pf, 0);
+            pf.hazard = 6; pf.resc_t = 0;
+            pf.resc_x = 500; pf.resc_y = 500;
+            int moved = 0;
+            for (int f = 0; f < 55; f++) {
+                smk_player_step(&pf, &kf, &tf, 0, 0);
+                if (kf.z != ((int32_t)1 << 8)) moved = 1;
+            }
+            char d[96];
+            snprintf(d, sizeof d, "z = %d after 55 frames, want %d",
+                     (int)kf.z, (int)((int32_t)1 << 8));
+            check("a falling kart holds $1F = 1 through the countdown", !moved, d);
+        }
+    }
+    {
         /* All EIGHT characters, and they must differ in the ROM's own
          * order (S13).  Tops at 100cc from $81:8000, and the four classic
          * pairs fall out of the acceleration curves at $81:8010:

@@ -4779,3 +4779,42 @@ Our AI has none of this - one row (+0) for everyone, plus a softened
 off-road cap that is our own invention and labelled as such.  Porting it
 needs: what fills `$00E6`/`$010C`/`$0110` and when, what `$84,x` is, and
 what `$0E50` gates.  All four are named now.
+
+---
+
+**142** — S16 closed, and S2/S11 turn out not to be the small jobs the
+roadmap called them.  Reporting all three honestly.
+
+*S16 - the falling kart's z.  DONE.*  `$80B5CD` sets `$1F` = 1 and the
+game leaves it there for the whole 60-frame countdown; the drop you see is
+the sprite (NOTES 135a).  Our physics lowered z instead, which put the
+kart under the plane and - once sprites below the plane were clipped -
+hid it behind the track.  Physics now holds `$1F` = 1 like the game, and
+the visible drop is a RENDERING effect in `draw_scene` and nowhere else,
+not clipped against the plane.  Selftest pins the z.
+
+*S2 - the start grid.  Bigger than billed, and worth knowing how wrong we
+are.*  Measured against the game's own grid (frame 0 of three logs):
+
+    track  7   ours (897,604)   game (952,756)   off by (-55,-152)
+    track 16   ours (948,601)   game (960,592)   off by (-12,  +9)
+    track 19   ours (106,536)   game (136,524)   off by (-30, +12)
+
+So the SHAPE is right - P1 and P2 are 32 px across and 24 px back in both
+ours and the game - but the ORIGIN is out, badly on track 7.
+
+The decode did not close.  `$819207` unpacks a record word as
+`x = (w & $7F) * 8 + $12`, `y = ((w & $3F80) >> 4) + $14` with `$12`/`$14`
+either 4 (`$8191DE`) or 10 (`$8191F4`) - but **no offset makes the
+measured positions cell-aligned**: 952 needs an offset of 0 or 8 mod 8,
+and neither 4 nor 10 qualifies.  So either a third entry point sets other
+offsets, or the position is adjusted after unpacking.  `$0C` is loaded at
+`$819053` with `#$0018`, which is not a ROM pointer, so that is a
+different use of the same direct page.  Next step: watch `[$0C]` and the
+kart positions at the moment the grid is built, rather than reading it.
+
+*S11 - the countdown.  Not measurable from what we log.*  None of the
+globals in `demolog.lua` is the countdown timer, and the frame the kart
+first moves is the player's REACTION, not the light: 339 in both human
+runs, 345 in the time trial, 539 in the demo.  Needs the countdown's own
+address, which means finding it first.
