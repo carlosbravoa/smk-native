@@ -41,3 +41,10 @@ Files:
   19 in time trial, demo 3 Peach/Yoshi on track 18.
 * `demo_tt_track19.csv`, `demo_gp_track18.csv` - two of those, kept for
   the replay tool (`smk_demoreplay rom.sfc <csv> 1000`).
+* `pix.lua` - dumps a real frame's pixels to a PPM headlessly
+  (`screen:pixels()`), the ground truth for anything visual.
+* `hdma.lua` - the live HDMA channel setup at a race frame; this is how
+  the BGMODE split above the horizon was found (NOTES 114).
+* `vshadow.lua` - a VRAM/CGRAM shadow built from the write and DMA
+  stream.  INCOMPLETE: it sees only one 1 KB upload, so the bulk VRAM
+  traffic goes through a path the `$420B` tap misses.

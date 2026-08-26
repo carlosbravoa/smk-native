@@ -3631,3 +3631,23 @@ game must switch BG mode mid-screen by HDMA on `$2105` (there are four
 as ordinary tiles above the split.  CPU write taps see none of it during
 a race, so the next step is to reconstruct VRAM from the DMA stream at
 race setup and find the tilemap the top of the screen reads.
+
+**The split, read from the live HDMA channels** (`tools/labs/mame/hdma.lua`,
+reading `$43x0-$43xA` at a race frame):
+
+    ch5 -> $2105 (BGMODE)  table $00:0674 = 18 00 | 58 07 | 18 00 | 58 07 | 00
+    ch6 -> $212C (TM)      table $00:067D = 18 1e | 58 11 | 18 1e | 58 11 | 00
+    ch1-4 -> $211B-$211E   the Mode 7 matrix, per scanline (NOTES 014)
+    ch7 -> $2126 (window)  from $7F:E500
+
+So each half of the split screen is **24 scanlines of BG MODE 0** showing
+BG2+BG3+BG4+OBJ (`$1E`), then **88 scanlines of mode 7** showing BG1+OBJ
+(`$11`).  The horizon art is ordinary 2bpp tiles on those three layers.
+Their bases at race time (`bgbase.lua`): BG1SC `$10`, BG2SC `$15` (64x32
+at word `$1400`), BG3SC `$1C`, BG4SC `$7B`, BG12NBA `$00`, BG34NBA `$22`;
+BG2's horizontal scroll is written every frame from `$8580AC`.
+
+Open: a VRAM shadow built from the write/DMA stream
+(`tools/labs/mame/vshadow.lua`) captures only one 1 KB upload, so the
+game's bulk VRAM traffic uses a path the `$420B` tap does not see - find
+that first, then the sky tilemap can be read straight out of it.
