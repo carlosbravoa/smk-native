@@ -135,6 +135,7 @@ static void pump(input_state *in)
 }
 
 static int racer_draw_mask = 0xFE;      /* which racer slots draw_scene draws */
+static int player_sector;               /* $C0: the last sector reached      */
 static smk_horizon horizon;             /* the scenery above the track        */
 static smk_effects fx;                  /* tyre smoke / dust (NOTES 109)      */
 static smk_effect_state fx_state = { -1, 0, 0, 0 };
@@ -362,13 +363,17 @@ static void step_kart(smk_kart *k, smk_track *trk,
     /* the rescue target: the ROM takes the kart's waypoint ($80B373 reads
      * $0900/$0A00 by $C0); ours is the course's waypoint for the sector
      * under the kart, with the flow field's heading */
+    /* Lakitu's target ($80B373): the kart's own waypoint $C0 - the last
+     * sector it legitimately reached, NOT the cell it fell on - and the
+     * heading is the flow-field direction AT that waypoint. */
     if (course_for_step) {
-        uint8_t cell = smk_course_cell(course_for_step, smk_kart_px(k->x), smk_kart_px(k->y));
-        int sec = cell & SMK_SECT_OFF;
-        if (sec != SMK_SECT_OFF && sec < course_for_step->sectors) {
-            player.resc_x = course_for_step->wx[sec];
-            player.resc_y = course_for_step->wy[sec];
-            player.resc_h = k->angle;
+        int sec = player_sector;
+        if (sec >= 0 && sec < course_for_step->sectors) {
+            int wx = course_for_step->wx[sec], wy = course_for_step->wy[sec];
+            player.resc_x = wx;
+            player.resc_y = wy;
+            int fcell = ((wy >> 4) & 63) * 64 + ((wx >> 4) & 63);
+            player.resc_h = (uint16_t)(course_for_step->flow[fcell] << 8);
         }
     }
     bool grounded = k->z == 0;                   /* $1F,x before this frame's jump update */
@@ -1200,6 +1205,7 @@ int main(int argc, char **argv)
                         }
                     }
                     me->sector = sec;
+                    player_sector = sec;
                 }
             }
         }

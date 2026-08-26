@@ -342,30 +342,45 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
         }
     }
     if (p->hazard == 6) {                  /* the fall and Lakitu's rescue */
-        /* MEASURED (the Ghost Valley teleport capture): 106 frames down,
-         * ~90 carrying to the waypoint, ~20 descending, then control -
-         * the ROM runs it through $A0 = $0A -> $0C -> $0E with a sink
-         * counter we have not decoded (LABELLED). */
-        k->speed = 0; k->vx = k->vy = 0; p->turn = 0;
+        /* MEASURED (NOTES 120) by swapping the class under a lapping kart:
+         *   $CA = 60 frames of the fall itself, position frozen, speed 0
+         *   then $1F = $3000 and $A0 = $0C: Lakitu carries the kart 2 px a
+         *        frame toward its waypoint $CC/$CE ($80B373), turning it
+         *        toward the flow direction there ($80B346, $140 a frame)
+         *   then $A0 = $0E: $1F down by $80 a frame until control returns
+         * The drop itself is drawn from the sprite state in the ROM; we
+         * lower z so the kart is seen to fall.  LABELLED. */
+        k->speed = 0; k->speed_frac = 0; p->accel32 = 0;
+        k->vx = k->vy = 0; p->turn = 0;
         p->vlag = p->plag = 0; p->state = 0;
+        k->airborne = false;
         p->resc_t++;
-        if (p->resc_t < 106) {
-            k->z = 0; k->zvel = 0;
-        } else if (p->resc_t < 196) {
+        if (p->resc_t <= 60) {                        /* falling */
+            k->z -= (int32_t)0x0180 << 8;             /* out of sight */
+        } else if (p->resc_t == 61) {
+            k->z = (int32_t)0x3000 << 8;              /* $1F = $3000 */
+        } else if (k->x != ((int32_t)p->resc_x << 16)
+                || k->y != ((int32_t)p->resc_y << 16)) {
             int32_t tx = (int32_t)p->resc_x << 16, ty = (int32_t)p->resc_y << 16;
-            int32_t step = 2 << 16;                       /* $80B2B6: 2 px */
+            int32_t step = 2 << 16;                   /* $80B2B6: 2 px */
             if (k->x < tx) k->x += (tx - k->x < step) ? tx - k->x : step;
             else if (k->x > tx) k->x -= (k->x - tx < step) ? k->x - tx : step;
             if (k->y < ty) k->y += (ty - k->y < step) ? ty - k->y : step;
             else if (k->y > ty) k->y -= (k->y - ty < step) ? k->y - ty : step;
-            k->z = (int32_t)0x1C00 << 8;
-            p->heading = p->vel_angle = p->pose = p->resc_h;
+            /* $80B346: turn toward the waypoint's flow direction */
+            int d = (int16_t)(uint16_t)(p->resc_h - p->heading);
+            if (d > 0x0140) d = 0x0140; else if (d < -0x0140) d = -0x0140;
+            p->heading = (uint16_t)(p->heading + d);
+            p->vel_angle = p->pose = p->heading;
             k->angle = p->heading;
         } else {
-            k->z -= (int32_t)0x0080 << 8;                 /* $80B32E */
-            if (k->z <= 0) { k->z = 0; p->hazard = 0; p->drive = 0; p->jump_state = 0; }
+            k->z -= (int32_t)0x0080 << 8;             /* $80B32E */
+            if (k->z <= 0) {
+                k->z = 0; p->hazard = 0; p->drive = 0; p->jump_state = 0;
+                p->heading = p->vel_angle = p->pose = p->resc_h;
+                k->angle = p->heading;
+            }
         }
-        k->airborne = false;
         return;
     }
 
@@ -390,6 +405,8 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
             break;
         case 0x00:                          /* $20: the void - Ghost Valley,
                                              * Rainbow Road (NOTES 119) */
+        case 0x08:                          /* $28: Rainbow Road's edge - the
+                                             * same fall, measured (NOTES 120) */
         case 0x04:                          /* $24: lava / the pit ($80B643) */
         case 0x06:                          /* $26: the deep drop ($80B626) */
             k->speed = 0; k->speed_frac = 0; p->accel32 = 0;

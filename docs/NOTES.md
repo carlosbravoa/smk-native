@@ -3837,3 +3837,41 @@ VRAM, and `$81B762` is the only producer found so far) - or the sprite-
 object collision at `$80F897`.  Next: reach a Ghost Valley race and drive
 into a block with the kart under our own control, watching `$1EB4` and
 the cells around it.
+
+---
+
+**120** — The fall, measured properly: 60 frames down, then Lakitu's carry
+to the kart's own waypoint, facing the way the track goes.  And Rainbow
+Road's edge is a fall too.
+
+Class-swap captures (the NOTES 066 rig) on classes `$20`, `$26` and `$28`:
+
+    $20, $28   $A0 = $AC = 4 and $CA = 60: sixty frames with the kart
+               frozen and the speed at zero - the fall itself - then
+               $1F = $3000 and $A0 = $0C.
+    $0C        Lakitu carries: 2 px a frame toward $CC/$CE.
+    $0E        $1F down by $80 a frame (12288 -> 0, 96 frames), control back.
+
+**`$28` is a fall**, which answers the playtest: Rainbow Road's edge class
+was doing nothing in the port, so a kart could sit completely off the road
+without dropping.  It now falls like `$20`.
+
+**Where Lakitu puts you** (`$80B373`, the piece that was wrong): the target
+is the kart's OWN waypoint - `$0900[$C0]`, `$0A00[$C0]`, the last sector it
+legitimately reached - not the cell it fell on, and the heading is the
+**flow-field direction at that waypoint** (`$7F:3FFF` indexed by the
+waypoint's cell), which `$80B346` turns the kart toward at `$140` a frame
+during the carry.  Ported: the caller passes the tracked sector's waypoint
+and `course->flow` at that cell.
+
+The drop is now visible - z is lowered during the 60 frames - LABELLED,
+because the ROM draws the fall from the sprite state and leaves `$1F` at 1.
+
+**Blocks, still open, but with a lead.**  They are not tilemap cells: a
+900-frame Ghost Valley race changes exactly one cell, a scratch byte far
+from any kart.  But Ghost Valley's object list has 35 entries including
+kinds `$EC` and `$F0`, and Vanilla Lake has **8 entities of kind `$00`**
+plus a `$DC` - and those are the counts and places the blocks occupy.  So
+the breakable blocks are sprite OBJECTS, and the next measurement is to
+drive into one in the oracle and watch its object block at `$1800+` for
+the despawn, rather than watching the tilemap.
