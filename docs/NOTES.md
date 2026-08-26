@@ -4626,3 +4626,46 @@ is where the rails are, goes **92.0% -> 93.0% within 1 px** with resyncs
 64 -> 56; the Mario Circuit run is unchanged inside its noise (82.0% ->
 81.5%, one more resync, and that run's divergences are AI karts we do not
 simulate).
+
+---
+
+**138** — Three visual reports.  Two fixed at the root; the third is a
+measurement that came up short and is logged as such.
+
+*Ghosts of what is behind you, off the side of the track.*  `smk_project`
+wrapped the camera-relative delta at half the world, and `draw_entity`
+did the same for its depth.  **The world does not wrap** (NOTES 063), so a
+kart 900 px behind became one 124 px in front.  The Mode 7 plane repeating
+character 0 outside its 1024 px is the PPU filling the floor, not the
+world being tiled - a distinction the projection had lost.  Both wraps
+removed.
+
+*Far karts garbling at one size and no other.*  The far tier draws through
+`smk_draw_sprite_mini`, which samples all 32 columns 2:1 - but a MIRRORED
+pose is frame 0's LEFT HALF folded (NOTES 080), so the junk right half
+came with it.  It only ever showed at that tier because every other tier
+goes through `smk_draw_sprite_mirror2`, which folds.  The mini path now
+uses `mirror2` with its `mini` flag when the pose is mirrored.
+
+*Pipes too small, and not growing as you approach.*  Half true, and I
+could not finish the measurement.  What IS measured:
+
+* `OBSEL` is written `$02` at every site (`$808ABF`, `$84F484`, `$84FF62`
+  and friends), so this game's sprite sizes are **8x8 and 16x16** - there
+  is no 32x32 object sprite.
+* The theme's object sheet holds nothing bigger.  Bounding boxes of every
+  2x2 base, theme 1: two descending ladders, `12x15 11x16 10x14 9x13` at
+  bases 0-6 and `12x16 11x14 10x12` at 32-36, plus squat lid-shaped
+  drawings at 8-14.  **The largest object drawing in the sheet is 12x16.**
+
+So a pipe really is about half a kart's 32 px, and the "not growing" part
+is the hardware: inside a band the drawing does not change size at all.
+
+What I could NOT get: how many sprites the game puts on screen for one
+pipe.  If it stacks a lid over a body the object is ~26 px, not 16.  The
+rig to settle it (`tools/labs/objoam.py`) finds the object's own screen
+position in `+$2C`/`+$30` and counts the OAM entries there - but on the
+demo's track every live object reads `+$30` = `$0140`, parked, for the
+whole lap.  Either those two objects are never drawn there, or `$30` is
+not the field `$80C8AE` makes it look like.  Unresolved, and NOT doubled
+on a guess.

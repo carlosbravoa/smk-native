@@ -122,10 +122,12 @@ bool smk_project(const smk_camera *cam, float wx, float wy,
     const float sa = sinf(cam->angle), ca = cosf(cam->angle);
 
     float dx = wx - cam->x, dy = wy - cam->y;
-    while (dx >  SMK_WORLD_PX / 2) dx -= SMK_WORLD_PX;
-    while (dx < -SMK_WORLD_PX / 2) dx += SMK_WORLD_PX;
-    while (dy >  SMK_WORLD_PX / 2) dy -= SMK_WORLD_PX;
-    while (dy < -SMK_WORLD_PX / 2) dy += SMK_WORLD_PX;
+    /* The world does NOT wrap (NOTES 063), so neither may this.
+     * Wrapping the delta put a kart or a pipe 900 px BEHIND you 124 px
+     * in front of you, off the side of the track - the ghost copies the
+     * user reported.  The Mode 7 plane repeats character 0 outside its
+     * 1024 px, but that is the PPU filling the floor, not the world
+     * being tiled (NOTES 138). */
 
     float zf =  dx * ca + dy * sa;          /* ahead of the KART          */
     float xr = -dx * sa + dy * ca;          /* to its right               */

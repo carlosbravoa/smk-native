@@ -502,10 +502,12 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
          * eye trails it, so this is smk_project's zf before the trail. */
         float odx = (float)course->ent[i].x - cam->x;
         float ody = (float)course->ent[i].y - cam->y;
-        while (odx >  SMK_WORLD_PX / 2) odx -= SMK_WORLD_PX;
-        while (odx < -SMK_WORLD_PX / 2) odx += SMK_WORLD_PX;
-        while (ody >  SMK_WORLD_PX / 2) ody -= SMK_WORLD_PX;
-        while (ody < -SMK_WORLD_PX / 2) ody += SMK_WORLD_PX;
+        /* The world does NOT wrap (NOTES 063), so neither may this.
+         * Wrapping the delta put a kart or a pipe 900 px BEHIND you 124 px
+         * in front of you, off the side of the track - the ghost copies the
+         * user reported.  The Mode 7 plane repeats character 0 outside its
+         * 1024 px, but that is the PPU filling the floor, not the world
+         * being tiled (NOTES 138). */
         float zf = odx * cosf(cam->angle) + ody * sinf(cam->angle);
         /* Behind the EYE is the only thing that culls a near object -
          * smk_project has already returned false for that.  The port used
@@ -646,9 +648,19 @@ static void draw_ai_kart(const smk_rom *rom, const smk_track *trk,
         int kscale = rw / 256;
         if (kscale < 1) kscale = 1;
         if (KTIER[kt].base < 0) {           /* the far, half-size draw */
-            smk_draw_sprite_mini(&other[k], f, trk->palette, d2->pal,
-                                 (int)px, (int)py, kscale, hf,
-                                 fb, rw, rh, rw);
+            /* A MIRRORED pose is frame 0's left half FOLDED (NOTES 080),
+             * and smk_draw_sprite_mini does not fold - it samples all 32
+             * columns 2:1, so the junk right half came with it and the
+             * sprite garbled at exactly this tier and no other.  mirror2
+             * folds and minifies in one go (NOTES 138). */
+            if (mirror)
+                smk_draw_sprite_mirror2(&other[k], 0, trk->palette, d2->pal,
+                                        (int)px, (int)py, kscale, true,
+                                        fb, rw, rh, rw);
+            else
+                smk_draw_sprite_mini(&other[k], f, trk->palette, d2->pal,
+                                     (int)px, (int)py, kscale, hf,
+                                     fb, rw, rh, rw);
         } else {
             /* re-pick the rotation frame inside the chosen tier */
             uint16_t r16 = (uint16_t)rel;
