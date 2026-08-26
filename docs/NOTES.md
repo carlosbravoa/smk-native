@@ -4422,3 +4422,55 @@ between `$80:AA0D` and `$80:AA10`).  Until that is found the port runs the
 deceleration for the three frames the capture shows.  That count is the
 one fitted number here; the table, the index rule and the walk are the
 ROM's.
+
+---
+
+**133** — The user played the crash themselves, and the recording settled
+three things I could not.  Their words first:
+
+> "the bounce is constant no matter the speed.  So if I crash at full
+> speed, I get the same bounce as hitting the barrier very slowly.  It
+> feels more like a push back than a real bounce."
+
+**They are exactly right, and it is a branch I had read and skipped.**
+`$80F9A7`: if BOTH velocity components are under `$C0` after the
+reflection, `$80F9C1` does not damp anything - it FORCES each to `+-$100`,
+sign kept.  A diagonal comes out at `|(256,256)|` = **362 whatever you
+arrived at**.  In their run, frame 997:
+
+    f996  vx  -89  vy   96   EA 130      approaching
+    f997  vx  +89  vy   96   EA 130      reflected, speed untouched
+    f998  vx +256  vy +256   EA 362      PUSHED OUT, harder than it hit
+
+That is the push-back, and it is why a slow hit and a fast one feel the
+same.  Ported; on the recording it moves heading errors 53 -> 37 frames
+and speed errors 701 -> 662.
+
+**Second: `$12,x` is not "is the player".**  It reads 0 for a human
+player all through their run, so the human takes the same table-damping
+path as everyone else and `$80FA06` belongs to something else.  NOTES 125
+had that labelled as unproven; it is now disproven.
+
+**Third: the fitted frame count is no longer fitted.**  Sweeping the crash
+deceleration against their run:
+
+    frames  0     63.4% within 1 px, mean 1.06
+    frames  1     61.7%              mean 1.13
+    frames  2     61.4%              mean 1.00
+    frames  3     82.0%              mean 0.58     <- chosen
+    frames  4     75.9%              mean 0.74
+
+Three, which is what my own staged rig had shown.  Now it is chosen by a
+human crash rather than by me.
+
+**A negative result worth keeping.**  `$80A0EB` says a slip under 45
+degrees is a graze: `$A6 = $1C`, `$AC` stays 0, no deceleration - and the
+recording shows exactly that at frame 1045 (slip -1103, `$EE` = +12 all
+through).  But exempting grazes in the port made things much WORSE
+(heading errors 37 -> 1718).  So our slip does not match the game's on
+most hits, and the reason is not yet known.  Left out, and logged.
+
+The run is now a fourth gate (`tools/labs/mame/crash_run.csv`, 82.0%
+within 1 px, 240 resyncs).  A human race is not exact - it has AI karts we
+do not simulate - so its bar is its own number, which is enough to catch a
+regression: the version that broke bouncing scored 63%.

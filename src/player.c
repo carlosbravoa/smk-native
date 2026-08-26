@@ -272,6 +272,11 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
          * takes the last entry, -85 a frame, and a glancing one barely
          * anything.  Measured in the game: 419 -> 334 -> 250 -> 165
          * before the throttle bit again (NOTES 132). */
+        /* $80A0EB: a slip under 45 degrees is a GRAZE - $A6 = $1C, $AC
+         * stays 0 and the throttle is never interrupted.  Only a hit more
+         * than 45 degrees off arms drive state $16 and its deceleration.
+         * Measured in the user's run: a 1103-unit slip at frame 1045 kept
+         * $EE = +12 right through (NOTES 133). */
         if (k->crash_frames > 0) {
             static const int16_t CRASH[8] =        /* $80A590 */
                 { -4, -8, -16, -24, -36, -56, -64, -85 };

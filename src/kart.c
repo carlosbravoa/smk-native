@@ -145,7 +145,19 @@ static void bounce_damp(smk_kart *k)
     static const uint8_t TBL_VX[4] = { 0x80, 0x80, 0xF0, 0xF0 };   /* $80FA4A */
     static const uint8_t TBL_VY[4] = { 0xF0, 0xF0, 0x80, 0x80 };   /* $80FA52 */
     int d = (k->bounce_dir >> 1) & 3;
-    if (k->speed >= 0x500) {                      /* $80FA33: a fast hit */
+    int ax = k->vx < 0 ? -k->vx : k->vx;
+    int ay = k->vy < 0 ? -k->vy : k->vy;
+    if (ax < 0xC0 && ay < 0xC0) {
+        /* $80F9C1 - the PUSH-OUT, and the answer to "the bounce is
+         * constant no matter the speed, it feels more like a push back
+         * than a real bounce" (user, NOTES 133).  With both components
+         * under $C0 the game does not damp anything: it FORCES each to
+         * +-$100, sign kept.  A diagonal comes out at |(256,256)| = 362
+         * whatever you arrived at - and 362 is exactly what the recording
+         * shows, over and over. */
+        k->vx = k->vx < 0 ? (int16_t)-0x100 : (int16_t)0x100;
+        k->vy = k->vy < 0 ? (int16_t)-0x100 : (int16_t)0x100;
+    } else if (k->speed >= 0x500) {               /* $80FA33: a fast hit */
         k->vx = scale8(k->vx, 0x40);
         k->vy = scale8(k->vy, 0x40);
     } else {

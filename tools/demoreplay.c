@@ -28,11 +28,19 @@ int main(int argc, char **argv)
     int kart_id = 1000;                 /* the log names karts by WRAM block: 1000 / 1100 */
     double tol = 4.0;
     bool resync = true, gate = false;
+    /* A staged demo is exact; a HUMAN run is not - it has AI karts we do
+     * not simulate and it resyncs.  So the gate's bar is per-run, and for
+     * a human recording it locks in today's number so bouncing cannot
+     * silently regress (NOTES 133). */
+    double gate_min = 99.5;
+    int gate_resync = 0;
     int trace_a = -1, trace_b = -1;
     for (int i = 3; i < argc; i++) {
         if (!strcmp(argv[i], "--tol") && i + 1 < argc) tol = atof(argv[++i]);
         else if (!strcmp(argv[i], "--no-resync")) resync = false;
         else if (!strcmp(argv[i], "--gate")) gate = true;
+        else if (!strcmp(argv[i], "--min") && i + 1 < argc) gate_min = atof(argv[++i]);
+        else if (!strcmp(argv[i], "--resync") && i + 1 < argc) gate_resync = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--trace") && i + 2 < argc) { trace_a = atoi(argv[++i]); trace_b = atoi(argv[++i]); }
         else kart_id = atoi(argv[i]);
     }
@@ -155,8 +163,9 @@ int main(int argc, char **argv)
         /* The gate: what the port achieves today, so a regression shows.
          * P1: one divergence left, a kart-to-kart collision near the end
          * (the demo's AI karts are not in the port); P2 is exact. */
-        bool ok = resyncs == 0 && 100.0 * within1 / n >= 99.5 && coin_bad == 0;
-        printf("demo replay gate (track %d, kart %d): %s\n", log.track, kart_id, ok ? "PASS" : "FAIL");
+        bool ok = resyncs <= gate_resync && 100.0 * within1 / n >= gate_min && coin_bad == 0;
+        printf("demo replay gate (track %d, kart %d): %s  [%.1f%% within 1 px, %d resyncs]\n",
+               log.track, kart_id, ok ? "PASS" : "FAIL", 100.0 * within1 / n, resyncs);
         return ok ? 0 : 1;
     }
     return 0;
