@@ -3989,3 +3989,55 @@ and stepped once a frame; the selftest replays the user's own cell
 The lesson for the ledger: two save states either side of an event, from a
 human who can simply make the event happen, beat six increasingly clever
 rigs.  Ask earlier.
+
+---
+
+**124** — Why Lakitu never put you down, and why he faced the wrong way.
+Two bugs, both from data we had INVENTED where the game has its own.
+
+*The chase.*  `$80B2B6` walks the kart 2 px a frame toward `$CC/$CE` - but
+it never recomputes them.  `$B373` (the latch) runs when the fall is ARMED
+(`$80B5B7`, `$80B626`, `$80B643` all `jsr $B373` first) and every frame of
+the WADE, never during the carry.  The port refreshed the target every
+frame from the sector under the kart, so as Lakitu carried it over the
+track the waypoint moved with it and the two never met: an infinite ride.
+Fixed by refreshing only outside `$A0 = 6/$0C/$0E`.
+
+Transcribed the three states properly while there:
+
+    $A0 = 6     fall: $CA frames, position frozen, then $1F = $3000
+    $A0 = $0C   $80B2B6: turn ($B346), then walk INTEGER x 2 px toward $CC
+                and RETURN - y only starts once x matches.  Not diagonal.
+    $A0 = $0E   $80B32E: $B346 again, and only when it returns CARRY SET
+                (`beq $80B372`, the rts after a `sec`) does $1F come down
+                $80 a frame.  The kart is put down FACING the field, never
+                mid-turn.
+
+*The wrong place.*  `smk_course_load` memset the sector map to 0 - and 0
+is a VALID sector.  The game prefills `$7F:5000` with `$7F`.  Measured on
+the booted game (tools/labs/flowfield.py, track 7): **1412 cells at `$7F`,
+78 genuinely at sector 0**.  So every off-course cell in the port read as
+sector 0, and a kart that fell anywhere was carried to the START LINE.
+With the `$7F` prefill our map now agrees with the game's on **all 2684
+painted cells, 100%** - and the flow field, which had to skip sector 0 to
+dodge the ambiguity, no longer has holes.
+
+*The direction field.*  `$81FCFC` builds `$7F:4000` from the waypoints,
+one byte per 16-px cell, through the boot-time arctangent table at
+`$7F:9000` (`$81E4C5` generates it, `$81F638` reads it as octant base +
+`table[min*64 + max]`).  Ours is an atan2, and now that it is asked at
+every cell it can be checked against the real thing: **2554 of 2684 cells
+exact, 130 off by one step of 1/256 turn, worst error 1.**  Rounding
+(`+ $80`) beats truncation, measured: 95.2% against 53.3%.  LABELLED at
+that number rather than claimed exact.
+
+`$80B393` reads the field as a WORD at `$7F3FFF,x` - high byte the
+waypoint's cell, low byte the cell before it.  Ported literally.
+
+*Water, checked and left alone.*  `$80B5DC` sinks the kart outright when
+`$60,x` is negative, else skims if `$EA >= $200`, losing `$2C0` above
+`$400` and `$A0` below.  From a real shoreline the port already gives
+sink-at-once below `$200` and 1/2/3 skips at 512/768/1024 - the stone
+skipping.  `$60,x` bit 15 is the SHRUNK kart (`$80B77B` hops it $70
+instead of $E0, `$80A48F` clears it and zeroes $DA/$FE): a small kart
+always drowns.  Not ported - we have no lightning.  LABELLED.

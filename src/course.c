@@ -28,6 +28,12 @@ bool smk_course_load(const smk_rom *rom, int track, smk_course *out)
     if (track < 0 || track >= SMK_TRACK_COUNT) return false;
     memset(out, 0, sizeof *out);
 
+    /* Unpainted cells are $7F, NOT 0 - MEASURED against the game's own
+     * $7F:5000 (NOTES 124): it holds 1412 cells at $7F and 78 at sector 0,
+     * so a zero default silently turns every off-course cell into sector
+     * 0.  That is what dropped a rescued kart back at the start line. */
+    memset(out->map, SMK_SECT_OFF, sizeof out->map);
+
     /* --- sector records ---------------------------------------------- */
     uint32_t p = stream_pc(rom, TBL_RECORDS, track);
     int sector = 0;
@@ -127,10 +133,8 @@ bool smk_course_load(const smk_rom *rom, int track, smk_course *out)
     /* --- the AI direction field ($81FCFC) --------------------------- */
     for (int i = 0; i < SMK_SECT_CELLS; i++) {
         int s2 = out->map[i] & SMK_SECT_OFF;
-        if (s2 == SMK_SECT_OFF || s2 >= sector || out->map[i] == 0)
-            continue;
-        /* cell 0 of sector 0 is indistinguishable from unpainted here;
-         * the ROM skips only $7F, but unpainted cells are never queried */
+        if (s2 == SMK_SECT_OFF || s2 >= sector)
+            continue;                            /* $81FD08: only $7F */
         float cx = (float)((i & 63) * SMK_SECT_CELL_PX + 8);
         float cy = (float)((i >> 6) * SMK_SECT_CELL_PX + 8);
         float ang = atan2f((float)out->wx[s2] - cx, -((float)out->wy[s2] - cy));

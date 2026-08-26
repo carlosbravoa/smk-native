@@ -366,14 +366,23 @@ static void step_kart(smk_kart *k, smk_track *trk,
     /* Lakitu's target ($80B373): the kart's own waypoint $C0 - the last
      * sector it legitimately reached, NOT the cell it fell on - and the
      * heading is the flow-field direction AT that waypoint. */
-    if (course_for_step) {
+    /* $80B373 is called when the fall is ARMED and every frame of the
+     * wade - but NOT while Lakitu is carrying the kart ($A0 = $0C/$0E),
+     * where $CC/$CE/$D0 stand still.  Refreshing them there made the
+     * target move with the kart, so it was never put down (NOTES 124). */
+    if (course_for_step && player.hazard != 6
+        && player.hazard != 0x0C && player.hazard != 0x0E) {
         int sec = player_sector;
         if (sec >= 0 && sec < course_for_step->sectors) {
             int wx = course_for_step->wx[sec], wy = course_for_step->wy[sec];
             player.resc_x = wx;
             player.resc_y = wy;
+            /* $80B393 reads $7F3FFF,x as a WORD: the high byte is the
+             * direction field at the waypoint's cell, the low byte the
+             * cell before it. */
             int fcell = ((wy >> 4) & 63) * 64 + ((wx >> 4) & 63);
-            player.resc_h = (uint16_t)(course_for_step->flow[fcell] << 8);
+            player.resc_h = (uint16_t)((course_for_step->flow[fcell] << 8)
+                                       | course_for_step->flow[(fcell - 1) & 0xFFF]);
         }
     }
     bool grounded = k->z == 0;                   /* $1F,x before this frame's jump update */

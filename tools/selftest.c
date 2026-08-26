@@ -320,6 +320,48 @@ int main(int argc, char **argv)
 
     test_player_replay(&rom);
     {
+        /* The sector map and Lakitu's rescue (NOTES 124), both measured
+         * against the running game's own WRAM. */
+        static smk_course c7;
+        if (smk_course_load(&rom, 7, &c7)) {
+            int off = 0, zero = 0;
+            for (int i = 0; i < SMK_SECT_CELLS; i++) {
+                int sec = c7.map[i] & SMK_SECT_OFF;
+                if (sec == SMK_SECT_OFF) off++; else if (sec == 0) zero++;
+            }
+            char d[96];
+            snprintf(d, sizeof d, "$7F=%d sector0=%d", off, zero);
+            check("track 7's sector map matches the game's own $7F:5000 census",
+                  off == 1412 && zero == 78, d);
+        }
+        /* the rescue: it must LAND, on the waypoint, facing the field */
+        static smk_track t5; static smk_course c5; static smk_player p5;
+        char e5[256];
+        if (smk_track_load(&rom, 5, -1, &t5, e5, sizeof e5)
+            && smk_course_load(&rom, 5, &c5)) {
+            smk_kart k5 = {0};
+            smk_player_setup(&rom, 0, 1, &p5); smk_player_reset(&p5, 0);
+            int sec = 10;
+            p5.resc_x = c5.wx[sec]; p5.resc_y = c5.wy[sec];
+            int fc = ((c5.wy[sec] >> 4) & 63) * 64 + ((c5.wx[sec] >> 4) & 63);
+            p5.resc_h = (uint16_t)((c5.flow[fc] << 8) | c5.flow[(fc - 1) & 0xFFF]);
+            /* drop it into the void well away from its waypoint */
+            k5.x = (int32_t)(c5.wx[sec] + 100) << 16;
+            k5.y = (int32_t)(c5.wy[sec] + 60) << 16;
+            p5.hazard = 6; p5.resc_t = 0;
+            int f = 0;
+            for (; f < 1200 && p5.hazard; f++) smk_player_step(&p5, &k5, &t5, 0, 0);
+            char d2[128];
+            snprintf(d2, sizeof d2, "frame %d at (%d,%d) want (%d,%d) heading %04X want %04X",
+                     f, smk_kart_px(k5.x), smk_kart_px(k5.y), p5.resc_x, p5.resc_y,
+                     p5.heading, p5.resc_h);
+            check("Lakitu puts the kart down, on its waypoint, facing the field",
+                  p5.hazard == 0 && k5.z == 0
+                  && smk_kart_px(k5.x) == p5.resc_x && smk_kart_px(k5.y) == p5.resc_y
+                  && p5.heading == p5.resc_h, d2);
+        }
+    }
+    {
         /* Breakable blocks (NOTES 123): the user's recorded Ghost Valley
          * session turned tile $1F (class $82) into $00 (class $20, the
          * void) over the sequence $26, $27, $28. */

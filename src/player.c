@@ -341,45 +341,66 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
             return;
         }
     }
-    if (p->hazard == 6) {                  /* the fall and Lakitu's rescue */
-        /* MEASURED (NOTES 120) by swapping the class under a lapping kart:
-         *   $CA = 60 frames of the fall itself, position frozen, speed 0
-         *   then $1F = $3000 and $A0 = $0C: Lakitu carries the kart 2 px a
-         *        frame toward its waypoint $CC/$CE ($80B373), turning it
-         *        toward the flow direction there ($80B346, $140 a frame)
-         *   then $A0 = $0E: $1F down by $80 a frame until control returns
-         * The drop itself is drawn from the sprite state in the ROM; we
-         * lower z so the kart is seen to fall.  LABELLED. */
+    if (p->hazard == 6 || p->hazard == 0x0C || p->hazard == 0x0E) {
+        /* Lakitu's rescue, transcribed from the ROM's own three states
+         * ($A0 = 6 -> $0C -> $0E), NOTES 124.  The earlier port merged
+         * them and re-read the target every frame, so the kart chased a
+         * waypoint that moved with it and was never put down.
+         *
+         *   6    $80B5B7 armed it: $B373 LATCHED the target ($CC/$CE from
+         *        the kart's waypoint $C0, $D0 from the direction field at
+         *        that waypoint) and set $CA; the kart falls while $CA runs.
+         *   $0C  $80B2B6: turn toward $D0 ($B346, $140 a frame, snapping
+         *        inside $200), then walk $18 (integer x) 2 px toward $CC -
+         *        and RETURN.  Only once x matches does y walk toward $CE.
+         *   $0E  $80B32E: turn again; ONLY when $B346 returns carry set -
+         *        the heading has arrived - does $1F come down by $80 a
+         *        frame.  When it borrows: stz $1F, stz $A0, stz $AC.
+         */
         k->speed = 0; k->speed_frac = 0; p->accel32 = 0;
         k->vx = k->vy = 0; p->turn = 0;
         p->vlag = p->plag = 0; p->state = 0;
         k->airborne = false;
-        p->resc_t++;
-        if (p->resc_t <= 60) {                        /* falling */
-            k->z -= (int32_t)0x0180 << 8;             /* out of sight */
-        } else if (p->resc_t == 61) {
-            k->z = (int32_t)0x3000 << 8;              /* $1F = $3000 */
-        } else if (k->x != ((int32_t)p->resc_x << 16)
-                || k->y != ((int32_t)p->resc_y << 16)) {
-            int32_t tx = (int32_t)p->resc_x << 16, ty = (int32_t)p->resc_y << 16;
-            int32_t step = 2 << 16;                   /* $80B2B6: 2 px */
-            if (k->x < tx) k->x += (tx - k->x < step) ? tx - k->x : step;
-            else if (k->x > tx) k->x -= (k->x - tx < step) ? k->x - tx : step;
-            if (k->y < ty) k->y += (ty - k->y < step) ? ty - k->y : step;
-            else if (k->y > ty) k->y -= (k->y - ty < step) ? k->y - ty : step;
-            /* $80B346: turn toward the waypoint's flow direction */
+
+        /* $80B346: turn toward $D0, carry set once it has arrived */
+        bool faced = false;
+        {
             int d = (int16_t)(uint16_t)(p->resc_h - p->heading);
-            if (d > 0x0140) d = 0x0140; else if (d < -0x0140) d = -0x0140;
-            p->heading = (uint16_t)(p->heading + d);
+            if (d == 0) faced = true;
+            else if (d > 0x0200 || d < -0x0200)
+                p->heading = (uint16_t)(p->heading + (d > 0 ? 0x0140 : -0x0140));
+            else p->heading = p->resc_h;       /* $80B35C/$80B360: snap */
             p->vel_angle = p->pose = p->heading;
             k->angle = p->heading;
-        } else {
-            k->z -= (int32_t)0x0080 << 8;             /* $80B32E */
-            if (k->z <= 0) {
-                k->z = 0; p->hazard = 0; p->drive = 0; p->jump_state = 0;
-                p->heading = p->vel_angle = p->pose = p->resc_h;
-                k->angle = p->heading;
+        }
+
+        if (p->hazard == 6) {                             /* still falling */
+            if (p->resc_t < 60) { p->resc_t++; k->z -= (int32_t)0x0180 << 8; }
+            else { k->z = (int32_t)0x3000 << 8; p->hazard = 0x0C; }
+            return;
+        }
+        if (p->hazard == 0x0C) {                          /* Lakitu carries it */
+            int32_t tx = (int32_t)p->resc_x << 16, ty = (int32_t)p->resc_y << 16;
+            int32_t step = 2 << 16;                       /* $80B2D2: 2 px */
+            if (k->x != tx) {                             /* x FIRST, then return */
+                if (k->x < tx) k->x += (tx - k->x < step) ? tx - k->x : step;
+                else           k->x -= (k->x - tx < step) ? k->x - tx : step;
+                return;
             }
+            if (k->y != ty) {
+                if (k->y < ty) k->y += (ty - k->y < step) ? ty - k->y : step;
+                else           k->y -= (k->y - ty < step) ? k->y - ty : step;
+                return;
+            }
+            p->hazard = 0x0E;                             /* $80B328 */
+            return;
+        }
+        /* $0E: down $80 a frame, but only once the heading has arrived */
+        if (!faced) return;                               /* $80B332: bcc */
+        k->z -= (int32_t)0x0080 << 8;
+        if (k->z <= 0) {
+            k->z = 0; p->hazard = 0; p->drive = 0; p->jump_state = 0;
+            p->resc_t = 0;
         }
         return;
     }
