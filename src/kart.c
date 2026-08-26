@@ -198,37 +198,17 @@ void smk_kart_move_ex(smk_kart *k, const smk_track *t, bool auto_ramp)
      * The ROM treats landing per type too: $80B1F2 remaps type-$22 cells
      * to $4C at touchdown.  INFERRED: the exact set of flight-blocking
      * types; type 0 is the one observed to embed. */
-    if (k->airborne) {
-        int32_t fx = advance(k->x, k->bvx ? k->bvx : k->vx);
-        int32_t fy = advance(k->y, k->bvy ? k->bvy : k->vy);
-        uint8_t sv = smk_track_surface(t, smk_kart_px(fx), smk_kart_px(fy));
-        if (smk_surface_solid(sv) && smk_surface_type(sv) == 0) {
-            /* deflect along the wall, as on the ground */
-            uint8_t sx = smk_track_surface(t, smk_kart_px(fx), smk_kart_px(k->y));
-            if (smk_surface_solid(sx) && smk_surface_type(sx) == 0) {
-                k->bvx = 0;
-                k->vx = 0;
-            } else {
-                k->bvy = 0;
-                k->vy = 0;
-            }
-            fx = advance(k->x, k->bvx ? k->bvx : k->vx);
-            fy = advance(k->y, k->bvy ? k->bvy : k->vy);
-            sv = smk_track_surface(t, smk_kart_px(fx), smk_kart_px(fy));
-            if (smk_surface_solid(sv) && smk_surface_type(sv) == 0) {
-                /* fully cornered mid-flight: land on the spot, drop the
-                 * bounce, and stop - do not hover and re-bounce forever */
-                k->z = 0;
-                k->zvel = 0;
-                k->airborne = false;
-                k->bvx = k->bvy = 0;
-                k->speed = 0;
-                k->vx = k->vy = 0;
-                return;
-            }
-        }
-        k->x = fx;
-        k->y = fy;
+    /* HEIGHT, not surface type, decides whether a kart clears a wall.
+     * $80FA5A opens with `lda $20,x / cmp #$0004 / bcs` - above four and
+     * the collision test is skipped altogether; below it, an airborne
+     * kart collides exactly like one on the ground.  The port had been
+     * filtering by surface TYPE instead, so any hop cleared anything that
+     * was not type 0 - which is why the Ghost Valley rails could be
+     * jumped, and in the original they cannot: a hop launches at $E0 and
+     * peaks under four (NOTES 137). */
+    if (k->airborne && (k->z >> 16) >= 4) {
+        k->x = advance(k->x, k->bvx ? k->bvx : k->vx);
+        k->y = advance(k->y, k->bvy ? k->bvy : k->vy);
         return;
     }
 

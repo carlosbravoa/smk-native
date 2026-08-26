@@ -320,6 +320,34 @@ int main(int argc, char **argv)
 
     test_player_replay(&rom);
     {
+        /* $80FA5A: a kart clears a wall only above height 4.  A hop
+         * launches at $E0 and peaks below that, so the Ghost Valley rails
+         * cannot be jumped - which they could be until NOTES 137. */
+        int peak = 0;
+        {
+            smk_kart k = {0};
+            k.airborne = true;
+            smk_kart_launch(&k, 0x00E0);
+            for (int f = 0; f < 40 && k.airborne; f++) {
+                smk_kart_gravity(&k);
+                if ((int)(k.z >> 16) > peak) peak = (int)(k.z >> 16);
+            }
+        }
+        int rpeak = 0;
+        {
+            smk_kart k = {0};
+            k.airborne = true;
+            smk_kart_launch(&k, SMK_RAMP_VEL);
+            for (int f = 0; f < 80 && k.airborne; f++) {
+                smk_kart_gravity(&k);
+                if ((int)(k.z >> 16) > rpeak) rpeak = (int)(k.z >> 16);
+            }
+        }
+        char d[96];
+        snprintf(d, sizeof d, "hop peaks at %d, ramp at %d, the wall test is 4", peak, rpeak);
+        check("a hop cannot clear a wall but a ramp can", peak < 4 && rpeak >= 4, d);
+    }
+    {
         /* A kart wedged where both axes are blocked must NOT sit there:
          * $80F93C counts eight such frames and $80F964 ejects it along
          * the quadrant it faces at a flat $100 (NOTES 136).  Without it a

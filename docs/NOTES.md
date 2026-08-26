@@ -4598,3 +4598,31 @@ get into the cell and reflects from there.  So the difference being felt
 is real but it is not centre-versus-side - the likelier candidate is that
 penetration: the game's kart gets half a cell deeper before it bounces.
 Not changed on a guess; wants its own test.
+
+---
+
+**137** — Why the Ghost Valley rails could be jumped, and the ROM's answer.
+
+Playtest: "in ghost valley I can jump those blocks and in the real game
+that was not possible."  Right, and the port was filtering the wrong
+thing.  `smk_kart_move_ex` let an airborne kart through anything whose
+surface TYPE was not 0 - an invention.  `$80FA5A` opens with
+
+    lda $20,x / cmp #$0004 / bcs (skip the collision entirely)
+
+**Height, not type.**  Above four the collision test is not run at all;
+below it an airborne kart collides exactly like one on the ground.
+
+And the threshold is placed exactly where it has to be:
+
+    hop  ($80B77B, $E0)   peaks at 3    cannot clear a wall
+    ramp (class $10)      peaks at 4    clears
+
+so hopping over a rail is impossible and a ramp launch flies, with one
+unit between them.  Both pinned in the selftest.
+
+It also pays on the gates - and on the right track.  Ghost Valley, which
+is where the rails are, goes **92.0% -> 93.0% within 1 px** with resyncs
+64 -> 56; the Mario Circuit run is unchanged inside its noise (82.0% ->
+81.5%, one more resync, and that run's divergences are AI karts we do not
+simulate).
