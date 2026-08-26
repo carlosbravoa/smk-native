@@ -3692,3 +3692,39 @@ this session, so they are written down):
 
 Shipping meanwhile: the flat backdrop colour and the character-0 ground
 fill from NOTES 114, which is what removed the black void.
+
+---
+
+**116** — The background's shape, from the user's reference shots, and the
+first byte-exact link: BG3's characters ARE the theme's `gfx_d`.
+
+The reference frames (Ghost Valley, Bowser Castle) show what the sky band
+really contains, and it is three things, not one:
+
+* a **gradient sky** - navy shading on Ghost Valley, orange on Bowser
+  Castle;
+* a **far plane** of black silhouettes - hills/trees, pyramids;
+* a **near plane** that scrolls faster - the ghosts, the castle arches.
+
+That matches the mode-0 split of NOTES 114: the 24 scanlines above the
+horizon show BG2 + BG3 + BG4, i.e. two scenery layers (parallax by their
+own scroll registers) plus the HUD, over a gradient.
+
+**Proved this session**: the oracle's VRAM (tools/labs, the Python CPU)
+is complete where MAME's tap-based shadow was not, and rendering it with
+the RACE bases from `$84FF44` (BG2 map word `$6400`, chars `$6000`; BG3
+map `$6C00`, chars `$7000`) shows the HUD on BG2 - and the bytes at BG3's
+character base `$7000` are **byte-for-byte `gfx_d[theme]`** (matched
+against every decompressed asset; theme 1 -> `gfx_d[1]`, offset 0).  So
+the far plane's art is settled: per-theme `gfx_d`, 2bpp, at BG3's chars.
+
+**Still open**: the tilemap that arranges them.  The bytes at BG3's map
+base look like HUD text rather than scenery indices, so either the base
+captured is stale or the horizon map is uploaded elsewhere; and the
+gradient's source is unidentified (it is NOT an HDMA CGRAM write - the
+race enables channels 1-7 only: M7A-D, BGMODE, TM, window).
+
+Next concrete step, in the oracle rather than MAME: dump VRAM at a race
+on Ghost Valley (the demo on track 19 is a Time Trial there), scan every
+1 KB-aligned map base for entries that index into `gfx_d`'s tile range,
+and read the scroll registers per frame to get the two planes' speeds.
