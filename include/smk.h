@@ -608,6 +608,15 @@ static inline int smk_hud_digit(int d)
 #define SMK_KART_SCALE_K 66.0f
 #define SMK_OBJ_MAG_MAX  2.0f        /* kart path only, still LABELLED */
 
+/* The drawn size is TWICE the sheet's drawing (NOTES 139).  Measured off
+ * a reference frame of the real game, using the kart's known 32 px as the
+ * ruler: the pipe there is 23 x 31 SNES px and the sheet's complete pipe
+ * is 12 x 16, so 1.9x in both directions.  Where the larger art comes
+ * from is NOT known - the whole object sheet tops out at 16 x 16 - so
+ * this magnifies what we have.  LABELLED: the size is measured, the
+ * mechanism is not. */
+#define SMK_OBJ_MAG      2
+
 #define SMK_OBJ_NEAR    ((float)SMK_OBJ_RADIUS)
 typedef struct { uint8_t px[SMK_OBJ_TILES][64]; bool ok; } smk_objgfx;
 bool smk_objgfx_load(const smk_rom *rom, int theme, smk_objgfx *out);

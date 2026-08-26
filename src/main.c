@@ -535,7 +535,7 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
          * original's behaviour and it is why distant pipes had been
          * dwindling away here - they should settle at the last drawing
          * and then vanish. */
-        float k = (float)TIER[ti].h / (float)SMK_OBJ_PIPE_H;
+        float k = (float)TIER[ti].h / (float)SMK_OBJ_PIPE_H * (float)SMK_OBJ_MAG;
         float ppx = (float)rw / 256.0f;     /* render px per SNES px */
         int pw = (int)((float)SMK_OBJ_PIPE_W * k * ppx + 0.5f);
         int ph = (int)((float)SMK_OBJ_PIPE_H * k * ppx + 0.5f);

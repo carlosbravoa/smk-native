@@ -4669,3 +4669,36 @@ demo's track every live object reads `+$30` = `$0140`, parked, for the
 whole lap.  Either those two objects are never drawn there, or `$30` is
 not the field `$80C8AE` makes it look like.  Unresolved, and NOT doubled
 on a guess.
+
+---
+
+**139** — The pipe is twice the size we draw it, measured against a frame
+of the real game.
+
+The user put our render beside the original, same pipe, same place.  Using
+the kart's known 32 px as the ruler in the ORIGINAL frame (its red parts,
+helmet to bumper, span 138 px there):
+
+    real pipe       104 x 142 screen px   =  23 x 31 SNES px
+    sheet's drawing                          12 x 16
+    ratio                                    1.9 x  1.9
+
+A clean 2x in both directions.  The old code had an `SMK_OBJ_MAG_MAX` of 2
+taken from a reference screenshot; NOTES 129's band rewrite dropped it,
+which is exactly when "pipes are not growing as I get closer" appeared.
+Restored, and now it is a measurement with a number rather than a
+recollection.
+
+**Where the bigger art comes from is NOT known.**  Rendered whole, the
+theme's object sheet is 16 tiles wide and 57 tiles long, and every drawing
+in it fits a 2x2 block - 16 x 16 px at most.  The bottom rows hold
+complete pipes (lid over body, 12 x 16 at base 32, then 11 x 14 and
+10 x 12), the top rows hold separate lid and body pieces.  Nothing in it
+is 24 x 32.  So either the near band's art lives somewhere we have not
+looked, or the game composes it - the same open question as the kart
+minifier in NOTES 076, pointing the other way.
+
+Labelled accordingly: the SIZE is measured, the MECHANISM is not, and the
+port magnifies the drawing it has to reach it.  The crop of the original
+makes the construction plain - a wide lid overhanging a narrower body,
+split by a hard black line - so whatever produces it keeps that shape.
