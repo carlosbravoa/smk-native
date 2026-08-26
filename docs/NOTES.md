@@ -4818,3 +4818,29 @@ globals in `demolog.lua` is the countdown timer, and the frame the kart
 first moves is the player's REACTION, not the light: 339 in both human
 runs, 345 in the time trial, 539 in the demo.  Needs the countdown's own
 address, which means finding it first.
+
+**142a** — the start boost, from the user, before any decode.  Recording
+their words because they are the specification:
+
+> "while the count down is on, you can accelerate, but the cart doesn't
+> move.  And the interesting thing is that you are launched at higher rev,
+> but normal speed.  And if you accelerate in exactly one particular
+> point, you get a turbo launch."
+
+Three facts to find, and they constrain each other:
+
+* the kart is HELD but the throttle is not ignored - something
+  accumulates while it is held;
+* at release, "higher rev but normal speed" - so that something is NOT
+  `$EA`, and it survives the release;
+* one exact moment gives a boost - so a window tests it.
+
+Our port has none of it: the countdown holds the kart for an invented 60
+frames a step and then simply lets go.  S17.
+
+The user has also pointed out that their earlier recordings differ at the
+start - one waited before moving, the others went immediately - so the
+existing logs already hold two of the three cases.  What is missing is a
+successful turbo launch, and a `starts` recording with all three in one
+file (baseline / held / rocket) makes them diffable against each other
+with everything else identical.

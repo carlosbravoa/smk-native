@@ -64,6 +64,7 @@ re-investigating.
 | S13 | `src/player.c` per character | **decoded and read from the ROM** for the five tables the game has: base top speed (`$81:8000`), acceleration curve (`$81:8010`), off-road caps (`$81:8060`), steering rows (`$81:8088`) and the drift-row adjust (`$80A4C0`: Yoshi/Koopa slide one row lower). Only Mario (P1) and Toad (P2) are VERIFIED against the game so far - the other six characters run on the same code with their own tables but have not been replayed | every character handles differently; there may be further per-character factors (kart-to-kart weight, item odds) not yet found | P3 residual: replay each character (needs a log per character - a real race, not the attract demo) |
 | S15 | `src/main.c` `draw_entity` | the near object's ART: the port magnifies the sheet's 16x16 drawing 2x to reach the measured 23x31 | the game gets that size from somewhere - the object sheet is 57 tiles and nothing in it exceeds 16x16.  Either a second art source, or a composer (the mirror of the kart minifier, NOTES 076).  The crop of the original shows the shape it must keep: a wide lid overhanging a narrower body | P5 |
 | S16 | `src/player.c` fall | while falling, our kart descends in z so something is seen to move | `$1F` stays at **1** for all 60 countdown frames - the physics stops and waits, and the visible drop is the SPRITE (NOTES 135a).  Matters more now that sprites below the plane are clipped: ours sinks behind the track, the game's does not | P5 |
+| S17 | `src/player.c` start | no start boost at all: the countdown holds the kart, the lights go out, you drive | during the countdown the throttle DOES something - the kart is held but revs, you launch at "higher rev, normal speed", and pressing accelerate at one exact point gives a **turbo launch** (user, who plays it).  So there is a rev accumulator separate from `$EA` and a window that tests it.  Nothing of this is decoded | P5 - needs the `starts` recording |
 | S9 | `tools/smktool/dsp1.py` | full command set implemented; stream never desyncs; camera model verified against the game's own usage. Residual: gyrate is a passthrough, and raster/`$08`/`$18` scalings are unchecked | the real chip's exact fixed-point pipeline | largely closed (NOTES 039); residuals logged on first contact |
 
 *Resolved:* **S9 for command `$04` (sin/cos)** — pinned by unit analysis in
@@ -148,8 +149,11 @@ remain in them are drift, not wrong rules.  In rough order of value:
    lid overhanging a narrower body, ~24x32.
 4. **Kart size ladder (S10's other half).**  Same `+$06` law, unmeasured
    drawing ladder.  Visible.
-5. **Small, bounded, closable**: the five missing start grids (S2), the
-   invented countdown timing (S11), the falling kart's z (S16).
+5. **The start (S2, S11, S17) - one decode, three ledger rows.**  The
+   grid origin is out by up to 152 px, the countdown length is invented,
+   and the rocket start does not exist.  All three live in the same few
+   frames of the same routine, so they are worth doing together rather
+   than one at a time.  S16 (the falling kart's z) is closed.
 6. **The graze exemption (S6).**  Known-wrong detail: the ROM exempts a
    slip under 45 degrees from the crash deceleration, the recording shows
    the game doing it, and applying it makes the port worse.  Something
