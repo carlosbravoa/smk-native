@@ -4368,3 +4368,57 @@ but it writes into a state machine we have only partly ported, and the
 gate could not catch it - the demo race never touches a wall.  When the
 only proof available is a playtest, port the smallest measured piece and
 leave the rest decoded in the log.
+
+---
+
+**132** — The crash cost, found where I should have looked first: the user
+said the speed came back "magically" and that you have to EARN it.  Right,
+and my own capture had the answer three lines further down than I read.
+
+Watching `$A8` with the PC through a wall hit names every step:
+
+    f2   $80:A108 writes $A8 = $85C1, $AC = $16   the slip at impact
+    f2-9 $EE = 0, $EA = 418 held                  the window
+    f10  $80:AA0D walks $A8 by +$40, $EE = FFAB   -85 A FRAME
+    f11  $EA 419 -> 334
+    f12  $EA -> 250
+    f13  $80:AA10 clears $A8: $A6 = $1C, $AC = 0, $EE = +4
+    f14+ 169, 173, 177 ... climbing back the slow way
+
+So a crash costs speed in TWO stages and the port only had the first.
+`$80A55B` is drive state `$16`:
+
+    $80A562  $A8 zero?  -> $80A588: $A6 = $1C, $AC = 0, done
+    $80A566  $EE = -1 by default
+    $80A573  A = |$A8|, capped $4000 -> $3F00
+    $80A57B  xba / lsr / lsr / and #$001E      the table index
+    $80A582  $EE = $80A590[y]
+
+and `$80A590` is `-4 -8 -16 -24 -36 -56 -64 -85`.  **The deceleration is
+keyed to the LAG** - how far your travel is from where you point.  A square
+hit takes the last entry and is punished hardest; a graze barely registers.
+That is the mechanism behind "hitting a barrier had a cost", and it is a
+table, not a feeling.
+
+Ported as a contained crash state on the kart: the slip at impact, the
+same table, the same `$40`-a-frame walk toward zero (`$80A9FD`/`$80AA05`).
+Deliberately NOT written into `p->vlag`, `p->vel_angle`, `p->drive` or
+`p->state` - that is what wrecked the dynamics in NOTES 131.
+
+Port trace beside the game's shape:
+
+    f7    715 -> reflects, speed untouched
+    f8    357   damped once
+    f8-14 357   held, throttle dead
+    f16   272   the crash deceleration bites
+    f20   114
+    f24+  136 152 168 184 200 ... earned back at +4 a frame
+
+**LABELLED**: the ROM runs the deceleration while `$A8 != 0` and walks it
+$40 a frame, which from $85C1 would take hundreds of frames - yet the
+capture exits after three.  Something recomputes `$A8` from the live
+velocity in between and the watch did not catch it (no writes appear
+between `$80:AA0D` and `$80:AA10`).  Until that is found the port runs the
+deceleration for the three frames the capture shows.  That count is the
+one fitted number here; the table, the index rule and the walk are the
+ROM's.

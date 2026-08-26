@@ -29,9 +29,9 @@ def cell_ahead(px):
     fy = int(y - math.cos(a) * px) & 1023
     return (((fy - 1) & 1023) >> 3) * 128 + ((fx & 1023) >> 3), fx, fy
 
-FIELDS = [("18",0x18),("1C",0x1C),("22",0x22),("24",0x24),("EA",0xEA),
-          ("10",0x10),("52",0x52),("56",0x56),("5A",0x5A),("5C",0x5C),
-          ("26",0x26),("1F",0x1F),("42",0x42),("2A",0x2A),("12",0x12),("AE",0xAE)]
+FIELDS = [("22",0x22),("24",0x24),("EA",0xEA),("EE",0xEE),("10",0x10),("5C",0x5C),
+          ("A2",0xA2),("A4",0xA4),("A8",0xA8),("AA",0xAA),("A6",0xA6),("AC",0xAC),
+          ("B2",0xB2),("FA",0xFA),("AE",0xAE),("C2",0xC2)]
 def row(tag):
     return tag + " " + " ".join("%s=%04X" % (n, lab.w(P1 + o)) for n, o in FIELDS)
 
@@ -43,6 +43,6 @@ for d in (-2, -1, 0, 1, 2):                # a short barrier, not one cell
         w[0x10000 + ((cell + d + e) & 0x3FFF)] = solid[0]
 log("painted wall at cell", cell, "target", (fx, fy), "tile was", hex(was))
 log(row("f-1"))
-for f in range(6):
+for f in range(34):
     lab.frame(0x80)                         # throttle held, no steering
     log(row("f%-3d" % f))

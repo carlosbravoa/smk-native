@@ -264,7 +264,30 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
      * 418 for all eight frames and only moved once control came back.
      * Accelerating through the window is what made bouncing free - you
      * came off the wall already back up to speed. */
-    if (k->bounce_cool == 0) smk_kart_accelerate(k);
+    if (k->bounce_cool == 0) {
+        /* $80A55B, drive state $16: once the window lets go, the kart is
+         * still travelling sideways to where it points, and THAT costs
+         * speed.  $EE comes from the table at $80A590 indexed by the
+         * velocity lag - `(min(|$A8|,$4000) >> 10) * 2` - so a square hit
+         * takes the last entry, -85 a frame, and a glancing one barely
+         * anything.  Measured in the game: 419 -> 334 -> 250 -> 165
+         * before the throttle bit again (NOTES 132). */
+        if (k->crash_frames > 0) {
+            static const int16_t CRASH[8] =        /* $80A590 */
+                { -4, -8, -16, -24, -36, -56, -64, -85 };
+            int mag = k->crash_lag < 0 ? -k->crash_lag : k->crash_lag;
+            if (mag >= 0x4000) mag = 0x3F00;       /* $80A573 */
+            int idx = ((mag >> 8) >> 2) & 0x1E;    /* $80A57B: xba/lsr/lsr/and */
+            p->accel32 = (int32_t)CRASH[idx >> 1] << 16;
+            k->accel = CRASH[idx >> 1];
+            k->accel_frac = 0;
+            k->crash_frames--;
+            /* $80A9FD/$80AA05 walk the lag toward zero $40 a frame */
+            if (k->crash_lag > 0) k->crash_lag = (int16_t)(k->crash_lag - 0x40);
+            else if (k->crash_lag < 0) k->crash_lag = (int16_t)(k->crash_lag + 0x40);
+        }
+        smk_kart_accelerate(k);
+    }
     if (k->bounce_cool == 0) {
         int16_t sx, cy;
         smk_dsp_sincos(p->vel_angle, k->speed, &sx, &cy);   /* DSP-1 cmd $04 */

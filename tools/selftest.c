@@ -354,16 +354,21 @@ int main(int argc, char **argv)
             /* and it must RECOVER: the window ends and the throttle works
              * again.  A version of this that left the kart in drive state
              * $16 killed acceleration outright (NOTES 131). */
-            int peak = 0;
+            /* $80A55B: once the window lets go the crash deceleration
+             * bites - the speed must fall BELOW what the damping left,
+             * and only then climb back.  Recovering straight from the
+             * damped speed is what made crashing free (NOTES 132). */
+            int trough = after, peak = 0;
             for (int f = 0; f < 40; f++) {
                 smk_player_step(&pw, &kw, &tw, 0x8000, 0);
+                if (kw.bounce_cool == 0 && kw.speed < trough) trough = kw.speed;
                 if (kw.speed > peak) peak = kw.speed;
             }
-            int recovered = peak > after;   /* the throttle bites again */
+            int recovered = peak > trough && trough < after - 100;
             char d[160];
-            snprintf(d, sizeof d, "hit f%d kept %d, damped to %d, held %d, peak after %d",
-                     hit, at_hit, after, held, peak);
-            check("a wall hit costs speed, the window holds it, and it recovers",
+            snprintf(d, sizeof d, "hit f%d kept %d, damped %d, held %d, trough %d, peak %d",
+                     hit, at_hit, after, held, trough, peak);
+            check("a wall hit costs speed, decelerates after it, then must be earned back",
                   hit > 0 && at_hit && after > 0 && after < 500 && held && recovered, d);
         }
     }

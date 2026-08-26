@@ -213,6 +213,7 @@ void smk_kart_move_ex(smk_kart *k, const smk_track *t, bool auto_ramp)
         return;
     }
 
+    uint16_t kang = k->angle;
     int32_t nx = advance(k->x, k->vx);
     int32_t ny = advance(k->y, k->vy);
 
@@ -324,6 +325,12 @@ void smk_kart_move_ex(smk_kart *k, const smk_track *t, bool auto_ramp)
             k->bounce_dir = bx ? (k->vx < 0 ? 2 : 0) : (k->vy < 0 ? 6 : 4);
             k->bounce_pend = 1;
             k->bounce_hit = 1;            /* $10 bit 12, read by $80A0C7 */
+            /* $80A106: the slip between where the kart now TRAVELS and
+             * where it points.  It is what $80A55B indexes the crash
+             * deceleration by, and it is the whole reason a crash costs
+             * you something (NOTES 132). */
+            k->crash_lag = (int16_t)(smk_angle_of(k->vx, k->vy) - kang);
+            k->crash_frames = 3;
             k->bounce_cool = 9;              /* $5C = 8, released on the 9th */
         }
         /* SLIDE ALONG: move on whichever axis is not blocked.  Returning
