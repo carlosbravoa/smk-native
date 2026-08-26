@@ -643,6 +643,16 @@ void smk_draw_sprite_mini(const smk_sprites *s, int frame,
 bool smk_pickup_step(const smk_rom *rom, smk_track *t, smk_player *p, const smk_kart *k,
                      bool grounded_before);
 
+/* ---- Breakable blocks (src/blocks.c, NOTES 123) ------------------------
+ * Ghost Valley's rails and Vanilla Lake's ice: class $82 and up crumble
+ * over four steps into the void tile, so the hole they leave can be
+ * fallen through.  Bind the track being played, report hits, step once a
+ * frame. */
+void smk_blocks_bind(smk_track *t);
+bool smk_blocks_breakable(uint8_t cls);
+bool smk_blocks_hit(int cell, bool by_player);
+void smk_blocks_step(void);
+
 /* ---- The horizon layer (src/horizon.c, NOTES 117) ----------------------
  * gfx_d[theme] are the tiles, gfx_e[theme] the 32x24 map that arranges
  * them; both matched byte-exact against the running game's VRAM. */

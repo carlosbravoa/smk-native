@@ -246,6 +246,18 @@ void smk_kart_move_ex(smk_kart *k, const smk_track *t, bool auto_ramp)
              * which reads as speed 0 whatever the class really does on
              * contact.  Zeroing the speed is precisely what left the
              * kart stuck against a barrier. */
+            /* a breakable block crumbles on contact (NOTES 123): the
+             * cell that blocked us, if its class is $82 or above */
+            {
+                int hx = bx ? smk_kart_px(nx) : smk_kart_px(k->x);
+                int hy = by ? smk_kart_px(ny) : smk_kart_px(k->y);
+                uint8_t hc = smk_track_surface(t, hx, hy);
+                if (smk_blocks_breakable(hc)) {
+                    int cell = (((hy - 1) & (SMK_WORLD_PX - 1)) >> 3) * SMK_MAP_DIM
+                             + ((hx & (SMK_WORLD_PX - 1)) >> 3);
+                    smk_blocks_hit(cell, true);
+                }
+            }
             if (bx) k->vx = (int16_t)-k->vx;
             if (by) k->vy = (int16_t)-k->vy;
             k->speed = (int16_t)(k->speed / 2);

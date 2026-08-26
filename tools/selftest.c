@@ -320,6 +320,33 @@ int main(int argc, char **argv)
 
     test_player_replay(&rom);
     {
+        /* Breakable blocks (NOTES 123): the user's recorded Ghost Valley
+         * session turned tile $1F (class $82) into $00 (class $20, the
+         * void) over the sequence $26, $27, $28. */
+        static smk_track gv;
+        char err2[256];
+        if (smk_track_load(&rom, 16, -1, &gv, err2, sizeof err2)) {
+            smk_blocks_bind(&gv);
+            check("class $82 is breakable, $80 is not",
+                  smk_blocks_breakable(0x82) && smk_blocks_breakable(0x84)
+                  && !smk_blocks_breakable(0x80) && !smk_blocks_breakable(0x40), NULL);
+            int cell = 505;                       /* the cell the player broke */
+            uint8_t was = gv.map[cell];
+            smk_blocks_hit(cell, true);
+            uint8_t seq[4];
+            for (int i = 0; i < 4; i++) {
+                for (int k = 0; k < 8; k++) smk_blocks_step();   /* one slot a frame */
+                seq[i] = gv.map[cell];
+            }
+            char d2[96];
+            snprintf(d2, sizeof d2, "%02X -> %02X %02X %02X %02X (class %02X)",
+                     was, seq[0], seq[1], seq[2], seq[3], gv.surface[seq[3]]);
+            check("a broken Ghost Valley block crumbles $26 $27 $28 $00 and leaves the void",
+                  was == 0x1F && seq[0] == 0x26 && seq[1] == 0x27 && seq[2] == 0x28
+                  && seq[3] == 0x00 && gv.surface[seq[3]] == 0x20, d2);
+        }
+    }
+    {
         /* the demo race is 2P: Mario and Toad; the game filled the grid
          * Luigi, Koopa, Bowser, Peach, DK, Yoshi (tools/labs/mame log) */
         int g[8];

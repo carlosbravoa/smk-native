@@ -21,6 +21,7 @@ add_library(smkcore STATIC
   src/effects.c
   src/pickup.c
   src/horizon.c
+  src/blocks.c
   src/physics.c
   src/ai.c
   src/sprite.c

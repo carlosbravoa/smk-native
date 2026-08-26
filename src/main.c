@@ -935,6 +935,7 @@ int main(int argc, char **argv)
     }
 
     smk_track_place_objects(&rom, &trk);
+    smk_blocks_bind(&trk);
     smk_objgfx_load(&rom, trk.theme, &obj_art);   /* the theme's objects */
     if (!smk_horizon_load(&rom, trk.theme, &horizon))
         fprintf(stderr, "warning: horizon not loaded\n");
@@ -1107,6 +1108,7 @@ int main(int argc, char **argv)
                     float sx, sy;
                     uint16_t sh;
                     smk_track_place_objects(&rom, &trk);
+                    smk_blocks_bind(&trk);
                     smk_objgfx_load(&rom, trk.theme, &obj_art);
                     smk_horizon_load(&rom, trk.theme, &horizon);
                     track = nt; theme = nth;
@@ -1163,6 +1165,7 @@ int main(int argc, char **argv)
                     racers[1].k.airborne = (r->flags & 0x8000) != 0;
                 }
             }
+            smk_blocks_step();
             step_kart(&kart, &trk, &phys, &in);
             if (replay_path && getenv("SMK_REPLAY_TRACE") && replay_i < replay.n) {
                 const smk_demo_frame *r = &replay.f[replay_i];

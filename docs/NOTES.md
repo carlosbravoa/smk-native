@@ -3949,3 +3949,43 @@ Left for next time, in order of promise: the undecoded spawn system
 behind those `$1800` blocks; battle mode (`$2C = 6`), whose arenas are
 the game's other breakable-block setting; and the `$7F:DF80` queue's
 producer, still unfound.
+
+---
+
+**123** — Breakable blocks, decoded from a session the user played.  They
+turn into the VOID, which is why you fall through them.
+
+The user recorded a Ghost Valley run with `tools/labs/mame/play.sh` and
+parked save states either side of the hits.  Diffing the states settled in
+seconds what days of rigs had not:
+
+    state 1 -> 2   cell  505 (968,24)  tile $1F -> $00   class $82 -> $20
+    state 3 -> 4   six cells at y=24/32, all $1F -> $00/$26/$27, $82 -> $20
+
+Replaying the recording with a watchpoint on those cells gives the writer:
+**`$80:FC69`**, with the kart touching (`$10 = $C000`, `$AC = $22`), and the
+values arrive as a SEQUENCE - `$26`, `$27`, `$28`, then `$00`.  It is an
+animation, and the whole mechanism reads out of it:
+
+* `$80FADC -> $80FBBC` is the wall response, class in A: **below `$82` an
+  ordinary wall** (`$84D73A` player / `$84D77A` other); `$84` arms and then
+  `$84D7BA`; `$82` and above arm and then `$84D7FA`.
+* `$80FBF3` arms: take the slot index `$7F:DE30`; if that slot's counter
+  `$7F:DE02,x` is still running, do nothing - there are **eight slots**, so
+  only eight blocks crumble at once - else counter = **4 for a player**,
+  1 for anyone else, cell = `$02`, advance the slot by 4 (mod `$20`).
+* `$80FC2C` runs once a frame and services the NEXT slot only, so a block
+  takes four times eight frames to go.  It decrements the counter and
+  writes the tile that index selects to VRAM and to the tilemap: theme 0
+  uses `$80FC70` = `00 28 27 26`, every other theme `$80FC6C` =
+  `08 7D 7C 7B` - the Vanilla Lake ice blocks.
+* The last tile's class is `$20`.  **A broken block leaves a hole**, which
+  is exactly why the user could then fall through.
+
+Ported as `src/blocks.c`, armed from the wall response in `smk_kart_move`
+and stepped once a frame; the selftest replays the user's own cell
+(`$1F -> $26 $27 $28 $00`, ending in class `$20`).
+
+The lesson for the ledger: two save states either side of an event, from a
+human who can simply make the event happen, beat six increasingly clever
+rigs.  Ask earlier.
