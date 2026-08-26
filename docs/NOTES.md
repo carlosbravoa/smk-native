@@ -4741,3 +4741,41 @@ exact, Luigi rides along in both of the user's human runs (93.0% / 82.0%),
 and the other five are read from the same tables by the same code.  A
 recorded run per character would close it; the risk in the meantime is low
 because the remaining difference is table data, not logic.
+
+---
+
+**141** — The rubber band, found and located.  Not ported yet; this is the
+map for whoever picks it up.
+
+The user, from the start: "AI uses rubber-band technique and their order
+is pre-determined... top speed is used to catch up to get to their
+supposed order."  Both halves are one field.
+
+`$80B074` picks an AI kart's target-speed row from the waypoint attribute
+**offset by `$C8,x`**.  Watching `$C8` for every kart through a race, the
+AI karts step `$0010 -> $0008 -> $0000` while the two humans sit at
+`$0000` throughout, and exactly ONE instruction writes it: `$80:AD93`,
+fed by `$80AD96`:
+
+    $80AD96  $0E50 set        -> $C8 = 0        the band switched off
+    $80ADA5  $84,x != 0       -> $C8 = $18      the strongest row
+    $80ADA9  $10 bit 5 set    -> $C8 = $18
+    $80ADB4  y = $00E6,x                        the kart's slot in the ORDER
+    $80ADC5  x = $010C,y      the kart AHEAD of it in that order
+             its $10 negative -> $C8 = $08
+    $80ADD1  x = $0110,y      the kart BEHIND it
+             its $10 positive -> $C8 = $08
+             otherwise        -> $C8 = $10
+
+So the row is chosen by looking at the neighbours in a **pre-determined
+running order** - `$00E6,x` is the kart's slot, `$010C`/`$0110` the tables
+of who is ahead and behind - and a kart out of station gets a faster row
+until it is back.  Four rows: `$00`, `$08`, `$10`, `$18`.
+
+That also explains NOTES 140's measurement, where AI tops ran to 1066
+against the fastest character's 944: the band, not the character.
+
+Our AI has none of this - one row (+0) for everyone, plus a softened
+off-road cap that is our own invention and labelled as such.  Porting it
+needs: what fills `$00E6`/`$010C`/`$0110` and when, what `$84,x` is, and
+what `$0E50` gates.  All four are named now.
