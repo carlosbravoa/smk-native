@@ -4844,3 +4844,29 @@ existing logs already hold two of the three cases.  What is missing is a
 successful turbo launch, and a `starts` recording with all three in one
 file (baseline / held / rocket) makes them diffable against each other
 with everything else identical.
+
+**142b** — S2 again: the grid is NOT a stored table, and NOTES 111's lead
+was probably the wrong routine.
+
+Three things ruled out, cheaply:
+
+* **No offset makes the measured positions cell-aligned.**  952 is 0 mod
+  8, so `$819207`'s `x = (w & $7F) * 8 + $12` needs `$12` in {0, 8} - and
+  its two call sites set 4 (`$8191DE`) and 10 (`$8191F4`).
+* **The coordinates are not in the ROM at all.**  Searching for (952,756),
+  (960,592) and (136,524) as word pairs in either order: zero hits.
+* **`$819207`'s packing is the generic cell-word unpack**, the same shape
+  as `$84DCC4` in the OBJECT spawner (`and`, three `asl`, `adc #$0004`).
+  So it is likely a shared helper and NOTES 111 read it as the grid on
+  circumstantial evidence.
+
+So the grid is COMPUTED - most plausibly from the finish-line record plus
+per-slot offsets - and finding it means watching it happen, not reading.
+
+Also learned, and it cost two runs: **memory taps cannot see these
+writes.**  A Lua tap on `$00:1018` catches six writes in 2171 frames and
+none is the grid, exactly as this repo's own MAME README warns about bank
+`$7E`.  The debugger's watchpoints do work (`wpset 7e1018,2,w` with
+`-debugscript`), and that is the tool for the next attempt - ideally on
+the `starts` recording, where the grid, the countdown and the launch all
+happen in the same few hundred frames.
