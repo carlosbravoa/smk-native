@@ -4226,3 +4226,60 @@ player and the AI karts use it.
 The mask costs one byte per pixel and one extra store in the ground loop;
 the texel lookup was split into `smk_track_texel_index` so there is no
 second map read.
+
+---
+
+**129** — S10: the object size law, measured and then found in the ROM.
+The constant was right all along; the DENOMINATOR was wrong.
+
+NOTES 105 said an object's `+$06` is `$4200 / distance-from-the-kart` and
+the port used the EUCLIDEAN distance.  A write watch on `$7E:1806` in the
+oracle names the writer in one run - **`$80:C879`**, which reads the
+DSP-1 projection's third output and stores it:
+
+    $80C85A  wait DSP-1, read $6000 -> screen X ($1C, $2C,x)
+    $80C86E  #$FF00 + $98 + $6000   -> screen Y ($1E, $38,x, $2E,x)
+    $80C879  read $6000             -> the SCALE ($18, $06,x)
+    $80C883  cmp #$0300 / bcs $80C8AB -> $30,x = $0140, parked off-screen
+
+So `+$06` is the projection's own scale.  Fitted over 975 samples of a
+driven lap on track 7:
+
+    denominator                      constant     mean rel err
+    euclid from the kart             $4E20            19.0%
+    ALONG-AXIS depth from the kart   $422F             2.1%
+    euclid + camera trail            $59E8            19.4%
+    along-axis + camera trail        $4A9E            10.2%
+
+`$4200 / (depth along the view axis ahead of the kart)`, and that 2.1% is
+the DSP-1's own rounding.  **That error is the bug the user reported**: a
+pipe BESIDE you has a small axis depth and must draw large, but its
+euclidean distance stays big, so it drew small.  An earlier session tried
+axis depth, watched the pipe fill the screen and reverted - the missing
+half is `$80C883`: closer than `$4200/$300` = 22 px along the axis and the
+sprite is parked off-screen.
+
+Then `$84DA18` picks the DRAWING by walking `$84DA3C` = `C0 60 30 00`
+against `+$06`, so the ladder in world terms is
+
+    axis depth <  88 px   the big drawing
+    88 .. 176             the middle one
+    176 .. 352            the small one
+    beyond 352            the loop hits the terminator
+
+The hardware cannot scale a sprite, so each band draws at its own fixed
+art size and the size POPS - which is why distant pipes had been
+dwindling to nothing here instead of settling and then going.
+
+**LABELLED, and the thing to revisit first if this looks wrong in play:**
+that the terminator means NOT DRAWN is a reading of `$84DA38`
+(`pla/plx/ply/rtl`, the outer exit, skipping what the caller does with the
+band), not a measurement.  An attempt to confirm it through `+$30` was
+inconclusive - every sample on track 7 read `$0140` whatever the scale,
+so that field did not discriminate.  If far objects pop out of existence
+too abruptly, clamp to the smallest drawing instead of returning.
+
+The KART path is deliberately untouched: kart blocks carry the same
+`+$06` from the same routine, but which drawing each scale picks is a
+different table nobody has measured, so it keeps its own constant and
+stays in the ledger.

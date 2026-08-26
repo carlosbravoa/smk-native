@@ -320,6 +320,42 @@ int main(int argc, char **argv)
 
     test_player_replay(&rom);
     {
+        /* The object scale law and its ladder (NOTES 129), pinned at the
+         * distances the bands fall on: scale = $4200 / axis depth, hidden
+         * at $0300 and above, drawings chosen by $84DA3C = C0 60 30 00. */
+        struct { float zf; int scale, tier; } W[] = {
+            {  20.0f, 845, -1 },   /* nearer than $4200/$300 = 22 px: hidden */
+            {  22.0f, 768, -1 },
+            {  23.0f, 735,  0 },
+            {  88.0f, 192,  1 },   /* exactly $C0 is NOT above it            */
+            {  87.0f, 194,  0 },
+            { 282.0f,  60,  2 },
+            { 280.0f,  60,  2 },
+            { 563.0f,  30, -1 },   /* past the last threshold: not drawn     */
+            { 560.0f,  30, -1 },
+            { 500.0f,  34, -1 },
+            { 300.0f,  56,  2 },
+        };
+        int bad = 0;
+        char d[128];
+        d[0] = 0;
+        for (size_t i = 0; i < sizeof W / sizeof W[0]; i++) {
+            int sc = (int)(SMK_OBJ_SCALE_K / W[i].zf + 0.5f);
+            int ti;
+            if (sc >= SMK_OBJ_SCALE_HIDE) ti = -1;
+            else if (sc > SMK_OBJ_BAND0)  ti = 0;
+            else if (sc > SMK_OBJ_BAND1)  ti = 1;
+            else if (sc > SMK_OBJ_BAND2)  ti = 2;
+            else ti = -1;
+            if (sc != W[i].scale || ti != W[i].tier) {
+                bad++;
+                snprintf(d, sizeof d, "zf %.0f: scale %d want %d, tier %d want %d",
+                         (double)W[i].zf, sc, W[i].scale, ti, W[i].tier);
+            }
+        }
+        check("an object's drawing follows $4200/axis-depth through $84DA3C", !bad, d);
+    }
+    {
         /* What makes the fall-behind-the-track priority work (NOTES 128):
          * the plane's VOID is palette index 0, which Mode 7 draws as
          * transparent, and the road is not.  So a sprite given a priority

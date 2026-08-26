@@ -496,33 +496,36 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
             { SMK_OBJ_PIPE0 + 2, 14 },   /* 11x14       */
             { SMK_OBJ_PIPE0 + 4, 12 },   /* 10x12 far   */
         };
-        float dep_eye = (SMK_PROJ_LES * (float)rw / 256.0f)
-                      / (sc > 0.0001f ? sc : 0.0001f);
-        if (dep_eye < 8.0f) return;
-        /* The size the GAME asks for.  Its own per-entity scale
-         * (block+$06) is 0x4200/d in 8.8 against the distance from
-         * the KART - not from the camera - so undo the trail first.
-         * "The tier IS the size" was wrong: it capped every near
-         * object at 16 SNES px, half of what the original draws. */
-        /* EUCLIDEAN distance from the kart, which is what the law
-         * was measured against.  Using the along-axis depth instead
-         * makes it collapse toward zero as an object draws level
-         * with you, and the pipe fills the screen (playtest). */
+        /* The game's own scale for this object (NOTES 129):
+         *   +$06 = $4200 / depth ALONG THE VIEW AXIS ahead of the kart
+         * measured at 2.1% over a driven lap.  cam->x/y IS the kart; the
+         * eye trails it, so this is smk_project's zf before the trail. */
         float odx = (float)course->ent[i].x - cam->x;
         float ody = (float)course->ent[i].y - cam->y;
-        float d = sqrtf(odx * odx + ody * ody);
-        if (d < SMK_OBJ_NEAR) d = SMK_OBJ_NEAR;
-        float want = (float)SMK_OBJ_PIPE_H * SMK_OBJ_SCALE_K / d;
-        float omax = (float)TIER[0].h * SMK_OBJ_MAG_MAX;
-        if (want > omax) want = omax;
-        int ti = 0;
-        for (int t = 1; t < SMK_OBJ_TIERS; t++)
-            if (fabsf((float)TIER[t].h - want)
-                < fabsf((float)TIER[ti].h - want)) ti = t;
+        while (odx >  SMK_WORLD_PX / 2) odx -= SMK_WORLD_PX;
+        while (odx < -SMK_WORLD_PX / 2) odx += SMK_WORLD_PX;
+        while (ody >  SMK_WORLD_PX / 2) ody -= SMK_WORLD_PX;
+        while (ody < -SMK_WORLD_PX / 2) ody += SMK_WORLD_PX;
+        float zf = odx * cosf(cam->angle) + ody * sinf(cam->angle);
+        if (zf < 1.0f) return;                       /* level with us or behind */
+        int oscale = (int)(SMK_OBJ_SCALE_K / zf + 0.5f);
+        if (oscale >= SMK_OBJ_SCALE_HIDE) return;    /* $80C883: parked off-screen */
+        /* $84DA18 walks $84DA3C = C0 60 30 00: the first threshold the
+         * scale is ABOVE picks the drawing, and past the last one the
+         * loop hits the terminator and the object is not drawn. */
+        int ti;
+        if (oscale > SMK_OBJ_BAND0)      ti = 0;
+        else if (oscale > SMK_OBJ_BAND1) ti = 1;
+        else if (oscale > SMK_OBJ_BAND2) ti = 2;
+        else return;
+        if (ti >= SMK_OBJ_TIERS) ti = SMK_OBJ_TIERS - 1;
         int obase = TIER[ti].base;
-        /* Stretch the chosen drawing to the size the law asks for,
-         * so the tier only decides which pixels, never how big. */
-        float k = want / (float)TIER[ti].h;
+        /* The hardware cannot scale a sprite: each band draws at its own
+         * fixed art size, so the size POPS between bands.  That is the
+         * original's behaviour and it is why distant pipes had been
+         * dwindling away here - they should settle at the last drawing
+         * and then vanish. */
+        float k = (float)TIER[ti].h / (float)SMK_OBJ_PIPE_H;
         float ppx = (float)rw / 256.0f;     /* render px per SNES px */
         int pw = (int)((float)SMK_OBJ_PIPE_W * k * ppx + 0.5f);
         int ph = (int)((float)SMK_OBJ_PIPE_H * k * ppx + 0.5f);
@@ -626,7 +629,7 @@ static void draw_ai_kart(const smk_rom *rom, const smk_track *trk,
         float kdx = gx - cam->x, kdy = gy - cam->y;
         float kd = sqrtf(kdx * kdx + kdy * kdy);
         if (kd < SMK_OBJ_NEAR) kd = SMK_OBJ_NEAR;
-        float kwant = (float)KTIER[0].h * SMK_OBJ_SCALE_K / kd;
+        float kwant = (float)KTIER[0].h * SMK_KART_SCALE_K / kd;
         if (kwant > (float)KTIER[0].h) kwant = (float)KTIER[0].h;
         int kt = 0;
         for (int t = 1; t < 4; t++)

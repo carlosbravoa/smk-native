@@ -566,26 +566,42 @@ static inline int smk_hud_digit(int d)
  * is one art pixel on the kart is two on the pipe. */
 #define SMK_OBJ_PIPE0   32        /* the near tier's top-left tile     */
 #define SMK_OBJ_TIERS   3
-/* Half-width for collision, from the ART (12 px across at the near
- * tier), not measured in-game: the 12 px radius I had invented sealed
- * the gap between two entities 16 px apart that you are meant to drive
- * through. */
 #define SMK_OBJ_RADIUS  6
 #define SMK_OBJ_STRIDE  16        /* VRAM tiles per row                */
 #define SMK_OBJ_PIPE_W  16        /* pixels                            */
 #define SMK_OBJ_PIPE_H  16
-/* MEASURED (NOTES 105) from the live entity block: +$06 = 0x4200 / d,
- * an 8.8 scale, so 1.0 at d = 0x4200/256 world px from the kart. */
-#define SMK_OBJ_SCALE_K 66.0f
-/* The scale field itself never saturates, but the drawn PIXELS must:
- * the largest pipe the original is ever seen to draw is 22x32 SNES px,
- * exactly twice the near tier's 12x16, and its outline is 2 art pixels
- * where the kart's is 1.  So objects magnify by at most 2, and karts -
- * where a peer alongside you is the same size as your own - not at all.
- * Without this the pipe fills the screen as you draw level with it. */
-#define SMK_OBJ_MAG_MAX 2.0f
-/* Closest approach: object collision pushes the kart out to
- * SMK_OBJ_RADIUS, so the centres never come nearer than that. */
+
+/* The object's projected scale, MEASURED and then found in the ROM
+ * (NOTES 129).  $80C879 stores the DSP-1 projection's third output in the
+ * block's +$06, and it is
+ *
+ *     +$06 = $4200 / (depth ALONG THE VIEW AXIS ahead of the kart)
+ *
+ * - fitted over 975 samples of a driven lap at 2.1% mean error, against
+ * 19% for the Euclidean distance the port had been using.  That error is
+ * the whole bug: a pipe BESIDE you has a small axis depth and must draw
+ * large, but its Euclidean distance stays big, so it drew small.
+ *
+ * $80C883: at $0300 and above the game parks the sprite off-screen
+ * ($30,x = $0140) - an object nearer than $4200/$300 = 22 px along the
+ * axis is simply not drawn, which is what stops it filling the screen.
+ *
+ * $84DA18 then picks the DRAWING by which band the scale falls in,
+ * walking $84DA3C = C0 60 30 00 - so three drawings and, past the last
+ * threshold, nothing. */
+#define SMK_OBJ_SCALE_K 16896.0f     /* $4200 */
+#define SMK_OBJ_SCALE_HIDE 0x0300    /* $80C883: nearer than this, hidden */
+#define SMK_OBJ_BAND0   0x00C0       /* $84DA3C, the size ladder          */
+#define SMK_OBJ_BAND1   0x0060
+#define SMK_OBJ_BAND2   0x0030
+
+/* The KART ladder is NOT this one.  The kart blocks carry the same +$06,
+ * written by the same $80C881, but which drawing each scale selects is a
+ * different table that has not been measured - so the kart path keeps the
+ * constant it was tuned to and stays in the ledger (S10). */
+#define SMK_KART_SCALE_K 66.0f
+#define SMK_OBJ_MAG_MAX  2.0f        /* kart path only, still LABELLED */
+
 #define SMK_OBJ_NEAR    ((float)SMK_OBJ_RADIUS)
 typedef struct { uint8_t px[SMK_OBJ_TILES][64]; bool ok; } smk_objgfx;
 bool smk_objgfx_load(const smk_rom *rom, int theme, smk_objgfx *out);
