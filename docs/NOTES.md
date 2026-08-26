@@ -4503,3 +4503,32 @@ and heading errors 37 -> 1718, with the slip computed either way.  So the
 port is leaning on the deceleration to cover an error that is really
 somewhere else, and finding that is the next thing worth doing on
 bouncing.  Left out deliberately; the ROM text is in the log.
+
+---
+
+**135** — Lakitu's rescue, confirmed by a human falling off Ghost Valley.
+NOTES 124 was decoded from the ROM and gated only by a synthetic test I
+wrote myself.  The user's run proves every element of it:
+
+    f718-719  $A0 = 04, $CA counting 2, 1          the fall
+    f720      $A0 = $0C, $1F = 12288 = $3000       exactly as ported
+    f720-807  x walks 959 -> 784, 2 px a frame, y UNCHANGED at 31
+    f808-843  then y walks 31 -> 104, x fixed at 784
+    f844      $A0 = $0E
+    f844-940  $1F down by 128 = $80 a frame, 12288 -> 0
+    f941      $A0 = 0, control returns
+
+The L-shaped walk is real: **88 frames of x, then 36 of y**, never
+diagonal - which is what `$80B2B6` says and what the port does.  `$A4`
+turns $140 a frame toward the target and snaps at f776, and the descent is
+`$80B334`'s `sbc #$0080` to the unit.  221 frames from fall to control,
+and the drop point (784,104) is the waypoint.
+
+This is the piece I most wanted an outside witness for: it was ported
+from ROM text, checked against a test of my own construction, and could
+have been confidently wrong.  It is not.
+
+The run is a fifth gate (`tools/labs/mame/gv1_run.csv`): 92.0% within
+1 px, 64 resyncs, mean error 0.30 px over 5661 frames - the cleanest
+human run we have, and it covers eight block contacts, a fall, the
+rescue, and a lap of sliding into rails afterwards.
