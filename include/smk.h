@@ -102,12 +102,15 @@ uint32_t smk_track_texel(const smk_track *t, int wx, int wy);
 /* Surface byte under a world position, exactly as $80FA62 computes it:
  * index = (y >> 3) * 128 + (x >> 3), then map -> surface table. */
 uint8_t smk_track_surface(const smk_track *t, int wx, int wy);
-/* Solid: bit 5 ($20) is the ordinary wall bit, and bit 7 ($80) is the
- * barrier class NOTES 044 measured head-on as a wall (reflect + knockback,
- * speed preserved).  Both block - Mario Circuit's barrier blocks are $80,
- * and treating them as ramps let karts vault them (NOTES 088). */
+/* Solid: only bit 7.  MEASURED (NOTES 119) by swapping the live class
+ * table under a lapping kart: on class $20 and on $26 the kart FALLS and
+ * Lakitu fetches it back ($A0 walks $0A -> $0C -> $0E), it does not stop.
+ * So the hazard classes $20-$3E are not walls; treating bit 5 as solid
+ * put an invisible wall around Ghost Valley and Rainbow Road, where the
+ * game drops you.  The bit-7 classes are the real barriers (NOTES 044/088:
+ * Mario Circuit's blocks are $80, measured head-on). */
 static inline bool smk_surface_solid(uint8_t s)
-{ return (s & (SMK_SURF_SOLID | 0x80u)) != 0; }
+{ return (s & 0x80u) != 0; }
 
 /* The surface byte's low nibble is a TYPE index (even values, so type =
  * (s >> 1) & 7 for the drag rows).  DECODED:

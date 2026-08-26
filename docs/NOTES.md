@@ -3793,3 +3793,47 @@ character base (`$7000`) and map base (`$7800`) with different scroll
 registers, so the next measurement is the race-time BG registers
 sampled per frame in a forced GP race: whatever separates the three
 layers is in those, and the gradient with it.
+
+---
+
+**119** — Going off track: the void is a FALL, not a wall.  The port had an
+invisible barrier where the game drops you.
+
+Measured with the NOTES 066 technique - swap the live class table
+(`$0B00`) under a kart that is already lapping, so it meets the class at
+speed instead of being placed inside it:
+
+    class $20  ->  speed to 0, $A0 walks $0A -> $0C -> $0E, z climbs to
+                   12288 and is lowered 512 a frame: the FALL and Lakitu's
+                   rescue.  This is Ghost Valley's and Rainbow Road's
+                   surround (track 1: 10371 cells, track 5: 10765).
+    class $26  ->  the same chain, z 1792, $AC = $10, $D4 bit 5.  This is
+                   the water on the ice tracks (track 12: 3738 cells) and
+                   the drop beyond Mario Circuit's grass.
+
+So `$20-$3E` are hazards, not barriers.  Our `smk_surface_solid` tested
+bit 5 as well as bit 7, which put a wall around every void and lake in the
+game - and it meant the hazard states decoded in NOTES 113 could never
+fire for the player, because the kart bounced off the water before
+entering it.  Fixed: **only bit 7 blocks** (the barrier classes NOTES
+044/088 measured head-on), and class `$20` joins `$24`/`$26` in the fall
+handler.  All gates stay green, including the AI's 20/20 laps, so nothing
+depended on the old reading.
+
+With that, three of the four behaviours the user asked for are in and
+measured: Rainbow Road and Ghost Valley drop you and Lakitu returns you
+to your waypoint; the beach and ice water is the `$22` wade - speed
+capped at 123/124, one unit of acceleration a frame - which after its
+`$102`-frame timer hands you to Lakitu if you have not driven out
+(NOTES 113).
+
+**Not found yet: the breakable blocks** (Ghost Valley's and Vanilla
+Lake's, one hit and gone).  They are not a plain surface class: painting
+`$80`, `$82` and `$84` ahead of a driving kart leaves the tilemap
+untouched and produces no state change.  The likely path is the stamped-
+object collector - the same queue at `$7F:DF81` that item boxes use
+(`$81BEE0` drains it, writing a 2x2 tile block into both the tilemap and
+VRAM, and `$81B762` is the only producer found so far) - or the sprite-
+object collision at `$80F897`.  Next: reach a Ghost Valley race and drive
+into a block with the kart under our own control, watching `$1EB4` and
+the cells around it.

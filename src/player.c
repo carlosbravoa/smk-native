@@ -388,11 +388,13 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
                 p->hazard = 8; p->drive = 8; p->jump_state = 8;
             }
             break;
+        case 0x00:                          /* $20: the void - Ghost Valley,
+                                             * Rainbow Road (NOTES 119) */
         case 0x04:                          /* $24: lava / the pit ($80B643) */
         case 0x06:                          /* $26: the deep drop ($80B626) */
             k->speed = 0; k->speed_frac = 0; p->accel32 = 0;
             p->hazard = 6; p->resc_t = 0;
-            p->drive = (surf & 0x0E) == 0x04 ? 6 : 0x0A;
+            p->drive = (surf & 0x0E) == 0x04 ? 6 : 0x0A;   /* $20 measured as $04 */
             p->jump_state = p->drive;
             break;
         case 0x0A:                          /* $2A: the bump ($80B67C) */
