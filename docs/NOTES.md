@@ -3764,3 +3764,32 @@ layer's vertical scroll).  **Still missing:** the NEAR plane - the ghosts
 and castle arches of the user's reference shots, a second layer with its
 own faster scroll - and the sky GRADIENT (navy on Ghost Valley, orange on
 Bowser Castle); ours is the flat backdrop colour.
+
+---
+
+**118** — What the horizon layer really is: the NEAR plane.  Ghosts on
+Ghost Valley, arches on Bowser Castle.
+
+Rendering `gfx_e[theme]`'s full 12 used rows with `gfx_d[theme]` as
+characters, in each theme's own CGRAM, settles what that pair is: on
+Ghost Valley the map is **twelve rows of ghosts**, on Bowser Castle
+**three stacked copies of an arcade of arches**, on Mario Circuit trees,
+on Choco Island rock spires.  That is the user's NEAR plane - the layer
+that scrolls faster - not the silhouettes behind it.
+
+Verified against real races on those tracks, reached in the oracle by
+hooking the reads of `$0150`/`$0152` so mode entry computes `$0124` and
+the theme itself (`$81EC1B[cup*5 + course]`, `$81EC2F[track]`; forcing
+`$0124` alone is the NOTES 059 trap): on both tracks `gfx_d` lands at
+VRAM word `$7000` and `gfx_e` at word `$7800`, exactly as on Mario
+Circuit, and the map is uploaded twice so the panorama repeats.  The
+port now draws it for every theme (`--shot` too).
+
+**Still missing, and where it is NOT**: the far silhouettes (black hills,
+pyramids) and the sky gradient are not in `gfx_d`/`gfx_e`, and a 2bpp
+sweep of the whole Ghost Valley race VRAM does not show them either.
+The pre-race registers have BG2, BG3 and BG4 all pointing at the same
+character base (`$7000`) and map base (`$7800`) with different scroll
+registers, so the next measurement is the race-time BG registers
+sampled per frame in a forced GP race: whatever separates the three
+layers is in those, and the gradient with it.

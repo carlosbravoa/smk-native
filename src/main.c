@@ -943,6 +943,10 @@ int main(int argc, char **argv)
         uint32_t *px = malloc((size_t)sw * (size_t)sh * sizeof *px);
         smk_camera c = { .x = shot_x, .y = shot_y, .angle = shot_a,
                        };
+        smk_horizon_load(&rom, trk.theme, &horizon);
+        smk_render_set_horizon(&horizon, (uint16_t)(shot_a * (float)SMK_ANGLE_TURN
+                                                    / (2.0f * (float)M_PI)
+                                                    + SMK_ANGLE_TURN / 4));
         smk_render_mode7(&trk, &c, px, sw, sh, sw);
         {
             input_state none;
