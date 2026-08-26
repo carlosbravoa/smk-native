@@ -4885,3 +4885,55 @@ none is the grid, exactly as this repo's own MAME README warns about bank
 `-debugscript`), and that is the tool for the next attempt - ideally on
 the `starts` recording, where the grid, the countdown and the launch all
 happen in the same few hundred frames.
+
+---
+
+**143** — The start: the rev is `$C2`, and the turbo launch is the
+mushroom boost.  Decoded from the user's four-start recording.
+
+They recorded four starts in one file - late, over-revved-and-penalised,
+revved-but-not-penalised, and a clean turbo - which made every question
+answerable by diffing one against another.
+
+*The launch itself, from the log (frames 338 on):*
+
+    run 2 (penalised)  $EE = 0   speed 0,1,2,3...     nothing happens
+    run 3 (normal)     $EE = 2   speed 2,4,6,8...     ordinary launch
+    run 4 (TURBO)      $EE = 50  speed 0,50,100..1200  and $AC = $10
+
+**`$AC` = `$10` is the boost drive state - the same one the mushroom
+uses**, which the port already has as `smk_player_boost`.  The turbo start
+is not a new mechanism; it is the mushroom, awarded at the line.  It ran
+23 frames, took the kart to 1200 (against a 912 top), then `$AC` returned
+to 0 and the speed decayed -32, -24, -16, -8 back to normal.
+
+*The rev, found by dumping the whole kart block and diffing the four:*
+**`$C2`**, which we had already met without knowing it - `$80A10F` halves
+it on a crash with a floor of `$0100`, and `$0100` is exactly what the
+late start idles at.
+
+    just before release   idle 256   penalised 19264   normal 11008   turbo 11776
+
+*The machine (`$80B0EE`..`$80B180`):*
+
+    $80B0EE  if $E2 bit 0 (the spin flag) is set:
+               while $C2 >= $2000: $C2 -= $70 and $E2 |= $20   <- WHEELSPIN
+               below $2000: clear $E2 bits 0 and 5             <- it lets go
+    $80B112  $70,x set -> $C2 = 0
+    $80B119  already spinning -> do not build
+    $80B121  the pad decides which delta, then
+    $80B169  $C2 += delta, floored at $0100, CEILINGED at $0E20
+
+and the deltas are per-class globals, live values at 100cc:
+
+    $0E20 ceiling          24575     $0E26 throttle off      -640
+    $0E22 below $2000        512     $0E28 $C2 >= $1000      -896
+    $0E24 at/above $2000      64     $0E2A other             -384
+
+So holding from the start runs `$C2` past `$2000` and earns the spin,
+which then bleeds `$70` a frame - the user's "doesn't start until revs are
+back to zero", and it is `$2000`, not zero.
+
+Still to find: the test at the line that turns 11776 into a boost and
+11008 into nothing.  Everything else is in hand, including that the reward
+is a mechanism we already have.
