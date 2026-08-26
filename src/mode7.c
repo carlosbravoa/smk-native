@@ -36,6 +36,17 @@ static uint32_t sky_colour(int sy, int horizon, uint32_t near_c, uint32_t far_c)
  * backdrop colour.  Set by the caller; NULL leaves the band flat. */
 static const smk_horizon *render_horizon;
 static uint16_t render_heading;
+/* One byte per pixel: is the Mode 7 plane OPAQUE here?  A kart that has
+ * fallen below the plane draws only where this is 0 - the SNES gives the
+ * sprite a priority under BG1 and index 0 is transparent, so the track
+ * hides it and a hole does not (NOTES 128). */
+static uint8_t *render_mask;
+static int render_mask_pitch;
+void smk_render_set_plane_mask(uint8_t *mask, int pitch)
+{
+    render_mask = mask;
+    render_mask_pitch = pitch;
+}
 void smk_render_set_horizon(const smk_horizon *hz, uint16_t heading)
 {
     render_horizon = hz;
@@ -60,11 +71,14 @@ void smk_render_mode7(const smk_track *t, const smk_camera *cam,
     for (int sy = 0; sy < h; sy++) {
         uint32_t *row = pixels + (size_t)sy * (size_t)pitch_px;
 
+        uint8_t *mrow = render_mask ? render_mask + (size_t)sy * (size_t)render_mask_pitch : NULL;
+
         float line = (float)sy / l2h;
         if (line < SMK_SKY_LINES) {
             uint32_t c = t->palette[0];      /* the backdrop is the sky */
             (void)sky_colour; (void)horizon; (void)sky_far; (void)sky_near;
             for (int sx = 0; sx < w; sx++) row[sx] = c;
+            if (mrow) for (int sx = 0; sx < w; sx++) mrow[sx] = 0;
             continue;
         }
 
@@ -83,7 +97,9 @@ void smk_render_mode7(const smk_track *t, const smk_camera *cam,
         float wy = cy - sy_step * (float)(w / 2);
 
         for (int sx = 0; sx < w; sx++) {
-            row[sx] = smk_track_texel(t, (int)floorf(wx), (int)floorf(wy));
+            uint8_t v = smk_track_texel_index(t, (int)floorf(wx), (int)floorf(wy));
+            row[sx] = t->palette[v];
+            if (mrow) mrow[sx] = v != 0;
             wx += sx_step;
             wy += sy_step;
         }

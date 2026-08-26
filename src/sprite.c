@@ -74,6 +74,26 @@ bool smk_sprites_load(const smk_rom *rom, uint32_t base, smk_sprites *out)
     return true;
 }
 
+/* Sprite priority against the Mode 7 plane (NOTES 128).
+ *
+ * The SNES gives a sprite a priority BELOW BG1 when the kart has dropped
+ * under the plane, so the track hides it - and a hole does not, because
+ * colour 0 of the plane is transparent.  Ours is the same rule made
+ * explicit: while a clip mask is set, a sprite pixel is dropped wherever
+ * the mask says the plane is opaque.  Set it around a falling kart and
+ * clear it after. */
+static const uint8_t *clip_mask;
+static int clip_pitch;
+void smk_draw_set_clip_mask(const uint8_t *mask, int pitch)
+{
+    clip_mask = mask;
+    clip_pitch = pitch;
+}
+static inline bool clipped(int sx, int sy)
+{
+    return clip_mask && clip_mask[(size_t)sy * (size_t)clip_pitch + sx];
+}
+
 void smk_draw_sprite(const smk_sprites *s, int frame, const uint32_t *palette,
                      int pal_base, int cx, int cy, int scale, bool hflip,
                      uint32_t *pixels, int w, int h, int pitch_px)
@@ -94,6 +114,7 @@ void smk_draw_sprite(const smk_sprites *s, int frame, const uint32_t *palette,
             int col = x / scale;
             uint8_t v = row[hflip ? SMK_SPR_PX - 1 - col : col];
             if (v == 0) continue;                /* index 0 is transparent */
+            if (clipped(sx, sy)) continue;   /* behind the plane */
             dst[sx] = palette[(pal_base + v) & 0xFF];
         }
     }
@@ -134,6 +155,7 @@ void smk_draw_sprite_scaled(const smk_sprites *s, int frame,
                 col = SMK_SPR_PX - 1 - col;
             uint8_t v = row[col];
             if (v == 0) continue;
+            if (clipped(sx, sy)) continue;   /* behind the plane */
             dst[sx] = palette[(pal_base + v) & 0xFF];
         }
     }
@@ -172,6 +194,7 @@ void smk_draw_sprite_mirror2(const smk_sprites *s, int frame,
                 v = row[c2];
             }
             if (v == 0) continue;
+            if (clipped(sx, sy)) continue;   /* behind the plane */
             dst[sx] = palette[(pal_base + v) & 0xFF];
         }
     }
@@ -215,6 +238,7 @@ void smk_draw_sprite_mini(const smk_sprites *s, int frame,
                 if (v2 == 0) continue;
                 v = v2;
             }
+            if (clipped(sx, sy)) continue;   /* behind the plane */
             dst[sx] = palette[(pal_base + v) & 0xFF];
         }
     }

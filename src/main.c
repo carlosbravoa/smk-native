@@ -224,6 +224,11 @@ static void draw_hud(uint32_t *fb, int rw, int rh, const uint32_t *palette,
     (void)laps;
 }
 static int player_height_px;
+/* Sprite priority against the plane (NOTES 128): filled by the ground
+ * renderer, one byte a pixel, non-zero where the plane is opaque. */
+static uint8_t *plane_mask;
+static size_t plane_mask_sz;
+static int player_below;                /* the player's z is under the plane */
 
 
 /* ------------------------------------------------------------------ */
@@ -439,6 +444,218 @@ static void camera_from_kart(smk_camera *cam, const smk_kart *k)
 }
 
 
+/* One track obstacle.  Split out of draw_scene so obstacles and karts can
+ * be drawn in ONE depth-sorted pass (NOTES 128) - drawing every obstacle
+ * before every kart put a pipe beside you behind a kart across the
+ * track. */
+static void draw_entity(const smk_track *trk, const smk_camera *cam,
+                        const smk_course *course, int i,
+                        uint32_t *fb, int rw, int rh)
+{
+        float px, py, sc;
+        if (!smk_project(cam, (float)course->ent[i].x,
+                         (float)course->ent[i].y, rw, rh, &px, &py, &sc))
+            return;
+        /* The theme's own object art (NOTES 098/099). */
+        if (!obj_art.ok) return;
+        /* Continuous scale, like the karts: the art is 16x40 SNES px
+         * and shrinks with distance.  Flooring it at one screen pixel
+         * per art pixel left far pipes full size, so their tops rose
+         * above the horizon and they floated in the sky. */
+        /* Pick the size tier whose art height matches what the
+         * projection asks for, then draw it at the SNES proportion -
+         * the hardware's own mechanism.  desired = 16 world px seen
+         * at this depth, expressed in art pixels. */
+        /* QUANTISED to the sheet's real tiers, as the hardware does.
+         * The SNES cannot scale a sprite: it swaps to a smaller
+         * drawing.  Measured off the sheet - the same descending
+         * family exists in every theme:
+         *
+         *   theme 1  b0 12x15  b32 12x16  b34 11x14  b36 10x12
+         *   theme 7  b0 12x16  b32 12x15  b34 11x13  b36 10x11
+         *
+         * so the true range is only 16 -> 11 art pixels.  Distant
+         * objects settle at the smallest drawing rather than
+         * dwindling away, and the size POPS between steps instead of
+         * gliding - which is what the original does. */
+        /* Only the FRONT-FACING drawings.  Rendering every
+         * candidate base side by side shows bases 0/2/4/6 are
+         * skewed perspective variants - the object seen at an angle
+         * - and drawing one as the "largest tier" is what looked
+         * like a torn sprite in playtest.  The clean ladder, by art
+         * height: */
+        /* Measured across both themes, the complete drawings with a
+         * BODY are bases 32/34/36 (h/w about 1.2-1.3).  Bases
+         * 8/10/12/14 are squat (h/w 0.6-0.8) - almost entirely rim -
+         * and using base 12 as the far tier is why distant pipes
+         * rendered as a lid with no length (playtest).  Beyond the
+         * smallest we keep drawing the smallest, which is what the
+         * hardware does; it never runs out of pipe. */
+        static const struct { int base, h; } TIER[SMK_OBJ_TIERS] = {
+            { SMK_OBJ_PIPE0,     16 },   /* 12x16 near  */
+            { SMK_OBJ_PIPE0 + 2, 14 },   /* 11x14       */
+            { SMK_OBJ_PIPE0 + 4, 12 },   /* 10x12 far   */
+        };
+        float dep_eye = (SMK_PROJ_LES * (float)rw / 256.0f)
+                      / (sc > 0.0001f ? sc : 0.0001f);
+        if (dep_eye < 8.0f) return;
+        /* The size the GAME asks for.  Its own per-entity scale
+         * (block+$06) is 0x4200/d in 8.8 against the distance from
+         * the KART - not from the camera - so undo the trail first.
+         * "The tier IS the size" was wrong: it capped every near
+         * object at 16 SNES px, half of what the original draws. */
+        /* EUCLIDEAN distance from the kart, which is what the law
+         * was measured against.  Using the along-axis depth instead
+         * makes it collapse toward zero as an object draws level
+         * with you, and the pipe fills the screen (playtest). */
+        float odx = (float)course->ent[i].x - cam->x;
+        float ody = (float)course->ent[i].y - cam->y;
+        float d = sqrtf(odx * odx + ody * ody);
+        if (d < SMK_OBJ_NEAR) d = SMK_OBJ_NEAR;
+        float want = (float)SMK_OBJ_PIPE_H * SMK_OBJ_SCALE_K / d;
+        float omax = (float)TIER[0].h * SMK_OBJ_MAG_MAX;
+        if (want > omax) want = omax;
+        int ti = 0;
+        for (int t = 1; t < SMK_OBJ_TIERS; t++)
+            if (fabsf((float)TIER[t].h - want)
+                < fabsf((float)TIER[ti].h - want)) ti = t;
+        int obase = TIER[ti].base;
+        /* Stretch the chosen drawing to the size the law asks for,
+         * so the tier only decides which pixels, never how big. */
+        float k = want / (float)TIER[ti].h;
+        float ppx = (float)rw / 256.0f;     /* render px per SNES px */
+        int pw = (int)((float)SMK_OBJ_PIPE_W * k * ppx + 0.5f);
+        int ph = (int)((float)SMK_OBJ_PIPE_H * k * ppx + 0.5f);
+        if (pw < 1 || ph < 1) return;
+        int x0 = (int)px - pw / 2, y0 = (int)py - ph;
+        for (int dy = 0; dy < ph; dy++) {
+            int yy = y0 + dy;
+            if (yy < 0 || yy >= rh) continue;
+            int ty = dy * SMK_OBJ_PIPE_H / ph;
+            for (int dx = 0; dx < pw; dx++) {
+                int xx = x0 + dx;
+                if (xx < 0 || xx >= rw) continue;
+                int tx = dx * SMK_OBJ_PIPE_W / pw;
+                int tile = obase + (ty / 8) * SMK_OBJ_STRIDE + (tx / 8);
+                if (tile >= SMK_OBJ_TILES) continue;
+                uint8_t v = obj_art.px[tile][(ty % 8) * 8 + (tx % 8)];
+                if (!v) continue;
+                fb[yy * rw + xx] = trk->palette[(SMK_OBJ_PAL + v) & 0xFF];
+            }
+        }
+}
+
+/* One AI kart, split out for the same reason as draw_entity. */
+static void draw_ai_kart(const smk_rom *rom, const smk_track *trk,
+                         const smk_camera *cam, uint16_t cam_heading,
+                         const smk_racer *racers, int k,
+                         smk_sprites *other, int *loaded,
+                         uint32_t *fb, int rw, int rh)
+{
+        float px, py, sc;
+        float gx = (float)smk_kart_px(racers[k].k.x);
+        float gy = (float)smk_kart_px(racers[k].k.y);
+        if (!smk_project(cam, gx, gy, rw, rh, &px, &py, &sc)) return;
+        /* MEASURED scaling (NOTES 076): the law is BINARY.  Near
+         * range: the FULL 32x32 art at constant canvas (1/8 screen
+         * width) - no shrinking at all.  Far range: a ~16px sprite
+         * the game composes at runtime.  No intermediate steps, and
+         * NO distance cull - karts render past depth 470.  The
+         * switch was bracketed to (72, 96]; 84 until pinned.  The
+         * sheet's rows 1-2 (27/24px art) are NOT depth tiers - the
+         * old 96/160/224/320 stepping was wrong. */
+        float a2 = (float)cam_heading * (float)(2.0 * M_PI) / 65536.0f;
+        float depth = (gx - cam->x) * sinf(a2)
+                    + (gy - cam->y) * -cosf(a2);
+        /* MEASURED sizing (NOTES 076), now valid because the sprite
+         * projection is the game's own flat law: the canvas stays
+         * CONSTANT (1/8 screen width) at every depth, the ART steps
+         * full -> mini at depth ~84, and there is no distance cull. */
+        float dep_eye = depth + SMK_CAM_TRAIL;
+        if (dep_eye < 12.0f) return;
+        int scale = (int)((float)(rw / 256) * SMK_CAM_TRAIL / dep_eye + 0.5f);
+        if (scale < 1) scale = 1;
+        int ch = racers[k].character;
+        if (ch < 0 || ch >= SMK_CHARACTERS) ch = k;
+        const smk_driver *d2 = &SMK_DRIVERS[ch];
+        if (loaded[k] != ch + 1) loaded[k] = smk_sprites_load(rom, d2->sheet, &other[k]) ? ch + 1 : 0;
+        if (!loaded[k]) return;
+        /* same measured pose ladder as the player (NOTES 080):
+         * mirrored straight < $400, 47 half-lean < $1000, then the
+         * rotation frames */
+        int rel = (int16_t)(uint16_t)(racers[k].k.angle - cam_heading);
+        int ar = rel < 0 ? -rel : rel;
+        bool hf = false, mirror = false;
+        int f = 0;
+        if (ar < 0x0400) mirror = true;    /* aligned: mirrored pose */
+        else {
+            /* the measured rotation rule handles every other band
+             * (AI karts do not hop, so no 47 lean here) */
+            uint16_t r16 = (uint16_t)rel;
+            f = smk_sprite_for_heading(SMK_SPR_TIER0, r16, &hf);
+        }
+        /* height lifts the sprite on screen, scaled like everything else */
+        py -= (float)smk_kart_height_px(&racers[k].k) * sc;
+        /* Size follows the SAME projection as everything else,
+         * anchored on the ONE unambiguous measurement: the player's
+         * kart is 32 SNES px at the trail distance (NOTES 084).  So
+         * a kart at depth d draws 32 * TRAIL/d.  (The SNES itself
+         * cannot scale sprites and quantises this to a few art
+         * sizes; ours is continuous - a deliberate, labelled
+         * divergence that keeps karts road-proportional.) */
+        /* QUANTISED to the kart sheet's own tiers, as the hardware
+         * does (NOTES 102).  The sheet carries three rotation sets
+         * at descending sizes - measured max art height:
+         *
+         *   frames  0-10   31 px      frames 11-21   28 px
+         *   frames 22-32   25 px      half-size drawing far out
+         *
+         * plus the 16 px switch NOTES 072 saw beyond those.  The
+         * tier is chosen by the height the projection asks for and
+         * then drawn at the fixed SNES proportion, so kart sizes POP
+         * between steps exactly like the entities. */
+        static const struct { int base, h; } KTIER[4] = {
+            { SMK_SPR_TIER0, 31 }, { SMK_SPR_TIER1, 28 },
+            { SMK_SPR_TIER2, 25 }, { -1,            13 },
+        };
+        /* Sized by the game's OWN scale law, measured on the kart
+         * blocks themselves: +$06 = 0x4200 / d against the distance
+         * from the player, the same rule the entities follow
+         * (NOTES 105).  The old anchor used the camera depth and so
+         * held distant karts too large. */
+        float kdx = gx - cam->x, kdy = gy - cam->y;
+        float kd = sqrtf(kdx * kdx + kdy * kdy);
+        if (kd < SMK_OBJ_NEAR) kd = SMK_OBJ_NEAR;
+        float kwant = (float)KTIER[0].h * SMK_OBJ_SCALE_K / kd;
+        if (kwant > (float)KTIER[0].h) kwant = (float)KTIER[0].h;
+        int kt = 0;
+        for (int t = 1; t < 4; t++)
+            if (fabsf((float)KTIER[t].h - kwant)
+                < fabsf((float)KTIER[kt].h - kwant)) kt = t;
+        int kscale = rw / 256;
+        if (kscale < 1) kscale = 1;
+        if (KTIER[kt].base < 0) {           /* the far, half-size draw */
+            smk_draw_sprite_mini(&other[k], f, trk->palette, d2->pal,
+                                 (int)px, (int)py, kscale, hf,
+                                 fb, rw, rh, rw);
+        } else {
+            /* re-pick the rotation frame inside the chosen tier */
+            uint16_t r16 = (uint16_t)rel;
+            bool hf2 = false;
+            int f2 = mirror ? KTIER[kt].base
+                            : smk_sprite_for_heading(KTIER[kt].base,
+                                                     r16, &hf2);
+            if (mirror)
+                smk_draw_sprite_mirror(&other[k], f2, trk->palette,
+                                       d2->pal, (int)px, (int)py,
+                                       kscale, fb, rw, rh, rw);
+            else
+                smk_draw_sprite(&other[k], f2, trk->palette, d2->pal,
+                                (int)px, (int)py, kscale, hf2,
+                                fb, rw, rh, rw);
+        }
+}
+
 /* Everything drawn on top of the ground plane.  Shared by the interactive
  * loop and --shot so the two cannot drift apart - they already did once. */
 static void draw_scene(const smk_rom *rom, const smk_track *trk,
@@ -454,226 +671,50 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
      * decoded entity list (NOTES 078) and draw as billboards - the
      * pixels are still placeholders (green pipe) until the entity
      * sprite art is located. */
-    if (course) {
-        /* only the live slots draw (NOTES 127) - see smk_course_spawn */
-        int nvis = course->nlive ? course->nlive : course->nent;
-        for (int j = 0; j < nvis; j++) {
-            int i = course->nlive ? course->live[j] : j;
-            float px, py, sc;
-            if (!smk_project(cam, (float)course->ent[i].x,
-                             (float)course->ent[i].y, rw, rh, &px, &py, &sc))
-                continue;
-            /* The theme's own object art (NOTES 098/099). */
-            if (!obj_art.ok) continue;
-            /* Continuous scale, like the karts: the art is 16x40 SNES px
-             * and shrinks with distance.  Flooring it at one screen pixel
-             * per art pixel left far pipes full size, so their tops rose
-             * above the horizon and they floated in the sky. */
-            /* Pick the size tier whose art height matches what the
-             * projection asks for, then draw it at the SNES proportion -
-             * the hardware's own mechanism.  desired = 16 world px seen
-             * at this depth, expressed in art pixels. */
-            /* QUANTISED to the sheet's real tiers, as the hardware does.
-             * The SNES cannot scale a sprite: it swaps to a smaller
-             * drawing.  Measured off the sheet - the same descending
-             * family exists in every theme:
-             *
-             *   theme 1  b0 12x15  b32 12x16  b34 11x14  b36 10x12
-             *   theme 7  b0 12x16  b32 12x15  b34 11x13  b36 10x11
-             *
-             * so the true range is only 16 -> 11 art pixels.  Distant
-             * objects settle at the smallest drawing rather than
-             * dwindling away, and the size POPS between steps instead of
-             * gliding - which is what the original does. */
-            /* Only the FRONT-FACING drawings.  Rendering every
-             * candidate base side by side shows bases 0/2/4/6 are
-             * skewed perspective variants - the object seen at an angle
-             * - and drawing one as the "largest tier" is what looked
-             * like a torn sprite in playtest.  The clean ladder, by art
-             * height: */
-            /* Measured across both themes, the complete drawings with a
-             * BODY are bases 32/34/36 (h/w about 1.2-1.3).  Bases
-             * 8/10/12/14 are squat (h/w 0.6-0.8) - almost entirely rim -
-             * and using base 12 as the far tier is why distant pipes
-             * rendered as a lid with no length (playtest).  Beyond the
-             * smallest we keep drawing the smallest, which is what the
-             * hardware does; it never runs out of pipe. */
-            static const struct { int base, h; } TIER[SMK_OBJ_TIERS] = {
-                { SMK_OBJ_PIPE0,     16 },   /* 12x16 near  */
-                { SMK_OBJ_PIPE0 + 2, 14 },   /* 11x14       */
-                { SMK_OBJ_PIPE0 + 4, 12 },   /* 10x12 far   */
-            };
-            float dep_eye = (SMK_PROJ_LES * (float)rw / 256.0f)
-                          / (sc > 0.0001f ? sc : 0.0001f);
-            if (dep_eye < 8.0f) continue;
-            /* The size the GAME asks for.  Its own per-entity scale
-             * (block+$06) is 0x4200/d in 8.8 against the distance from
-             * the KART - not from the camera - so undo the trail first.
-             * "The tier IS the size" was wrong: it capped every near
-             * object at 16 SNES px, half of what the original draws. */
-            /* EUCLIDEAN distance from the kart, which is what the law
-             * was measured against.  Using the along-axis depth instead
-             * makes it collapse toward zero as an object draws level
-             * with you, and the pipe fills the screen (playtest). */
-            float odx = (float)course->ent[i].x - cam->x;
-            float ody = (float)course->ent[i].y - cam->y;
-            float d = sqrtf(odx * odx + ody * ody);
-            if (d < SMK_OBJ_NEAR) d = SMK_OBJ_NEAR;
-            float want = (float)SMK_OBJ_PIPE_H * SMK_OBJ_SCALE_K / d;
-            float omax = (float)TIER[0].h * SMK_OBJ_MAG_MAX;
-            if (want > omax) want = omax;
-            int ti = 0;
-            for (int t = 1; t < SMK_OBJ_TIERS; t++)
-                if (fabsf((float)TIER[t].h - want)
-                    < fabsf((float)TIER[ti].h - want)) ti = t;
-            int obase = TIER[ti].base;
-            /* Stretch the chosen drawing to the size the law asks for,
-             * so the tier only decides which pixels, never how big. */
-            float k = want / (float)TIER[ti].h;
-            float ppx = (float)rw / 256.0f;     /* render px per SNES px */
-            int pw = (int)((float)SMK_OBJ_PIPE_W * k * ppx + 0.5f);
-            int ph = (int)((float)SMK_OBJ_PIPE_H * k * ppx + 0.5f);
-            if (pw < 1 || ph < 1) continue;
-            int x0 = (int)px - pw / 2, y0 = (int)py - ph;
-            for (int dy = 0; dy < ph; dy++) {
-                int yy = y0 + dy;
-                if (yy < 0 || yy >= rh) continue;
-                int ty = dy * SMK_OBJ_PIPE_H / ph;
-                for (int dx = 0; dx < pw; dx++) {
-                    int xx = x0 + dx;
-                    if (xx < 0 || xx >= rw) continue;
-                    int tx = dx * SMK_OBJ_PIPE_W / pw;
-                    int tile = obase + (ty / 8) * SMK_OBJ_STRIDE + (tx / 8);
-                    if (tile >= SMK_OBJ_TILES) continue;
-                    uint8_t v = obj_art.px[tile][(ty % 8) * 8 + (tx % 8)];
-                    if (!v) continue;
-                    fb[yy * rw + xx] = trk->palette[(SMK_OBJ_PAL + v) & 0xFF];
-                }
-            }
-        }
-    }
-
-    if (show_grid && karts->frames && racers) {
+    /* ONE depth-sorted pass over everything on the plane (NOTES 128).
+     * Obstacles used to be drawn before every kart, so a pipe beside you
+     * hid behind a kart on the far side of the track; and karts sorted
+     * among themselves only.  The SNES sorts its OAM by distance for the
+     * same reason - a nearer sprite has to be able to cover a farther one
+     * whatever KIND it is. */
+    {
         static smk_sprites other[SMK_CHARACTERS];
         static int loaded[SMK_CHARACTERS];      /* character + 1 whose sheet is in other[k] */
-        /* painter's order: the farthest kart first, so a near kart is
-         * never drawn under a far one (the SNES sorts OAM by distance
-         * for the same reason) */
-        int order[SMK_CHARACTERS], nord = 0;
-        float dep[SMK_CHARACTERS];
-        for (int k = 1; k < SMK_CHARACTERS; k++) {
-            if (!(racer_draw_mask & (1 << k))) continue;
-            float a2 = (float)cam_heading * (float)(2.0 * M_PI) / 65536.0f;
-            float gx = (float)smk_kart_px(racers[k].k.x), gy = (float)smk_kart_px(racers[k].k.y);
-            dep[k] = (gx - cam->x) * sinf(a2) + (gy - cam->y) * -cosf(a2);
-            int j = nord++;
-            while (j > 0 && dep[order[j - 1]] < dep[k]) { order[j] = order[j - 1]; j--; }
-            order[j] = k;
+        struct { float dep; int kind, idx; } item[SMK_CHARACTERS + 8];
+        int n = 0;
+        float a2 = (float)cam_heading * (float)(2.0 * M_PI) / 65536.0f;
+        if (course) {
+            int nvis = course->nlive ? course->nlive : course->nent;
+            for (int j = 0; j < nvis && n < (int)(sizeof item / sizeof item[0]); j++) {
+                int i = course->nlive ? course->live[j] : j;
+                float dx = (float)course->ent[i].x - cam->x;
+                float dy = (float)course->ent[i].y - cam->y;
+                item[n].dep = dx * sinf(a2) + dy * -cosf(a2);
+                item[n].kind = 0; item[n].idx = i; n++;
+            }
         }
-        for (int oi = 0; oi < nord; oi++) {
-            int k = order[oi];
-            float px, py, sc;
-            float gx = (float)smk_kart_px(racers[k].k.x);
-            float gy = (float)smk_kart_px(racers[k].k.y);
-            if (!smk_project(cam, gx, gy, rw, rh, &px, &py, &sc)) continue;
-            /* MEASURED scaling (NOTES 076): the law is BINARY.  Near
-             * range: the FULL 32x32 art at constant canvas (1/8 screen
-             * width) - no shrinking at all.  Far range: a ~16px sprite
-             * the game composes at runtime.  No intermediate steps, and
-             * NO distance cull - karts render past depth 470.  The
-             * switch was bracketed to (72, 96]; 84 until pinned.  The
-             * sheet's rows 1-2 (27/24px art) are NOT depth tiers - the
-             * old 96/160/224/320 stepping was wrong. */
-            float a2 = (float)cam_heading * (float)(2.0 * M_PI) / 65536.0f;
-            float depth = (gx - cam->x) * sinf(a2)
-                        + (gy - cam->y) * -cosf(a2);
-            /* MEASURED sizing (NOTES 076), now valid because the sprite
-             * projection is the game's own flat law: the canvas stays
-             * CONSTANT (1/8 screen width) at every depth, the ART steps
-             * full -> mini at depth ~84, and there is no distance cull. */
-            float dep_eye = depth + SMK_CAM_TRAIL;
-            if (dep_eye < 12.0f) continue;
-            int scale = (int)((float)(rw / 256) * SMK_CAM_TRAIL / dep_eye + 0.5f);
-            if (scale < 1) scale = 1;
-            int ch = racers[k].character;
-            if (ch < 0 || ch >= SMK_CHARACTERS) ch = k;
-            const smk_driver *d2 = &SMK_DRIVERS[ch];
-            if (loaded[k] != ch + 1) loaded[k] = smk_sprites_load(rom, d2->sheet, &other[k]) ? ch + 1 : 0;
-            if (!loaded[k]) continue;
-            /* same measured pose ladder as the player (NOTES 080):
-             * mirrored straight < $400, 47 half-lean < $1000, then the
-             * rotation frames */
-            int rel = (int16_t)(uint16_t)(racers[k].k.angle - cam_heading);
-            int ar = rel < 0 ? -rel : rel;
-            bool hf = false, mirror = false;
-            int f = 0;
-            if (ar < 0x0400) mirror = true;    /* aligned: mirrored pose */
-            else {
-                /* the measured rotation rule handles every other band
-                 * (AI karts do not hop, so no 47 lean here) */
-                uint16_t r16 = (uint16_t)rel;
-                f = smk_sprite_for_heading(SMK_SPR_TIER0, r16, &hf);
+        if (show_grid && karts->frames && racers) {
+            for (int k = 1; k < SMK_CHARACTERS && n < (int)(sizeof item / sizeof item[0]); k++) {
+                if (!(racer_draw_mask & (1 << k))) continue;
+                float gx = (float)smk_kart_px(racers[k].k.x);
+                float gy = (float)smk_kart_px(racers[k].k.y);
+                item[n].dep = (gx - cam->x) * sinf(a2) + (gy - cam->y) * -cosf(a2);
+                item[n].kind = 1; item[n].idx = k; n++;
             }
-            /* height lifts the sprite on screen, scaled like everything else */
-            py -= (float)smk_kart_height_px(&racers[k].k) * sc;
-            /* Size follows the SAME projection as everything else,
-             * anchored on the ONE unambiguous measurement: the player's
-             * kart is 32 SNES px at the trail distance (NOTES 084).  So
-             * a kart at depth d draws 32 * TRAIL/d.  (The SNES itself
-             * cannot scale sprites and quantises this to a few art
-             * sizes; ours is continuous - a deliberate, labelled
-             * divergence that keeps karts road-proportional.) */
-            /* QUANTISED to the kart sheet's own tiers, as the hardware
-             * does (NOTES 102).  The sheet carries three rotation sets
-             * at descending sizes - measured max art height:
-             *
-             *   frames  0-10   31 px      frames 11-21   28 px
-             *   frames 22-32   25 px      half-size drawing far out
-             *
-             * plus the 16 px switch NOTES 072 saw beyond those.  The
-             * tier is chosen by the height the projection asks for and
-             * then drawn at the fixed SNES proportion, so kart sizes POP
-             * between steps exactly like the entities. */
-            static const struct { int base, h; } KTIER[4] = {
-                { SMK_SPR_TIER0, 31 }, { SMK_SPR_TIER1, 28 },
-                { SMK_SPR_TIER2, 25 }, { -1,            13 },
-            };
-            /* Sized by the game's OWN scale law, measured on the kart
-             * blocks themselves: +$06 = 0x4200 / d against the distance
-             * from the player, the same rule the entities follow
-             * (NOTES 105).  The old anchor used the camera depth and so
-             * held distant karts too large. */
-            float kdx = gx - cam->x, kdy = gy - cam->y;
-            float kd = sqrtf(kdx * kdx + kdy * kdy);
-            if (kd < SMK_OBJ_NEAR) kd = SMK_OBJ_NEAR;
-            float kwant = (float)KTIER[0].h * SMK_OBJ_SCALE_K / kd;
-            if (kwant > (float)KTIER[0].h) kwant = (float)KTIER[0].h;
-            int kt = 0;
-            for (int t = 1; t < 4; t++)
-                if (fabsf((float)KTIER[t].h - kwant)
-                    < fabsf((float)KTIER[kt].h - kwant)) kt = t;
-            int kscale = rw / 256;
-            if (kscale < 1) kscale = 1;
-            if (KTIER[kt].base < 0) {           /* the far, half-size draw */
-                smk_draw_sprite_mini(&other[k], f, trk->palette, d2->pal,
-                                     (int)px, (int)py, kscale, hf,
-                                     fb, rw, rh, rw);
-            } else {
-                /* re-pick the rotation frame inside the chosen tier */
-                uint16_t r16 = (uint16_t)rel;
-                bool hf2 = false;
-                int f2 = mirror ? KTIER[kt].base
-                                : smk_sprite_for_heading(KTIER[kt].base,
-                                                         r16, &hf2);
-                if (mirror)
-                    smk_draw_sprite_mirror(&other[k], f2, trk->palette,
-                                           d2->pal, (int)px, (int)py,
-                                           kscale, fb, rw, rh, rw);
-                else
-                    smk_draw_sprite(&other[k], f2, trk->palette, d2->pal,
-                                    (int)px, (int)py, kscale, hf2,
-                                    fb, rw, rh, rw);
-            }
+        }
+        /* farthest first: insertion sort, descending by depth */
+        for (int i = 1; i < n; i++) {
+            typeof(item[0]) v = item[i];
+            int j = i - 1;
+            while (j >= 0 && item[j].dep < v.dep) { item[j + 1] = item[j]; j--; }
+            item[j + 1] = v;
+        }
+        for (int i = 0; i < n; i++) {
+            if (item[i].kind == 0)
+                draw_entity(trk, cam, course, item[i].idx, fb, rw, rh);
+            else
+                draw_ai_kart(rom, trk, cam, cam_heading, racers, item[i].idx,
+                             other, loaded, fb, rw, rh);
         }
     }
     if (show_kart && karts->frames) {
@@ -681,6 +722,10 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
         if (scale < 1) scale = 1;
         /* the hop lifts the sprite; the shadow stays on the ground */
         int lift = player_height_px * scale;
+        /* Fallen through the track: the kart goes UNDER the plane, so it
+         * is hidden by the track and shows only through the hole it fell
+         * into - the SNES drops the sprite below BG1 (NOTES 128). */
+        if (player_below && plane_mask) smk_draw_set_clip_mask(plane_mask, rw);
         int prow = (int)(SMK_PLAYER_LINE * (float)rh / 112.0f);
         if (frame == 1000)                    /* the mirrored straight pose */
             smk_draw_sprite_mirror(karts, 0, trk->palette, drv->pal,
@@ -697,6 +742,7 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
         smk_effects_draw(&fx, &fx_state, fx_mirror, fx_ticks,
                          rw / 2 - 16 * scale, prow - lift - 16 * scale, scale,
                          trk->palette, fb, rw, rh);
+        smk_draw_set_clip_mask(NULL, 0);
     }
     draw_hud(fb, rw, rh, trk->palette, hud_lap, player.coins, hud_rank);
     draw_clock(fb, rw, rh, trk->palette, hud_race_frames);
@@ -1231,6 +1277,13 @@ int main(int argc, char **argv)
 
         if (tex && fb) {
             smk_render_set_horizon(&horizon, kart.angle);
+            if (plane_mask_sz < (size_t)rw * (size_t)rh) {
+                free(plane_mask);
+                plane_mask_sz = (size_t)rw * (size_t)rh;
+                plane_mask = malloc(plane_mask_sz);
+            }
+            smk_render_set_plane_mask(plane_mask, rw);
+            player_below = kart.z < 0;
             smk_render_mode7(&trk, &cam, fb, rw, rh, rw);
             hud_input = (in.left ? 1 : 0) | (in.right ? 2 : 0)
                       | (in.up ? 4 : 0);

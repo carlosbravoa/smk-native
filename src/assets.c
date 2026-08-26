@@ -313,6 +313,20 @@ uint8_t smk_track_surface(const smk_track *t, int wx, int wy)
     return tile < SMK_TILE_TOTAL ? t->surface[tile] : 0;
 }
 
+/* The palette INDEX of a plane pixel.  Index 0 is transparent in Mode 7,
+ * which is how the hardware lets a sprite behind the plane show through a
+ * hole in the track (NOTES 128). */
+uint8_t smk_track_texel_index(const smk_track *t, int wx, int wy)
+{
+    if (wx < 0 || wx >= SMK_WORLD_PX || wy < 0 || wy >= SMK_WORLD_PX) {
+        unsigned tx = (unsigned)wx & 7u, ty = (unsigned)wy & 7u;
+        return t->tiles[(ty << 3) + tx];                  /* tile 0 */
+    }
+    unsigned tile = t->map[(wy >> 3) * SMK_MAP_DIM + (wx >> 3)];
+    if (tile >= SMK_TILE_TOTAL) return 0;
+    return t->tiles[tile * SMK_TILE_BYTES + ((wy & 7) << 3) + (wx & 7)];
+}
+
 uint32_t smk_track_texel(const smk_track *t, int wx, int wy)
 {
     /* Beyond the 1024x1024 plane the SNES repeats CHARACTER 0: the race

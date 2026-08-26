@@ -320,6 +320,32 @@ int main(int argc, char **argv)
 
     test_player_replay(&rom);
     {
+        /* What makes the fall-behind-the-track priority work (NOTES 128):
+         * the plane's VOID is palette index 0, which Mode 7 draws as
+         * transparent, and the road is not.  So a sprite given a priority
+         * under BG1 is hidden by the track and shows through the hole. */
+        static smk_track tv;
+        char e[256];
+        if (smk_track_load(&rom, 16, -1, &tv, e, sizeof e)) {
+            long vz = 0, vn = 0, rn = 0, rz = 0;
+            for (int cy = 0; cy < SMK_MAP_DIM; cy++)
+                for (int cx = 0; cx < SMK_MAP_DIM; cx++) {
+                    uint8_t cls = tv.surface[tv.map[cy * SMK_MAP_DIM + cx]];
+                    if (cls != 0x20 && cls != 0x40) continue;
+                    for (int y = 0; y < 8; y++)
+                        for (int x = 0; x < 8; x++) {
+                            uint8_t v = smk_track_texel_index(&tv, cx * 8 + x, cy * 8 + y);
+                            if (cls == 0x20) { if (v) vn++; else vz++; }
+                            else             { if (v) rn++; else rz++; }
+                        }
+                }
+            char d[160];
+            snprintf(d, sizeof d, "void %ld/%ld opaque, road %ld/%ld", vn, vz + vn, rn, rn + rz);
+            check("Ghost Valley's void is transparent and its road is not",
+                  vn == 0 && vz > 1000 && rz == 0 && rn > 1000, d);
+        }
+    }
+    {
         /* The lap-segment obstacle spawn (NOTES 127), replaying the run
          * measured in the game: waypoints 0/5/9 gave segment 0 and the
          * pair (268,92) (164,132); at 12 the segment flipped and both

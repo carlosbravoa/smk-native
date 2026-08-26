@@ -4192,3 +4192,37 @@ Real movers to look for when this is picked up again: Bowser Castle's
 Thwomps and Donut Plains' moles.  Both are more likely per-object type
 handlers (a Thwomp rises and slams in place - a Z animation, not an x/y
 path) than this repositioner.  Do not assume they are the same system.
+
+---
+
+**128** — Z order, and falling behind the track.  Three reports, two
+causes, and the second one turned out to be the hardware's own trick.
+
+*Obstacles never sorted against karts.*  `draw_scene` drew every entity,
+then every kart, then the player.  The kart loop sorted itself by depth,
+so "a far kart in front of a near one" could only come from the OTHER
+lists: a pipe beside you drew under a kart on the far side of the track,
+and obstacles drew among themselves in LIST order.  Fixed by building one
+list of everything on the plane and sorting it once, farthest first - the
+SNES sorts its OAM by distance for the same reason.  `draw_entity` and
+`draw_ai_kart` are the old bodies, split out so the one pass can
+interleave them.
+
+*Falling.*  The kart went under the plane and kept drawing on top of it.
+The SNES answer is sprite priority: a kart below the plane gets a
+priority under BG1, so the track hides it - and the HOLE does not,
+because Mode 7 draws colour 0 as transparent.  That only works if the
+void really is colour 0, so it was worth measuring rather than assuming:
+
+    Ghost Valley  void: 0 of 672704 pixels opaque   road: 258688 of 258688
+    Rainbow Road  void: 0 of 688960 pixels opaque   road: 284288 of 284288
+
+Exactly the split the trick needs.  The ground renderer now records one
+byte a pixel - is the plane opaque here - and a kart with `z < 0` is
+drawn through that mask (`smk_draw_set_clip_mask`), so it sinks into the
+hole it fell through and disappears behind the track edge.  Both the
+player and the AI karts use it.
+
+The mask costs one byte per pixel and one extra store in the ground loop;
+the texel lookup was split into `smk_track_texel_index` so there is no
+second map read.

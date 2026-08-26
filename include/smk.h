@@ -98,6 +98,11 @@ void smk_track_guess_start(const smk_track *t, float *x, float *y, float *angle)
 
 /* Colour of a world pixel, wrapping at the 1024x1024 edge. */
 uint32_t smk_track_texel(const smk_track *t, int wx, int wy);
+uint8_t  smk_track_texel_index(const smk_track *t, int wx, int wy);
+void     smk_render_set_plane_mask(uint8_t *mask, int pitch);
+/* Sprite priority under the Mode 7 plane: while set, sprite pixels are
+ * dropped where the mask marks the plane opaque (NOTES 128). */
+void     smk_draw_set_clip_mask(const uint8_t *mask, int pitch);
 
 /* Surface byte under a world position, exactly as $80FA62 computes it:
  * index = (y >> 3) * 128 + (x >> 3), then map -> surface table. */
