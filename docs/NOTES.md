@@ -4333,3 +4333,38 @@ Port trace of a head-on hit at 835, next to the game's own shape:
     f7   835 -> vx reflects, speed UNTOUCHED, drive $16
     f8   357 (714 * $80/256), speed re-derived from the vector
     f9-15 357 held to the end of the window
+
+---
+
+**131** — Reverting most of NOTES 130's bounce cost.  Correct ROM reading,
+wrong thing to port, and the playtest was unambiguous:
+
+> "totally broken bouncing dynamics.  If you bounce straight, your car
+> stops after bouncing and does not accelerate any longer.  But if you
+> bounce while turning or sliding, then you bounce back very aggressively
+> and it doesn't stop... speeds faster than anything in game (1500+)."
+
+Both symptoms come from the same two lines.  `$80A0E4` writes the slip
+angle straight into `$A8` and, past 45 degrees, `$AC`/`$A6` = `$16`.  In
+the ROM those land in a slide machine that owns `$A8` and clamps it
+through the drift rows; dropped into ours from outside, `$A8` sat far past
+any clamp (a head-on hit gives slip = $8000, a full 180) and drive `$16`
+is a state our player has no handler for.  So a square hit left the kart
+in a state that never accelerates, and an angled one fed the velocity
+angle back through the reflection every frame and wound up.
+
+What stays is the part that was MEASURED: the window holds the SPEED, not
+just the velocity.  On its own that is a real cost - a head-on hit at 715
+comes off the wall at 357 and cannot touch the throttle for eight frames:
+
+    f7   715 -> vx reflects, speed untouched
+    f8   357, re-derived from the damped vector
+    f9-15 357 held
+    f36  254 ... 322, climbing again, then another hit and another halving
+
+The lesson for the ledger, and it is not a new one: **a decoded routine is
+not a portable routine.**  `$80A0C7` is correct 65816 and reads cleanly,
+but it writes into a state machine we have only partly ported, and the
+gate could not catch it - the demo race never touches a wall.  When the
+only proof available is a playtest, port the smallest measured piece and
+leave the rest decoded in the log.

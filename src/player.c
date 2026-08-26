@@ -346,33 +346,16 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
             return;
         }
     }
-    /* $80B3DD: with the collision flag up, $80A0C7 runs before anything
-     * else - and it is where a wall HURTS (NOTES 130).  The velocity
-     * angle is re-derived from the bounce direction, the difference
-     * becomes the slide's lag $A8, and a hit more than 45 degrees off the
-     * heading drops the kart into drive state $16.  Coming out of a
-     * bounce pointing the wrong way is the cost; the port used to keep
-     * the kart's own heading and simply drive on. */
-    if (k->bounce_hit) {
-        k->bounce_hit = 0;
-        if (k->vx || k->vy) {
-            uint16_t bang = smk_angle_of(k->vx, k->vy);
-            int slip = (int16_t)(uint16_t)(bang - p->heading);
-            p->vlag = (int16_t)slip;
-            if (slip < 0x2000 && slip > -0x2000) {
-                if (p->pad & 0x8000) {           /* $80A0F2: throttle held */
-                    p->vel_angle = bang;
-                    p->state = 0x1C;
-                }
-            } else {
-                p->drive = 0x16;                 /* $80A108 */
-                p->state = 0x16;
-            }
-        } else {
-            p->vel_angle = p->heading;
-            p->vlag = 0;
-        }
-    }
+    /* $80B3DD/$80A0C7 - the rest of a wall's cost - is DECODED but NOT
+     * ported (NOTES 131).  It re-derives the velocity angle from the
+     * bounce, writes the difference straight into the slide's lag $A8 and
+     * drops the kart into drive state $16.  Writing $A8 from outside the
+     * slide machine puts it far past the clamps the drift rows apply, and
+     * in play that was worse than not having it at all: a head-on bounce
+     * left the kart dead, and a bounce taken while sliding turned into a
+     * ball ricocheting at 1500+.  The measured part - the window holding
+     * the SPEED - is in smk_player_step and gives the cost on its own. */
+    if (k->bounce_hit) k->bounce_hit = 0;
 
     if (p->hazard == 6 || p->hazard == 0x0C || p->hazard == 0x0E) {
         /* Lakitu's rescue, transcribed from the ROM's own three states

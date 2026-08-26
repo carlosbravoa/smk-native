@@ -344,17 +344,27 @@ int main(int argc, char **argv)
                 smk_player_step(&pw, &kw, &tw, 0x8000, 0);
                 if (hit < 0 && kw.bounce_cool > 0) {
                     hit = f; at_hit = kw.speed == before; drive = pw.drive;
+                    (void)drive;
                 } else if (hit >= 0 && f == hit + 1) {
                     after = kw.speed;
                 } else if (hit >= 0 && f > hit + 1 && kw.bounce_cool > 0) {
                     if (kw.speed != after) held = 0;
                 }
             }
-            char d[128];
-            snprintf(d, sizeof d, "hit f%d speed kept %d, damped to %d, held %d, drive $%02X",
-                     hit, at_hit, after, held, drive);
-            check("a wall hit costs speed and the window holds it", 
-                  hit > 0 && at_hit && after > 0 && after < 500 && held && drive == 0x16, d);
+            /* and it must RECOVER: the window ends and the throttle works
+             * again.  A version of this that left the kart in drive state
+             * $16 killed acceleration outright (NOTES 131). */
+            int peak = 0;
+            for (int f = 0; f < 40; f++) {
+                smk_player_step(&pw, &kw, &tw, 0x8000, 0);
+                if (kw.speed > peak) peak = kw.speed;
+            }
+            int recovered = peak > after;   /* the throttle bites again */
+            char d[160];
+            snprintf(d, sizeof d, "hit f%d kept %d, damped to %d, held %d, peak after %d",
+                     hit, at_hit, after, held, peak);
+            check("a wall hit costs speed, the window holds it, and it recovers",
+                  hit > 0 && at_hit && after > 0 && after < 500 && held && recovered, d);
         }
     }
     {
