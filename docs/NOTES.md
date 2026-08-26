@@ -3915,3 +3915,37 @@ Next, and it is a bounded job: hook the oracle's bus to log every WRITE to
 `$7F:0000-$7F:1FFF` and `$7F:DF80+` with its PC while a player kart rams
 `$82` blocks at a range of speeds and angles.  The first write identifies
 the routine; everything else follows from it.
+
+---
+
+**122** — The write watch, and what it proves: ramming a wall writes
+nothing.  The blocks do not break through the tilemap.
+
+`tools/labs/blockpc.py` wraps the oracle's bus write path and logs every
+write to the live tilemap (`$7F:0000-$7F:3FFF`), the class table
+(`$0B00`) and the tile-change queue (`$7F:DF80+`) **with the PC that made
+it**, while a real kart - race running, countdown done - is placed 30 px
+short of a chosen cell and driven into it at three speeds.
+
+Ghost Valley 1, 2 and 3 (tracks 1, 8, 16), class `$82`, 6 cells each at
+`$200`/`$400`/`$600`, plus Vanilla Lake's `$80`: **not one write to the
+tilemap or the class table.**  The only writes in range are `$7F:1821`
+from `$80:FC69` (an object-block field) and the sprite staging at
+`$7F:E500+` from `$84:EFxx` - the HUD rank code from NOTES 112.
+
+The live entity blocks were rammed too: Ghost Valley has four of them at
+runtime - (148,164) twice and (180,148) twice - which our course decode
+does not produce (it reports no entities for that track), so there IS a
+spawn system we have not decoded.  Ramming them changes only two
+animation-looking bytes (+6/+7 and +44/+45); no block despawns.
+
+So the one-hit blocks are not: a surface class that rewrites the tilemap
+on contact, an entry in the per-track object list (Ghost Valley's are
+item boxes, coins and one ramp - NOTES 121), or one of those live entity
+blocks.  Whatever removes them is reached by a path the player's own
+contact does not take in any state we can force.
+
+Left for next time, in order of promise: the undecoded spawn system
+behind those `$1800` blocks; battle mode (`$2C = 6`), whose arenas are
+the game's other breakable-block setting; and the `$7F:DF80` queue's
+producer, still unfound.
