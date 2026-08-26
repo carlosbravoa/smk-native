@@ -4835,6 +4835,21 @@ Three facts to find, and they constrain each other:
   `$EA`, and it survives the release;
 * one exact moment gives a boost - so a window tests it.
 
+*Refined by the user before recording:* holding the throttle from the very
+beginning is not neutral, it is a PENALTY - "the cart slides on itself and
+doesn't start until revs are back to zero."  So the rev accumulator
+overshoots, and over-revving costs you the launch entirely until it
+decays.  Three outcomes by WHEN you press:
+
+    too early, held through   wheelspin; no motion until revs decay to 0
+    somewhere in between      normal launch, "higher rev but normal speed"
+    one exact point           turbo launch
+
+That is a much better experiment than a neutral case: the penalty state is
+directly observable - throttle held, kart not moving, something counting
+down - so the accumulator and its decay show themselves without needing to
+be guessed at.
+
 Our port has none of it: the countdown holds the kart for an invented 60
 frames a step and then simply lets go.  S17.
 
