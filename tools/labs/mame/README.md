@@ -34,3 +34,10 @@ Files:
 * `demo_race.csv` - the full per-frame log of the attract race (both
   karts) that `tools/demoreplay.c` replays as the accuracy gate in
   `make check` (NOTES 107).  Regenerate with `DEMOLOG=... demolog.lua`.
+
+* `multidemo.lua` - the attract loop runs SEVERAL races (NOTES 113): it
+  writes one CSV per race plus `demos.txt` (frame, mode, track,
+  characters).  Demo 1 is the 2P GP on track 7, demo 2 DK alone on track
+  19 in time trial, demo 3 Peach/Yoshi on track 18.
+* `demo_tt_track19.csv`, `demo_gp_track18.csv` - two of those, kept for
+  the replay tool (`smk_demoreplay rom.sfc <csv> 1000`).

@@ -113,7 +113,9 @@ void smk_kart_launch(smk_kart *k, int16_t zvel)
     k->airborne = true;
 }
 
-void smk_kart_move(smk_kart *k, const smk_track *t)
+void smk_kart_move(smk_kart *k, const smk_track *t) { smk_kart_move_ex(k, t, true); }
+
+void smk_kart_move_ex(smk_kart *k, const smk_track *t, bool auto_ramp)
 {
     /* Airborne: the kart flies over most solids - that is what makes jumps
      * work - but a hard WALL (surface type 0, e.g. $20) still blocks, or a
@@ -165,7 +167,7 @@ void smk_kart_move(smk_kart *k, const smk_track *t)
      * launching, which is backwards - see below. */
     {
         uint8_t here = smk_track_surface(t, smk_kart_px(nx), smk_kart_px(ny));
-        if ((here & 0xFE) == 0x10 && !k->airborne) {
+        if (auto_ramp && (here & 0xFE) == 0x10 && !k->airborne) {
             smk_kart_launch(k, SMK_RAMP_VEL);
             k->x = nx;
             k->y = ny;

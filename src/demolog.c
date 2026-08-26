@@ -27,10 +27,10 @@ bool smk_demolog_load(const char *path, int kart, smk_demolog *out)
     const char *want[] = { "kart", "fC4", "f18", "f16", "f1C", "f1A", "fA4", "fA2", "f2A",
                            "fEA", "fE8", "f22", "f24", "fA8", "fAA", "fFA", "fB2", "fEE",
                            "fA6", "fE2", "f1F", "f26", "g124", "g30", "f12", "fAE",
-                           kart == 1000 ? "gE00" : "gE02", "fAC", "f10" };
+                           kart == 1000 ? "gE00" : "gE02", "fAC", "f10", "g2C" };
     enum { C_KART, C_C4, C_X, C_XF, C_Y, C_YF, C_A4, C_A2, C_2A, C_EA, C_E8, C_VX, C_VY,
            C_A8, C_AA, C_FA, C_B2, C_EE, C_A6, C_E2, C_Z, C_ZV, C_TRACK, C_CLASS, C_CHAR, C_AE,
-           C_COINS, C_AC, C_F10, C_N };
+           C_COINS, C_AC, C_F10, C_MODE, C_N };
     for (int w = 0; w < C_N; w++) {
         idx[w] = -1;
         for (int i = 0; i < ncol; i++) if (!strcmp(cols[i], want[w])) idx[w] = i;
@@ -67,6 +67,7 @@ bool smk_demolog_load(const char *path, int kart, smk_demolog *out)
             out->track = v[idx[C_TRACK]];
             out->engine_class = v[idx[C_CLASS]] / 2;
             out->character = v[idx[C_CHAR]] / 2;
+            out->mode = v[idx[C_MODE]];
         }
     }
     fclose(f);

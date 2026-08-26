@@ -358,6 +358,18 @@ static void step_kart(smk_kart *k, smk_track *trk,
     if (in->right)    held |= 0x0100;
     if (in->hop_held) held |= 0x0020;        /* L (R is the same button) */
     if (in->hop)      pressed |= 0x0020;     /* a fresh press hops       */
+    /* the rescue target: the ROM takes the kart's waypoint ($80B373 reads
+     * $0900/$0A00 by $C0); ours is the course's waypoint for the sector
+     * under the kart, with the flow field's heading */
+    if (course_for_step) {
+        uint8_t cell = smk_course_cell(course_for_step, smk_kart_px(k->x), smk_kart_px(k->y));
+        int sec = cell & SMK_SECT_OFF;
+        if (sec != SMK_SECT_OFF && sec < course_for_step->sectors) {
+            player.resc_x = course_for_step->wx[sec];
+            player.resc_y = course_for_step->wy[sec];
+            player.resc_h = k->angle;
+        }
+    }
     bool grounded = k->z == 0;                   /* $1F,x before this frame's jump update */
     smk_player_step(&player, k, trk, held, pressed);
     if (course_for_step) smk_collide_objects(k, course_for_step);

@@ -132,6 +132,7 @@ bool smk_player_boost(smk_player *p)
     p->fc = 0x20;
     p->flags |= 0x0080;
     p->drive = 0x10;
+    p->item_held = false;          /* the item is spent */
     return true;
 }
 
@@ -144,6 +145,8 @@ void smk_player_reset(smk_player *p, uint16_t heading)
     p->jump_state = 0;
     p->flags = 0;
     p->fc = p->ca = 0;
+    p->hazard = 0; p->resc_t = 0;
+    p->item_held = false;
     p->accel32 = 0;
     p->target = p->base_top;
 }
@@ -192,6 +195,19 @@ void smk_dsp_sincos(uint16_t angle, int16_t radius, int16_t *sx, int16_t *cy)
 
 /* ---- helpers --------------------------------------------------------- */
 static inline int16_t s16(int v) { return (int16_t)(uint16_t)v; }
+
+/* $80B7BB: launch at an angle - DSP-1 sin/cos with the speed as radius:
+ * $26 = speed * sin(angle) becomes the vertical velocity, the forward
+ * speed becomes speed * cos(angle), and the kart is airborne. */
+static void launch(smk_player *p, smk_kart *k, uint16_t angle)
+{
+    int16_t sx, cy;
+    smk_dsp_sincos(angle, k->speed, &sx, &cy);
+    k->zvel = sx;
+    k->airborne = true;
+    p->flags |= 0x8000;
+    k->speed = cy;
+}
 static inline int abs16(int v) { return v < 0 ? -v : v; }
 
 /* $80AC13: the pose-offset thresholds that flip the drift sprite bits */
@@ -237,7 +253,7 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
      *    recomputes the velocity: pos(N+1) = pos(N) + v(N).  Verified by
      *    the demo replay - integrating with the new velocity crept ~0.08
      *    px per frame away from the game with identical velocities. */
-    smk_kart_move(k, t);
+    smk_kart_move_ex(k, t, false);
 
     /* 1. $80A4D0 - speed and velocity.  The velocity angle is $A2, the
      *    heading plus the slide's velocity lag, from LAST frame's update. */
@@ -273,7 +289,7 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
         smk_kart_gravity(k);
         if (!k->airborne) {
             p->flags &= ~0x8000u;
-            if (p->drive != 0x10) p->drive = 0;
+            if (p->drive != 0x10) p->drive = 0;        /* $80B216 */
         }
     } else {
         /* $80B49D / $80B53D: a FRESH L or R press hops, unless the other
@@ -289,6 +305,151 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
             smk_kart_launch(k, 0x00E0);       /* $80B77B: $E0 */
             p->flags |= 0x8000;
             p->jump_state = 2;
+        }
+    }
+    /* ---- the hazard states ($A0 = 6/8), before anything else ---------- */
+    if (p->hazard == 8) {                  /* $80B24D: in the water */
+        if (p->ca == 0) { p->hazard = 6; p->resc_t = 0; k->speed = 0; }
+        else {
+            p->ca--;
+            /* below $78 the ROM raises the splash flags ($10 bit 8, $D4
+             * bit 10); the effect object is not wired to them yet */
+            uint8_t here = smk_track_surface(t, smk_kart_px(k->x), smk_kart_px(k->y));
+            if (here == 0x24) { p->hazard = 6; p->resc_t = 0; k->speed = 0; }
+            else if (here != 0x22 && here < 0x80) {      /* $80B286: out */
+                p->hazard = 0;
+                p->flags |= 0x0010;
+                k->speed = 0x0100;
+                launch(p, k, 0x3E00);
+                p->jump_state = 2; p->drive = 2;
+            }
+        }
+        if (p->hazard == 8) {
+            /* $80A5AD (drive state 8): B held under $7C accelerates by 1,
+             * anything else decelerates by 1 - the measured wade, speed
+             * settling at 123/124 (tools/labs/mame sink captures) */
+            int ee = ((p->pad & 0x8000) && k->speed < 0x7C) ? 1 : -1;
+            p->accel32 = ((int32_t)ee << 16) | (p->accel32 & 0xFFFF);
+            k->accel = (int16_t)(p->accel32 >> 16);
+            k->accel_frac = (uint16_t)(p->accel32 & 0xFFFF);
+            smk_kart_accelerate(k);
+            int16_t sx2, cy2;
+            smk_dsp_sincos(p->vel_angle, k->speed, &sx2, &cy2);
+            k->vx = sx2; k->vy = (int16_t)-cy2;
+            smk_kart_move_ex(k, t, false);
+            k->angle = p->heading;
+            return;
+        }
+    }
+    if (p->hazard == 6) {                  /* the fall and Lakitu's rescue */
+        /* MEASURED (the Ghost Valley teleport capture): 106 frames down,
+         * ~90 carrying to the waypoint, ~20 descending, then control -
+         * the ROM runs it through $A0 = $0A -> $0C -> $0E with a sink
+         * counter we have not decoded (LABELLED). */
+        k->speed = 0; k->vx = k->vy = 0; p->turn = 0;
+        p->vlag = p->plag = 0; p->state = 0;
+        p->resc_t++;
+        if (p->resc_t < 106) {
+            k->z = 0; k->zvel = 0;
+        } else if (p->resc_t < 196) {
+            int32_t tx = (int32_t)p->resc_x << 16, ty = (int32_t)p->resc_y << 16;
+            int32_t step = 2 << 16;                       /* $80B2B6: 2 px */
+            if (k->x < tx) k->x += (tx - k->x < step) ? tx - k->x : step;
+            else if (k->x > tx) k->x -= (k->x - tx < step) ? k->x - tx : step;
+            if (k->y < ty) k->y += (ty - k->y < step) ? ty - k->y : step;
+            else if (k->y > ty) k->y -= (k->y - ty < step) ? k->y - ty : step;
+            k->z = (int32_t)0x1C00 << 8;
+            p->heading = p->vel_angle = p->pose = p->resc_h;
+            k->angle = p->heading;
+        } else {
+            k->z -= (int32_t)0x0080 << 8;                 /* $80B32E */
+            if (k->z <= 0) { k->z = 0; p->hazard = 0; p->drive = 0; p->jump_state = 0; }
+        }
+        k->airborne = false;
+        return;
+    }
+
+    if (!k->airborne && p->drive != 0x10 && (surf & 0xFE) >= 0x20 && (surf & 0xFE) < 0x40
+        && p->jump_state == 0) {
+        /* $80B3F1 -> the hazard table at $80B39B, classes $20-$3E */
+        switch (surf & 0x0E) {
+        case 0x02:                          /* $22: water ($80B56D) */
+            if (k->speed >= 0x200) {        /* $80B606: skim off it */
+                k->speed = (int16_t)(k->speed - (k->speed >= 0x400 ? 0x2C0 : 0xA0));
+                p->flags |= 0x0010;
+                launch(p, k, 0x0800);
+                p->jump_state = 2; p->drive = 2;
+            } else {                        /* $80B5EC: fall in */
+                p->flags &= 0x4002;
+                k->z = 0; k->zvel = 0; k->airborne = false;
+                k->speed = 0; k->speed_frac = 0; p->accel32 = 0;
+                p->turn = 0; p->vlag = p->plag = 0; p->state = 0;
+                p->ca = 0x0102;
+                p->hazard = 8; p->drive = 8; p->jump_state = 8;
+            }
+            break;
+        case 0x04:                          /* $24: lava / the pit ($80B643) */
+        case 0x06:                          /* $26: the deep drop ($80B626) */
+            k->speed = 0; k->speed_frac = 0; p->accel32 = 0;
+            p->hazard = 6; p->resc_t = 0;
+            p->drive = (surf & 0x0E) == 0x04 ? 6 : 0x0A;
+            p->jump_state = p->drive;
+            break;
+        case 0x0A:                          /* $2A: the bump ($80B67C) */
+            if (k->speed < 0x2E0) k->speed = 0x2E0;
+            k->z = (int32_t)0x0280 << 8;
+            p->jump_state = 2; p->drive = 2;
+            break;
+        case 0x0C: {                        /* $2C: launch, speed kept */
+            int16_t keep = k->speed;
+            launch(p, k, 0x0D00);
+            k->speed = keep;
+            p->jump_state = 2; p->drive = 2;
+            break;
+        }
+        default: break;                     /* $20 wall, $28, $2E: elsewhere */
+        }
+    }
+    if (!k->airborne && p->drive != 0x10 && (surf & 0xFE) < 0x20 && p->jump_state == 0) {
+        /* $80B3B7 -> the object-class table at $80B3A5 (classes $00-$1E)
+         * and the hazard table at $80B39B ($20-$3E) run right after the
+         * hop check, on the class of the cell under the kart. */
+        switch (surf & 0x1E) {
+        case 0x10:                          /* $80B67C: ramp */
+            if (k->speed < 0x2E0) k->speed = 0x2E0;   /* $80B7AF */
+            launch(p, k, 0x0E00);
+            k->z = (int32_t)0x0280 << 8;               /* $1F = $280 */
+            p->jump_state = 2; p->drive = 2;
+            break;
+        case 0x12: case 0x1C: {             /* $80B666: the mud jump */
+            int16_t keep = k->speed;
+            launch(p, k, 0x0D00);
+            k->speed = keep;                           /* pla / sta $EA */
+            p->jump_state = 2; p->drive = 2;
+            break;
+        }
+        case 0x16: {                        /* $80B47B: a boost pad */
+            int st = p->state;
+            if (!((st >= 0x0A && st <= 0x10) || st == 0x1A)) {   /* $809E0B */
+                p->fc = 0x20; p->flags |= 0x0080; p->drive = 0x10;
+            }
+            break;
+        }
+        case 0x18:                          /* $80B426: oil - spin out at speed */
+            if (!(p->flags & 2) && k->speed >= 0x300) {
+                p->state = p->plag < 0 ? 0x0E : 0x10;
+                p->vlag = 0;
+            }
+            p->flags &= ~0x1800u;
+            break;
+        case 0x1E:                          /* $80B69D: a bump */
+            if (k->speed >= 0x100) {
+                k->zvel = 0x0080; k->z = (int32_t)0x0100;   /* $1E = $100 */
+                k->airborne = true; p->flags |= 0x8000;
+                p->jump_state = 2;
+            }
+            break;
+        default: break;                     /* $14 box, $1A coin: the collector */
         }
     }
     if (!k->airborne) {
@@ -322,6 +483,8 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
     /* the pad word: bits 0-1 Right/Left edges, 2-3 R/L edges, then held */
     uint16_t c4 = (uint16_t)(((pressed >> 8) & 3) | ((pressed >> 2) & 0xC) | held);
     p->pad = c4;
+    if ((c4 & 0x0080) && !(p->pad_prev & 0x0080)) p->item_held = false;   /* A: the item is used (no item system yet) */
+    p->pad_prev = c4;
     int coins = p->coins > 10 ? 10 : p->coins;
     p->target = (int16_t)(p->base_top + coins * 8);   /* $D6 = $B4 + 8*coins */
 
@@ -463,6 +626,9 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
             p->flags &= ~0x00C0u;
             p->drive = 0;
         }
+    }
+    else if (p->drive == 2) {              /* $80A647: airborne off a ramp - no thrust */
+        p->accel32 = p->accel32 & 0xFFFF;
     }
     /* $80A553 -> $80A69D ($AC == 0) - drive */
     else if (p->drive == 0) {

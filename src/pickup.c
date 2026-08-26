@@ -51,8 +51,12 @@ bool smk_pickup_step(const smk_rom *rom, smk_track *t, smk_player *p,
         return true;
     }
     if (cls == 0x14) {
-        /* the item roulette is not ported: the box is still consumed the
-         * way the game consumes it (LABELLED) */
+        /* $81B75D: with an item running or held ($0D70,y negative) the
+         * box is left alone.  The port has no item system: the first box
+         * starts the (unmodelled) roulette and the slot stays taken until
+         * the mushroom is used (LABELLED) */
+        if (p->item_held) return false;
+        p->item_held = true;
         int q = tile & 3;
         int16_t off = (int16_t)(rd8(rom, T_QUADRANT + (uint32_t)q * 2u)
                               | (rd8(rom, T_QUADRANT + (uint32_t)q * 2u + 1u) << 8));

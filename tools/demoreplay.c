@@ -51,6 +51,16 @@ int main(int argc, char **argv)
     static smk_course crs;
     if (!smk_track_load(&rom, log.track, -1, &trk, err, sizeof err)) { fprintf(stderr, "%s\n", err); return 2; }
     smk_track_place_objects(&rom, &trk);
+    if (log.mode == 4) {
+        /* Time Trial: the game places no coins and no item boxes (the
+         * Ghost Valley demo's tilemap has the erase tile where GP has
+         * them) - strip ours the same way */
+        uint8_t erase = rom.data[smk_snes_to_pc(&rom, 0x818BBDu + (uint32_t)trk.theme)];
+        for (int i = 0; i < SMK_MAP_BYTES; i++) {
+            uint8_t c = trk.surface[trk.map[i]];
+            if (c == 0x14 || c == 0x1A) trk.map[i] = erase;
+        }
+    }
     if (!smk_course_load(&rom, log.track, &crs)) { fprintf(stderr, "course %d\n", log.track); return 2; }
 
     static smk_player p;
@@ -75,11 +85,18 @@ int main(int argc, char **argv)
         uint16_t c4 = r->c4, held, pressed;
         smk_demolog_pad(r, &held, &pressed);
         if (r->drive == 0x10 && log.f[i - 1].drive != 0x10) smk_player_boost(&p);
-        if (have_other && i < other.n && other.f[i].coins > other.f[i - 1].coins) {
+        if (have_other && i < other.n && (other.f[i].flags10 & 0x8000) && other.f[i].coins > other.f[i - 1].coins) {
             int ox = (other.f[i].x >> 16) & 1023, oy = ((other.f[i].y >> 16) - 1) & 1023;
             int oc = (oy >> 3) * 128 + (ox >> 3);
             if (trk.surface[trk.map[oc]] == 0x1A)
                 trk.map[oc] = rom.data[smk_snes_to_pc(&rom, 0x818BBDu + (uint32_t)trk.theme)];
+        }
+        {
+            uint8_t rc = smk_course_cell(&crs, smk_kart_px(k.x), smk_kart_px(k.y));
+            int rs = rc & SMK_SECT_OFF;
+            if (rs != SMK_SECT_OFF && rs < crs.sectors) {
+                p.resc_x = crs.wx[rs]; p.resc_y = crs.wy[rs]; p.resc_h = k.angle;
+            }
         }
         bool grounded = k.z == 0;                   /* $1F,x BEFORE this frame's jump update: the launch frame still counts */
         smk_player_step(&p, &k, &trk, held, pressed);
@@ -111,8 +128,9 @@ int main(int argc, char **argv)
         if (i >= trace_a && i <= trace_b) {
             int cx = smk_kart_px(k.x) & 1023, cy = smk_kart_px(k.y) & 1023;
             int cell = (cy >> 3) * 128 + (cx >> 3);
-            printf("  f%4d coins %d/%d | class port %02X game %02X | cell %d tile %02X | pos game %8.3f,%8.3f port %8.3f,%8.3f err %.2f\n",
-                   i, p.coins, r->coins, trk.surface[trk.map[cell]], r->surf, cell, trk.map[cell], gx, gy, px, py, e);
+            printf("  f%4d pad %04X cls %02X/%02X z %5d/%5d zv %4d/%4d | spd %4d/%4d B2 %5d/%5d A4 %5u/%5u A8 %5d/%5d st %02X/%02X | pos game %8.3f,%8.3f port %8.3f,%8.3f err %.2f\n",
+                   i, r->c4, trk.surface[trk.map[cell]], r->surf, (int)(k.z >> 8), r->z, k.zvel, r->zvel, k.speed, r->speed, p.turn, r->turn, p.heading, r->a4,
+                   p.vlag, r->vlag, p.state, r->state, gx, gy, px, py, e);
         }
         sum_err += e;
         if (e <= 1.0) within1++;
@@ -138,7 +156,7 @@ int main(int argc, char **argv)
          * P1: one divergence left, a kart-to-kart collision near the end
          * (the demo's AI karts are not in the port); P2 is exact. */
         bool ok = resyncs == 0 && 100.0 * within1 / n >= 99.5 && coin_bad == 0;
-        printf("demo replay gate (kart %d): %s\n", kart_id, ok ? "PASS" : "FAIL");
+        printf("demo replay gate (track %d, kart %d): %s\n", log.track, kart_id, ok ? "PASS" : "FAIL");
         return ok ? 0 : 1;
     }
     return 0;

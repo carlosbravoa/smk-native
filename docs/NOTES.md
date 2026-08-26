@@ -3535,3 +3535,66 @@ things instead:
     P1  1208/1208 frames within 1 px, mean 0.03 px, max 0.1 px
     P2  1240/1240 frames within 1 px, mean 0.01 px
     coins exact on both, no resync anywhere
+
+---
+
+**113** — The other attract demos, and the hazard classes: water, the fall,
+Lakitu's rescue.
+
+The attract loop runs more than one race (the user's hint).  Logged with
+`tools/labs/mame/multidemo.lua`: demo 1 is the 2P Mario/Toad GP race on
+track 7 (`$2C = 0`), demo 2 is DK alone on track 19 in TIME TRIAL
+(`$2C = 4`), demo 3 is Peach and Yoshi on track 18 (`$2C = 0`, `$2E = 2`).
+So `$2C` is the game mode - 0 GP, 2 match race, 4 time trial, 6 battle
+(`$85:85C0` writes it from the menu) - and in time trial the game places
+**no coins and no item boxes**: the live tilemap has the theme's erase
+tile where GP has them.  The replay tool strips them for a `$2C = 4` log.
+
+**The hazard dispatch** (`$80B3F1`): class >= `$80` is a wall; `>= $40`
+just sets the type `$B0 = class & $1E`; `< $20` goes through the object
+table `$80B3A5`; `$20-$3E` through the hazard table `$80B39B` on
+`class & $F`:
+
+    $22 water   $80B56D: at speed >= $200 the kart SKIMS - speed loses
+                $2C0 (>= $400) or $A0, $E2 bit 4, a $0800 launch - and
+                below that it falls in ($80B5EC): everything zeroed,
+                $CA = $102, state $A0 = $AC = 8.  In the water
+                ($80B24D + drive state $80A5AD) B held under $7C
+                accelerates by ONE per frame and anything else
+                decelerates by one, so the kart wades at 123/124 until
+                $CA runs out or the class changes, then it is launched
+                out at $3E00 with speed $100.  MEASURED both ways by
+                teleporting the demo kart onto class $22 at speed 100
+                and 700 (the skim bounced twice, 700 -> 531 -> 363,
+                before the wade).
+    $24/$26     the fall: speed zeroed, $D4 flags, $AC/$A0 = 6 / $0A ->
+                the rescue chain $A0 = $0A ($80B231, the sink counter
+                $20) -> $0C ($80B2B6, carried 2 px per frame toward the
+                kart's waypoint $CC/$CE) -> $0E ($80B32E, $1F down by
+                $80 per frame) -> control.  Measured end to end with
+                $2C forced to 6 on Ghost Valley: 106 frames down, ~90
+                carrying, ~20 descending.
+    $2A/$2C     the bump and the launch, as the object classes.
+
+Ported into `src/player.c` (`smk_player.hazard`), the rescue target
+supplied by the caller from the course's waypoint.  LABELLED: the sink
+counter `$20` and the splash flags (`$10` bit 8, `$D4` bit 10) are not
+modelled, so the rescue's segment lengths are the measured ones rather
+than the ROM's own animation.
+
+**Replays after this** - three of the four demos are exact end to end:
+
+    track  7 Mario 1208/1208 within 1 px   Toad 1240/1240
+    track 19 DK    1233/1233 within 1 px  (time trial, no coins)
+    track 18 Peach  963/1223 (78.7%), mean 0.67 px - OPEN
+
+Peach's residual: her `$A8` decays to 0 in the port where the game keeps
+96, from about frame 1000, and the heading is then 17 units off, which
+puts the port on the mud-jump class ($12/$1C) a frame early.  The drift
+row selection (`$80A4A0[$B0]` + `$80A4C0[character]`) reads the same on
+both sides, so the difference is in the decay itself - not chased yet.
+
+**Also decoded here**: item boxes are not consumed while an item is held
+(`$81B75D` tests `$0D70,y`), which is why the port collected boxes the
+demo ignored; and `$80B79E`'s ramp clamp (mode `$0126 == $0C` floors the
+speed at $400, everything else at $2E0).

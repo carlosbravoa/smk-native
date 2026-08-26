@@ -207,6 +207,9 @@ uint16_t smk_physics_turn(const smk_physics *p, uint16_t err, int row);
 void smk_kart_face(smk_kart *k);
 /* One frame of motion: the integration at $80879D, with wall blocking. */
 void smk_kart_move(smk_kart *k, const smk_track *t);
+/* the same without the class-$10 launcher (the player's classes are handled
+ * in player.c from the ROM's own tables) */
+void smk_kart_move_ex(smk_kart *k, const smk_track *t, bool auto_ramp);
 
 /* Height, decoded at $80B1D6 (NOTES 045).  Gravity is 26 units per frame;
  * a second mode at $80DFED uses 18.  Landing clears height, velocity and
@@ -265,13 +268,22 @@ typedef struct {
     int      state;            /* $A6 - slide machine state                 */
     int      drive;            /* $AC - drive state (0 = normal)            */
     int      jump_state;       /* $A0                                       */
-    uint16_t pad;              /* $C4 - the composed pad word               */
+    uint16_t pad, pad_prev;    /* $C4 - the composed pad word, and last frame's */
     uint16_t flags;            /* $E2 - bit 15 airborne, 2/5 drift pose,
                                   3 spinning, 6 reward armed                */
     int      row, steer_row, type;   /* $28 >> 4, $DE row, surface type    */
     int16_t  target;           /* $D6 = base_top + 8 * min(coins, 10)       */
     int      coins;
+    bool     item_held;        /* $0D70,y < 0: an item (or its roulette) - boxes are
+                                  not consumed while it is (LABELLED: no item system) */
     int      fc, ca;           /* $FC countdown, $CA hold counter           */
+    /* hazards (NOTES 113): water = the $22 wade, fall = the $24/$26 drop
+     * and Lakitu's rescue.  The caller supplies the rescue target - the
+     * ROM takes it from the kart's waypoint ($80B373). */
+    int      hazard;           /* 0 none, 8 in water, 6 fallen             */
+    int      resc_t;           /* frames spent in the rescue               */
+    int      resc_x, resc_y;
+    uint16_t resc_h;
     int32_t  accel32;          /* $EE:$EC                                   */
 } smk_player;
 
@@ -309,6 +321,7 @@ typedef struct {
     smk_demo_frame *f;
     int n, start;              /* start = frame before the kart moves    */
     int track, character, engine_class, kart;
+    int mode;                  /* $2C: 0 GP, 4 Time Trial ...            */
 } smk_demolog;
 bool smk_demolog_load(const char *path, int kart, smk_demolog *out);
 void smk_demolog_free(smk_demolog *d);
