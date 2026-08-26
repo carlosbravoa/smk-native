@@ -320,6 +320,48 @@ int main(int argc, char **argv)
 
     test_player_replay(&rom);
     {
+        /* All EIGHT characters, and they must differ in the ROM's own
+         * order (S13).  Tops at 100cc from $81:8000, and the four classic
+         * pairs fall out of the acceleration curves at $81:8010:
+         *   Bowser/DK   944  slowest to accelerate
+         *   Mario/Luigi 912
+         *   Peach/Yoshi 880  quickest off the line
+         *   Koopa/Toad  864  most agile steering
+         * A regression that made every character drive the same - or that
+         * silently used Mario's tables for all of them - shows up here. */
+        static const int TOP[8] = { 912, 912, 944, 880, 944, 864, 864, 880 };
+        static smk_track tc;
+        char e[256];
+        int bad = 0, dist[8];
+        char d[160];
+        d[0] = 0;
+        if (smk_track_load(&rom, 7, -1, &tc, e, sizeof e)) {
+            for (int c = 0; c < 8; c++) {
+                static smk_player pc; smk_kart kc = {0};
+                if (!smk_player_setup(&rom, c, 1, &pc)) { bad++; continue; }
+                if (pc.base_top != TOP[c]) {
+                    bad++;
+                    snprintf(d, sizeof d, "character %d top %d, want %d",
+                             c, pc.base_top, TOP[c]);
+                }
+                smk_player_reset(&pc, 0);
+                kc.x = (int32_t)512 << 16; kc.y = (int32_t)900 << 16;
+                pc.heading = pc.vel_angle = pc.pose = 0x4000;
+                int32_t x0 = kc.x;
+                for (int f = 0; f < 180; f++) smk_player_step(&pc, &kc, &tc, 0x8000, 0);
+                dist[c] = (int)((kc.x - x0) >> 16);
+            }
+            /* the pairs must match each other and the groups must order */
+            if (!(dist[0] == dist[1] && dist[2] == dist[4]
+                  && dist[3] == dist[7] && dist[5] == dist[6])) bad++;
+            if (!(dist[3] > dist[5] && dist[5] > dist[0] && dist[0] > dist[2])) bad++;
+            if (!d[0])
+                snprintf(d, sizeof d, "180-frame runs: Peach %d > Toad %d > Mario %d > Bowser %d",
+                         dist[3], dist[5], dist[0], dist[2]);
+        }
+        check("all eight characters drive differently, in the ROM's order", !bad, d);
+    }
+    {
         /* $80FA5A: a kart clears a wall only above height 4.  A hop
          * launches at $E0 and peaks below that, so the Ghost Valley rails
          * cannot be jumped - which they could be until NOTES 137. */

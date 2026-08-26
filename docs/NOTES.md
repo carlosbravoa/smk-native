@@ -4702,3 +4702,42 @@ Labelled accordingly: the SIZE is measured, the MECHANISM is not, and the
 port magnifies the drawing it has to reach it.  The crop of the original
 makes the construction plain - a wide lid overhanging a narrower body,
 split by a hard black line - so whatever produces it keeps that shape.
+
+---
+
+**140** — S13: all eight characters, and a finding that says NOT to give
+the AI per-character stats.
+
+*The player side already works, and now it is gated.*  The five tables are
+read per character at setup, and driving each of them 180 frames from a
+standstill on the same straight puts them in exactly the ROM's order:
+
+    Peach / Yoshi   382 px   600 speed by frame 67   quickest off the line
+    Koopa / Toad    323 px   frame 91                most agile steering
+    Mario / Luigi   276 px   frame 130
+    Bowser / DK Jr  135 px   slowest accel, highest top (944)
+
+Tops at 100cc: 944 / 912 / 880 / 864 across the four pairs.  The selftest
+pins both the tops and the ordering, so a regression that made everyone
+drive like Mario would show.
+
+*The AI does NOT have per-character stats, and giving it any would be
+wrong.*  This was about to be the obvious next step - opponents all drive
+the same in our port - so it was worth checking first:
+
+    kart   $B4 (its per-player block)   top speed seen over 1500 frames
+    0      $0390                        785      the demo's P1
+    1      $0370                          0      P2
+    2-7    $0000                        736 942 1049 1054 1059 1066
+
+**AI karts carry no block at all**, and their tops run past 1049 - above
+the 944 that is the FASTEST character's cap at this class.  So they are
+not reading the character tables, and they are not bound by them.  Our
+shared-physics AI is structurally faithful; wiring per-character stats
+into it would have made the port less like the game, not more.
+
+What is left on S13 is verification, not code: Mario and Toad are replay
+exact, Luigi rides along in both of the user's human runs (93.0% / 82.0%),
+and the other five are read from the same tables by the same code.  A
+recorded run per character would close it; the risk in the meantime is low
+because the remaining difference is table data, not logic.
