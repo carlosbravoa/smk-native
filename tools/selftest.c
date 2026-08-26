@@ -320,6 +320,42 @@ int main(int argc, char **argv)
 
     test_player_replay(&rom);
     {
+        /* A kart wedged where both axes are blocked must NOT sit there:
+         * $80F93C counts eight such frames and $80F964 ejects it along
+         * the quadrant it faces at a flat $100 (NOTES 136).  Without it a
+         * corner of the Ghost Valley rails is a dead stop. */
+        static smk_track tk; static smk_player pk; smk_kart kk = {0};
+        char e[256];
+        if (smk_track_load(&rom, 16, -1, &tk, e, sizeof e)) {
+            smk_blocks_bind(&tk);
+            int cx = -1, cy = -1;
+            for (int y = 1; y < 127 && cx < 0; y++)
+                for (int x = 1; x < 127; x++) {
+                    uint8_t here = tk.surface[tk.map[y * 128 + x]];
+                    uint8_t nn = tk.surface[tk.map[(y - 1) * 128 + x]];
+                    uint8_t ee = tk.surface[tk.map[y * 128 + x + 1]];
+                    if (!smk_surface_solid(here) && smk_surface_solid(nn)
+                        && smk_surface_solid(ee)) { cx = x * 8 + 4; cy = y * 8 + 4; break; }
+                }
+            if (cx >= 0) {
+                smk_player_setup(&rom, 0, 1, &pk); smk_player_reset(&pk, 0);
+                kk.x = (int32_t)cx << 16; kk.y = (int32_t)cy << 16; kk.speed = 400;
+                pk.heading = pk.vel_angle = pk.pose = 0x2000;   /* into the corner */
+                int32_t x0 = kk.x, y0 = kk.y;
+                int moved = 0;
+                for (int f = 0; f < 40; f++) {
+                    smk_player_step(&pk, &kk, &tk, 0x8000, 0);
+                    if (kk.x != x0 || kk.y != y0) moved = 1;
+                }
+                char d[128];
+                snprintf(d, sizeof d, "corner (%d,%d) -> (%d,%d) speed %d",
+                         cx, cy, smk_kart_px(kk.x), smk_kart_px(kk.y), kk.speed);
+                check("a kart wedged in a corner gets ejected, not stopped dead",
+                      moved && kk.speed > 0, d);
+            }
+        }
+    }
+    {
         /* Hitting a wall must COST something (NOTES 130): the impact frame
          * leaves the speed alone, the next frame damps it once, and it
          * then stays put for the whole window - measured in the game as

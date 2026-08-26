@@ -346,6 +346,29 @@ void smk_kart_move_ex(smk_kart *k, const smk_track *t, bool auto_ramp)
             k->crash_frames = 3;   /* the slip is taken after the damping */
             k->bounce_cool = 9;              /* $5C = 8, released on the 9th */
         }
+        /* $80F93C: the game counts frames the kart spends unable to
+         * move and at EIGHT ejects it, along the quadrant it FACES, at
+         * a flat +-$100 on both axes ($80F964, tables $80F98A/$80F992).
+         * Our port refuses entry rather than letting the kart inside, so
+         * "inside a wall" here is "blocked on both axes" - and without
+         * this a kart wedged in a corner of the Ghost Valley rails sat
+         * there with its speed cycling and nowhere to put it, which is
+         * the dead stop the user hit (NOTES 136). */
+        if (bx && by) {
+            if (++k->stuck >= 8) {
+                static const int16_t EJX[4] = { 0x0100, 0x0100, -0x100, -0x100 };
+                static const int16_t EJY[4] = { -0x100, 0x0100, 0x0100, -0x100 };
+                int q = (k->angle >> 14) & 3;
+                k->vx = EJX[q]; k->vy = EJY[q];
+                k->speed = vec_len(k->vx, k->vy);
+                k->bounce_cool = 0; k->bounce_pend = 0;
+                k->crash_frames = 0; k->stuck = 0;
+                k->x = advance(k->x, k->vx);
+                k->y = advance(k->y, k->vy);
+                return;
+            }
+        } else k->stuck = 0;
+
         /* SLIDE ALONG: move on whichever axis is not blocked.  Returning
          * without moving threw away the along-wall component too, so a
          * kart held against a barrier froze in place instead of scraping

@@ -4559,3 +4559,42 @@ sinks behind the track where the game's does not.
 The remaining error in that gate is drift, not a rule: our kart reaches
 the edge about 6 px from where theirs did, so the carry starts 6 px out
 and stays there - the walk itself is exact.  Nothing to fix in the rescue.
+
+---
+
+**136** — Two playtest reports on the Ghost Valley rails.  One was a real
+bug; the other the recording contradicts.
+
+*"I hit some blocks twice and it completely stopped me."*  Real, and it is
+the corner.  Our port refuses to ENTER a solid cell, so when both axes are
+blocked it moves on neither - and a kart wedged in a corner of the rails
+sits there with its velocity cycling and nowhere to put it.  The ROM has
+the escape and NOTES 125 had skipped it as unnecessary:
+
+    $80F933  bit $5A,x / bvs $80F95F        already flagged stuck
+    $80F93C  $5A + 1; at EIGHT set the flag
+    $80F964  eject: quadrant = $2A >> 14, then a flat +-$100 on BOTH axes
+             from $80F98A = 0100 0100 FF00 FF00
+                  $80F992 = FF00 0100 0100 FF00
+             i.e. diagonally, in the quadrant the kart FACES
+
+Ported with "inside a wall" read as "blocked on both axes", which is our
+geometry's equivalent.  A kart that cannot move for eight frames is now
+thrown out along its facing quadrant at 362, and the selftest wedges one
+into a real Ghost Valley corner to prove it.
+
+*"The blocks trigger the hit in the centre of them; in the real game it is
+the side."*  The recording says otherwise.  At all EIGHT block contacts in
+the user's run the kart's centre `(x, y-1)` was already INSIDE the `$82`
+cell when the game registered the hit:
+
+    f603  (960,32)   f640  (959,31)   f1405 (128,658)  f1715 (1008,781)
+    f1952 (867,32)   f2359 (128,669)  f2598 (806,1010) f2677 (1008,894)
+
+all with `$AE` = `$82`.  `$80FA5A` builds ONE cell from `(x, y-1)`: no box,
+no corners, no kart extent.  If anything ours triggers EARLIER, because we
+test the destination and refuse to enter while the game lets the centre
+get into the cell and reflects from there.  So the difference being felt
+is real but it is not centre-versus-side - the likelier candidate is that
+penetration: the game's kart gets half a cell deeper before it bounces.
+Not changed on a guess; wants its own test.
