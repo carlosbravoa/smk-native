@@ -277,6 +277,12 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
          * than 45 degrees off arms drive state $16 and its deceleration.
          * Measured in the user's run: a 1103-unit slip at frame 1045 kept
          * $EE = +12 right through (NOTES 133). */
+        /* $80A0EB exempts a slip under 45 degrees - a graze keeps its
+         * throttle - and the user's run shows the game doing exactly that
+         * at frame 1044.  Applying it here makes the port WORSE (82.0% ->
+         * 73.4% within 1 px, heading errors 37 -> 1718), with the slip
+         * taken the game's way or ours.  So something upstream still
+         * differs and the exemption is left out, logged (NOTES 134). */
         if (k->crash_frames > 0) {
             static const int16_t CRASH[8] =        /* $80A590 */
                 { -4, -8, -16, -24, -36, -56, -64, -85 };

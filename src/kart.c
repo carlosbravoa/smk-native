@@ -166,6 +166,13 @@ static void bounce_damp(smk_kart *k)
     }
     k->speed = vec_len(k->vx, k->vy);
     k->speed_frac = 0;
+    /* $80A0C7 runs on the frame AFTER the impact, so the angle it takes
+     * is the DAMPED velocity's, not the reflected one's - and it comes
+     * back from $81F638 masked to its high byte.  Checked against the
+     * user's run: at frame 783 the damped (249,-140) is 60.6 degrees and
+     * the game holds $2B00; taking the reflected (498,-149) instead gave
+     * 73 degrees and a slip 13 degrees out (NOTES 134). */
+    k->crash_lag = (int16_t)((smk_angle_of(k->vx, k->vy) & 0xFF00) - k->angle);
     k->bounce_pend = 0;
 }
 
@@ -225,7 +232,6 @@ void smk_kart_move_ex(smk_kart *k, const smk_track *t, bool auto_ramp)
         return;
     }
 
-    uint16_t kang = k->angle;
     int32_t nx = advance(k->x, k->vx);
     int32_t ny = advance(k->y, k->vy);
 
@@ -337,12 +343,7 @@ void smk_kart_move_ex(smk_kart *k, const smk_track *t, bool auto_ramp)
             k->bounce_dir = bx ? (k->vx < 0 ? 2 : 0) : (k->vy < 0 ? 6 : 4);
             k->bounce_pend = 1;
             k->bounce_hit = 1;            /* $10 bit 12, read by $80A0C7 */
-            /* $80A106: the slip between where the kart now TRAVELS and
-             * where it points.  It is what $80A55B indexes the crash
-             * deceleration by, and it is the whole reason a crash costs
-             * you something (NOTES 132). */
-            k->crash_lag = (int16_t)(smk_angle_of(k->vx, k->vy) - kang);
-            k->crash_frames = 3;
+            k->crash_frames = 3;   /* the slip is taken after the damping */
             k->bounce_cool = 9;              /* $5C = 8, released on the 9th */
         }
         /* SLIDE ALONG: move on whichever axis is not blocked.  Returning

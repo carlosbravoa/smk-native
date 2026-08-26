@@ -4474,3 +4474,32 @@ The run is now a fourth gate (`tools/labs/mame/crash_run.csv`, 82.0%
 within 1 px, 240 resyncs).  A human race is not exact - it has AI karts we
 do not simulate - so its bar is its own number, which is enough to catch a
 regression: the version that broke bouncing scored 63%.
+
+---
+
+**134** — The slip was taken a frame early, and `$81F638` quantises.
+
+Comparing our slip against the game's `$A8` at all 15 hits in the user's
+run showed the game's velocity angle `$A2` landing on values like `$2B00`
+and `$2000` - **low byte zero**, which is `$81F638`'s `and #$FF00`.  But
+the mismatch was bigger than quantisation: at frame 783 we had 73 degrees
+and the game 60.5.
+
+60.5 degrees is the angle of the DAMPED velocity `(249,-140)`, not the
+reflected `(498,-149)`.  `$80A0C7` runs on the frame AFTER the impact, so
+it sees what `$80F99A` left behind.  Corrected, and masked to the high
+byte as the ROM does.
+
+It does not move the score - the deceleration table saturates at its last
+entry for any big slip, so a 13-degree error in the index changed
+nothing - but the slip is now the game's number rather than one that
+happened to be close.
+
+**Still unresolved, and now with the slip ruled out.**  `$80A0EB` exempts
+a slip under 45 degrees from the deceleration, and the run shows the game
+doing exactly that (frame 1044: slip -1103, `$EE` = +12 throughout).
+Applying the same exemption in the port costs 82.0% -> 73.4% within 1 px
+and heading errors 37 -> 1718, with the slip computed either way.  So the
+port is leaning on the deceleration to cover an error that is really
+somewhere else, and finding that is the next thing worth doing on
+bouncing.  Left out deliberately; the ROM text is in the log.
