@@ -4532,3 +4532,30 @@ The run is a fifth gate (`tools/labs/mame/gv1_run.csv`): 92.0% within
 1 px, 64 resyncs, mean error 0.30 px over 5661 frames - the cleanest
 human run we have, and it covers eight block contacts, a fall, the
 rescue, and a lap of sliding into rails afterwards.
+
+**135a** — what the fall frames actually show, and one thing we invent.
+
+The 45 "crash-state" divergences in the Ghost Valley gate are not crashes:
+`$AC = 04` is the FALL.  Reading the frames either side:
+
+    f659  $AE = 42 (road)  $EA = 270  pos (959,33)
+    f660  $AE = 20 (void)  $EA = 0    pos (959,32)  $A0 = $04, $CA = 60
+    f660-719   $1F stays 1, position FROZEN, $CA counts down
+    f720  $A0 = $0C, $1F = $3000, the carry starts
+
+Two things follow.  First, the fall arms the instant the cell under the
+kart turns void and the speed goes to zero in that same frame - no
+tolerance, no delay.  Second, **the kart does not move in Z while it
+falls**: `$1F` sits at 1 for all 60 frames.  The drop you see is the
+SPRITE, drawn by the object code; the physics just stops and waits.
+
+Our port lowers z by `$180` a frame through the countdown so something is
+seen to fall.  NOTES 120 labelled that as invented and it is now
+confirmed invented - the game does not do it.  Left in (it reads better
+than a kart frozen in mid-air) but the label is now a measurement, and it
+matters more since sprites below the plane are clipped: our falling kart
+sinks behind the track where the game's does not.
+
+The remaining error in that gate is drift, not a rule: our kart reaches
+the edge about 6 px from where theirs did, so the carry starts 6 px out
+and stays there - the walk itself is exact.  Nothing to fix in the rescue.
