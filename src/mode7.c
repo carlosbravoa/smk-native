@@ -32,6 +32,16 @@ static uint32_t sky_colour(int sy, int horizon, uint32_t near_c, uint32_t far_c)
     return (r << 16) | (g << 8) | b;
 }
 
+/* The horizon layer, drawn into the sky band after it is filled with the
+ * backdrop colour.  Set by the caller; NULL leaves the band flat. */
+static const smk_horizon *render_horizon;
+static uint16_t render_heading;
+void smk_render_set_horizon(const smk_horizon *hz, uint16_t heading)
+{
+    render_horizon = hz;
+    render_heading = heading;
+}
+
 void smk_render_mode7(const smk_track *t, const smk_camera *cam,
                       uint32_t *pixels, int w, int h, int pitch_px)
 {
@@ -52,7 +62,7 @@ void smk_render_mode7(const smk_track *t, const smk_camera *cam,
 
         float line = (float)sy / l2h;
         if (line < SMK_SKY_LINES) {
-            uint32_t c = t->palette[0];
+            uint32_t c = t->palette[0];      /* the backdrop is the sky */
             (void)sky_colour; (void)horizon; (void)sky_far; (void)sky_near;
             for (int sx = 0; sx < w; sx++) row[sx] = c;
             continue;
@@ -77,6 +87,16 @@ void smk_render_mode7(const smk_track *t, const smk_camera *cam,
             wx += sx_step;
             wy += sy_step;
         }
+    }
+
+    /* the scenery above the horizon (NOTES 117): the game's own band is 24
+     * scanlines of mode 0, so ours is the same in frame lines */
+    if (render_horizon && render_horizon->ok) {
+        int scale = (int)(l2h + 0.5f);
+        if (scale < 1) scale = 1;
+        int band = (int)(SMK_SKY_LINES * l2h);
+        smk_horizon_draw(render_horizon, t->palette, render_heading,
+                         band, pixels, w, h, scale);
     }
 }
 

@@ -135,6 +135,7 @@ static void pump(input_state *in)
 }
 
 static int racer_draw_mask = 0xFE;      /* which racer slots draw_scene draws */
+static smk_horizon horizon;             /* the scenery above the track        */
 static smk_effects fx;                  /* tyre smoke / dust (NOTES 109)      */
 static smk_effect_state fx_state = { -1, 0, 0, 0 };
 static int fx_frame_idx;                /* the kart sprite frame the puffs follow */
@@ -930,6 +931,8 @@ int main(int argc, char **argv)
 
     smk_track_place_objects(&rom, &trk);
     smk_objgfx_load(&rom, trk.theme, &obj_art);   /* the theme's objects */
+    if (!smk_horizon_load(&rom, trk.theme, &horizon))
+        fprintf(stderr, "warning: horizon not loaded\n");
     if (!smk_effects_load(&rom, &fx))
         fprintf(stderr, "warning: ground effects not loaded\n");
 
@@ -1096,6 +1099,7 @@ int main(int argc, char **argv)
                     uint16_t sh;
                     smk_track_place_objects(&rom, &trk);
                     smk_objgfx_load(&rom, trk.theme, &obj_art);
+                    smk_horizon_load(&rom, trk.theme, &horizon);
                     track = nt; theme = nth;
                     smk_course_start(&crs, 0, &sx, &sy, &sh);
                     kart = (smk_kart){ .x = (int32_t)(sx * SMK_POS_ONE),
@@ -1198,6 +1202,7 @@ int main(int argc, char **argv)
         (void)stepped;   /* edges deliberately survive a tickless iteration */
 
         if (tex && fb) {
+            smk_render_set_horizon(&horizon, kart.angle);
             smk_render_mode7(&trk, &cam, fb, rw, rh, rw);
             hud_input = (in.left ? 1 : 0) | (in.right ? 2 : 0)
                       | (in.up ? 4 : 0);

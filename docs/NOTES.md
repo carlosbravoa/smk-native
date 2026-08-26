@@ -3728,3 +3728,39 @@ Next concrete step, in the oracle rather than MAME: dump VRAM at a race
 on Ghost Valley (the demo on track 19 is a Time Trial there), scan every
 1 KB-aligned map base for entries that index into `gfx_d`'s tile range,
 and read the scroll registers per frame to get the two planes' speeds.
+
+---
+
+**117** — The horizon layer, decoded and drawn: `gfx_d` are the tiles,
+`gfx_e` is the MAP.
+
+The scan NOTES 116 called for, run against the oracle's VRAM (which is
+complete where MAME's tap shadow was not): of every 1 KB-aligned map base,
+word **`$7800`** has 100% of its non-zero entries indexing inside the
+theme's `gfx_d` tile range.  Rendered with `gfx_d[1]` as characters it is
+the Mario Circuit horizon - the row of trees in the captured frame.
+
+Then the map itself, matched byte-for-byte: a distinctive 64-byte slice of
+that VRAM map is **`gfx_e[theme]` at the same offset**.  So the pair is
+
+    gfx_d[theme]  ($81EBEB)  the tiles, 2bpp        -> VRAM word $7000
+    gfx_e[theme]  ($81EC03)  the map, 32 x 24       -> VRAM word $7800
+
+which is why `gfx_e` had exactly eight entries of exactly 1536 bytes: 768
+map entries, one theme each.  Rendering it as TILES is what hid it - it is
+a tilemap, and as tiles it looks like noise.
+
+Ported as `src/horizon.c` + `smk_render_set_horizon`: the sky band is
+filled with the backdrop colour and the layer is drawn over it, colour 0
+transparent, palette block 64 (mode 0's BG3), scrolled horizontally with
+the camera.  Mario Circuit now shows its trees, Choco Island its rock
+spires.
+
+**Labelled, not measured:** the horizontal scroll law (we turn the
+panorama once per full camera turn - the natural reading of a 32-tile map
+on a 256 px screen) and which rows of the 24 the band shows (we take the
+top rows, where every theme's scenery sits; the game picks them with the
+layer's vertical scroll).  **Still missing:** the NEAR plane - the ghosts
+and castle arches of the user's reference shots, a second layer with its
+own faster scroll - and the sky GRADIENT (navy on Ghost Valley, orange on
+Bowser Castle); ours is the flat backdrop colour.

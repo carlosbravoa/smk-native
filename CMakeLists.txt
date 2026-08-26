@@ -20,6 +20,7 @@ add_library(smkcore STATIC
   src/demolog.c
   src/effects.c
   src/pickup.c
+  src/horizon.c
   src/physics.c
   src/ai.c
   src/sprite.c

@@ -640,6 +640,28 @@ void smk_draw_sprite_mini(const smk_sprites *s, int frame,
 bool smk_pickup_step(const smk_rom *rom, smk_track *t, smk_player *p, const smk_kart *k,
                      bool grounded_before);
 
+/* ---- The horizon layer (src/horizon.c, NOTES 117) ----------------------
+ * gfx_d[theme] are the tiles, gfx_e[theme] the 32x24 map that arranges
+ * them; both matched byte-exact against the running game's VRAM. */
+#define SMK_HZ_W      32
+#define SMK_HZ_H      24
+#define SMK_HZ_TILES  128
+#define SMK_HZ_PAL    64          /* mode 0: BG3's CGRAM block */
+typedef struct {
+    bool ok;
+    int  tiles;
+    int  last_row;             /* lowest row of the map with scenery */
+    uint8_t  px[SMK_HZ_TILES][64];
+    uint16_t map[SMK_HZ_W * SMK_HZ_H];
+} smk_horizon;
+bool smk_horizon_load(const smk_rom *rom, int theme, smk_horizon *hz);
+/* draw the band at the top of the frame; `scale` is host px per SNES px */
+void smk_horizon_draw(const smk_horizon *hz, const uint32_t *palette,
+                      uint16_t heading, int band_h, uint32_t *fb,
+                      int w, int h, int scale);
+/* give the renderer the layer to draw above the horizon (NULL = flat sky) */
+void smk_render_set_horizon(const smk_horizon *hz, uint16_t heading);
+
 /* ---- Ground effects: tyre smoke and dust (src/effects.c, NOTES 109) ---- */
 typedef struct { int n; int8_t x[8], y[8]; uint8_t tile[8], attr[8]; } smk_effect_template;
 typedef struct { int n; uint8_t dur[8], tpl[8]; smk_effect_template t[8]; } smk_effect_script;
