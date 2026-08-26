@@ -53,16 +53,17 @@ re-investigating.
 | S1 | `src/player.c` | **RESOLVED** — the player's control is the ROM's own, transcribed and verified frame-exact against the demo race (NOTES 106-108): per-character top speed, acceleration table, surface caps, steering rows and drift row, the slide machine, spin-out, hop, coins on the target, the mushroom boost. Residual, labelled: coins are not collected yet (P5), the sprite's steering lean is synthesised, the DSP-1 sine is +-1 on 3% of frames, snow/splash effects | same | closed |
 | S2 | `src/course.c` `smk_course_start` | grid geometry synthesised from the finish strip (two columns, 24 px rows) | the per-track record at `[$0C],y` (`$819207`: cell + 4/10 px offsets) - located (NOTES 111), not ported; the CHARACTERS per slot are the ROM's (`$81EE97`, ported) | P2 |
 | S4 | `src/mode7.c` camera | **RESOLVED** — the projection is derived from the ROM's own DSP-1 geometry: `depth(L)=4972/(L-20.36)`, `scale=depth/256` (the ratio is exactly `Les`=256, the cross-check), camera trails the kart 61 world px (NOTES 083/084) | the DSP-1 builds per-heading scanline tables at boot; HDMA feeds them to M7A-D | closed |
-| S5 | `src/mode7.c` sky + `src/horizon.c` | **mostly**: backdrop colour and character-0 fill measured (NOTES 114); the far horizon plane is the ROM's own `gfx_d` tiles arranged by the `gfx_e` map, byte-matched against the game (NOTES 117).  Labelled: the scroll law and which map rows show.  Missing: the NEAR parallax plane (ghosts, arches) and the sky gradient | two scenery planes at different scroll speeds over a per-theme gradient | P5 - **next** |
-| S6 | `src/kart.c` bounce | **RESOLVED for the impact** - measured frame by frame in the running game (NOTES 125): the impact mirrors the blocked component and leaves the speed alone; the frame after, each axis is scaled by the pair `$56` selects (`$80` reflected / `$F0` the other) and `$EA` is re-derived from the vector.  Four captures are a selftest.  The window holds the SPEED as well as the velocity (NOTES 130), which is the cost of hitting a wall.  Labelled and NOT ported: `$80A0C7`'s realignment - it writes the slip into the slide machine's `$A8` and a drive state `$16` we have no handler for, and porting it naively broke the dynamics outright (NOTES 131).  Also unmeasured: the `$12`-negative path, the `$500` fast-hit path, and the stuck-in-a-wall eject (we prevent entry) | same | impact closed; the realignment open |
-| S6-old | `src/kart.c` bounce | **decoded**: the bounce is a ballistic launch (`$80F8C0` sets `$26`=$0080), not a timed knockback (NOTES 045); the wall hit's ~9-frame velocity freeze is MEASURED by displacement (NOTES 092) - `$42,x` turned out to be the HUD rank timer, not a window (NOTES 112) | per-class differences; the horizontal knockback magnitude | P3 residual |
+| S5 | `src/mode7.c` sky + `src/horizon.c` | **mostly**: backdrop colour and character-0 fill measured (NOTES 114); the far horizon plane is the ROM's own `gfx_d` tiles arranged by the `gfx_e` map, byte-matched against the game (NOTES 117).  Labelled: the scroll law and which map rows show.  Missing: the NEAR parallax plane (ghosts, arches - and note these are BACKGROUND, not track objects, NOTES 127) and the sky gradient | two scenery planes at different scroll speeds over a per-theme gradient | P5 - parked at the user's request |
+| S6 | `src/kart.c` bounce | **RESOLVED for the impact and its cost.** Measured frame by frame in the running game and then against a human crash run (NOTES 125/130/132/133): the impact mirrors the blocked component and leaves the speed alone; the next frame damps each axis by the pair `$56` selects and re-derives `$EA` from the vector; with BOTH components under `$C0` there is no damping at all - `$80F9C1` forces each to +-`$100`, the constant push-back; the window holds the SPEED as well as the velocity; and then drive state `$16` decelerates from the table at `$80A590` indexed by the velocity lag.  A wedged kart is ejected after eight frames (`$80F964`, NOTES 136).  **Open**: `$80A0C7`'s realignment is decoded but NOT ported - porting it naively broke the dynamics outright (NOTES 131) and it needs the slide machine's `$A6`/`$AC` states first; the graze exemption at `$80A0EB` is in the ROM and in the recording but makes the port WORSE (82.0% -> 73.4%), so something upstream still differs; the `$500` fast-hit path is unmeasured | same | impact and cost closed; realignment and graze open |
 | S7 | renderer | full-resolution smooth perspective | 256×224, per-scanline integer matrix | keep — named divergence, this is the point of a PC port. `--pixel` restores chunk. |
 | S8 | no audio | silence | SPC700 + S-DSP running its own program | P7 |
-| S10 | `src/main.c` draw | **entities RESOLVED** (NOTES 129): an object's scale is the DSP-1 projection's own third output, `$4200 / depth ALONG THE VIEW AXIS ahead of the kart` - fitted at 2.1% over 975 samples, against 19% for the euclidean distance the port had used - hidden closer than 22 px (`$80C883`), and the drawing chosen by walking `$84DA3C` = C0 60 30 00.  Labelled: that past the last threshold nothing is drawn is a reading of `$84DA38`, not a measurement.  **KARTS still open**: same `+$06`, but their drawing ladder is a different table and has not been measured | same | entities closed; karts P5 |
+| S10 | `src/main.c` draw | **entities RESOLVED for law and size.** The scale is the DSP-1 projection's own third output, `$4200 / depth ALONG THE VIEW AXIS ahead of the kart` (2.1% over 975 samples, against 19% for the euclidean distance the port used), and the drawing is chosen by walking `$84DA3C` = C0 60 30 00 (NOTES 129).  The drawn SIZE is twice the sheet's drawing, measured against a real frame with the kart as the ruler - 23x31 SNES px where the sheet holds 12x16 (NOTES 139).  Labelled: (a) where the larger art comes from is unknown - the whole object sheet tops out at 16x16, so the port magnifies; (b) that nothing draws past the last threshold is a reading of `$84DA38`, not a measurement.  **KARTS still open**: same `+$06`, but their drawing ladder is a different table and has not been measured | same | entities closed; karts P5 |
 | S11 | `src/main.c` start sequence | 3-2-1 countdown at 60 frames a step, karts held | the ROM's own start-frame count and Lakitu's light art | P5 |
 | S12 | `src/main.c` entities | **part** - the SPAWN is now the game's own (NOTES 127): two slots in a one-player race, respawned from the lap segment the player's waypoint falls in, verified against a logged run.  Ghost Valley's empty list is confirmed correct.  Still open: real movers (Bowser Castle's Thwomps, Donut Plains' moles) are not ported - most likely per-object type handlers, NOT the `$84DD15` repositioner, which has no caller we can find; and the art is one size tier scaled continuously | the sheet stores a size TIER per distance band | P5 |
 | S14 | `src/course.c` direction field | the AI/rescue direction field is our atan2 of the waypoint delta, rounded.  MEASURED against the game's own `$7F:4000` (track 7): **2554 of 2684 cells exact, 130 off by one step of 1/256 turn, worst error 1** | `$81FCFC` builds it through the boot-time arctangent table at `$7F:9000` (`$81E4C5` generates it, `$81F638` reads it as octant base + `table[min*64+max]`) | labelled at that number; port the table if a divergence is ever traced to it |
 | S13 | `src/player.c` per character | **decoded and read from the ROM** for the five tables the game has: base top speed (`$81:8000`), acceleration curve (`$81:8010`), off-road caps (`$81:8060`), steering rows (`$81:8088`) and the drift-row adjust (`$80A4C0`: Yoshi/Koopa slide one row lower). Only Mario (P1) and Toad (P2) are VERIFIED against the game so far - the other six characters run on the same code with their own tables but have not been replayed | every character handles differently; there may be further per-character factors (kart-to-kart weight, item odds) not yet found | P3 residual: replay each character (needs a log per character - a real race, not the attract demo) |
+| S15 | `src/main.c` `draw_entity` | the near object's ART: the port magnifies the sheet's 16x16 drawing 2x to reach the measured 23x31 | the game gets that size from somewhere - the object sheet is 57 tiles and nothing in it exceeds 16x16.  Either a second art source, or a composer (the mirror of the kart minifier, NOTES 076).  The crop of the original shows the shape it must keep: a wide lid overhanging a narrower body | P5 |
+| S16 | `src/player.c` fall | while falling, our kart descends in z so something is seen to move | `$1F` stays at **1** for all 60 countdown frames - the physics stops and waits, and the visible drop is the SPRITE (NOTES 135a).  Matters more now that sprites below the plane are clipped: ours sinks behind the track, the game's does not | P5 |
 | S9 | `tools/smktool/dsp1.py` | full command set implemented; stream never desyncs; camera model verified against the game's own usage. Residual: gyrate is a passthrough, and raster/`$08`/`$18` scalings are unchecked | the real chip's exact fixed-point pipeline | largely closed (NOTES 039); residuals logged on first contact |
 
 *Resolved:* **S9 for command `$04` (sin/cos)** — pinned by unit analysis in
@@ -78,6 +79,43 @@ used; C output is byte-identical to the game's loader on all 24 courses.
 
 ---
 
+## The gate, and how work gets proved now
+
+The strongest instrument this project has is not a rig - it is the user
+playing the real game while MAME records, and the port then replaying
+their inputs frame by frame.  Five gates run in `make check`:
+
+| run | what it covers | today |
+|---|---|---|
+| `demo_race.csv` 1000 / 1100 | the attract race, both karts | 100.0% within 1 px, 0 resyncs |
+| `demo_tt_track19.csv` | a time trial | 100.0% within 1 px, 0 resyncs |
+| `crash_run.csv` | **a human** driving Mario Circuit into barriers, 15 wall contacts | 82.0%, 240 resyncs |
+| `gv1_run.csv` | **a human** on Ghost Valley: 8 block hits, a fall, Lakitu's rescue, a lap of sliding into rails | 93.0%, 56 resyncs |
+
+The staged demos are exact and stay that way.  A human run never will be -
+it has AI karts we do not simulate - so each carries its own floor
+(`--min`, `--resync`), set just under what it achieves.  That is enough:
+the version that broke bouncing scored 63%.
+
+**Why this matters more than it looks.**  Twice this session a change
+passed every gate and every selftest and was still unplayable, because
+the attract demo never touches a wall.  Both times the user found it in
+minutes.  The lesson is in NOTES 131 and worth repeating here: *a decoded
+routine is not a portable routine.*  `$80A0C7` is correct 65816 that
+reads cleanly and writes into a state machine we have only half ported.
+When the only available proof is someone driving it, port the smallest
+measured piece and leave the rest decoded in the log.
+
+**To record another** (the loop is `tools/labs/mame/`):
+
+    tools/labs/mame/play.sh <name>          # play; Esc ends it
+    DEMOLOG=x.csv tools/labs/mame/replay.sh <name> tools/labs/mame/demolog.lua 200
+    ./build-native/smk_demoreplay rom/smk_usa.sfc x.csv    # diff, frame by frame
+
+Time Trial and a verified character (Mario, Toad) keep the run clean.
+Ask for one whenever a decode depends on "the game doing X" - it has been
+faster than every rig it replaced, every single time.
+
 ## Status at a glance
 
 | phase | state |
@@ -86,12 +124,39 @@ used; C output is byte-identical to the game's loader on all 24 courses.
 | P0.5 running machine | **mostly** — boots, uploads sound, runs races; no PPU picture, no SPC700, no HDMA |
 | P1 the track | **done** — themes, tilemaps, tilesets, palettes, surface table, all verified against VRAM |
 | P2 start / laps | **mostly** — real grid, decoded lap rule (NOTES 052) with the monotonic guard, race clock and start countdown.  Residual: finish/results flow, GP points |
-| P3 physics | **done for the player** — the control is transcribed from the ROM and replays the attract race's human inputs frame-exact: 99.8% / 100% of frames within 1 px (NOTES 106-108), with tyre smoke and dust from the game's own effect object (NOTES 109).  The demo replay is exact end to end for both karts (NOTES 112).  Residual: the other six characters unverified (S13), water/snow effects, pipe-crash spin, kart contact (none observed in the demo - NOTES 112) |
+| P3 physics | **done for the player, and now gated by human runs** — the control is transcribed from the ROM and replays the attract race's human inputs frame-exact: 99.8% / 100% of frames within 1 px (NOTES 106-108), with tyre smoke and dust from the game's own effect object (NOTES 109).  The demo replay is exact end to end for both karts (NOTES 112).  Residual: the other six characters unverified (S13), water/snow effects, pipe-crash spin, kart contact (none observed in the demo - NOTES 112) |
 | P4 sprites | **done** — the projection is derived once from the ROM's own DSP-1 geometry (NOTES 083/084): depth(L)=4972/(L-20.36), scale=depth/256 (ratio = Les, the cross-check), camera trails the kart 61 px.  Pose ladder measured pixel-exact (NOTES 080/081).  Residual: kart-sheet rows 1-2 purpose, sprite size quantisation (ours is continuous, labelled) |
-| P5 race furniture | **part** — ground objects stamped with the ROM's own tiles (NOTES 074), sprite-obstacle entity list decoded and colliding (NOTES 078), HUD set + clock + lap counter on the game's own art, start countdown (NOTES 085).  hazard classes decoded and ported - water ($22) wade/skim, the fall ($24/$26/$20/$28) and Lakitu's rescue as the ROM's own three states with a latched target (NOTES 113, 124).  Breakable blocks done and gated for both themes (NOTES 123/123a).  The sector map now matches the game's own $7F:5000 on all painted cells.  Residual: the horizon/backdrop (S5), entity motion handlers, item behaviour, Lakitu's art, the splash/sink effects |
+| P5 race furniture | **part** - the live phase — ground objects stamped with the ROM's own tiles (NOTES 074), sprite-obstacle entity list decoded and colliding (NOTES 078), HUD set + clock + lap counter on the game's own art, start countdown (NOTES 085).  hazard classes decoded and ported - water ($22) wade/skim, the fall ($24/$26/$20/$28) and Lakitu's rescue as the ROM's own three states with a latched target (NOTES 113, 124).  Breakable blocks done and gated for both themes (NOTES 123/123a).  The sector map now matches the game's own $7F:5000 on all painted cells.  Residual: the horizon/backdrop (S5), entity motion handlers, item behaviour, Lakitu's art, the splash/sink effects |
 | P6 opponents | **done to first order** — flow-field steering (95% byte-exact), ramp launches over jump gaps, wall escapes, and a Lakitu rescue: **20/20 strict laps** at 19-74 s (NOTES 057).  Residuals: ramp velocity placeholder, `$80ABxx` lane adjusters, rubber-banding, Lakitu animation |
 | P7 audio | **decided** — pre-recorded; `smk spc` dumps the driver, rendering not wired up |
 | P8 modes / menus | not started |
+
+## Where to pick up next
+
+Physics is in good shape and gated by human runs; the divergences that
+remain in them are drift, not wrong rules.  In rough order of value:
+
+1. **Items (P5).**  The largest gameplay gap and the one you notice in ten
+   seconds of a real race.  We have the mushroom as a special case; the
+   roulette, the item set and the award-by-rank rule are all undecoded.
+   Big, but it is what turns a faithful driving model into the game.
+2. **Per-character verification (S13).**  Nearly free now - both human
+   runs used character 1, so gating one more character is mostly
+   bookkeeping.  Six of eight remain unverified.
+3. **The near-object art (S15).**  We reproduce the SIZE by magnifying;
+   finding the real source would close it properly.  Fingerprint: a wide
+   lid overhanging a narrower body, ~24x32.
+4. **Kart size ladder (S10's other half).**  Same `+$06` law, unmeasured
+   drawing ladder.  Visible.
+5. **Small, bounded, closable**: the five missing start grids (S2), the
+   invented countdown timing (S11), the falling kart's z (S16).
+6. **The graze exemption (S6).**  Known-wrong detail: the ROM exempts a
+   slip under 45 degrees from the crash deceleration, the recording shows
+   the game doing it, and applying it makes the port worse.  Something
+   upstream differs; finding it would likely lift both human gates.
+
+Deliberately parked: the background's near plane and sky gradient (S5) -
+the user has said it is less relevant than feel.
 
 ## Phases
 
