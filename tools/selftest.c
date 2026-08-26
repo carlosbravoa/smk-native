@@ -320,6 +320,52 @@ int main(int argc, char **argv)
 
     test_player_replay(&rom);
     {
+        /* The lap-segment obstacle spawn (NOTES 127), replaying the run
+         * measured in the game: waypoints 0/5/9 gave segment 0 and the
+         * pair (268,92) (164,132); at 12 the segment flipped and both
+         * objects jumped to (508,636) (148,676); at 27 the third
+         * segment's slice is empty and the game falls back to the first. */
+        static smk_course c7;
+        if (smk_course_load(&rom, 7, &c7)) {
+            char d[128];
+            snprintf(d, sizeof d, "nseg=%d thresh %02X %02X %02X",
+                     c7.nseg, c7.seg_thresh[0], c7.seg_thresh[1], c7.seg_thresh[2]);
+            check("track 7's segment thresholds are the game's $84DACF",
+                  c7.nseg == 3 && c7.seg_thresh[0] == 0x0C
+                  && c7.seg_thresh[1] == 0x17 && c7.seg_thresh[2] == 0xFF, d);
+            static const struct { int wp, seg, x0, y0, x1, y1; } R[] = {
+                {  0, 0, 268,  92, 164, 132 },
+                {  9, 0, 268,  92, 164, 132 },
+                { 12, 1, 508, 636, 148, 676 },
+                { 17, 1, 508, 636, 148, 676 },
+                { 27, 2, 268,  92, 164, 132 },
+            };
+            int bad = 0;
+            char d2[128];
+            d2[0] = 0;
+            for (size_t i = 0; i < sizeof R / sizeof R[0]; i++) {
+                smk_course_spawn(&c7, R[i].wp, false);
+                if (c7.seg != R[i].seg || c7.nlive != 2
+                    || c7.ent[c7.live[0]].x != R[i].x0 || c7.ent[c7.live[0]].y != R[i].y0
+                    || c7.ent[c7.live[1]].x != R[i].x1 || c7.ent[c7.live[1]].y != R[i].y1) {
+                    bad++;
+                    snprintf(d2, sizeof d2, "wp %d: seg %d live %d (%d,%d)(%d,%d)",
+                             R[i].wp, c7.seg, c7.nlive,
+                             c7.ent[c7.live[0]].x, c7.ent[c7.live[0]].y,
+                             c7.ent[c7.live[1]].x, c7.ent[c7.live[1]].y);
+                }
+            }
+            check("the obstacles respawn per lap segment, two slots at a time", !bad, d2);
+            /* Ghost Valley has no static obstacles at all */
+            static smk_course cg;
+            if (smk_course_load(&rom, 16, &cg)) {
+                smk_course_spawn(&cg, 10, false);
+                check("Ghost Valley spawns no static obstacles",
+                      cg.nseg == 0 && cg.nent == 0 && cg.nlive == 0, NULL);
+            }
+        }
+    }
+    {
         /* The wall response, replaying three captures from the running
          * game (tools/labs/wall.py, NOTES 125).  Each row is the impact
          * frame's velocity and speed, then what the game had a frame

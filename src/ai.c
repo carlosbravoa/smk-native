@@ -11,7 +11,7 @@
 #include <string.h>
 #include <stdlib.h>
 
-const smk_course *course_for_step;
+smk_course *course_for_step;
 
 /* Opponents: drive the game's own racing line.
  *

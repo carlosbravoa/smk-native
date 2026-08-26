@@ -4116,3 +4116,63 @@ ROM's answer to "embedded in a barrier" if that ever returns.
 Confirmed in passing: `$1F`/`$26` stay 0 on a plain wall (no launch - the
 hop belongs to the bit-7 bars), `$42` stays 0 (the HUD rank timer, NOTES
 112), and `$80FA5A` builds its cell from **y - 1** like everything else.
+
+---
+
+**126** — SUPERSEDED by 127.  It read `$C0,x` in `$84DCA3` as a per-object
+animation clock and went looking for what decrements it.  X there is the
+KART base: `$C0` is the player's WAYPOINT, the same field `$80B373` uses
+for Lakitu.  Nothing animates it - the player drives it.
+
+---
+
+**127** — S12: the obstacles are RESPAWNED as you drive.  Decoded and
+then confirmed frame by frame in the running game.
+
+Our entity list (`$85:C800 + track*64`, NOTES 078) is real but it is not
+a set of things all on the track at once.  The game keeps **two object
+slots** in a one-player race and moves them around the course as the
+player progresses:
+
+    $819136   slots = 4 if $B6 (two players) else 2, addresses copied
+              from $81:9194 = $1800 $1880 $1900 $1980, stride $80
+    $818E7E   $0D28 = ROM[$81:8B73 + track]   picks a threshold TABLE
+              $0D2C = ROM[$81:8B8C + track]   picks the list inside it
+    $84DBD5   $84DB83[$0D28] -> a table of list pointers; [$0D2C] -> the
+              waypoint threshold list ($84DACF and on, $FF-terminated)
+    $84DBFF   y walks the list while the waypoint is still >= the entry,
+              so y is the first threshold it falls short of: the SEGMENT
+    $84DC17   if the segment changed, respawn: positions from the track's
+              list at $84DAC5[segment] = segment * 8 bytes, one word per
+              live slot, low byte the x cell, high the y cell, * 8 + 4
+
+Measured on track 7 (`$0D28` = 2, `$0D2C` = 0, thresholds `0C 17 FF`) by
+driving the game's own flow field and logging the waypoint, `$0D34` and
+every object block together:
+
+    waypoint  0..9   segment 0   (268,92) (164,132)
+    waypoint 12      segment 1   (508,636) (148,676)   both JUMP
+    waypoint 27      segment 2   (268,92) (164,132)    slice empty ->
+                                 $84DC35 falls back to offset 0
+
+The port reproduces all three, and `$1DA0` in the live game held exactly
+`1800 1880 0000` - two slots, as `$819136` says for one player.
+
+This also settles the Ghost Valley puzzle.  Its `$85:C800` row is **all
+zeroes** and `$81:8B73` gives it `$0D28` = 0, whose `$84DB83` entry is a
+null pointer - so Ghost Valley has no static obstacles at all, exactly as
+our decode always said.  The four things visible there come from the
+OTHER system.
+
+*Still open, and now properly understood.*  `$84DC80`/`$84DC98` reposition
+the same slots from paths held in ROM - `$84DD15[$0D2C]` -> a block whose
+first word points at a waypoint->keyframe index list, followed by the
+path itself as position words.  Three blocks: `$84DD1B` (list `$84DD91`),
+`$84DDB2` (`$84DE2E`), `$84DE5E` (`$84DF08`).  Block 0's path drifts
+(924,172) (900,148) (868,140) (864,140)... 4 px a keyframe, and the index
+list repeats values so it pauses and accelerates.  Consecutive slots read
+consecutive words, so they follow each other along one path.  NOT ported:
+it needs a forced-track capture to confirm, and the boot for that has not
+completed.  Bowser Castle's own static slices show what the movers look
+like standing still - segment 1 is four positions 8 px apart in a row at
+y=708, a line of Thwomps.

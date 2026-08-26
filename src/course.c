@@ -115,6 +115,31 @@ bool smk_course_load(const smk_rom *rom, int track, smk_course *out)
         }
     }
 
+    /* --- the lap segment tables (NOTES 127) --------------------------
+     * $818E7E/$818E8D fill $0D28 and $0D2C from two per-track byte
+     * tables; $84DBD5 turns them into a threshold list, and $84DBFF
+     * counts how many of its bytes the waypoint has passed. */
+    {
+        uint32_t t73 = smk_snes_to_pc(rom, 0x818B73u) + (uint32_t)track;
+        uint32_t t8c = smk_snes_to_pc(rom, 0x818B8Cu) + (uint32_t)track;
+        int d28 = rom->data[t73], d2c = rom->data[t8c];
+        out->nseg = 0;
+        uint32_t pp = smk_snes_to_pc(rom, 0x84DB83u) + (uint32_t)d28;
+        unsigned set = rom->data[pp] | (unsigned)rom->data[pp + 1] << 8;
+        if (set) {                       /* $84DBDF: 0 means no obstacles */
+            uint32_t lp = smk_snes_to_pc(rom, 0x840000u | set) + (uint32_t)d2c;
+            unsigned lst = rom->data[lp] | (unsigned)rom->data[lp + 1] << 8;
+            if (lst) {
+                uint32_t tp = smk_snes_to_pc(rom, 0x840000u | lst);
+                for (int i = 0; i < 8; i++) {
+                    uint8_t v = rom->data[tp + (uint32_t)i];
+                    out->seg_thresh[out->nseg++] = v;
+                    if (v == 0xFF) break;     /* the list's terminator */
+                }
+            }
+        }
+    }
+
     /* --- sprite obstacles ($84DC20: $85:C800 + track*64) ------------- */
     {
         uint32_t p3 = smk_snes_to_pc(rom, 0x85C800u) + (uint32_t)track * 64u;
@@ -168,4 +193,33 @@ void smk_course_start(const smk_course *c, int slot,
     *x = cx - dx * back + px * side;
     *y = cy - dy * back + py * side;
     *heading = (uint16_t)(atan2f(dx, -dy) * 65536.0f / (2.0f * (float)M_PI));
+}
+
+
+/* $84DBFF: y walks the threshold list while the waypoint is still at or
+ * past the entry, so y is the first index the waypoint falls short of.
+ * $FF terminates, which is why the last segment always wins. */
+int smk_course_segment(const smk_course *c, int waypoint)
+{
+    if (c->nseg == 0) return -1;
+    int y = 0;
+    while (y < c->nseg && waypoint >= (int)c->seg_thresh[y]) y++;
+    return y;
+}
+
+/* $84DC17: when the segment changes the whole set is respawned from the
+ * track's list at segment * 8 ($84DAC5), one word per live slot - two of
+ * them in a one-player race, four in two ($819136). */
+void smk_course_spawn(smk_course *c, int waypoint, bool two_player)
+{
+    int seg = smk_course_segment(c, waypoint);
+    int want = two_player ? 4 : 2;
+    if (seg < 0) { c->nlive = 0; c->seg = -1; return; }
+    if (seg == c->seg && c->nlive == want) return;
+    c->seg = seg;
+    c->nlive = 0;
+    int first = seg * 4;                     /* offset seg*8 bytes = 4 words */
+    if (first >= c->nent) first = 0;         /* $84DC35: fall back to the start */
+    for (int i = 0; i < want && first + i < c->nent; i++)
+        c->live[c->nlive++] = first + i;
 }

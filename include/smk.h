@@ -422,6 +422,15 @@ typedef struct {
     uint16_t wy[SMK_MAX_SECTORS + 1];
     uint8_t  wattr[SMK_MAX_SECTORS];   /* per-sector attribute byte        */
     int      sectors;
+    /* the lap SEGMENT the obstacles are respawned on (NOTES 127):
+     * $0D28 = ROM[$81:8B73 + track] picks a threshold table through
+     * $84DB83, $0D2C = ROM[$81:8B8C + track] picks the list inside it,
+     * and the player's waypoint against those bytes gives the segment. */
+    uint8_t  seg_thresh[8];
+    int      nseg;
+    int      seg;              /* the live segment, from smk_course_spawn */
+    int      nlive;            /* $819136: 2 slots one-player, 4 two      */
+    int      live[4];          /* indices into ent[]                      */
     uint16_t lap_word;                 /* $80D4 param, meaning undecoded   */
     /* finish-line rectangle, kept for grid placement */
     int      fin_cell, fin_w, fin_h;
@@ -600,7 +609,11 @@ typedef struct {
 
 /* Sprite-obstacle collision, shared by the player and the AI. */
 void smk_collide_objects(smk_kart *k, const smk_course *crs);
-extern const smk_course *course_for_step;
+/* $84DBD5: which lap segment a waypoint is in, and which obstacles that
+ * spawns.  Call once a frame with the player's waypoint. */
+int  smk_course_segment(const smk_course *c, int waypoint);
+void smk_course_spawn(smk_course *c, int waypoint, bool two_player);
+extern smk_course *course_for_step;
 
 int  smk_race_rank(const smk_racer *racers, int who, const smk_course *crs);
 void smk_racer_start(smk_racer *r, const smk_course *crs, int slot);

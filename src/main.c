@@ -385,6 +385,9 @@ static void step_kart(smk_kart *k, smk_track *trk,
                                        | course_for_step->flow[(fcell - 1) & 0xFFF]);
         }
     }
+    /* $84DBD5 runs every frame: the lap segment the player's waypoint
+     * falls in decides which obstacles are on the track (NOTES 127) */
+    if (course_for_step) smk_course_spawn(course_for_step, player_sector, false);
     bool grounded = k->z == 0;                   /* $1F,x before this frame's jump update */
     smk_player_step(&player, k, trk, held, pressed);
     if (course_for_step) smk_collide_objects(k, course_for_step);
@@ -452,7 +455,10 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
      * pixels are still placeholders (green pipe) until the entity
      * sprite art is located. */
     if (course) {
-        for (int i = 0; i < course->nent; i++) {
+        /* only the live slots draw (NOTES 127) - see smk_course_spawn */
+        int nvis = course->nlive ? course->nlive : course->nent;
+        for (int j = 0; j < nvis; j++) {
+            int i = course->nlive ? course->live[j] : j;
             float px, py, sc;
             if (!smk_project(cam, (float)course->ent[i].x,
                              (float)course->ent[i].y, rw, rh, &px, &py, &sc))
