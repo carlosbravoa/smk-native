@@ -3651,3 +3651,44 @@ Open: a VRAM shadow built from the write/DMA stream
 (`tools/labs/mame/vshadow.lua`) captures only one 1 KB upload, so the
 game's bulk VRAM traffic uses a path the `$420B` tap does not see - find
 that first, then the sky tilemap can be read straight out of it.
+
+---
+
+**115** — The horizon ART found; the map is the one piece left.  And how
+MAME's Lua taps really behave.
+
+**The art.**  Asset table `gfx_d` (`$81EBEB`) has **eight entries, one per
+theme**, 2bpp: rendered, they are unmistakably the horizon scenery -
+hills and trees, clouds, mountains, castle battlements, ice shapes, and a
+star field.  288-1804 bytes each (18-112 tiles).  That is the layer the
+captured frame draws over the sand band.
+
+**The upload path**, from the ROM rather than the emulator: `$81EA39` -
+`$81EAE6` fills exactly the race's sky addresses from decompressed WRAM
+staging - VMADD `$5000`/`$6000` from `$7F:6C00` (1 KB each), `$5200`/
+`$6200` from `$7F:C800`, and the **BG2 tilemap at VMADD `$6400` from
+`$7F:CC80`, `$280` = 640 bytes** (320 entries).  The race's layer bases
+come from `$84FF44`: BG2 map word `$6400`, BG2 chars `$6000`, BG3 map
+`$6C00`, BG3 chars `$7000`.  What is NOT yet pinned is which asset feeds
+`$7F:CC80` for a RACE (the routine above may be the menu's - its sources
+are fixed, not theme-indexed) and which CGRAM block the 2bpp tiles use.
+That is the whole remaining gap: art yes, arrangement no.
+
+**MAME Lua taps - the rules, learned by measurement** (they cost most of
+this session, so they are written down):
+
+* **Install taps on ONE bank only.**  With taps on both `$00` and `$80`
+  for the same register the capture collapsed from 11777 VRAM word
+  writes to 512; with taps on all 128 mirror banks it collapsed to
+  nothing.  The mirrors are the same physical registers, and MAME does
+  not merge them sanely.
+* **Bank `$00` is where SMK writes the PPU ports** - `$2118`/`$2119`
+  saw 14976 writes each there and none in `$80`.
+* A tap callback must **return the data** it was handed.
+* Even then the shadow is incomplete (11777 of the ~16384 words the
+  track needs), so a VRAM reconstruction is not trustworthy; the
+  debugger (`wpset` + `printf`) remains the reliable observer, and the
+  ROM-side reading above is better still.
+
+Shipping meanwhile: the flat backdrop colour and the character-0 ground
+fill from NOTES 114, which is what removed the black void.
