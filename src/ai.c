@@ -126,7 +126,7 @@ void smk_collide_objects(smk_kart *k, const smk_course *crs)
          * (NOTES 152) gives the motion, not the hit box.  Half the resting
          * height is the reading that lets a kart through the gap without
          * letting it through a Thwomp on the floor. */
-        if (crs->mv[i].z > SMK_MOVER_PARK / 2) continue;
+        if (smk_mover_z(crs, i) > SMK_MOVER_PARK / 2) continue;
         float d = sqrtf((float)d2);
         float nx2 = (float)dx / d, ny2 = (float)dy / d;
         float dot = (float)k->vx * nx2 + (float)k->vy * ny2;

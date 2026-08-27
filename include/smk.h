@@ -553,6 +553,31 @@ void smk_course_movers_step(smk_course *c, bool activated);
 #define SMK_MOVER_UNIT 274.0f
 float smk_mover_world(const smk_course *c, int slot);
 
+/* An object's height in $1F units, and the ONE place that answers it.
+ *
+ * smk_course_movers_reset parks every one of the 32 slots at
+ * SMK_MOVER_PARK, whatever the theme, and smk_course_movers_step then
+ * returns early for a theme that has no movers - so on Mario Circuit the
+ * z of a pipe sits at 4096 for the whole race.  Drawing never noticed,
+ * because smk_mover_world gates on the theme and returned 0; collision
+ * did not gate, and skipped anything above half the parked height:
+ *
+ *     if (crs->mv[i].z > SMK_MOVER_PARK / 2) continue;
+ *
+ * which is every pipe on every non-mover track.  They drew on the ground
+ * and you drove straight through them ("I can pass through green pipes...
+ * no collision" - user).  From commit 3f0b5d5, when movers landed.
+ *
+ * NOTES 151 already paid for this lesson once, in the other direction:
+ * "there should be two thwomps and there is only one, but you can still
+ * hit the invisible one".  Whatever is drawn is what you can hit, so the
+ * height that decides both comes from here and nowhere else. */
+static inline int smk_mover_z(const smk_course *c, int slot)
+{
+    if (slot < 0 || slot >= 32 || !smk_theme_has_movers(c->theme)) return 0;
+    return c->mv[slot].z;
+}
+
 /* ---- The object shadow -------------------------------------------------
  *
  * One shared 32x8 solid-black ellipse, and the SAME one under every object

@@ -571,6 +571,48 @@ int main(int argc, char **argv)
         check("an object's drawing follows $4200/axis-depth through $84DA3C", !bad, d);
     }
     {
+        /* Whatever is DRAWN is what you can hit (NOTES 151), and the
+         * height that decides both has to come from one place.
+         *
+         * smk_course_movers_reset parks all 32 slots at SMK_MOVER_PARK
+         * whatever the theme, and the step returns early where the theme
+         * has no movers - so a pipe's raw mv[].z sits at 4096 all race.
+         * Drawing gated on the theme and saw 0; collision did not, and
+         * skipped everything above half the parked height.  Every pipe on
+         * every non-mover track drew on the ground and was not solid.
+         *
+         * So: on a non-mover theme the raw z is parked and BOTH accessors
+         * must say the object is on the ground. */
+        static smk_course cmc, cbc;
+        char d[160];
+        int bad = 0;
+        d[0] = 0;
+        if (!smk_course_load(&rom, 7, &cmc) || !smk_course_load(&rom, 17, &cbc)) {
+            bad = 1;
+            snprintf(d, sizeof d, "course load failed");
+        } else {
+            if (smk_theme_has_movers(cmc.theme)) { bad = 1;
+                snprintf(d, sizeof d, "track 7 theme %d unexpectedly has movers", cmc.theme); }
+            if (!smk_theme_has_movers(cbc.theme)) { bad = 1;
+                snprintf(d, sizeof d, "track 17 theme %d should have movers", cbc.theme); }
+            if (!bad && cmc.mv[0].z != SMK_MOVER_PARK) { bad = 1;
+                snprintf(d, sizeof d, "raw z %d, expected the parked %d",
+                         cmc.mv[0].z, SMK_MOVER_PARK); }
+            /* the pipe: parked raw, but on the ground to both readers */
+            if (!bad && (smk_mover_z(&cmc, 0) != 0
+                         || smk_mover_world(&cmc, 0) != 0.0f)) { bad = 1;
+                snprintf(d, sizeof d, "non-mover theme: collision sees z %d, "
+                         "drawing sees %.2f - both must be 0",
+                         smk_mover_z(&cmc, 0), (double)smk_mover_world(&cmc, 0)); }
+            /* the Thwomp: parked raw, and BOTH must still see it raised */
+            if (!bad && (smk_mover_z(&cbc, 0) != cbc.mv[0].z
+                         || smk_mover_world(&cbc, 0) <= 0.0f)) { bad = 1;
+                snprintf(d, sizeof d, "mover theme: collision sees z %d, raw %d",
+                         smk_mover_z(&cbc, 0), cbc.mv[0].z); }
+        }
+        check("a pipe is solid, and a parked Thwomp is still overhead", !bad, d);
+    }
+    {
         /* What makes the fall-behind-the-track priority work (NOTES 128):
          * the plane's VOID is palette index 0, which Mode 7 draws as
          * transparent, and the road is not.  So a sprite given a priority

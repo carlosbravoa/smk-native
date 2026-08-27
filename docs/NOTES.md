@@ -6207,3 +6207,40 @@ renderer has to be checked against what it looks like, not only against
 what the projection says.
 
 The size constants feed drawing only; collision is untouched.
+
+**160** — Pipes were not solid, and the reason NOTES 151 should have caught.
+
+User: "I can pass through green pipes... no collision".
+
+`smk_course_movers_reset` parks all 32 slots at `SMK_MOVER_PARK` = 4096
+whatever the theme, and `smk_course_movers_step` returns early for a theme
+with no movers - so on Mario Circuit a pipe's `mv[].z` sits at 4096 for the
+whole race and nothing ever moves it.
+
+Drawing never noticed, because `smk_mover_world` gates on the theme and
+returned 0, putting the pipe on the ground. Collision did NOT gate:
+
+    if (crs->mv[i].z > SMK_MOVER_PARK / 2) continue;
+
+which is every object on every non-mover track. They drew on the floor and
+you drove straight through them. Reproduced with the crash harness: the
+kart closes to 1 px of the pipe at (268,92) with speed still climbing and
+`bcool` never set.
+
+From commit 3f0b5d5, when the movers landed - not from the drawing work
+around it, though that is when the user hit it, having gone back to Mario
+Circuit to capture the pipe reference frames.
+
+NOTES 151 paid for this lesson once already, in the other direction:
+"there should be two thwomps and there is only one, but you can still hit
+the invisible one". The rule it set - whatever is DRAWN is what you can
+hit - was right, and it was enforced only for WHICH objects are live, not
+for WHERE they are. A per-slot height that drawing and collision each
+computed for themselves was free to disagree, and did.
+
+Fixed by making the height come from one accessor, `smk_mover_z`, which
+both now call. For a mover theme it returns `mv[slot].z` exactly, so
+Bowser Castle and Rainbow Road are bit-identical to before; for any other
+theme it returns 0. Pinned by a self-test that asserts the raw z is still
+parked while both readers see the pipe on the ground, AND that a parked
+Thwomp is still overhead to both.

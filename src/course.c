@@ -298,6 +298,5 @@ void smk_course_movers_step(smk_course *c, bool activated)
 
 float smk_mover_world(const smk_course *c, int slot)
 {
-    if (slot < 0 || slot >= 32 || !smk_theme_has_movers(c->theme)) return 0.0f;
-    return (float)c->mv[slot].z / SMK_MOVER_UNIT;
+    return (float)smk_mover_z(c, slot) / SMK_MOVER_UNIT;
 }
