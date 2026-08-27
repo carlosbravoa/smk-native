@@ -638,14 +638,27 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
         default: break;                     /* $14 box, $1A coin: the collector */
         }
     }
-    if (!k->airborne) {
-        p->jump_state = 0;
-        /* the wall/object knockback window (kart.c sets it on impact):
-         * count it down here - the old step did it inside smk_kart_face,
-         * which this path no longer calls, and a window that never closed
-         * kept the reflected velocity forever: infinite bouncing */
-        if (k->bounce_cool > 0) k->bounce_cool--;
-    }
+    if (!k->airborne) p->jump_state = 0;
+    /* The knockback window, counted down here: the old step did it inside
+     * smk_kart_face, which this path no longer calls, and a window that
+     * never closed kept the reflected velocity for ever.
+     *
+     * A WALL's window only runs on the ground, and the recording says so:
+     * letting it run in the air costs the Ghost Valley human run a full
+     * point (92.8% -> 91.8%), and that run is all hops and rail hits.
+     *
+     * An OBJECT's does run in the air.  It has to - hopping into one held
+     * the whole ballistic window for the entire flight, so the same hit
+     * flung the kart much further off a hop than off the ground: "when
+     * you hit it while jumping, you get pushed back even harder" (user,
+     * NOTES 150a).  Splitting them is not a fudge to satisfy both
+     * witnesses: the ROM does not use one mechanism for both either - a
+     * wall runs the $5C/$42 counter, while the pipe crash is drive state
+     * $16 with $10 = $C000 (NOTES 072).  We had collapsed the two into
+     * one field. */
+    if (k->bounce_cool > 0 && (!k->airborne || k->bounce_obj))
+        k->bounce_cool--;
+    if (k->bounce_cool == 0) k->bounce_obj = 0;
 
     /* 3. $80A892 - heading, velocity angle, pose */
     {

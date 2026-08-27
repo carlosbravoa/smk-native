@@ -5442,3 +5442,52 @@ the Thwomps never rise (S12). The earlier 19/20 was partly the bot
 squeezing through walls that should not be there; a human wedged in four
 pixels between two solid objects is stuck too. The fidelity number went
 up, the exploit went away, and both point at the same missing feature.
+
+---
+
+**150a** — The same hit, harder off a hop; and how hard a slow one should be.
+
+Two follow-ups from the user driving NOTES 150.
+
+**"When you hit it while jumping, you get pushed back even harder."** True,
+and measurable. The knockback countdown lived inside a `!k->airborne`
+guard, so it did not run in the air:
+
+    grounded   bcool 10  9  8  7  6 ...
+    airborne   bcool 10 10 10 10 10 ...  until it lands
+
+The whole ballistic window was held for the entire flight, so the same
+impact carried the kart much further off a hop than off the ground.
+
+Taking the guard off fixed the hop and cost the Ghost Valley human run a
+full point (92.8% -> 91.8%) - that run is all hops and rail hits, so it is
+exactly the witness for WALLS. Both are right, because the ROM does not
+use one mechanism for both: a wall runs the `$5C`/`$42` counter, while the
+pipe crash is drive state `$16` with `$10 = $C000` (NOTES 072). The port
+had collapsed them into one field. Split (`k->bounce_obj` marks the
+object's window), the wall keeps its grounded countdown and the object's
+runs in the air: Ghost Valley back to **92.8%**, the crash run **86.2%**,
+both their best.
+
+**"At low speeds it feels too aggressive. The bounce is milder."** Also
+true. NOTES 150 borrowed the wall's `+-$100` floor, which sends a slow
+arrival away at three times its own speed. Measured on the repro - final
+distance from a low-speed contact after 240 frames, driving in and holding
+each direction:
+
+    kick    0    7.0 / 7.2 / 6.4   glued, whatever you steer
+    kick $60   10.0 /16.4 / 8.9   one direction still stuck
+    kick $80   12.0 /28.0 /14.2   frees in all three      <- taken
+    kick $B0   14.0 /19.7 /36.7
+    kick $100  10.0 /30.8 /38.1   frees, but it kicks
+
+`$80` is the mildest shove that still works free the way the game does -
+half a wall's, which is what "milder" means here. LABELLED: fitted to
+behaviour, not read from the ROM. NOTES 072 measured the object response
+as reflect and 308/581 with no floor at all, and no floor leaves the kart
+glued, so something is missing from that measurement rather than from this
+fit.
+
+Side effect worth recording: at `$100` the autopilot was pinned at exactly
+that speed in the four-pixel slot between two Thwomps on Bowser Castle 1;
+at `$80` that course completes again (2'48"98).

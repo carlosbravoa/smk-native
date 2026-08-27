@@ -15,6 +15,36 @@ smk_course *course_for_step;
 
 /* |(vx,vy)| the way the ROM takes it - the same length the wall response
  * re-derives the speed with ($80FA5A). */
+/* How hard a low-speed object hit shoves back.
+ *
+ * A WALL forces each component to +-$100 ($80F9C1) - a constant push-back
+ * whatever the speed.  An object is milder: at $100 the user reports the
+ * low-speed hit "feels too aggressive", and a slow arrival leaving at
+ * three times its own speed is exactly that.  Measured on the repro -
+ * final distance from a low-speed contact after 240 frames, driving in and
+ * holding each direction:
+ *
+ *     kick    0    7.0 / 7.2 / 6.4   glued, whatever you steer
+ *     kick $60   10.0 /16.4 / 8.9   one direction still stuck
+ *     kick $80   12.0 /28.0 /14.2   frees in all three   <- taken
+ *     kick $B0   14.0 /19.7 /36.7
+ *     kick $100  10.0 /30.8 /38.1   frees, but it kicks
+ *
+ * $80 is the mildest shove that still lets you work free the way the game
+ * does, which is half a wall's.  LABELLED: the value is fitted to that
+ * behaviour, not read from the ROM - NOTES 072 measured the object
+ * response as reflect and 308/581 with no floor at all, and no floor
+ * leaves you glued. */
+static int obj_kick(void)
+{
+    static int v = -1;
+    if (v < 0) {
+        const char *e = getenv("SMK_OBJ_KICK");
+        v = e ? atoi(e) : 0x80;
+    }
+    return v;
+}
+
 static int16_t vec_len_pub(int16_t vx, int16_t vy)
 {
     double d = sqrt((double)vx * vx + (double)vy * vy);
@@ -102,11 +132,13 @@ void smk_collide_objects(smk_kart *k, const smk_course *crs)
             int ax = k->vx < 0 ? -k->vx : k->vx;
             int ay = k->vy < 0 ? -k->vy : k->vy;
             if (ax < 0xC0 && ay < 0xC0) {
-                k->vx = (int16_t)(nx2 * 256.0f);
-                k->vy = (int16_t)(ny2 * 256.0f);
+                float kick = (float)obj_kick();
+                k->vx = (int16_t)(nx2 * kick);
+                k->vy = (int16_t)(ny2 * kick);
                 k->speed = vec_len_pub(k->vx, k->vy);
             }
             k->bounce_cool = 10;
+            k->bounce_obj = 1;      /* this window expires in the air too */
         }
         /* And say so in the kart's own state, which is what was missing.
          *

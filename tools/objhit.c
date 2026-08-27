@@ -22,6 +22,7 @@ int main(int argc, char **argv)
     int frames= argc > 5 ? atoi(argv[5]) : 240;
     /* which way it drives, in ROM angle units: 0 = north, $4000 = east */
     int head  = argc > 6 ? (int)strtol(argv[6], NULL, 0) : 0x4000;
+    int hop_at= argc > 7 ? atoi(argv[7]) : -1;  /* hop on this frame, -1 = never */
 
     smk_rom rom; char err[256];
     if (!smk_rom_load(&rom, rom_path, err, sizeof err)) { printf("%s\n", err); return 1; }
@@ -54,19 +55,21 @@ int main(int argc, char **argv)
       printf("start surface $%02X (%s)\n", sv,
              smk_surface_solid(sv) ? "SOLID/void" : "driveable"); }
     printf("frame     x     y  dist  speed    vx    vy  bcool drive state"
-           "  vlag  clag  vang  head\n");
+           "  vlag  clag  vang  head    z air\n");
     for (int f = 0; f < frames; f++) {
-        uint16_t held = 0x8000;                       /* B: throttle */
+        uint16_t held = 0x8000, pressed = 0;          /* B: throttle */
         if (steer < 0) held |= 0x0200;
         if (steer > 0) held |= 0x0100;
-        smk_player_step(&p, &k, &trk, held, 0);
+        if (hop_at >= 0 && f >= hop_at) held |= 0x0020;   /* L held */
+        if (hop_at >= 0 && f == hop_at) pressed |= 0x0020;/* the press */
+        smk_player_step(&p, &k, &trk, held, pressed);
         if (!p.hazard) smk_collide_objects(&k, &crs);
         int kx = smk_kart_px(k.x), ky = smk_kart_px(k.y);
         double d = hypot((double)(kx - ox), (double)(ky - oy));
-        if (f < 12 || f % 10 == 0 || (d < 12.0))
-            printf("%5d %5d %5d %5.1f %6d %5d %5d %6d %5X %5X %5d %5d  %04X  %04X\n",
+        if (f < 12 || f % 10 == 0 || (d < 12.0) || f == frames - 1)
+            printf("%5d %5d %5d %5.1f %6d %5d %5d %6d %5X %5X %5d %5d  %04X  %04X %5d %3d\n",
                    f, kx, ky, d, k.speed, k.vx, k.vy, k.bounce_cool,
-                   p.drive, p.state, p.vlag, k.crash_lag, p.vel_angle, p.heading);
+                   p.drive, p.state, p.vlag, k.crash_lag, p.vel_angle, p.heading, (int)(k.z >> 8), k.airborne);
     }
     return 0;
 }

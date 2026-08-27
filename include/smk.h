@@ -181,6 +181,7 @@ typedef struct {
     uint8_t  bounce_hit;    /* $10 bit 12: hit a wall, $80A0C7 owes a cost   */
     int16_t  crash_lag;     /* $A8 as $80A106 sets it: the bounce's slip     */
     int8_t   crash_frames;  /* how long $AC = $16 decelerates (see NOTES 132)*/
+    uint8_t  bounce_obj;    /* the window came from an OBJECT, not a wall    */
     uint8_t  stuck;         /* $5A: consecutive frames with nowhere to go   */
     /* Speed and acceleration are both 32-bit, split across two words,
      * and the *high* word is the 8.8 value handed to DSP-1 as the radius. */
