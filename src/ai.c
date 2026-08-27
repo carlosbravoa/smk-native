@@ -113,9 +113,11 @@ void smk_collide_objects(smk_kart *k, const smk_course *crs)
      * two thwomps and there is only one, but you can still hit the
      * invisible one" (user, NOTES 151). */
     int kx = smk_kart_px(k->x), ky = smk_kart_px(k->y);
-    int nvis = crs->nlive ? crs->nlive : crs->nent;
+    /* Whatever is DRAWN is what you can hit - the two must never disagree
+     * again (NOTES 151).  With smk_obj_show_all that is every entity. */
+    int nvis = (smk_obj_show_all || !crs->nlive) ? crs->nent : crs->nlive;
     for (int j = 0; j < nvis; j++) {
-        int i = crs->nlive ? crs->live[j] : j;
+        int i = (smk_obj_show_all || !crs->nlive) ? j : crs->live[j];
         int dx = kx - (int)crs->ent[i].x, dy = ky - (int)crs->ent[i].y;
         int d2 = dx * dx + dy * dy;
         if (d2 >= SMK_OBJ_RADIUS * SMK_OBJ_RADIUS || d2 == 0) continue;
@@ -124,7 +126,7 @@ void smk_collide_objects(smk_kart *k, const smk_course *crs)
          * (NOTES 152) gives the motion, not the hit box.  Half the resting
          * height is the reading that lets a kart through the gap without
          * letting it through a Thwomp on the floor. */
-        if (crs->mv[j].z > SMK_MOVER_PARK / 2) continue;
+        if (crs->mv[i].z > SMK_MOVER_PARK / 2) continue;
         float d = sqrtf((float)d2);
         float nx2 = (float)dx / d, ny2 = (float)dy / d;
         float dot = (float)k->vx * nx2 + (float)k->vy * ny2;

@@ -502,13 +502,22 @@ typedef struct {
      * [kind:2][y:7][x:7], coordinates cell*8+4, zero-terminated. */
     struct { uint8_t kind; uint16_t x, y; } ent[32];
     int      nent;
-    smk_mover mv[4];          /* per live slot, NOTES 152 */
+    smk_mover mv[32];         /* one per ENTITY, NOTES 152/155 */
     int      theme;           /* for smk_theme_has_movers */
 } smk_course;
 
 bool smk_course_load(const smk_rom *rom, int track, smk_course *out);
 
 bool smk_theme_has_movers(int theme);
+/* Show every object, not the game's live pair.
+ *
+ * The ROM keeps two object blocks in a one-player race ($819136) and
+ * respawns them as the lap segment changes, which is an OAM budget, not a
+ * statement about the track: pipes wink in and out as you drive. We have
+ * no such budget, so by default every entity is drawn AND collided - the
+ * same named divergence as S7's full-resolution perspective. `--rom-spawn`
+ * restores the live pair. */
+extern bool smk_obj_show_all;
 void smk_course_movers_reset(smk_course *c);
 /* one frame; `activated` is false until the first lap is complete */
 void smk_course_movers_step(smk_course *c, bool activated);

@@ -688,8 +688,13 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
         int ti;
         if (oscale > SMK_OBJ_BAND0)      ti = 0;
         else if (oscale > SMK_OBJ_BAND1) ti = 1;
-        else if (oscale > SMK_OBJ_BAND2) ti = 2;
-        else return;
+        else                             ti = 2;
+        /* No distance cull.  The ROM stops at $84DA3C's last threshold
+         * (zf 352) because it is out of sprite budget, and on a 256x224
+         * screen the drawing would be three pixels anyway.  We have the
+         * resolution, so the object keeps its last drawing and simply gets
+         * smaller until it is sub-pixel or above the horizon, which
+         * smk_project already rejects.  Named divergence, with S7. */
         if (ti >= SMK_OBJ_TIERS) ti = SMK_OBJ_TIERS - 1;
         int obase = TIER[ti].base;
         /* The SIZE is the game's own scale, and the band only picks which
@@ -761,10 +766,7 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
          * the same law the ground and every sprite use.  Converting at
          * the kart's depth and reusing that at any distance floated far
          * Thwomps a third of the way up the screen. */
-        int lift = 0;
-        for (int s2 = 0; s2 < course->nlive; s2++)
-            if (course->live[s2] == i)
-                lift = (int)(smk_mover_world(course, s2) * sc);
+        int lift = (int)(smk_mover_world(course, i) * sc);
         int x0 = (int)px - pw / 2, y0 = (int)py - ph - lift;
 
         /* No object shadow.  One was added here as an ellipse on the
@@ -942,9 +944,11 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
         int n = 0;
         float a2 = (float)cam_heading * (float)(2.0 * M_PI) / 65536.0f;
         if (course) {
-            int nvis = course->nlive ? course->nlive : course->nent;
+            int nvis = (smk_obj_show_all || !course->nlive)
+                     ? course->nent : course->nlive;
             for (int j = 0; j < nvis && n < (int)(sizeof item / sizeof item[0]); j++) {
-                int i = course->nlive ? course->live[j] : j;
+                int i = (smk_obj_show_all || !course->nlive)
+                      ? j : course->live[j];
                 float dx = (float)course->ent[i].x - cam->x;
                 float dy = (float)course->ent[i].y - cam->y;
                 item[n].dep = dx * sinf(a2) + dy * -cosf(a2);
@@ -1122,6 +1126,8 @@ static void usage(const char *argv0)
            "  --autodrive     drive itself (a test aid, not the AI: it gets\n"
            "                  round most courses, not all)\n"
            "  --fast          one simulation tick per frame (headless tests)\n"
+           "  --rom-spawn     only the ROM's two live objects, which pop in\n"
+           "                  and out as you drive; the default shows them all\n"
            "  --theme N       override the course theme    [from ROM]\n"
            "  --class N       engine class 0/1/2 (50/100/150cc)  [0]\n"
            "  --character N   0 Mario 1 Luigi 2 Bowser 3 Peach 4 DK Jr\n"
@@ -1215,6 +1221,7 @@ int main(int argc, char **argv)
         if (!strcmp(a, "--autodrive")) { autodrive = 1; continue; }
         if (!strcmp(a, "--fast")) { fast = 1; continue; }
         if (!strcmp(a, "--scaletest")) { scaletest = 1; explicit_start = 1; continue; }
+        if (!strcmp(a, "--rom-spawn")) { smk_obj_show_all = false; continue; }
         ARG("--theme", theme) ARG("--class", engine_class)
         ARG("--character", character)
         if (!strcmp(a, "--no-kart")) { show_kart = 0; continue; }

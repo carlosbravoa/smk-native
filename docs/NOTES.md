@@ -5887,3 +5887,37 @@ calibrate one.** `1/zf` and `1/(zf+61)` can both be made to pass through a
 single sample, and they disagree everywhere else. It took a scene with ten
 pipes at known distances to tell them apart - which is why the ruler the
 user asked for was the right instrument and a screenshot was not.
+
+---
+
+**155** — Every object, all the time.
+
+The user: "given that we have better resolution than the original game, and
+a better road angle, I would like the pipes and objects to be there always,
+and avoid having them appear out of nowhere."
+
+Two separate things made them pop:
+
+* **the live pair.** `$819136` keeps two object blocks in a one-player race
+  and `$84DC20` respawns them when the lap segment changes, so an object
+  materialises as you cross a threshold and the one behind you vanishes.
+* **the cull.** `$84DA18` walks `$84DA3C` = C0 60 30 00 and stops drawing
+  past the last threshold, zf = 352.
+
+Both are budgets - OAM slots and a 256x224 screen where the third band is
+three pixels tall - not facts about the course. So by default every entity
+is now drawn, at any distance, keeping its last drawing and simply getting
+smaller until it is sub-pixel or above the horizon (which `smk_project`
+already rejects). `--rom-spawn` restores the ROM's behaviour. Ledger S23,
+the same standing as S7's full-resolution perspective.
+
+**Collision follows drawing.** Whatever is drawn is what you can hit -
+NOTES 151 was the bug that came from those two disagreeing, and this change
+would have re-created it if collision had been left on the live pair.
+
+**Mover state is now per ENTITY**, not per live slot, since there are no
+longer four slots to index. They are also STAGGERED: with a whole row live
+at once, every Thwomp slamming in unison looks mechanical, and the two the
+oracle caught ran periods of 270 and 294 frames, so they are not in phase
+in the game either. LABELLED: the offset is ours - the real per-object
+timing is the script data NOTES 152 could not pin.

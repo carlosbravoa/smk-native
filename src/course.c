@@ -244,25 +244,37 @@ bool smk_theme_has_movers(int theme)
     return theme == 6 || theme == 7;
 }
 
+bool smk_obj_show_all = true;      /* see smk.h; --rom-spawn turns it off */
+
 void smk_course_movers_reset(smk_course *c)
 {
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 32; i++) {
         c->mv[i].z = SMK_MOVER_PARK;
         c->mv[i].zv = 0;
         c->mv[i].phase = SMK_MV_PARK;
-        c->mv[i].t = 0;
+        /* Stagger them.  With every object live at once, a whole row
+         * slamming in unison looks mechanical; the two the oracle caught
+         * ran 270 and 294 frame periods, so they are not in phase in the
+         * game either.  LABELLED: the offset is ours - the real per-object
+         * timing is the script data NOTES 152 could not pin. */
+        c->mv[i].t = (int16_t)(i * 37);
     }
 }
 
 void smk_course_movers_step(smk_course *c, bool activated)
 {
     if (!smk_theme_has_movers(c->theme)) return;
-    for (int i = 0; i < 4; i++) {
+    int n = c->nent < 32 ? c->nent : 32;
+    for (int i = 0; i < n; i++) {
         smk_mover *m = &c->mv[i];
         switch (m->phase) {
         case SMK_MV_PARK:
-            /* parked at the top through lap one; the lap releases it */
-            if (activated) { m->phase = SMK_MV_FALL; m->zv = SMK_MOVER_DROP0; }
+            /* parked at the top through lap one; the lap releases it,
+             * each after its own stagger */
+            if (activated) {
+                if (m->t > 0) { m->t--; break; }
+                m->phase = SMK_MV_FALL; m->zv = SMK_MOVER_DROP0;
+            }
             break;
         case SMK_MV_FALL:
             m->z += m->zv;
@@ -286,6 +298,6 @@ void smk_course_movers_step(smk_course *c, bool activated)
 
 float smk_mover_world(const smk_course *c, int slot)
 {
-    if (slot < 0 || slot >= 4 || !smk_theme_has_movers(c->theme)) return 0.0f;
+    if (slot < 0 || slot >= 32 || !smk_theme_has_movers(c->theme)) return 0.0f;
     return (float)c->mv[slot].z / SMK_MOVER_UNIT;
 }
