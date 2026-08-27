@@ -6145,3 +6145,65 @@ buys nothing and costs both resolution and continuity. The band arithmetic
 itself stays measured and stays tested - it is still the ROM's rule, we
 simply no longer need to obey it.
 
+**159** — How big an object actually is, and a check that was circular.
+
+User, seeing the objects in motion after 158: "Now they look bigger than
+real game (you mentioned something like 2.05x?)".
+
+They did, and I had talked myself out of it. NOTES 157 reports the port
+drawing 21.5 SNES px where the game draws 21.8 - a match. That check was
+**circular**: the depth of the reference frame was inferred from the
+port's OWN size law (ink 23.5 -> pw 31.3 -> d 131) and then the port was
+rendered at that depth and found to agree. It could not have disagreed.
+
+Taking the depth from the geometry instead - the ground row the sprite
+stands on, via depth = 4972/(line - 20.36) - the real game gives:
+
+    Thwomp  depth  72.1  ink 23.8 px -> 6.71 world px
+    Thwomp  depth  66.1  ink 23.8    -> 6.15
+    pipe    depth  57.8  ink 22.0    -> 4.97
+    pipe    depth  64.9  ink 21.9    -> 5.54
+    pipe    depth 136.9  ink 14.1    -> 7.52
+    pipe    depth 145.6  ink 13.2    -> 7.49          mean 6.40
+
+against the port's 12.0. So 1.9x, which is the 2.05x measured at the very
+start. The spread is not noise: it is the band quantisation, since the
+game holds one drawing across a range of depths and the implied world size
+therefore falls as you close on it. A continuously scaled port has to pick
+one number and 6.40 is the mean of what the hardware brackets - so
+SMK_OBJ_PIPE_W is 8.5 and 0.75 * 8.5 = 6.38.
+
+**The height is a SHAPE, not a world size** - and getting it
+geometrically right is what made it look wrong. Keeping 16 left the port
+drawing ink 23.0 SNES px wide by 28.0 lines, both close to the game's 23.8
+x 32.5, and yet the user's next frame showed elongated capsules: "you
+wanted to make them taller but actually they need to be shorter. Is there
+any possibility that now they are not as wide as they should?"
+
+No - the width was right, 23.0 against 23.8. The height was the problem,
+and the cause is the port's own view. It renders the 256x112 race view
+into 512x448, so a LINE gets 4 host px where a horizontal SNES pixel gets
+2: the road is stretched 2x vertically, which is the better road angle the
+port exists for. A billboard projected honestly into that stretched space
+comes out twice as tall as it reads on a SNES. On screen ours was aspect
+0.39 where the game reads 0.87, which the eye calls narrow even though
+every world dimension was right.
+
+So the height is set from the SHAPE the game presents rather than the
+height it occupies in a stretched world. The game's object is 123 x 141 px
+in the user's capture, aspect 0.87; the drawn ink is 0.75 * pw by ph in
+square host pixels, so ph = 0.75 * pw / 0.87 and H = 0.862 * W = 7.4. The
+kart is drawn the same way - square host pixels per art pixel - so objects
+and karts now share one convention.
+
+Verified at the save state's own pose: 43 x 51 host px, aspect 0.843
+against the game's 0.872, ink 23.5 SNES px wide against 23.8.
+
+The lesson is worth keeping separately from the number. Three times now a
+quantity has been geometrically correct and visibly wrong because the port
+does not render the SNES's proportions - the lift (NOTES 156), the sprite
+height here, and the band steps in NOTES 158. Anything VERTICAL in this
+renderer has to be checked against what it looks like, not only against
+what the projection says.
+
+The size constants feed drawing only; collision is untouched.

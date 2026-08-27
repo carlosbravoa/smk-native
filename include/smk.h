@@ -716,8 +716,50 @@ int smk_obj_pal(int theme);
 #define SMK_OBJ_TIERS   3
 #define SMK_OBJ_RADIUS  6
 #define SMK_OBJ_STRIDE  16        /* VRAM tiles per row                */
-#define SMK_OBJ_PIPE_W  16        /* pixels                            */
-#define SMK_OBJ_PIPE_H  16
+/* The drawn size in WORLD pixels.  MEASURED (NOTES 159), and the two are
+ * no longer equal on purpose.
+ *
+ * WIDTH.  Taking each sprite's depth from the ground row it stands on -
+ * not from our own size law, which is what made an earlier check circular
+ * and wrong - the real game's objects come out at:
+ *
+ *     Thwomp  depth 72.1  ink 23.8 px -> 6.71 world px
+ *     Thwomp  depth 66.1  ink 23.8 px -> 6.15
+ *     pipe    depth 57.8  ink 22.0    -> 4.97
+ *     pipe    depth 64.9  ink 21.9    -> 5.54
+ *     pipe    depth 136.9 ink 14.1    -> 7.52
+ *     pipe    depth 145.6 ink 13.2    -> 7.49      mean 6.40
+ *
+ * The spread IS the hardware's band quantisation - the game holds one
+ * drawing across a range of depths, so the implied world size falls as you
+ * close on it.  6.40 is the mean, and 0.75 * 8.5 = 6.38.  At 16 the port
+ * drew 12.0 and every object was 1.9x too wide (user: "Now they look
+ * bigger than real game").
+ *
+ * HEIGHT is a SHAPE, not a world size, and is tuned to what the eye sees.
+ *
+ * Getting the world height geometrically right makes objects look wrong,
+ * and the reason is the port's own view.  It renders the 256x112 race view
+ * into (say) 512x448, so a LINE gets 4 host px while a horizontal SNES
+ * pixel gets 2 - the road is stretched 2x vertically, which is the better
+ * road angle the port is for.  A billboard projected honestly into that
+ * stretched space comes out twice as tall as it reads on a SNES, and the
+ * user's frame showed exactly that: our ink measured 23.0 SNES px wide by
+ * 28.0 lines - both close to the game's 23.8 x 32.5 - and yet on screen it
+ * was aspect 0.39 where the game reads 0.87 ("they need to be shorter").
+ *
+ * So the height is set from the SHAPE the game presents, not the height it
+ * occupies in a stretched world.  On screen the game's object is 123 x 141
+ * px in the user's own capture, aspect 0.87; the drawn ink here is
+ * 0.75 * pw wide by ph tall in square host pixels, so
+ *
+ *     ph = 0.75 * pw / 0.87   ->   H = 0.862 * W = 7.4
+ *
+ * The kart is drawn the same way - square host pixels per art pixel - so
+ * objects and karts now share one convention.  LABELLED: the width is a
+ * measurement of the game, this is a match of its proportions. */
+#define SMK_OBJ_PIPE_W  8.5f      /* world px across - measured        */
+#define SMK_OBJ_PIPE_H  7.4f      /* shape, not size - see above       */
 
 /* The object's projected scale, MEASURED and then found in the ROM
  * (NOTES 129).  $80C879 stores the DSP-1 projection's third output in the
