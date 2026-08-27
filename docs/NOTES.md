@@ -5834,6 +5834,14 @@ tall before the cull at zf = 352, which is what a 1/distance law should do.
 
 After: 48 px at 8 px away, 24 at 44, 13 at 79, 3 at 348, gone past 352.
 
+**The entity DATA is confirmed right.** The user, on the same screenshot:
+of the two pipes, "the one on the right is in the track, the one on the
+left is not". Our decode says exactly that - entity 0 at `(268,92)` sits on
+surface `$40`, road, 29 px from the edge, and entity 1 at `(164,132)` on
+`$54`, off-road, 4 px from the edge. So Mario Circuit 1 really does stand
+one pipe on the track and one beside it, NOTES 078's coordinate check holds,
+and nothing here was a placement bug. The whole report was the size.
+
 **Shadows removed.** Pipes have none, and the ellipse was wrong for
 Thwomps too - drawing the wrong thing is worse than drawing nothing. The
 real one is presumably the object's sub-block at +`$40`, which runs its own
