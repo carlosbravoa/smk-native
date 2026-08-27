@@ -1495,6 +1495,19 @@ int main(int argc, char **argv)
                 int d = (int)(int16_t)(uint16_t)(want - player.heading);
                 in.up = true; in.down = false;
                 in.left = d < -0x300; in.right = d > 0x300;
+                /* Bang-bang steering wedges itself in the corners where
+                 * the direction field points straight at a wall - the
+                 * shipped AI has escape logic (NOTES 057), this does not.
+                 * So: once the kart has been crawling for a while, back
+                 * out with the wheel over until it is moving again. */
+                static int stuck;
+                if (kart.speed < 120) stuck++; else stuck = 0;
+                if (stuck > 90) {
+                    in.up = false; in.down = true;
+                    in.left = (stuck & 0x40) != 0;
+                    in.right = !in.left;
+                    if (stuck > 240) stuck = 0;
+                }
             }
             if (autodrive && getenv("SMK_AUTODRIVE_TRACE")
                 && hud_race_frames % 300 == 0 && race_state == RACE_RUN)
@@ -1546,7 +1559,11 @@ int main(int argc, char **argv)
                         } else if (sec >= crs.sectors - 2 && me->sector <= 1) {
                             me->lap--;
                             me->lap_cool = 90;
-                            if (crossings > 0) crossings--;
+                            /* `crossings` is deliberately NOT decremented:
+                             * the forward branch above is guarded by
+                             * progress_max, so a re-crossing never counts
+                             * twice, and a counter that only ever goes up
+                             * cannot desync from the splits it indexes. */
                         }
                     }
                     me->sector = sec;
