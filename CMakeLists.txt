@@ -49,6 +49,10 @@ add_executable(smk_ailap tools/ailap.c)
 target_link_libraries(smk_ailap PRIVATE smkcore)
 target_compile_options(smk_ailap PRIVATE -Wall -Wextra -O2)
 
+add_executable(smk_objhit tools/objhit.c)
+target_link_libraries(smk_objhit PRIVATE smkcore)
+target_compile_options(smk_objhit PRIVATE -Wall -Wextra -O2)
+
 add_executable(smk_laptest tools/laptest.c)
 target_link_libraries(smk_laptest PRIVATE smkcore)
 target_compile_options(smk_laptest PRIVATE -Wall -Wextra -O2)

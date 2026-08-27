@@ -5374,3 +5374,71 @@ Bowser Castle 3 still fails, and still for the S12 reason - there the kart
 is pinned while DRIVING against four permanently-down Thwomps at
 `(428..452, 396)`, with no rescue involved. That one only the mover
 scripts will fix.
+
+---
+
+**150** — Stuck on a Thwomp: three defects, and one ROM register modelled
+twice.
+
+The user hit a Thwomp on Rainbow Road and could not get free. In the real
+game a few shoves while holding a direction works you clear; in the port it
+was permanent. `tools/objhit.c` is the repro - place the kart a known
+distance from a known object, hold the throttle and optionally a direction,
+print the state across the impact.
+
+**1. The bounce was erased one frame after it happened.**
+
+    f48   dist  6  speed 150  vy +150   vang 8000   vlag 0  clag 0
+    f49   dist  7  speed  81  vy  -77   vang 8000   vlag 0  clag 0   <- hit
+    f59   dist 10  ...  bcool reaches 0
+    f60   dist 11  speed  87  vy  +87   vang 8000               <- back in
+
+`smk_collide_objects` reflected `vx`/`vy` and nothing else. `player.c`
+rebuilds the velocity from `$A2` every frame, and `$A2 = $A4 + $A8` -
+neither of which the hit touched. So the reflection survived exactly as
+long as the ballistic window, then the kart resumed driving into the
+object. For ever.
+
+**2. `$A8` is modelled TWICE.** `k->crash_lag` and `p->vlag` are the same
+ROM register, and the comments on both say so (`smk.h` 182 and 281). The
+wall crash writes one; `vel_angle` reads the other. So the impact slip
+never reached the velocity direction on ANY impact, wall or object.
+
+What the ROM does: contact sets `$10` bit `$1000`, and the next update runs
+`$80A0AF` or `$80A0C7` (dispatched at `$80B3DF` on bit `$2000`). Both push
+the kart's ACTUAL velocity through the arctangent `$81F638`; `$80A0AF`
+writes the result straight to `$A2`, `$80A0C7` takes the slip against `$A4`
+and stores it in `$A8`, with drive state `$16` when the slip exceeds
+`$2000` (45 degrees) and the `$1C` slide when it does not and the throttle
+is held.
+
+Ported narrowly - `vel_angle` takes `crash_lag` while a crash is running -
+and **the user's own crash recording judged it**: the human wall-crash run
+goes **81.5% -> 86.2%** within 1 px, the other human run is unchanged
+(93.0 -> 92.8), and both staged demos stay at 100.0%. The gate floor is
+ratcheted 80 -> 85. This is a piece of the `$80A0C7` port that NOTES 131
+abandoned; the narrow piece is right, and the recording says so.
+
+**3. Objects had no low-speed floor.** A wall does not scale the bounce
+when the kart is barely moving: `$80F9C1` forces each component to
+`+-$100`, which is why the wall push-back "is constant no matter the speed,
+more like a push back than a real bounce" (the user, NOTES 133). Objects
+never got that rule, so a hit at a crawl returned a crawl, the kart
+re-touched within a few frames, and it was glued. With the floor applied
+along the contact normal, steering one way now takes it x 68 -> 97 and the
+other x 65 -> 36; head-on with no steering it is shoved clear to 13-19 px
+instead of oscillating at 6-9.
+
+**What it cost, and why that is not a regression.** The autopilot's
+completions went 19/20 -> 18/20. Bowser Castle 3 - previously the ONE
+course it could not finish - now completes (5'15"18). Bowser Castle 1 and
+Donut Plains 3 now fail instead, and Bowser Castle 1 shows why:
+
+    f8600  pos 459,516  spd 256   f8620  pos 461,516  spd 256
+
+pinned at exactly `$100` - the new floor - in the four-pixel slot between
+Thwomps at `(452,516)` and `(468,516)`. That slot is a trap only because
+the Thwomps never rise (S12). The earlier 19/20 was partly the bot
+squeezing through walls that should not be there; a human wedged in four
+pixels between two solid objects is stuck too. The fidelity number went
+up, the exploit went away, and both point at the same missing feature.

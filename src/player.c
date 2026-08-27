@@ -661,7 +661,7 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
             else                    d = 0;
         }
         p->heading   = (uint16_t)(p->heading + d);
-        p->vel_angle = (uint16_t)(p->heading + p->vlag);
+        p->vel_angle = (uint16_t)(p->heading + (k->crash_frames > 0 ? k->crash_lag : p->vlag));
         p->pose      = (uint16_t)(p->heading - p->plag);
     }
 

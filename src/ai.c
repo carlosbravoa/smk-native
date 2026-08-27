@@ -13,6 +13,14 @@
 
 smk_course *course_for_step;
 
+/* |(vx,vy)| the way the ROM takes it - the same length the wall response
+ * re-derives the speed with ($80FA5A). */
+static int16_t vec_len_pub(int16_t vx, int16_t vy)
+{
+    double d = sqrt((double)vx * vx + (double)vy * vy);
+    return (int16_t)(d > 32767.0 ? 32767.0 : d);
+}
+
 /* Opponents: drive the game's own racing line.
  *
  * The DATA is the ROM's - sector map, waypoints, acceleration tables - and
@@ -80,7 +88,46 @@ void smk_collide_objects(smk_kart *k, const smk_course *crs)
             k->vx /= 2;
             k->vy /= 2;
             k->speed = (int16_t)(k->speed * 308 / 581);
+            /* The low-speed FLOOR, which objects were missing.
+             *
+             * A wall does not scale the bounce when the kart is barely
+             * moving: $80F9C1 forces each component to +-$100, which is
+             * why the wall push-back "is constant no matter the speed"
+             * (user, NOTES 133).  Without the same floor an object hit at
+             * a crawl returns a crawl, the kart re-touches within a few
+             * frames, and it is glued there - which is the Thwomp the
+             * user could not shove away from (NOTES 150).  Here the sign
+             * is the contact NORMAL, so the shove is away from the thing
+             * that was hit. */
+            int ax = k->vx < 0 ? -k->vx : k->vx;
+            int ay = k->vy < 0 ? -k->vy : k->vy;
+            if (ax < 0xC0 && ay < 0xC0) {
+                k->vx = (int16_t)(nx2 * 256.0f);
+                k->vy = (int16_t)(ny2 * 256.0f);
+                k->speed = vec_len_pub(k->vx, k->vy);
+            }
             k->bounce_cool = 10;
+        }
+        /* And say so in the kart's own state, which is what was missing.
+         *
+         * The bounce used to live only in vx/vy, and player.c rebuilds
+         * those from $A2 (= $A4 + $A8) the frame the ballistic window
+         * ends - so the reflection was erased one frame after it was
+         * applied, the kart resumed driving at whatever it had hit, and
+         * bounced off it again for ever.  That is the "got stuck on a
+         * Thwomp and could not shove free" report (NOTES 150).
+         *
+         * The game does not leave it in the velocity either: an impact
+         * sets $10 bit $1000, and the next update runs $80A0AF/$80A0C7,
+         * which push the kart's ACTUAL velocity through the arctangent
+         * ($81F638) and write the result to $A2 - directly, or as the
+         * slip $A8 with drive state $16.  So the direction survives the
+         * window, and the kart slides away from what it hit while still
+         * pointing at it.  Same shape as the wall response in kart.c. */
+        if (dot < 0.0f) {
+            k->crash_lag = (int16_t)((smk_angle_of(k->vx, k->vy) & 0xFF00)
+                                     - k->angle);
+            k->crash_frames = 3;
         }
         float push = ((float)SMK_OBJ_RADIUS - d) + 1.0f;
         k->x += (int32_t)(nx2 * push * SMK_POS_ONE);
