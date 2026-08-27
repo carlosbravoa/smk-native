@@ -5559,3 +5559,64 @@ Behaviour the user reports and we do not yet model: Rainbow Road's Thwomps
 flash through colours, cannot be destroyed, and give no bounce - just the
 ordinary object hit. Moles rise out of a hole, and one you hit sticks to
 the kart's face for a while.
+
+---
+
+**152** — Thwomps measured. And why four earlier captures found nothing.
+
+The user: *"thwomps in all the tracks (bowser castle and rainbow road)
+start first lap up, then after finishing the first lap, they get
+activated."*
+
+That one sentence is the whole reason this took five runs. Every capture
+before it recorded lap 1, when the objects are parked, and duly reported
+"x, y and height all frozen". The frozen `z = 4096` on Rainbow Road was
+not a bad offset or a void run - it was the resting state. **An object
+capture that does not first complete a lap is void**, and the lab now
+drives the flow field until the progress word `$C0` reaches `$8100`
+(NOTES 148) before recording anything.
+
+**The measurement** (Rainbow Road, `$0D2C = 6`, blocks `$1800`/`$1880`,
+height = the word at +`$1F`, per frame, 1100 frames):
+
+    parked          z = 4096, until the lap completes
+    FALL            15 frames, deltas -64 -96 -128 -160 -192 -224 -256
+                    -288 -320 -352 -384 -416 -448 -480, then clamped at 0
+                      -> velocity starts at -64 and gains -32 a frame
+    hold at bottom  135 frames, every cycle, both objects
+    RISE            +64 a frame, linear
+    fall again      same gravity, from wherever the rise reached
+
+x and y never change - motion is Z only, exactly as the bytecode implied
+(NOTES 146).
+
+**What is NOT pinned: how long the rise lasts.** Block `$1800` rose for
+119 frames (peak 7616) then 116 (7360) then 96 (6144); block `$1880` rose
+144 (9216), then 199 (12736), then 93 (5952). Periods per object are
+fairly steady - about 270 frames for one, 294 for the other - and
+135 + 15 + rise accounts for them, so the variation IS the rise. It is
+not proximity: the kart was 566, 447, 311 and 566 px away at the four
+drops of one object. So the duration comes from the script, and the
+script is not decoded.
+
+**Flashing is separate from motion.** +`$06` in the block cycles through
+65 distinct values while x, y and z sit still - that is the palette/frame
+counter behind the "flashing colours" the user reports on Rainbow Road,
+and it runs on lap 1 too.
+
+Corrections to earlier notes, both found on the way:
+
+* **`$0D2C` is not the object TYPE.** NOTES 078 read `$84DD15` as a type
+  table indexed by it ("MC tracks get pipes, Bowser tracks Thwomps").
+  Grouping the twenty GP tracks by `$0D2C` gives {MC1, VL1, GV1, BC1, CI1,
+  DP1}, {GV2, DP2, BC2, VL2, KB2, CI2, KB1, MC2}, {MC3, GV3, BC3, DP3},
+  {RR, MC4} - Mario Circuit 1 with Bowser Castle 1, Ghost Valley 2 with
+  Bowser Castle 2. That is position within the cup, not pipes-vs-Thwomps.
+  It selects a SCRIPT; appearance is per theme, which is how the art is
+  already loaded.
+* **The object block layout**, needed by any of this: blocks at `$1800`,
+  `$1880`, `$1900`, `$1980` (`$81:9194`), two live in a one-player race
+  (`$819136`), each with a sub-block at +`$40` running its own script
+  (`$819174`). Inside: x +`$18`, y +`$1C`, height +`$1F`, script pointer
+  +`$04`. An earlier hunt for the live slots failed because it looked for
+  x and y in ADJACENT words; they are four bytes apart.
