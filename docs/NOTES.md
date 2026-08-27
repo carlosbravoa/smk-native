@@ -5491,3 +5491,30 @@ fit.
 Side effect worth recording: at `$100` the autopilot was pinned at exactly
 that speed in the four-pixel slot between two Thwomps on Bowser Castle 1;
 at `$80` that course completes again (2'48"98).
+
+---
+
+**150b** — The graze exemption, retested and still wrong. (Negative.)
+
+NOTES 134 found that `$80A0EB`'s exemption - a slip under 45 degrees keeps
+its throttle instead of taking the crash deceleration - is in the ROM, is
+visible in the user's recording, and makes the port WORSE. It was left
+out, with "something upstream still differs" as the standing explanation.
+
+NOTES 150 looked like that upstream difference: the impact slip was never
+reaching `$A2`, so every graze was being judged on a velocity direction
+that had already snapped back to the heading. Retested with the slip now
+carried:
+
+    exemption off   crash 86.2%   Ghost Valley 92.8%
+    exemption on    crash 81.6%   Ghost Valley 29.6%
+
+Worse, and far worse on the run full of glancing rail contacts - which is
+exactly the run the exemption should help. So `vel_angle` was NOT what it
+was fighting, and the standing explanation still stands with one more
+candidate eliminated.
+
+(Method note: the first attempt at this measurement was meaningless -
+`getenv` without `<stdlib.h>` compiles to an implicit int-returning call
+and both arms of the experiment produced identical numbers. Identical
+results from a toggle are a bug in the experiment, not a finding.)

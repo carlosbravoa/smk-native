@@ -54,8 +54,9 @@ re-investigating.
 | S2 | `src/course.c` `smk_course_start` | grid geometry synthesised from the finish strip (two columns, 24 px rows) | the per-track record at `[$0C],y` (`$819207`: cell + 4/10 px offsets) - located (NOTES 111), not ported; the CHARACTERS per slot are the ROM's (`$81EE97`, ported) | P2 |
 | S4 | `src/mode7.c` camera | **RESOLVED** — the projection is derived from the ROM's own DSP-1 geometry: `depth(L)=4972/(L-20.36)`, `scale=depth/256` (the ratio is exactly `Les`=256, the cross-check), camera trails the kart 61 world px (NOTES 083/084) | the DSP-1 builds per-heading scanline tables at boot; HDMA feeds them to M7A-D | closed |
 | S5 | `src/mode7.c` sky + `src/horizon.c` | **mostly**: backdrop colour and character-0 fill measured (NOTES 114); the far horizon plane is the ROM's own `gfx_d` tiles arranged by the `gfx_e` map, byte-matched against the game (NOTES 117).  Labelled: the scroll law and which map rows show.  Missing: the NEAR parallax plane (ghosts, arches - and note these are BACKGROUND, not track objects, NOTES 127) and the sky gradient | two scenery planes at different scroll speeds over a per-theme gradient | P5 - parked at the user's request |
-| S6 | `src/kart.c` bounce | **RESOLVED for the impact and its cost.** Measured frame by frame in the running game and then against a human crash run (NOTES 125/130/132/133): the impact mirrors the blocked component and leaves the speed alone; the next frame damps each axis by the pair `$56` selects and re-derives `$EA` from the vector; with BOTH components under `$C0` there is no damping at all - `$80F9C1` forces each to +-`$100`, the constant push-back; the window holds the SPEED as well as the velocity; and then drive state `$16` decelerates from the table at `$80A590` indexed by the velocity lag.  A wedged kart is ejected after eight frames (`$80F964`, NOTES 136).  **Open**: `$80A0C7`'s realignment is decoded but NOT ported - porting it naively broke the dynamics outright (NOTES 131) and it needs the slide machine's `$A6`/`$AC` states first; the graze exemption at `$80A0EB` is in the ROM and in the recording but makes the port WORSE (82.0% -> 73.4%), so something upstream still differs; the `$500` fast-hit path is unmeasured | same | impact and cost closed; realignment and graze open |
+| S6 | `src/kart.c` bounce | **RESOLVED for the impact and its cost.** Measured frame by frame in the running game and then against a human crash run (NOTES 125/130/132/133): the impact mirrors the blocked component and leaves the speed alone; the next frame damps each axis by the pair `$56` selects and re-derives `$EA` from the vector; with BOTH components under `$C0` there is no damping at all - `$80F9C1` forces each to +-`$100`, the constant push-back; the window holds the SPEED as well as the velocity; and then drive state `$16` decelerates from the table at `$80A590` indexed by the velocity lag.  A wedged kart is ejected after eight frames (`$80F964`, NOTES 136).  **Open**: `$80A0C7`'s realignment is decoded but NOT ported - porting it naively broke the dynamics outright (NOTES 131) and it needs the slide machine's `$A6`/`$AC` states first; the graze exemption at `$80A0EB` is in the ROM and in the recording but makes the port WORSE (82.0% -> 73.4%), so something upstream still differs; the `$500` fast-hit path is unmeasured | same | impact and cost closed; the realignment's SLIP is now ported and gate-proven (NOTES 150: `vel_angle` takes the impact slip while a crash runs - the human crash run 81.5% -> 86.2%, floor ratcheted to 85); the graze exemption and the `$500` fast-hit path are still open |
 | S7 | renderer | full-resolution smooth perspective | 256×224, per-scanline integer matrix | keep — named divergence, this is the point of a PC port. `--pixel` restores chunk. |
+| S22 | `src/ai.c` `smk_collide_objects` | the object hit is the ROM's measured response (reflect, 308/581, NOTES 072) plus the impact SLIP so it survives the window, plus a `$80` low-speed floor so a slow hit is not glued.  The GEOMETRY is ours: a 6 px circle with a positional push-out | the ROM's own object collision shape is not decoded, and NOTES 072's measured response has no floor at all - with none the kart is glued to what it hit, so something in that measurement is missing rather than in the fit.  The `$80` value is fitted to behaviour the user confirmed, not read (NOTES 150/150a) | P5 |
 | S8 | no audio | silence | SPC700 + S-DSP running its own program | P7 |
 | S10 | `src/main.c` draw | **entities RESOLVED for law and size.** The scale is the DSP-1 projection's own third output, `$4200 / depth ALONG THE VIEW AXIS ahead of the kart` (2.1% over 975 samples, against 19% for the euclidean distance the port used), and the drawing is chosen by walking `$84DA3C` = C0 60 30 00 (NOTES 129).  The drawn SIZE is twice the sheet's drawing, measured against a real frame with the kart as the ruler - 23x31 SNES px where the sheet holds 12x16 (NOTES 139).  Labelled: (a) where the larger art comes from is unknown - the whole object sheet tops out at 16x16, so the port magnifies; (b) that nothing draws past the last threshold is a reading of `$84DA38`, not a measurement.  **KARTS still open**: same `+$06`, but their drawing ladder is a different table and has not been measured | same | entities closed; karts P5 |
 | S11 | `src/main.c` start sequence | 3-2-1 countdown at 60 frames a step, karts held | the ROM's own start-frame count and Lakitu's light art | P5 |
@@ -133,6 +134,13 @@ it has AI karts we do not simulate - so each carries its own floor
 (`--min`, `--resync`), set just under what it achieves.  That is enough:
 the version that broke bouncing scored 63%.
 
+**A third: the object repro.**  `tools/objhit.c` places the kart a known
+distance from a known object, holds the throttle and optionally a
+direction, optionally hops, and prints the state across the impact.  Every
+number in NOTES 150/150a came out of it, including the table that picked
+the low-speed floor.  When a "feel" report arrives ("it feels too
+aggressive at low speed"), this is what turns it into a measurement.
+
 **A second instrument, added later: a driver that obeys the rules.**
 `--autodrive` (`src/autopilot.c`) plays the game through the pad - it
 presses buttons and nothing else, so every rule the player is subject to
@@ -178,57 +186,62 @@ faster than every rig it replaced, every single time.
 
 ## Where to pick up next
 
-Physics is in good shape and gated by human runs; the divergences that
-remain in them are drift, not wrong rules.  In rough order of value:
+The driving is gated by two human runs and both are at their best numbers
+(crash 86.2%, Ghost Valley 92.8%). The shell and time trial are done. In
+rough order of value:
 
-1. **Grand Prix (P8).**  The shell exists and time trial runs end to end,
-   so this is now the visible gap: four cups of five races, the AI field
-   we already have, finishing order, points and standings.  The lap and
-   finish rule is measured and shared (`$014C`, NOTES 148); what is new is
-   scoring and the between-race flow.  Not a decode problem so much as a
-   game-state one.
-2. **Moving obstacles (S12's other half) - MAPPED, and now BLOCKING.**
-   No longer cosmetic: Thwomps spawn at the right positions and never
-   move, so a row of four permanently-down Thwomps is a wall across the
-   road.  It makes **Bowser Castle 2 and 3 unfinishable** - the autopilot
-   is pinned at (448,401) on track 9 against entities at (428..452, 396)
-   while DRIVING.  A human cannot get past them either (NOTES 149).  It is
-   the ONLY GP course the autopilot cannot finish - 19/20 otherwise - so
-   this one item is the whole remaining gap in "every course is
-   completable".
-   Everything below was already true:
-   Thwomps and moles move only in Z, on a per-object bytecode script
-   (NOTES 146).  The work is: the interpreter (`$85E0B9`), the handful of
+1. **Moving obstacles (S12's other half) — MAPPED, and the one thing that
+   makes courses worse than the original.** Thwomps spawn at the right
+   positions and never rise, so four of them in a row are a wall across
+   the road. Fixing the object collision (NOTES 150/150a) let the
+   autopilot shove past, so Bowser Castle 3 finishes again — but that is
+   a bot grinding through a wall that should not exist, not the wall
+   going away. A player still meets a permanent barricade on all three
+   Bowser Castles.
+
+   The decode is done (NOTES 146): motion is Z-only, on a per-object
+   bytecode script. The work is the interpreter (`$85E0B9`), the few
    commands a Thwomp and a mole use (`$85DDA0` is the height one, table
-   at `$85DD26`), and where a script is attached at spawn.  `src/effects.c`
-   already has the same shape to copy from.  **Gate it on a Bowser Castle
-   recording** - the demo never sees a Thwomp, so nothing existing would
-   catch a regression.  A cheaper gate now exists too: `--autodrive` gets
-   round 19/20 GP courses, and the one it cannot is exactly this.
-3. **Items (P5).**  The largest gameplay gap and the one you notice in ten
-   seconds of a real race.  We have the mushroom as a special case; the
-   roulette, the item set and the award-by-rank rule are all undecoded.
-   Big, but it is what turns a faithful driving model into the game.
-4. **Per-character verification (S13).**  Nearly free now - both human
-   runs used character 1, so gating one more character is mostly
-   bookkeeping.  Six of eight remain unverified.
-5. **The near-object art (S15).**  We reproduce the SIZE by magnifying;
-   finding the real source would close it properly.  Fingerprint: a wide
-   lid overhanging a narrower body, ~24x32.
-6. **Kart size ladder (S10's other half).**  Same `+$06` law, unmeasured
-   drawing ladder.  Visible.
-7. **The start (S2, S17) - one decode, three ledger rows.**  The
-   grid origin is out by up to 152 px.  S11 (the countdown) and S17 (the
-   rocket start) are CLOSED; S18 (Lakitu and his light) is parked.  All three live in the same few
-   frames of the same routine, so they are worth doing together rather
-   than one at a time.  S16 (the falling kart's z) is closed.
-6. **The graze exemption (S6).**  Known-wrong detail: the ROM exempts a
-   slip under 45 degrees from the crash deceleration, the recording shows
-   the game doing it, and applying it makes the port worse.  Something
-   upstream differs; finding it would likely lift both human gates.
+   at `$85DD26`), and where a script is attached at spawn.
+   `src/effects.c` already has the same shape to copy from. **Gate it on
+   a Bowser Castle recording** — no existing gate sees a Thwomp — with
+   `--autodrive` on tracks 3/9/17 as the cheap check.
 
-Deliberately parked: the background's near plane and sky gradient (S5) -
-the user has said it is less relevant than feel.
+2. **Grand Prix (P8).** The shell, the grid, the AI field, the lap rule
+   and the finish are all in place, so what is missing is scoring and the
+   between-race flow: four cups of five, finishing order, points,
+   standings. A game-state problem rather than a decode one, which makes
+   it the biggest visible gain per hour of the items here.
+
+3. **Items (P5).** The largest gameplay gap and the one you notice in ten
+   seconds of a real race. The mushroom exists as a special case; the
+   roulette, the item set and the award-by-rank rule are all undecoded.
+   Big. It is what turns a faithful driving model into the game.
+
+4. **The graze exemption (S6) — newly worth another look.** The ROM
+   exempts a slip under 45 degrees from the crash deceleration
+   (`$80A0EB`), the recording shows the game doing it, and applying it
+   used to make the port WORSE (82.0% -> 73.4%). But the reason may have
+   just been removed: the slip now reaches `vel_angle` (NOTES 150), which
+   is the upstream difference that decode was fighting. Cheap to retest,
+   and it would likely lift both human gates.
+
+5. **Per-character verification (S13).** Nearly free: both human runs use
+   character 1, so gating another character is mostly bookkeeping. Six of
+   eight unverified.
+
+6. **The start grid (S2).** The origin is out by up to 152 px on the five
+   courses whose record we have not read. S11, S16 and S17 are closed and
+   S18 (Lakitu and his light) is parked, so this one no longer travels
+   with company.
+
+7. **Art detail.** The near-object source (S15 — a wide lid over a
+   narrower body, ~24x32, currently magnified) and the kart size ladder
+   (S10's other half — same `+$06` law, unmeasured drawing table). Both
+   visible, neither affecting how it plays.
+
+Deliberately parked: the background's near plane and sky gradient (S5) —
+the user has said it matters less than feel.
 
 ## Phases
 
