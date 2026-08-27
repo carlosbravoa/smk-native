@@ -711,10 +711,25 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
          * road looks like it was in the middle when you are far" (user,
          * NOTES 154a).  The base pixel was right all along; the mass
          * around it was not. */
-        float k = (float)oscale / 256.0f;
-        float ppx = (float)rw / 256.0f;     /* render px per SNES px */
-        int pw = (int)((float)SMK_OBJ_PIPE_W * k * ppx + 0.5f);
-        int ph = (int)((float)SMK_OBJ_PIPE_H * k * ppx + 0.5f);
+        /* Size by the SAME law as the ground and every kart: smk_project's
+         * scale, which is screen pixels per world pixel at this depth.
+         *
+         * The object is simply SMK_OBJ_PIPE_W x SMK_OBJ_PIPE_H world
+         * pixels big; nothing else is needed and nothing else can drift
+         * out of step with the floor it stands on.
+         *
+         * The previous version used the game's own `$4200 / zf` as the
+         * size, which is measured from the KART while every other scale in
+         * the renderer is measured from the EYE, 61 px further back.  Over
+         * 40 to 400 world px that shrinks 10x where the ground shrinks
+         * 4.6x, so distant pipes came out half the size they should be and
+         * then swelled as you approached - "they remain the same until you
+         * are relatively close, then scale up faster than any element on
+         * screen, so they look like they are getting bigger by magic, not
+         * approaching" (user, NOTES 154b).  $4200/zf still picks the BAND;
+         * it is a depth cue, not the drawn size. */
+        int pw = (int)((float)SMK_OBJ_PIPE_W * sc + 0.5f);
+        int ph = (int)((float)SMK_OBJ_PIPE_H * sc + 0.5f);
         if (pw < 1 || ph < 1) return;
         /* SMK_ENT_TRACE=1: does the drawn base land where the object
          * actually stands?  Prints the entity's world position and the
@@ -1177,6 +1192,10 @@ int main(int argc, char **argv)
      * field Lakitu's rescue and the AI use) so a whole five-lap run can be
      * played headlessly. */
     int want_tt = 0, autodrive = 0;
+    /* --scaletest: a straight Mario Circuit road with a line of pipes down
+     * the middle at known distances, so one screenshot shows how object
+     * scaling compares with the ground's own perspective. */
+    int scaletest = 0;
     /* --fast decouples the simulation from the wall clock: exactly one
      * tick per iteration, so a headless run of N frames is N ticks and a
      * whole five-lap trial takes seconds instead of minutes. */
@@ -1195,6 +1214,7 @@ int main(int argc, char **argv)
         if (!strcmp(a, "--timetrial")) { want_tt = 1; explicit_start = 1; continue; }
         if (!strcmp(a, "--autodrive")) { autodrive = 1; continue; }
         if (!strcmp(a, "--fast")) { fast = 1; continue; }
+        if (!strcmp(a, "--scaletest")) { scaletest = 1; explicit_start = 1; continue; }
         ARG("--theme", theme) ARG("--class", engine_class)
         ARG("--character", character)
         if (!strcmp(a, "--no-kart")) { show_kart = 0; continue; }
@@ -1274,6 +1294,13 @@ int main(int argc, char **argv)
         smk_rom_free(&rom);
         return 1;
     }
+    if (scaletest && !have_at) {
+        /* stand on the road at the near end looking along it.  The
+         * renderer's angle 0 looks along +X, not north - camera_from_kart
+         * subtracts a quarter turn to convert the ROM heading. */
+        shot_x = 120.0f; shot_y = 512.0f; shot_a = 0.0f;
+        have_at = 1;
+    }
     if (!have_at) smk_track_start(&trk, 0, &shot_x, &shot_y, &shot_a);
     printf("loaded \"%s\"\n", rom.title);
     printf("track %d, theme %d (from the ROM's own table), class %d\n",
@@ -1301,6 +1328,49 @@ int main(int argc, char **argv)
     }
 
     smk_track_place_objects(&rom, &trk);
+    if (scaletest) {
+        /* Build a ruler: a straight road running north, with pipes down
+         * the middle every 40 world px.  The ground is drawn by the Mode 7
+         * renderer with the true perspective, so any disagreement between
+         * how the road converges and how the pipes shrink is visible in
+         * one frame. */
+        /* Pick the tiles the real map actually uses most, rather than the
+         * first that matches a class - tile 0 is the void and using it as
+         * "not found" made the whole thing blank. */
+        int hist[SMK_TILE_TOTAL];
+        memset(hist, 0, sizeof hist);
+        for (int i2 = 0; i2 < SMK_MAP_BYTES; i2++) hist[trk.map[i2]]++;
+        int road = -1, off = -1;
+        for (int t2 = 1; t2 < SMK_TILE_COUNT; t2++) {
+            uint8_t cls = trk.surface[t2];
+            if (smk_surface_solid(cls) || hist[t2] == 0) continue;
+            if (smk_surface_cap_frac(cls) >= 1000) {
+                if (road < 0 || hist[t2] > hist[road]) road = t2;
+            } else {
+                if (off < 0 || hist[t2] > hist[off]) off = t2;
+            }
+        }
+        if (road < 0 || off < 0) { fprintf(stderr, "scaletest: no tiles\n"); return 1; }
+        for (int cy = 0; cy < SMK_MAP_DIM; cy++)
+            for (int cx = 0; cx < SMK_MAP_DIM; cx++) {
+                int wy = cy * 8;   /* the road runs EAST, along +X */
+                trk.map[cy * SMK_MAP_DIM + cx] =
+                    (uint8_t)((wy >= 448 && wy < 576) ? road : off);
+            }
+        crs.nent = 0;
+        for (int d = 40; d <= 400 && crs.nent < 32; d += 40) {
+            crs.ent[crs.nent].kind = 0;
+            crs.ent[crs.nent].x = (uint16_t)(120 + d);
+            crs.ent[crs.nent].y = 512;
+            crs.nent++;
+        }
+        crs.nlive = 0;                 /* draw them all, not a live pair */
+        crs.nseg = 0;
+        printf("scaletest: road tile %d (class $%02X), off tile %d (class $%02X), "
+               "%d pipes every 40 px from 40 to %d ahead\n",
+               road, trk.surface[road], off, trk.surface[off],
+               crs.nent, 40 * crs.nent);
+    }
     smk_blocks_bind(&trk);
     smk_objgfx_load(&rom, trk.theme, &obj_art);   /* the theme's objects */
     if (!smk_horizon_load(&rom, trk.theme, &horizon))

@@ -5847,3 +5847,43 @@ Thwomps too - drawing the wrong thing is worse than drawing nothing. The
 real one is presumably the object's sub-block at +`$40`, which runs its own
 script (`$819174`) and which we do not model. The kart's hop shadow stays,
 since that one was asked for and there is nothing else standing in for it.
+
+---
+
+**154b** — Objects scaled from the wrong origin, and the test track that
+showed it.
+
+The user asked for a scaling ruler: a straight Mario Circuit road with a
+line of pipes down the middle, so one frame shows how objects scale against
+the ground's own perspective. `--scaletest` builds exactly that (road along
++X, pipes every 40 world px from 40 to 400, all drawn rather than the live
+pair). It is worth keeping - the bug is obvious in the picture and invisible
+in any single screenshot.
+
+Their diagnosis was right: "pipes look very small in far view, they remain
+the same until you are relatively close, then scale up faster than any
+element on screen, so they look like they are getting bigger by magic, not
+approaching."
+
+**The cause.** Objects were sized by `$4200 / zf`, where `zf` is the depth
+ahead of the KART. Every other scale in the renderer - the ground plane,
+the karts - is `1 / d` where `d = zf + 61`, the depth from the EYE, which
+trails the kart (NOTES 083/084). Over 40 to 400 world px:
+
+    ours          26.4 -> 2.6 px    shrinks 10.0x
+    perspective   40.6 -> 8.9 px    shrinks  4.6x
+
+So distant objects were about half the size they should be and grew far too
+fast on approach. An object is now `SMK_OBJ_PIPE_W x SMK_OBJ_PIPE_H` world
+pixels drawn with `smk_project`'s scale - the same law as everything else,
+so it cannot drift out of step with the floor it stands on. `$4200/zf` still
+picks the BAND, which is what it is for: a depth cue, not a size.
+
+**A correction to NOTES 154a, and the lesson in it.** That entry closed S15
+on the grounds that `12 x 16 * ($4200 / (256 * 34))` = 23.3 x 31.1 matches
+the 23 x 31 measured in NOTES 139. The arithmetic is right and the
+conclusion was wrong: **one measured point cannot determine a law, only
+calibrate one.** `1/zf` and `1/(zf+61)` can both be made to pass through a
+single sample, and they disagree everywhere else. It took a scene with ten
+pipes at known distances to tell them apart - which is why the ruler the
+user asked for was the right instrument and a screenshot was not.
