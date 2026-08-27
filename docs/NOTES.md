@@ -5620,3 +5620,20 @@ Corrections to earlier notes, both found on the way:
   (`$819174`). Inside: x +`$18`, y +`$1C`, height +`$1F`, script pointer
   +`$04`. An earlier hunt for the live slots failed because it looked for
   x and y in ADJACENT words; they are four bytes apart.
+
+---
+
+**152a** — The autopilot gets round all twenty. (Measurement.)
+
+Clean sweep, five laps each, 50cc, no binary changes mid-run:
+
+    20/20 GP courses complete.  1'37" Choco Island 1 to 5'14" Rainbow Road.
+
+It was 15/20 this morning.  What moved it: sensing the ground it drives
+over and steering damped by the ROM's own turn rate (NOTES 149), the Mario
+Circuit 2 ramp guard that made that course's jump impossible (NOTES 149),
+Lakitu's rescue no longer fighting object collision (NOTES 149a), and the
+object hit carrying its slip with a milder low-speed floor (NOTES 150/150a).
+
+Two of those were found by the autopilot itself and one by the user
+playing.  None by the replay gates, which stayed green throughout.
