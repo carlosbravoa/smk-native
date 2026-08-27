@@ -702,7 +702,17 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
         int pw = (int)((float)SMK_OBJ_PIPE_W * k * ppx + 0.5f);
         int ph = (int)((float)SMK_OBJ_PIPE_H * k * ppx + 0.5f);
         if (pw < 1 || ph < 1) return;
-        int x0 = (int)px - pw / 2, y0 = (int)py - ph;
+        /* A mover is drawn at its own height (NOTES 152), and that height
+         * has to shrink with distance like everything else: `ph` is what
+         * SMK_OBJ_PIPE_H * SMK_OBJ_MAG world pixels of object measure on
+         * screen here, so that ratio converts the height too.  Lifting by
+         * a fixed screen amount would float far Thwomps into the sky. */
+        int lift = 0;
+        for (int s2 = 0; s2 < course->nlive; s2++)
+            if (course->live[s2] == i)
+                lift = smk_mover_px(course, s2) * ph
+                     / (SMK_OBJ_PIPE_H * SMK_OBJ_MAG);
+        int x0 = (int)px - pw / 2, y0 = (int)py - ph - lift;
         for (int dy = 0; dy < ph; dy++) {
             int yy = y0 + dy;
             if (yy < 0 || yy >= rh) continue;
@@ -1545,6 +1555,10 @@ int main(int argc, char **argv)
                         smk_track_surface(&trk, smk_kart_px(kart.x), smk_kart_px(kart.y)),
                         autopilot.lost);
             smk_blocks_step();
+            /* Thwomps are parked through lap one and released when it is
+             * complete - crossing 2 is the first finished lap (NOTES
+             * 148/152). */
+            smk_course_movers_step(&crs, crossings >= 2);
             step_kart(&kart, &trk, &phys, &in);
             if (replay_path && getenv("SMK_REPLAY_TRACE") && replay_i < replay.n) {
                 const smk_demo_frame *r = &replay.f[replay_i];

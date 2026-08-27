@@ -119,6 +119,12 @@ void smk_collide_objects(smk_kart *k, const smk_course *crs)
         int dx = kx - (int)crs->ent[i].x, dy = ky - (int)crs->ent[i].y;
         int d2 = dx * dx + dy * dy;
         if (d2 >= SMK_OBJ_RADIUS * SMK_OBJ_RADIUS || d2 == 0) continue;
+        /* A raised Thwomp is overhead, and you drive under it.  LABELLED:
+         * the height at which it stops touching is ours - the measurement
+         * (NOTES 152) gives the motion, not the hit box.  Half the resting
+         * height is the reading that lets a kart through the gap without
+         * letting it through a Thwomp on the floor. */
+        if (crs->mv[j].z > SMK_MOVER_PARK / 2) continue;
         float d = sqrtf((float)d2);
         float nx2 = (float)dx / d, ny2 = (float)dy / d;
         float dot = (float)k->vx * nx2 + (float)k->vy * ny2;

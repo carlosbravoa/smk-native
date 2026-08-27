@@ -167,6 +167,10 @@ bool smk_course_load(const smk_rom *rom, int track, smk_course *out)
                                   & 0xFFFF);
         out->flow[i] = (uint8_t)(((a16 + 0x80) >> 8) & 0xFF);
     }
+
+    /* the theme decides whether this track's objects move (NOTES 152) */
+    out->theme = smk_track_theme(rom, track);
+    smk_course_movers_reset(out);
     return true;
 }
 
@@ -222,4 +226,69 @@ void smk_course_spawn(smk_course *c, int waypoint, bool two_player)
     if (first >= c->nent) first = 0;         /* $84DC35: fall back to the start */
     for (int i = 0; i < want && first + i < c->nent; i++)
         c->live[c->nlive++] = first + i;
+}
+
+/* ---- Movers (NOTES 152) ------------------------------------------------
+ *
+ * The measurement is in smk.h.  What is ported here is the CYCLE the
+ * scripts produce, not the bytecode VM at $85E0B9 that produces it - the
+ * same choice made for the tyre smoke, and for the same reason: a
+ * half-understood interpreter is a worse thing to own than a measured
+ * curve.  The one number the capture could not pin is how long the rise
+ * lasts, and it is labelled at the constant.
+ */
+bool smk_theme_has_movers(int theme)
+{
+    /* Bowser Castle and Rainbow Road (user).  Everything else - pipes,
+     * the Mario Circuit posts - measured static over 400 frames. */
+    return theme == 6 || theme == 7;
+}
+
+void smk_course_movers_reset(smk_course *c)
+{
+    for (int i = 0; i < 4; i++) {
+        c->mv[i].z = SMK_MOVER_PARK;
+        c->mv[i].zv = 0;
+        c->mv[i].phase = SMK_MV_PARK;
+        c->mv[i].t = 0;
+    }
+}
+
+void smk_course_movers_step(smk_course *c, bool activated)
+{
+    if (!smk_theme_has_movers(c->theme)) return;
+    for (int i = 0; i < 4; i++) {
+        smk_mover *m = &c->mv[i];
+        switch (m->phase) {
+        case SMK_MV_PARK:
+            /* parked at the top through lap one; the lap releases it */
+            if (activated) { m->phase = SMK_MV_FALL; m->zv = SMK_MOVER_DROP0; }
+            break;
+        case SMK_MV_FALL:
+            m->z += m->zv;
+            if (m->z <= 0) {                 /* the clamp, measured */
+                m->z = 0; m->zv = 0;
+                m->phase = SMK_MV_HOLD; m->t = SMK_MOVER_HOLD;
+            } else {
+                m->zv = (int16_t)(m->zv - SMK_MOVER_GRAV);
+            }
+            break;
+        case SMK_MV_HOLD:
+            if (--m->t <= 0) { m->phase = SMK_MV_RISE; m->t = SMK_MOVER_RISE; }
+            break;
+        case SMK_MV_RISE:
+            m->z += SMK_MOVER_CLIMB;
+            if (--m->t <= 0) { m->phase = SMK_MV_FALL; m->zv = SMK_MOVER_DROP0; }
+            break;
+        }
+    }
+}
+
+int smk_mover_px(const smk_course *c, int slot)
+{
+    if (slot < 0 || slot >= 4 || !smk_theme_has_movers(c->theme)) return 0;
+    /* The kart's own height rule (smk_kart_height_px): its $1F feeds a
+     * 16.16 z and one screen pixel is 25029 of those, so one screen pixel
+     * is 25029/256 = 97.8 units of $1F.  An object's height IS $1F. */
+    return (int)(((int32_t)c->mv[slot].z * 256) / 25029);
 }

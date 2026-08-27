@@ -440,6 +440,35 @@ extern const smk_driver SMK_DRIVERS[SMK_CHARACTERS];
 #define SMK_SECT_OFF     0x7Fu
 #define SMK_MAX_SECTORS  128
 
+/* ---- Movers (NOTES 152) -------------------------------------------------
+ *
+ * Thwomps move in Z only, and not at all until the first lap is complete -
+ * they sit parked at the top through lap one.  Measured per frame on
+ * Rainbow Road, both live blocks, from the object block's height word
+ * (+$1F):
+ *
+ *     parked   z = 4096 until the lap completes
+ *     FALL     velocity starts -64 and gains -32 a frame, clamped at 0
+ *     hold     135 frames on the floor, every cycle, both objects
+ *     RISE     +64 a frame, linear
+ *
+ * LABELLED: how long the RISE lasts is script data we have not decoded.
+ * It measured 119/116/96 frames on one object and 144/199/93 on the other
+ * and is not proximity-driven, so this uses the value that reproduces the
+ * 270-frame period one of them held (the other ran nearer 294). */
+#define SMK_MOVER_PARK    4096    /* resting height, measured            */
+#define SMK_MOVER_GRAV      32    /* velocity lost per frame in the fall */
+#define SMK_MOVER_DROP0    -64    /* the fall's first step               */
+#define SMK_MOVER_HOLD     135    /* frames on the floor                 */
+#define SMK_MOVER_CLIMB     64    /* rise per frame                      */
+#define SMK_MOVER_RISE     120    /* LABELLED: rise frames, see above    */
+enum { SMK_MV_PARK, SMK_MV_FALL, SMK_MV_HOLD, SMK_MV_RISE };
+typedef struct { int32_t z; int16_t zv; uint8_t phase; int16_t t; } smk_mover;
+
+/* Do this track's objects move?  Appearance is per THEME (NOTES 152 -
+ * $0D2C is cup position, not object type), and the user reports Thwomps
+ * on Bowser Castle and Rainbow Road.  LABELLED: which themes have movers
+ * is read off that, not decoded. */
 typedef struct {
     uint8_t  map[SMK_SECT_CELLS];      /* sector | flags per cell          */
     uint16_t wx[SMK_MAX_SECTORS + 1];  /* racing line, closed              */
@@ -473,9 +502,19 @@ typedef struct {
      * [kind:2][y:7][x:7], coordinates cell*8+4, zero-terminated. */
     struct { uint8_t kind; uint16_t x, y; } ent[32];
     int      nent;
+    smk_mover mv[4];          /* per live slot, NOTES 152 */
+    int      theme;           /* for smk_theme_has_movers */
 } smk_course;
 
 bool smk_course_load(const smk_rom *rom, int track, smk_course *out);
+
+bool smk_theme_has_movers(int theme);
+void smk_course_movers_reset(smk_course *c);
+/* one frame; `activated` is false until the first lap is complete */
+void smk_course_movers_step(smk_course *c, bool activated);
+/* the height of live slot j, in screen pixels at SNES scale */
+int  smk_mover_px(const smk_course *c, int slot);
+
 
 /* Starting-grid placement derived from decoded course data: two columns
  * behind the finish strip, facing along the racing line.  Replaces the

@@ -5637,3 +5637,39 @@ object hit carrying its slip with a milder low-speed floor (NOTES 150/150a).
 
 Two of those were found by the autopilot itself and one by the user
 playing.  None by the replay gates, which stayed green throughout.
+
+---
+
+**152b** — The movers, ported.
+
+The measured cycle from NOTES 152, in `src/course.c`: parked at 4096 until
+the first lap completes, fall (velocity from -64 gaining -32 a frame,
+clamped at 0), 135 frames on the floor, rise +64 a frame. What is NOT
+ported is the bytecode VM at `$85E0B9` that produces it - the same choice
+as the tyre smoke, and for the same reason: a half-understood interpreter
+is a worse thing to own than a measured curve.
+
+Checked against the capture: the port peaks at **7552** where the game
+measured **7616** (that is 118 rise frames against 119 - the constant is
+120 and the difference is where the clamp lands).
+
+Three things here are OURS and labelled at the point of use:
+
+* **the rise duration** (`SMK_MOVER_RISE` = 120). The capture gave
+  119/116/96 on one object and 144/199/93 on the other; 120 reproduces the
+  270-frame period one of them held. It is script data we have not read.
+* **which themes move** - Bowser Castle and Rainbow Road, from the user.
+  `$0D2C` is not the type selector (NOTES 152), and the real per-theme
+  binding is not decoded. Everything else measured static over 400 frames.
+* **the height at which a raised Thwomp stops touching you** - half the
+  resting height. The capture gives the MOTION, not the hit box.
+
+Height on screen reuses the kart's own rule: `$1F` feeds a 16.16 z where
+one screen pixel is 25029, so one screen pixel is 25029/256 = 97.8 units
+of `$1F`. The lift then scales with the sprite's drawn height, or a
+distant Thwomp would rise as far on screen as a near one.
+
+Effect on the autopilot, which is the cheap gate for this: Bowser Castle 3
+went 4'25"60 -> 3'37"76 and Bowser Castle 1 2'47"08 -> 2'39"65, because a
+raised Thwomp is no longer a wall. All five replay gates unchanged - no
+recorded run contains a mover.
