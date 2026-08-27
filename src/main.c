@@ -1010,7 +1010,8 @@ static void usage(const char *argv0)
            "  --menu          start in the menu shell (the default)\n"
            "  --track N       0..23: skip the shell and drive this course\n"
            "  --timetrial     with --track: a solo 5-lap time trial\n"
-           "  --autodrive     steer along the course's own direction field\n"
+           "  --autodrive     drive itself (a test aid, not the AI: it gets\n"
+           "                  round most courses, not all)\n"
            "  --fast          one simulation tick per frame (headless tests)\n"
            "  --theme N       override the course theme    [from ROM]\n"
            "  --class N       engine class 0/1/2 (50/100/150cc)  [0]\n"
@@ -1489,9 +1490,30 @@ int main(int argc, char **argv)
                 }
             }
             if (autodrive && race_state == RACE_RUN && !replay_path) {
-                int cx = (smk_kart_px(kart.x) >> 4) & 63;
-                int cy = (smk_kart_px(kart.y) >> 4) & 63;
-                uint16_t want = (uint16_t)(crs.flow[cy * 64 + cx] << 8);
+                /* The course's own direction field steers this, which
+                 * works only where the field is DEFINED - on-course cells.
+                 * A kart that wanders off reads rubbish and drives it: on
+                 * Mario Circuit 2 that walked it into the top-left corner
+                 * and it ping-ponged along the boundary for 200k frames.
+                 * So off-course, aim at the racing line instead - the
+                 * waypoint a couple of sectors past the last one legiti-
+                 * mately reached, which is Lakitu's target too. */
+                int px = smk_kart_px(kart.x), py = smk_kart_px(kart.y);
+                uint8_t cell = smk_course_cell(&crs, px, py);
+                uint16_t want;
+                if ((cell & SMK_SECT_OFF) != SMK_SECT_OFF) {
+                    want = (uint16_t)(crs.flow[((py >> 4) & 63) * 64
+                                              + ((px >> 4) & 63)] << 8);
+                } else {
+                    int sec = player_sector;
+                    if (sec < 0 || sec >= crs.sectors) sec = 0;
+                    int aim = (sec + 2) % crs.sectors;
+                    /* the ROM's angle: 0 = -Y, clockwise, so a heading h
+                     * points along (sin h, -cos h) */
+                    want = (uint16_t)(int)(atan2f((float)crs.wx[aim] - (float)px,
+                                                  -((float)crs.wy[aim] - (float)py))
+                                    * (float)SMK_ANGLE_TURN / (2.0f * (float)M_PI));
+                }
                 int d = (int)(int16_t)(uint16_t)(want - player.heading);
                 in.up = true; in.down = false;
                 in.left = d < -0x300; in.right = d > 0x300;

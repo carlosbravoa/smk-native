@@ -34,8 +34,10 @@ Useful flags: `--track N` (0–23) skips the shell and drives that course,
 `--timetrial` makes it a solo five-lap trial, `--width/--height`, `--pixel N`
 (render at 1/N resolution — `--pixel 1` is native, `--pixel 4` is chunky and
 retro), `--fullscreen`, `--frames N` (headless benchmark), `--fast` (one
-simulation tick per frame, for headless runs), `--autodrive` (steer along the
-course's own direction field), `--shot FILE` (render one frame to a BMP and
+simulation tick per frame, for headless runs), `--autodrive` (drive itself — a
+crude test aid, not the shipped AI: it follows the course direction field
+and recovers to the racing line when it leaves the road, which gets it round
+most courses but not all), `--shot FILE` (render one frame to a BMP and
 exit).
 
 The renderer is single-threaded software and still does ~100 fps at 1920×1080,
