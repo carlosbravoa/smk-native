@@ -191,9 +191,11 @@ remain in them are drift, not wrong rules.  In rough order of value:
    No longer cosmetic: Thwomps spawn at the right positions and never
    move, so a row of four permanently-down Thwomps is a wall across the
    road.  It makes **Bowser Castle 2 and 3 unfinishable** - the autopilot
-   is pinned at (448,401) on track 9 against entities at (428..452, 396),
-   and at (283-332, 688-702) on track 3 against entities at
-   (308..332, 708).  A human cannot get past them either (NOTES 149).
+   is pinned at (448,401) on track 9 against entities at (428..452, 396)
+   while DRIVING.  A human cannot get past them either (NOTES 149).  It is
+   the ONLY GP course the autopilot cannot finish - 19/20 otherwise - so
+   this one item is the whole remaining gap in "every course is
+   completable".
    Everything below was already true:
    Thwomps and moles move only in Z, on a per-object bytecode script
    (NOTES 146).  The work is: the interpreter (`$85E0B9`), the handful of
@@ -202,7 +204,7 @@ remain in them are drift, not wrong rules.  In rough order of value:
    already has the same shape to copy from.  **Gate it on a Bowser Castle
    recording** - the demo never sees a Thwomp, so nothing existing would
    catch a regression.  A cheaper gate now exists too: `--autodrive` gets
-   round 18/20 GP courses, and the two it cannot are exactly these.
+   round 19/20 GP courses, and the one it cannot is exactly this.
 3. **Items (P5).**  The largest gameplay gap and the one you notice in ten
    seconds of a real race.  We have the mushroom as a special case; the
    roulette, the item set and the award-by-rank rule are all undecoded.

@@ -5310,25 +5310,25 @@ passed while a jump on a Mushroom Cup track could not be taken. It took a
 driver bound by the player's own rules to find it - the AI flies over that
 barrier because it never asks the surface what is underneath.
 
-**Where it stands, all twenty GP courses, five laps, 50cc:**
+**Where it stands, all twenty GP courses, five laps, 50cc** (after the
+steering damping of NOTES 149 and the rescue fix of 149a):
 
-    18/20 complete.  1'49" Choco Island 1 to 6'08" Rainbow Road.
-    The two that do not are Bowser Castle 2 and 3 - and BOTH fail on
-    S12.  Thwomps are spawned at the right positions but never move
-    (NOTES 146), so a row of four permanently-down Thwomps is a wall
-    across the road:
-
-      track 9   kart pinned at (448,401);  entities 8-11 at
-                (428,396) (436,396) (444,396) (452,396)
-      track 3   kart pinned at (283-332, 688-702);  entities 4-7 at
-                (308,708) (316,708) (324,708) (332,708), 16 at (284,700)
+    19/20 complete.  1'34" Mario Circuit 1 to 5'21" Rainbow Road.
+    (18/20 before those two fixes; 15/20 for the bang-bang driver
+    this replaced.)
+    The one that does not is Bowser Castle 3, and it fails on S12.
+    Thwomps are spawned at the right positions but never move (NOTES
+    146), so four permanently-down Thwomps at (428,396) (436,396)
+    (444,396) (452,396) are a wall across the road; the kart is pinned
+    at (448,401) while DRIVING, with no rescue involved.
 
     A human player cannot get past them either.  This is the strongest
     argument yet for porting the mover scripts: it is not a cosmetic
-    gap, it makes two courses unfinishable.
+    gap, it makes a Star Cup course unfinishable.
 
 The previous `--autodrive` (direction field, bang-bang, no sensing) got
-15/20 on the same measurement.
+15/20 on the same measurement, and its best Mario Circuit 1 was 1'46"86
+against 1'34"23 here.
 
 ---
 
