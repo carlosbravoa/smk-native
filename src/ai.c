@@ -104,8 +104,18 @@ void smk_collide_objects(smk_kart *k, const smk_course *crs)
      * scales 308/581, and a 10-frame ballistic window follows.  Movers
      * (Thwomps, moles) are static interim - positions right, motion not
      * yet decoded (labelled). */
+    /* Only the LIVE slots.  The game spawns two object blocks in a
+     * one-player race ($819136: `lda #$0004`, minus two unless $B6 says
+     * two-player) and everything downstream - drawing and collision alike
+     * - works on those blocks.  This used to walk the whole decoded
+     * entity list while draw_scene drew only the live pair, so the track
+     * was full of obstacles you could hit but never see: "there should be
+     * two thwomps and there is only one, but you can still hit the
+     * invisible one" (user, NOTES 151). */
     int kx = smk_kart_px(k->x), ky = smk_kart_px(k->y);
-    for (int i = 0; i < crs->nent; i++) {
+    int nvis = crs->nlive ? crs->nlive : crs->nent;
+    for (int j = 0; j < nvis; j++) {
+        int i = crs->nlive ? crs->live[j] : j;
         int dx = kx - (int)crs->ent[i].x, dy = ky - (int)crs->ent[i].y;
         int d2 = dx * dx + dy * dy;
         if (d2 >= SMK_OBJ_RADIUS * SMK_OBJ_RADIUS || d2 == 0) continue;

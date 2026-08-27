@@ -5518,3 +5518,44 @@ candidate eliminated.
 `getenv` without `<stdlib.h>` compiles to an implicit int-returning call
 and both arms of the experiment produced identical numbers. Identical
 results from a toggle are a bug in the experiment, not a finding.)
+
+---
+
+**151** — "You can still hit the invisible one": drawing and collision
+disagreed about which objects exist.
+
+The user, on Rainbow Road: a place where two Thwomps should stand, only one
+is drawn, and the missing one still hits you.
+
+Two different sets were in use. `draw_scene` drew the LIVE slots
+(`crs->live[]`, filled by `smk_course_spawn`), while `smk_collide_objects`
+walked the whole decoded entity list `crs->ent[0..nent)`. So every object
+on the track collided, and only two were ever visible.
+
+The game has no such split. `$819136` builds the live table with
+`lda #$0004` and two `dec A`s unless `$B6` says two-player, so a one-player
+race has **two** object blocks; `$81:9194` places them at `$1800`, `$1880`,
+`$1900`, `$1980` (each with a sub-block at +`$40`, `$819174`), and
+everything downstream works on those blocks. Collision now uses the same
+live set. All five gates unchanged.
+
+Also mapped, for the mover work: inside a block, x is at +`$18`, y at
++`$1C`, height at +`$1F`, and the script pointer at +`$04` (`$84DC54`,
+`$84DC61`, `$819163`). An earlier scan for the live slots failed because it
+looked for x and y in ADJACENT words; they are four bytes apart.
+
+**Which two are live.** `$84DC30` reads a per-segment start offset from
+`$84DAC5` - the table is `[0, 8, 16, 24]`, byte offsets into the record
+list, so record indices 0/4/8/12, which is what `src/course.c` already
+guessed. On Rainbow Road segment 3 that gives records 12 and 13, at
+`(68,700)` and `(60,700)` - eight pixels apart, so the two billboards
+overlap into the single Thwomp the user saw. Records 14 and 15,
+`(52,700)` and `(76,700)`, were the invisible pair. Whether the real game
+also draws an overlapping pair there, or picks a different two, is not yet
+established: the fix above stops us hitting what we do not draw, but does
+not by itself prove the live PAIR is right.
+
+Behaviour the user reports and we do not yet model: Rainbow Road's Thwomps
+flash through colours, cannot be destroyed, and give no bounce - just the
+ordinary object hit. Moles rise out of a hole, and one you hit sticks to
+the kart's face for a while.
