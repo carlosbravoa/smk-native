@@ -59,7 +59,7 @@ re-investigating.
 | S8 | no audio | silence | SPC700 + S-DSP running its own program | P7 |
 | S10 | `src/main.c` draw | **entities RESOLVED for law and size.** The scale is the DSP-1 projection's own third output, `$4200 / depth ALONG THE VIEW AXIS ahead of the kart` (2.1% over 975 samples, against 19% for the euclidean distance the port used), and the drawing is chosen by walking `$84DA3C` = C0 60 30 00 (NOTES 129).  The drawn SIZE is twice the sheet's drawing, measured against a real frame with the kart as the ruler - 23x31 SNES px where the sheet holds 12x16 (NOTES 139).  Labelled: (a) where the larger art comes from is unknown - the whole object sheet tops out at 16x16, so the port magnifies; (b) that nothing draws past the last threshold is a reading of `$84DA38`, not a measurement.  **KARTS still open**: same `+$06`, but their drawing ladder is a different table and has not been measured | same | entities closed; karts P5 |
 | S11 | `src/main.c` start sequence | 3-2-1 countdown at 60 frames a step, karts held | the ROM's own start-frame count and Lakitu's light art | P5 |
-| S12 | `src/main.c` entities | **part** - the SPAWN is now the game's own (NOTES 127): two slots in a one-player race, respawned from the lap segment the player's waypoint falls in, verified against a logged run.  Ghost Valley's empty list is confirmed correct.  Still open: real movers (Bowser Castle's Thwomps, Donut Plains' moles) are not ported - most likely per-object type handlers, NOT the `$84DD15` repositioner, which has no caller we can find; and the art is one size tier scaled continuously | the sheet stores a size TIER per distance band | P5 |
+| S12 | `src/main.c` entities | **spawn done, MOTION mapped and not yet ported.**  The spawn is the game's own (NOTES 127): two slots in a one-player race, respawned from the lap segment the player's waypoint falls in.  The movers are now understood too (NOTES 146) - Thwomps and moles move **only in Z**, on a per-object BYTECODE SCRIPT, and the port has neither the interpreter nor the scripts | `$85E0B9`: `ldy $04,x / tyx / jsr ($0000,x)` - a record's first word is its handler, which reads args from `$0002,y` and advances `+$04` past itself.  `$85DDA0` is the height command (`$0002,y -> $1F,x`, +6).  Command table around `$85DD26`.  Same shape as the tyre-smoke interpreter in `src/effects.c` | P5 - **next**, one focused session |
 | S14 | `src/course.c` direction field | the AI/rescue direction field is our atan2 of the waypoint delta, rounded.  MEASURED against the game's own `$7F:4000` (track 7): **2554 of 2684 cells exact, 130 off by one step of 1/256 turn, worst error 1** | `$81FCFC` builds it through the boot-time arctangent table at `$7F:9000` (`$81E4C5` generates it, `$81F638` reads it as octant base + `table[min*64+max]`) | labelled at that number; port the table if a divergence is ever traced to it |
 | S13 | `src/player.c` per character | **decoded and read from the ROM** for the five tables the game has: base top speed (`$81:8000`), acceleration curve (`$81:8010`), off-road caps (`$81:8060`), steering rows (`$81:8088`) and the drift-row adjust (`$80A4C0`: Yoshi/Koopa slide one row lower). Only Mario (P1) and Toad (P2) are VERIFIED against the game so far - the other six characters run on the same code with their own tables but have not been replayed | every character handles differently; there may be further per-character factors (kart-to-kart weight, item odds) not yet found | P3 residual: replay each character (needs a log per character - a real race, not the attract demo) |
 | S15 | `src/main.c` `draw_entity` | the near object's ART: the port magnifies the sheet's 16x16 drawing 2x to reach the measured 23x31 | the game gets that size from somewhere - the object sheet is 57 tiles and nothing in it exceeds 16x16.  Either a second art source, or a composer (the mirror of the kart minifier, NOTES 076).  The crop of the original shows the shape it must keep: a wide lid overhanging a narrower body | P5 |
@@ -80,6 +80,23 @@ against the demo race on track 7; 5 of 24 courses still need their own.
 used; C output is byte-identical to the game's loader on all 24 courses.
 
 ---
+
+## Wrong turns worth not repeating
+
+* **Ghost Valley has no moving objects.**  Its `$0D28` selects the path
+  repositioner at `$84DC80`, which makes it look like the mover track in
+  every static reading - but the four slots there only shift when the
+  WAYPOINT advances, and they carry no graphic (`+$08` = 0).  The tracks
+  that really have movers - Bowser Castle, Rainbow Road, Donut Plains -
+  select the STATIC spawner.  Derived wrongly three times; see NOTES
+  145b/146.
+* **Memory taps cannot see direct-page writes to WRAM.**  A Lua tap on
+  `$00:1018` catches six writes in 2171 frames while the game writes it
+  every frame.  Use the debugger's watchpoints, or the Python oracle
+  (NOTES 142b).
+* **A decoded routine is not a portable routine.**  `$80A0C7` is correct
+  65816 that wrecked the dynamics when dropped into a state machine we
+  had only half ported (NOTES 131).
 
 ## The gate, and how work gets proved now
 
@@ -138,11 +155,15 @@ faster than every rig it replaced, every single time.
 Physics is in good shape and gated by human runs; the divergences that
 remain in them are drift, not wrong rules.  In rough order of value:
 
-1. **Moving obstacles (S12's other half).**  Thwomps and moles stand
-   still.  The SPAWN is the game's own (NOTES 127) but the motion
-   handlers have never been ported - `$84DC80` has no caller anywhere in
-   banks `$80`-`$87`, so they are most likely per-object type handlers.
-   This is what stands between us and a track that behaves completely.
+1. **Moving obstacles (S12's other half) - MAPPED, ready to port.**
+   Thwomps and moles move only in Z, on a per-object bytecode script
+   (NOTES 146).  The work is: the interpreter (`$85E0B9`), the handful of
+   commands a Thwomp and a mole use (`$85DDA0` is the height one, table
+   at `$85DD26`), and where a script is attached at spawn.  `src/effects.c`
+   already has the same shape to copy from.  **Gate it on a Bowser Castle
+   recording** - the demo never sees a Thwomp, so nothing existing would
+   catch a regression.  This is what stands between us and a track that
+   behaves completely.
 2. **Items (P5).**  The largest gameplay gap and the one you notice in ten
    seconds of a real race.  We have the mushroom as a special case; the
    roulette, the item set and the award-by-rank rule are all undecoded.
