@@ -65,6 +65,7 @@ re-investigating.
 | S15 | `src/main.c` `draw_entity` | the near object's ART: the port magnifies the sheet's 16x16 drawing 2x to reach the measured 23x31 | the game gets that size from somewhere - the object sheet is 57 tiles and nothing in it exceeds 16x16.  Either a second art source, or a composer (the mirror of the kart minifier, NOTES 076).  The crop of the original shows the shape it must keep: a wide lid overhanging a narrower body | P5 |
 | S16 | `src/player.c` fall | while falling, our kart descends in z so something is seen to move | `$1F` stays at **1** for all 60 countdown frames - the physics stops and waits, and the visible drop is the SPRITE (NOTES 135a).  Matters more now that sprites below the plane are clipped: ours sinks behind the track, the game's does not | P5 |
 | S17 | `src/player.c` start | no start boost at all: the countdown holds the kart, the lights go out, you drive | during the countdown the throttle DOES something - the kart is held but revs, you launch at "higher rev, normal speed", and pressing accelerate at one exact point gives a **turbo launch** (user, who plays it).  So there is a rev accumulator separate from `$EA` and a window that tests it - and it OVERSHOOTS: hold from the start and the kart spins on itself until the revs decay to zero.  Nothing of this is decoded | P5 - needs the `starts` recording |
+| S18 | `src/main.c` start | no Lakitu and no traffic light; the port shows 3-2-1 digits | Lakitu descends with a semaphore, and it (with the sound) is how a player times the launch.  TIMING is already right - the countdown is the measured 336 frames - so this is art plus animation.  Ruled out (NOTES 145a): not in `gfx_b`/`gfx_f`, no discrete light state in low WRAM, and MAME exposes no VRAM/OAM share.  Route: render the OBJ half of the Python oracle's VRAM after reaching a race and match back to a ROM asset; `$0142` is the likely animation driver | P5 - parked for a session of its own |
 | S9 | `tools/smktool/dsp1.py` | full command set implemented; stream never desyncs; camera model verified against the game's own usage. Residual: gyrate is a passthrough, and raster/`$08`/`$18` scalings are unchecked | the real chip's exact fixed-point pipeline | largely closed (NOTES 039); residuals logged on first contact |
 
 *Resolved:* **S9 for command `$04` (sin/cos)** — pinned by unit analysis in
@@ -137,21 +138,26 @@ faster than every rig it replaced, every single time.
 Physics is in good shape and gated by human runs; the divergences that
 remain in them are drift, not wrong rules.  In rough order of value:
 
-1. **Items (P5).**  The largest gameplay gap and the one you notice in ten
+1. **Moving obstacles (S12's other half).**  Thwomps and moles stand
+   still.  The SPAWN is the game's own (NOTES 127) but the motion
+   handlers have never been ported - `$84DC80` has no caller anywhere in
+   banks `$80`-`$87`, so they are most likely per-object type handlers.
+   This is what stands between us and a track that behaves completely.
+2. **Items (P5).**  The largest gameplay gap and the one you notice in ten
    seconds of a real race.  We have the mushroom as a special case; the
    roulette, the item set and the award-by-rank rule are all undecoded.
    Big, but it is what turns a faithful driving model into the game.
-2. **Per-character verification (S13).**  Nearly free now - both human
+3. **Per-character verification (S13).**  Nearly free now - both human
    runs used character 1, so gating one more character is mostly
    bookkeeping.  Six of eight remain unverified.
-3. **The near-object art (S15).**  We reproduce the SIZE by magnifying;
+4. **The near-object art (S15).**  We reproduce the SIZE by magnifying;
    finding the real source would close it properly.  Fingerprint: a wide
    lid overhanging a narrower body, ~24x32.
-4. **Kart size ladder (S10's other half).**  Same `+$06` law, unmeasured
+5. **Kart size ladder (S10's other half).**  Same `+$06` law, unmeasured
    drawing ladder.  Visible.
-5. **The start (S2, S11, S17) - one decode, three ledger rows.**  The
-   grid origin is out by up to 152 px, the countdown length is invented,
-   and the rocket start does not exist.  All three live in the same few
+6. **The start (S2, S17) - one decode, three ledger rows.**  The
+   grid origin is out by up to 152 px.  S11 (the countdown) and S17 (the
+   rocket start) are CLOSED; S18 (Lakitu and his light) is parked.  All three live in the same few
    frames of the same routine, so they are worth doing together rather
    than one at a time.  S16 (the falling kart's z) is closed.
 6. **The graze exemption (S6).**  Known-wrong detail: the ROM exempts a
