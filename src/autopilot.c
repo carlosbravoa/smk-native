@@ -112,12 +112,14 @@ void smk_autopilot_step(smk_autopilot *a, const smk_track *trk,
                         const smk_course *crs, const smk_player *p,
                         const smk_kart *k, smk_autopilot_out *out)
 {
-    static int inited, no_brake, no_slide, no_probe;
+    static int inited, no_brake, no_slide, no_probe, ap_lead = 16, ap_dead = 0x300;
     if (!inited) {
         inited = 1;
         no_brake = off("SMK_AP_NOBRAKE");
         no_slide = off("SMK_AP_NOSLIDE");
         no_probe = off("SMK_AP_NOPROBE");
+        { const char *e = getenv("SMK_AP_LEAD"); if (e) ap_lead = atoi(e); }
+        { const char *e = getenv("SMK_AP_DEAD"); if (e) ap_dead = atoi(e); }
     }
     memset(out, 0, sizeof *out);
     if (crs->sectors <= 0) { out->accel = true; return; }
@@ -282,10 +284,50 @@ void smk_autopilot_step(smk_autopilot *a, const smk_track *trk,
         return;
     }
 
-    /* ---- steering ----------------------------------------------------- */
-    const int DEAD = 0x0200;
-    out->left = err < -DEAD;
-    out->right = err > DEAD;
+    /* ---- steering -----------------------------------------------------
+     *
+     * Bang-bang on the error alone weaves: the input is held until the
+     * heading actually reaches the target, by which time the kart is
+     * already turning hard and sails straight past it, so the next frame
+     * corrects the other way.  Watching it, the word for it is drunk.
+     *
+     * The cure is not a shorter press, it is steering on where the heading
+     * is GOING to be.  $B2 is the turn rate the ROM adds to the heading
+     * (>> 3 each frame, $80AFBE), which is exactly the derivative term a
+     * bang-bang controller needs: lead it by a few frames and the input
+     * releases while the kart is still swinging, so it arrives on the
+     * target instead of crossing it.
+     *
+     * Measured, five laps of Mario Circuit 1, 50cc - lead in frames and
+     * the deadband either side of the target heading:
+     *
+     *     lead  0, dead $200   2'01"48   203 reversals   21.7 deg mean err
+     *     lead 12, dead $200   1'39"00   250             16.9
+     *     lead 16, dead $200   1'34"86   232             15.9
+     *     lead 14, dead $100   1'38"16   430             16.6   (chatters)
+     *     lead 16, dead $300   1'34"36   126             16.4   <- taken
+     *     lead 16, dead $400   1'36"65   102             18.0
+     *
+     * so leading the heading is worth 27 seconds over five laps, and a
+     * deadband of $300 halves the number of times the wheel changes hands
+     * for nothing.  ($300 is what the first bang-bang driver used; I had
+     * narrowed it to $140 on the theory that tighter is more accurate,
+     * which is exactly backwards without a derivative term.) */
+    const int DEAD = ap_dead;
+    int lead = ((int)p->turn * ap_lead) >> 3;
+    int e = err - lead;
+    out->left = e < -DEAD;
+    out->right = e > DEAD;
+    /* Two numbers for the weave: how often the wheel changes hands, and -
+     * the one that actually matters - how far off the intended heading the
+     * kart sits on average.  A precise driver still makes many small
+     * corrections, so the reversal COUNT alone says little; the mean error
+     * is what "drunk" looks like as a measurement. */
+    a->dbg_err_sum += ang_abs(err);
+    a->dbg_err_n++;
+    if (out->left && a->last_steer > 0) a->dbg_flips++;
+    if (out->right && a->last_steer < 0) a->dbg_flips++;
+    a->last_steer = out->left ? -1 : (out->right ? 1 : a->last_steer);
 
     /* ---- the slide, which is how the game takes a real corner --------- */
     int need = ang_abs(err);

@@ -1593,6 +1593,12 @@ int main(int argc, char **argv)
                 }
                 smk_time_text(result.total, tm, sizeof tm);
                 printf("  total  %s\n", tm);
+                if (autodrive)
+                    printf("  steering: %d reversals, mean heading error %.2f deg\n",
+                           autopilot.dbg_flips,
+                           autopilot.dbg_err_n
+                             ? (double)autopilot.dbg_err_sum / autopilot.dbg_err_n
+                               * 360.0 / 65536.0 : 0.0);
                 /* An autodriven run is the direction field's lap, not the
                  * player's, so it is reported but never banked. */
                 if (!autodrive) {

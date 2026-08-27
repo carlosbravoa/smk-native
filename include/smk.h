@@ -817,6 +817,8 @@ typedef struct {
     int slide;
     /* readouts, for tuning the driver against a real course */
     int dbg_bend, dbg_need, dbg_limit, dbg_aim, dbg_dev;
+    int dbg_flips, last_steer;   /* steering reversals: the weave, counted */
+    long dbg_err_sum; int dbg_err_n;   /* mean |heading error|: the weave's SIZE */
 } smk_autopilot;
 typedef struct {
     bool accel, brake, left, right, hop, hop_held;
