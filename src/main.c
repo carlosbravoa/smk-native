@@ -725,7 +725,8 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
                 if (tile >= SMK_OBJ_TILES) continue;
                 uint8_t v = obj_art.px[tile][(ty % 8) * 8 + (tx % 8)];
                 if (!v) continue;
-                fb[yy * rw + xx] = trk->palette[(SMK_OBJ_PAL + v) & 0xFF];
+                fb[yy * rw + xx] =
+                    trk->palette[(smk_obj_pal(trk->theme) + v) & 0xFF];
             }
         }
 }

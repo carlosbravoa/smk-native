@@ -592,7 +592,25 @@ static inline int smk_hud_digit(int d)
  * Circuit stream drew green pipes on Rainbow Road (playtest). */
 #define SMK_OBJ_TABLE   0x81EBD3u
 #define SMK_OBJ_TILES   57
+/* Which CGRAM row the object art indexes.
+ *
+ * $F0 for most themes: on Mario Circuit its $FA-$FD are the pipe's greens
+ * and on Rainbow Road its $FA-$FF are a grey ramp, both correct.  On
+ * BOWSER CASTLE $F0 is CE0000 / FF6300 / FFBD00 - reds and ambers - so the
+ * Thwomps came out looking like lava (user).
+ *
+ * MEASURED: over 600 frames of a Bowser Castle race the game puts palette
+ * 7 ($F0) in OAM exactly ZERO times, while an object-free Ghost Valley run
+ * uses it 120 - so $F0 is not what its objects are drawn from.  $C0 is the
+ * only row on that theme carrying the grey ramp the art indexes ($CA-$CE =
+ * EFEFEF D6D6D6 BDBDBD A5A5A5 7B7B7B).
+ *
+ * LABELLED: the per-theme table is ours.  The OAM tally could not isolate
+ * the objects' own row (karts, HUD and tyre smoke dominate the counts), so
+ * where the base really comes from is still undecoded - this fixes the one
+ * theme that is provably wrong and leaves the rest where they were. */
 #define SMK_OBJ_PAL     0xF0
+int smk_obj_pal(int theme);
 /* The pipe is 2x2 tiles with the SNES's 16-tile VRAM ROW STRIDE - so
  * stream tiles 14,15 over 30,31, not four consecutive ones.  Stacking
  * ten consecutive tiles as 2 wide x 5 tall is what produced the

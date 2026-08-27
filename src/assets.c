@@ -400,3 +400,10 @@ void smk_track_guess_start(const smk_track *t, float *x, float *y, float *angle)
     *y = (float)(best_ty * SMK_TILE_PX + SMK_TILE_PX / 2);
     *angle = 0.0f;
 }
+
+/* See SMK_OBJ_PAL in smk.h for the evidence and what is labelled here. */
+int smk_obj_pal(int theme)
+{
+    if (theme < 0) theme = 0;
+    return (theme % SMK_THEME_COUNT) == 6 ? 0xC0 : SMK_OBJ_PAL;
+}

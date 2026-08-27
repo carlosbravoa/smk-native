@@ -5673,3 +5673,39 @@ Effect on the autopilot, which is the cheap gate for this: Bowser Castle 3
 went 4'25"60 -> 3'37"76 and Bowser Castle 1 2'47"08 -> 2'39"65, because a
 raised Thwomp is no longer a wall. All five replay gates unchanged - no
 recorded run contains a mover.
+
+---
+
+**153** — Bowser Castle's Thwomps were made of lava.
+
+The user: they are grey in the real game, molten here.
+
+The port drew every theme's objects from palette base `$F0`. Rendering the
+same art from three candidate rows shows why that survived so long - it is
+right twice and wrong once:
+
+    theme 1 Mario Circuit   $F0 green pipe    $C0 white pipe
+    theme 7 Rainbow Road    $F0 grey Thwomp   $C0 grey Thwomp
+    theme 6 Bowser Castle   $F0 LAVA Thwomp   $C0 grey Thwomp
+
+Bowser Castle's `$F0` is `CE0000 FF6300 FFBD00` - dark red, orange, amber -
+with no grey in the row at all, while every theme carries a grey ramp at
+`$CA-$CE` (`EFEFEF D6D6D6 BDBDBD A5A5A5 7B7B7B`).
+
+MEASURED, and the reason this is not just picking the row that looks
+right: over 600 frames of a Bowser Castle race the game writes palette 7
+(`$F0`) into OAM **zero** times. An object-free Ghost Valley run over the
+same window writes it 120. So `$F0` is provably not where that theme's
+objects come from, and `$C0` is the only row there with the ramp the art
+indexes.
+
+Ported as a per-theme base: theme 6 takes `$C0`, everything else keeps
+`$F0`. Mario Circuit's pipes stay green, Rainbow Road's Thwomps stay grey,
+Bowser Castle's become grey.
+
+LABELLED: the table is ours. The OAM tally could NOT isolate the objects'
+own row - karts, the HUD (`$C0`) and tyre smoke (`$D0`) dominate the counts,
+and the differential against a track with an empty entity list came back
+inverted rather than clean. So where the base really comes from is still
+undecoded; this fixes the one theme that is provably wrong and leaves the
+others where they were rather than guessing a rule for all eight.
