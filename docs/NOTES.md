@@ -5222,3 +5222,110 @@ showed LAP 2 from the first time you passed the flag.
 (NOTES 113) and its log in this repo: no coins and no item boxes on the
 tilemap, the kart is alone on the track, and P1's `$0E00` (coins) is **0**
 on frame 0 and stays there.  All three are now what the port does.
+
+---
+
+**149** — A driver that obeys the rules, and the bug it found in its first
+lap: Mario Circuit 2's jump was impossible.
+
+`--autodrive` steered by the direction field with bang-bang left/right,
+which is roughly what `src/ai.c` does - and the AI is not playing the game.
+It writes its own heading and speed, ignores surfaces, and teleports itself
+back onto the road when it wedges. A driver built that way cannot exercise
+the player's rules, because it does not obey them.
+
+`src/autopilot.c` only ever presses BUTTONS. It hands `smk_player_step` the
+same pad word a person would, so the acceleration curve, off-road caps, the
+slide machine, spin-out, wall bounce and its cost, hop and Lakitu all apply
+to it exactly as they apply to the player.
+
+**What it steers by, and the trap on the way there.** The obvious design -
+aim at the ROM's route points with a speed-scaled lookahead - parks the kart
+against a wall on Mario Circuit 2. The waypoints are sector CENTROIDS, not a
+drivable polyline: the straight line from sector 29's point `(464,696)` to
+sector 30's `(720,688)` crosses a solid barrier at `x = 656`. `src/ai.c`
+already records this ("atan2 to a waypoint is only the OFF-COURSE recovery
+path in the ROM, and treating it as the main rule was why our karts clipped
+corners into walls") and I walked into it anyway. The split that works:
+
+* the per-cell direction field steers - it is built FROM those waypoints,
+  in the form that knows where the road is;
+* the route points decide how fast to ARRIVE, via the bend ahead;
+* nine surface probes bend the aim away from what cannot be driven on;
+* stagnation is measured over a WINDOW, not frame to frame.
+
+That last one matters more than it sounds. Pinned against the rail on
+Rainbow Road, the kart jittered between `x = 297` and `298` for sixty
+thousand frames with the throttle wide open, and an exact-equality
+"did it move since last frame?" test reset on every one of them. (`ai.c`
+has the same hole.)
+
+**Tuning, measured rather than guessed.** Five laps of Mario Circuit 1,
+50cc, with each piece switched off:
+
+    everything on  2'34"   no probe  2'25"   no brake  2'23"
+    no slide       2'01"   no brake + no slide  1'58"
+
+The slide was costing **33 seconds** - it was held for 90 frames on
+anything that merely bent. Short and rare now. The switches
+(`SMK_AP_NOBRAKE` / `NOSLIDE` / `NOPROBE`) stay in the file so this takes a
+minute to redo rather than an afternoon to rediscover.
+
+**The bug.** Mario Circuit 2 refused to complete in every configuration.
+Tracing it frame by frame over the jump:
+
+    f1449  pos 513,702  spd  586  surf 16      <- onto the boost pad
+    f1458  pos 540,694  spd 1036  surf 16
+    f1463  pos 561,688  spd 1286  surf 10      <- onto the RAMP
+    f1465  pos 566,687  spd 1336  surf 10  z 0 <- still on the ground
+    f1466  pos 565,686  spd  334  surf 10      <- into the barrier
+
+`z` never leaves 0. The kart drives over the ramp at 1336 and hits the wall
+it is supposed to fly over. The layout is unambiguous - boost pad `$16` at
+`x 512-543`, ramp `$10` at `x 552-560`, barrier at `x 568`, and the
+direction field pointing EAST straight across all three:
+
+    y 688   40 40 40 40 16 16 16 16 40 10 10 ## 40 40 40 40 ...
+
+Cause: `src/player.c`'s object-class dispatch carried `p->drive != 0x10`,
+and `$80B47B` - the boost pad's own handler, twelve pixels earlier - sets
+`p->drive = 0x10`. The guard was therefore always false by the time the
+ramp arrived. **The ROM has no such guard**: `$80B3F4` reads `$AE,x` and
+dispatches on it (`$80B418`: `and #$000F / tax / jmp ($B3A5,x)`) with
+nothing tested in between.
+
+Removing it from the object path:
+
+* all five replay gates score **identically**, to the tenth of a percent
+  (100.0 / 100.0 / 100.0 / 81.5 / 93.0) - no recorded run in the set ever
+  crosses a ramp while boosting, which is exactly why this survived;
+* Mario Circuit 2 completes, 4'19"06.
+
+The same guard on the HAZARD path is left in place and labelled: it has not
+been shown wrong, and immunity to water during a boost is at least
+plausible.
+
+**The point.** Four gates, forty-four selftests and twenty AI laps all
+passed while a jump on a Mushroom Cup track could not be taken. It took a
+driver bound by the player's own rules to find it - the AI flies over that
+barrier because it never asks the surface what is underneath.
+
+**Where it stands, all twenty GP courses, five laps, 50cc:**
+
+    18/20 complete.  1'49" Choco Island 1 to 6'08" Rainbow Road.
+    The two that do not are Bowser Castle 2 and 3 - and BOTH fail on
+    S12.  Thwomps are spawned at the right positions but never move
+    (NOTES 146), so a row of four permanently-down Thwomps is a wall
+    across the road:
+
+      track 9   kart pinned at (448,401);  entities 8-11 at
+                (428,396) (436,396) (444,396) (452,396)
+      track 3   kart pinned at (283-332, 688-702);  entities 4-7 at
+                (308,708) (316,708) (324,708) (332,708), 16 at (284,700)
+
+    A human player cannot get past them either.  This is the strongest
+    argument yet for porting the mover scripts: it is not a cosmetic
+    gap, it makes two courses unfinishable.
+
+The previous `--autodrive` (direction field, bang-bang, no sensing) got
+15/20 on the same measurement.

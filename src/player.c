@@ -576,10 +576,30 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
         default: break;                     /* $20 wall, $28, $2E: elsewhere */
         }
     }
-    if (!k->airborne && p->drive != 0x10 && (surf & 0xFE) < 0x20 && p->jump_state == 0) {
-        /* $80B3B7 -> the object-class table at $80B3A5 (classes $00-$1E)
-         * and the hazard table at $80B39B ($20-$3E) run right after the
-         * hop check, on the class of the cell under the kart. */
+    /* $80B3B7 -> the object-class table at $80B3A5 (classes $00-$1E) and
+     * the hazard table at $80B39B ($20-$3E) run right after the hop check,
+     * on the class of the cell under the kart.
+     *
+     * CORRECTION (NOTES 149).  This used to carry `p->drive != 0x10` as
+     * well, and that made Mario Circuit 2's jump IMPOSSIBLE.  The boost
+     * pad there ($16) sits immediately before the ramp ($10) - the track
+     * is built so you arrive at the ramp boosting - and the boost pad's
+     * own handler sets drive state $10.  So by the time the kart reached
+     * the ramp the guard was false, the ramp never fired, and the kart
+     * drove into the barrier it was supposed to fly over at speed 1336
+     * with z never leaving 0.
+     *
+     * The ROM has no such guard: $80B3F4 reads the class and dispatches on
+     * it ($80B418: `and #$000F / tax / jmp ($B3A5,x)`) with nothing tested
+     * in between.  Removing it changes NOTHING in any recorded run - all
+     * five replay gates score identically, to the tenth of a percent -
+     * because no demo or human run in the set crosses a ramp while
+     * boosting.  Found by the autopilot, which does.
+     *
+     * The same guard on the HAZARD path above is left alone: it has not
+     * been shown wrong, and being immune to water while boosting is at
+     * least plausible.  Labelled there, not here. */
+    if (!k->airborne && (surf & 0xFE) < 0x20 && p->jump_state == 0) {
         switch (surf & 0x1E) {
         case 0x10:                          /* $80B67C: ramp */
             if (k->speed < 0x2E0) k->speed = 0x2E0;   /* $80B7AF */

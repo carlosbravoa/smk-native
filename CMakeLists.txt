@@ -30,6 +30,7 @@ add_library(smkcore STATIC
   src/cups.c
   src/records.c
   src/menu.c
+  src/autopilot.c
 )
 target_include_directories(smkcore PUBLIC include)
 target_compile_options(smkcore PRIVATE -Wall -Wextra -O2)

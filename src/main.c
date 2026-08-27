@@ -407,6 +407,7 @@ static long lap_start_frames;       /* clock at the last line crossing */
 static bool tt_mushroom;            /* the one time-trial mushroom     */
 static bool race_over;
 static bool race_reported;
+static smk_autopilot autopilot;
 static int  crossings;              /* finish-line crossings this race */
 
 /* One frame of the player's kart: the DECODED control (src/player.c, NOTES
@@ -566,6 +567,7 @@ static bool load_race(const smk_rom *rom, int track, int theme, int character,
     crossings = 0;
     race_over = false;
     race_reported = false;
+    smk_autopilot_init(&autopilot);
     /* one mushroom in a time trial, and nothing else (the user's rule for
      * this shell; the ROM's own grant is not decoded - ledger S19) */
     tt_mushroom = (mode == SMK_MODE_TT);
@@ -1490,52 +1492,36 @@ int main(int argc, char **argv)
                 }
             }
             if (autodrive && race_state == RACE_RUN && !replay_path) {
-                /* The course's own direction field steers this, which
-                 * works only where the field is DEFINED - on-course cells.
-                 * A kart that wanders off reads rubbish and drives it: on
-                 * Mario Circuit 2 that walked it into the top-left corner
-                 * and it ping-ponged along the boundary for 200k frames.
-                 * So off-course, aim at the racing line instead - the
-                 * waypoint a couple of sectors past the last one legiti-
-                 * mately reached, which is Lakitu's target too. */
-                int px = smk_kart_px(kart.x), py = smk_kart_px(kart.y);
-                uint8_t cell = smk_course_cell(&crs, px, py);
-                uint16_t want;
-                if ((cell & SMK_SECT_OFF) != SMK_SECT_OFF) {
-                    want = (uint16_t)(crs.flow[((py >> 4) & 63) * 64
-                                              + ((px >> 4) & 63)] << 8);
-                } else {
-                    int sec = player_sector;
-                    if (sec < 0 || sec >= crs.sectors) sec = 0;
-                    int aim = (sec + 2) % crs.sectors;
-                    /* the ROM's angle: 0 = -Y, clockwise, so a heading h
-                     * points along (sin h, -cos h) */
-                    want = (uint16_t)(int)(atan2f((float)crs.wx[aim] - (float)px,
-                                                  -((float)crs.wy[aim] - (float)py))
-                                    * (float)SMK_ANGLE_TURN / (2.0f * (float)M_PI));
-                }
-                int d = (int)(int16_t)(uint16_t)(want - player.heading);
-                in.up = true; in.down = false;
-                in.left = d < -0x300; in.right = d > 0x300;
-                /* Bang-bang steering wedges itself in the corners where
-                 * the direction field points straight at a wall - the
-                 * shipped AI has escape logic (NOTES 057), this does not.
-                 * So: once the kart has been crawling for a while, back
-                 * out with the wheel over until it is moving again. */
-                static int stuck;
-                if (kart.speed < 120) stuck++; else stuck = 0;
-                if (stuck > 90) {
-                    in.up = false; in.down = true;
-                    in.left = (stuck & 0x40) != 0;
-                    in.right = !in.left;
-                    if (stuck > 240) stuck = 0;
-                }
+                /* The autopilot presses buttons and nothing else, so the
+                 * kart it drives is subject to every rule the player's is
+                 * (src/autopilot.c). */
+                smk_autopilot_out ap;
+                smk_autopilot_step(&autopilot, &trk, &crs, &player, &kart, &ap);
+                in.up = ap.accel; in.down = ap.brake;
+                in.left = ap.left; in.right = ap.right;
+                in.hop = ap.hop; in.hop_held = ap.hop_held;
+            }
+            static long trace_lo = -1, trace_hi = -1;
+            if (trace_lo < 0) {
+                const char *w = getenv("SMK_TRACE_WINDOW");
+                if (w) { trace_lo = atol(w); const char *c = strchr(w, ':');
+                         trace_hi = c ? atol(c + 1) : trace_lo + 60; }
+                else { trace_lo = 0; trace_hi = 0; }
             }
             if (autodrive && getenv("SMK_AUTODRIVE_TRACE")
-                && hud_race_frames % 300 == 0 && race_state == RACE_RUN)
-                fprintf(stderr, "f%ld pos %d,%d spd %d head %u sec %d hazard %d\n",
+                && (trace_hi > 0
+                    ? (hud_race_frames >= trace_lo && hud_race_frames <= trace_hi)
+                    : hud_race_frames % 20 == 0)
+                && race_state == RACE_RUN)
+                fprintf(stderr, "f%ld pos %d,%d spd %d/%d sec %d/%d aim %d need %04X dev %d slide %d haz %d z %d surf %02X lost %d\n",
                         hud_race_frames, smk_kart_px(kart.x), smk_kart_px(kart.y),
-                        kart.speed, player.heading, player_sector, player.hazard);
+                        kart.speed, autopilot.dbg_limit, player_sector,
+                        autopilot.sector,
+                        autopilot.dbg_aim, autopilot.dbg_need,
+                        autopilot.dbg_dev, autopilot.slide, player.hazard,
+                        (int)(kart.z >> 8),
+                        smk_track_surface(&trk, smk_kart_px(kart.x), smk_kart_px(kart.y)),
+                        autopilot.lost);
             smk_blocks_step();
             step_kart(&kart, &trk, &phys, &in);
             if (replay_path && getenv("SMK_REPLAY_TRACE") && replay_i < replay.n) {

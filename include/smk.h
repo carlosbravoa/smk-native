@@ -802,6 +802,30 @@ void smk_time_text(long frames, char *out, size_t n);
  * `cmp #$FF00` against the same threshold is what lights FINAL LAP. */
 #define SMK_RACE_LAPS 5
 
+/* ---- The autopilot (src/autopilot.c) ------------------------------------
+ *
+ * A driver that only presses buttons: it hands smk_player_step the same pad
+ * word a person would, so it is subject to every rule the player is.  It
+ * follows the ROM's own route points as a reference and reacts to the
+ * ground it is crossing.  The POLICY is ours and labelled; see the file. */
+typedef struct {
+    int sector;                /* last valid sector, the ROM's keep rule */
+    int last_px, last_py, still, tick;
+    int lost;                  /* frames the sector map has disagreed */
+    int ahead;                 /* probe steps clear straight ahead      */
+    int recover, recover_dir;
+    int slide;
+    /* readouts, for tuning the driver against a real course */
+    int dbg_bend, dbg_need, dbg_limit, dbg_aim, dbg_dev;
+} smk_autopilot;
+typedef struct {
+    bool accel, brake, left, right, hop, hop_held;
+} smk_autopilot_out;
+void smk_autopilot_init(smk_autopilot *a);
+void smk_autopilot_step(smk_autopilot *a, const smk_track *trk,
+                        const smk_course *crs, const smk_player *p,
+                        const smk_kart *k, smk_autopilot_out *out);
+
 /* The screens.  $002C is the game's own mode word - 0 GP, 2 match race,
  * 4 time trial, 6 battle (NOTES 113) - and time trial is the one this
  * shell drives. */

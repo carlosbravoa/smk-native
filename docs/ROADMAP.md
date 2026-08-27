@@ -100,6 +100,18 @@ used; C output is byte-identical to the game's loader on all 24 courses.
 * **A decoded routine is not a portable routine.**  `$80A0C7` is correct
   65816 that wrecked the dynamics when dropped into a state machine we
   had only half ported (NOTES 131).
+* **The route points are not a drivable line.**  They are sector
+  CENTROIDS: on Mario Circuit 2 the straight line from sector 29's point
+  to sector 30's crosses a solid barrier.  Steer on course by the
+  direction field - which is built from those same waypoints, in the form
+  that knows where the road is - and keep atan2-to-a-waypoint for
+  off-course recovery, which is what the ROM does.  `src/ai.c` already
+  said so; NOTES 149 walked into it again anyway.
+* **A guard invented to be safe can make part of the game unreachable.**
+  `p->drive != 0x10` on the object-class dispatch made Mario Circuit 2's
+  jump impossible - the boost pad twelve pixels before the ramp sets that
+  very state - and every gate stayed green for weeks, because no recorded
+  run crosses a ramp while boosting (NOTES 149).
 
 ## The gate, and how work gets proved now
 
@@ -120,6 +132,15 @@ The staged demos are exact and stay that way.  A human run never will be -
 it has AI karts we do not simulate - so each carries its own floor
 (`--min`, `--resync`), set just under what it achieves.  That is enough:
 the version that broke bouncing scored 63%.
+
+**A second instrument, added later: a driver that obeys the rules.**
+`--autodrive` (`src/autopilot.c`) plays the game through the pad - it
+presses buttons and nothing else, so every rule the player is subject to
+applies to it.  That is the difference from the AI, which writes its own
+heading and speed and ignores surfaces, and it is why the autopilot found
+in one lap a jump the player could not take on a Mushroom Cup track while
+five replay gates stayed green (NOTES 149).  It gets round most GP
+courses, not all; where it fails, it fails honestly.
 
 **Why this matters more than it looks.**  Twice this session a change
 passed every gate and every selftest and was still unplayable, because
@@ -166,15 +187,22 @@ remain in them are drift, not wrong rules.  In rough order of value:
    finish rule is measured and shared (`$014C`, NOTES 148); what is new is
    scoring and the between-race flow.  Not a decode problem so much as a
    game-state one.
-2. **Moving obstacles (S12's other half) - MAPPED, ready to port.**
+2. **Moving obstacles (S12's other half) - MAPPED, and now BLOCKING.**
+   No longer cosmetic: Thwomps spawn at the right positions and never
+   move, so a row of four permanently-down Thwomps is a wall across the
+   road.  It makes **Bowser Castle 2 and 3 unfinishable** - the autopilot
+   is pinned at (448,401) on track 9 against entities at (428..452, 396),
+   and at (283-332, 688-702) on track 3 against entities at
+   (308..332, 708).  A human cannot get past them either (NOTES 149).
+   Everything below was already true:
    Thwomps and moles move only in Z, on a per-object bytecode script
    (NOTES 146).  The work is: the interpreter (`$85E0B9`), the handful of
    commands a Thwomp and a mole use (`$85DDA0` is the height one, table
    at `$85DD26`), and where a script is attached at spawn.  `src/effects.c`
    already has the same shape to copy from.  **Gate it on a Bowser Castle
    recording** - the demo never sees a Thwomp, so nothing existing would
-   catch a regression.  This is what stands between us and a track that
-   behaves completely.
+   catch a regression.  A cheaper gate now exists too: `--autodrive` gets
+   round 18/20 GP courses, and the two it cannot are exactly these.
 3. **Items (P5).**  The largest gameplay gap and the one you notice in ten
    seconds of a real race.  We have the mushroom as a special case; the
    roulette, the item set and the award-by-rank rule are all undecoded.
