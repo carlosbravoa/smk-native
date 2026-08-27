@@ -458,7 +458,19 @@ static void step_kart(smk_kart *k, smk_track *trk,
     if (course_for_step) smk_course_spawn(course_for_step, player_sector, false);
     bool grounded = k->z == 0;                   /* $1F,x before this frame's jump update */
     smk_player_step(&player, k, trk, held, pressed);
-    if (course_for_step) smk_collide_objects(k, course_for_step);
+    /* Not while Lakitu has it.  smk_collide_objects pushes the kart's
+     * POSITION out of a track object, and it does that whatever the
+     * kart's height - so during the rescue, where the kart is being
+     * carried at z = $3000 and walked to its waypoint two pixels a frame,
+     * an object sitting near that waypoint shoves it back out as fast as
+     * the walk moves it in.  Neither side wins and the kart is never put
+     * down: on Bowser Castle 1 that is a PERMANENT hang, still carrying
+     * after eleven thousand frames (NOTES 149a).
+     *
+     * The wall path already respects height ($80FA5A, NOTES 136).  This
+     * is the narrow version of the same rule: a kart in Lakitu's hands is
+     * not on the track, so the track cannot touch it. */
+    if (course_for_step && !player.hazard) smk_collide_objects(k, course_for_step);
     /* the collector ($81B73B) serves ONE player per frame, alternating:
      * every P1 pickup in the demo lands on an odd frame, every P2 pickup
      * on an even one, with the cell the kart is on after that frame's
@@ -1046,6 +1058,16 @@ static void usage(const char *argv0)
            "  use mushroom  Z or Ctrl / B button   (time trial)\n"
            "  menu          arrows move, Enter selects, Esc goes back\n"
            "  quit          Esc at the title screen\n"
+           "\n"
+           "environment (debugging and tuning, all optional):\n"
+           "  SMK_SHOT=frame:path        write one rendered race frame as a PPM\n"
+           "  SMK_AUTODRIVE_TRACE=1      one line per traced frame of --autodrive\n"
+           "  SMK_TRACE_WINDOW=lo[:hi]   trace every frame in that range, not every 20th\n"
+           "  SMK_AP_LEAD / SMK_AP_DEAD  the autopilot\'s steering damping and deadband\n"
+           "  SMK_AP_NOBRAKE / NOSLIDE / NOPROBE   turn one piece of it off, to time\n"
+           "                             what that piece is worth (see src/autopilot.c)\n"
+           "  SMK_REPLAY_TRACE=1         per-frame diff against a --replay log\n"
+           "  SMK_REPLAY_SHOT=frame:path as SMK_SHOT, counted in replay frames\n"
            , argv0);
 }
 

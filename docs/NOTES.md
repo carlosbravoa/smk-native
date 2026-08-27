@@ -5329,3 +5329,48 @@ barrier because it never asks the surface what is underneath.
 
 The previous `--autodrive` (direction field, bang-bang, no sensing) got
 15/20 on the same measurement.
+
+---
+
+**149a** — Lakitu could never put the kart down, and it was not Lakitu's fault.
+
+Damping the autopilot's steering (NOTES 149) made it quicker everywhere,
+and Bowser Castle 1 - which had been finishing - started hanging instead.
+The trace says why, and it is a real bug, not a driver problem:
+
+    f1240  pos 495,711  spd 0  sec 19  haz  6  z     1   <- falls
+    f1300  pos 465,711  spd 0  sec 19  haz 12  z 12288   <- Lakitu has it
+    f8660  pos 457,520  spd 0  sec 20  haz 12  z 12288   <- still has it
+
+Eleven thousand frames in the carry state, position frozen. The rescue's
+L-walk ($80B2D2) steps the kart two pixels a frame toward its waypoint -
+sector 19's, at `(456,504)` - and `smk_collide_objects` pushes the kart's
+POSITION out of any track object within `SMK_OBJ_RADIUS`:
+
+    k->x += nx2 * push * SMK_POS_ONE;
+
+There are Thwomps at `(436,516)`, `(452,516)`, `(468,516)`, straight across
+the racing line. Walking north from `(465,711)` to `(456,504)` passes
+`y = 516` about four pixels from one of them, so every frame the walk moves
+the kart in and the push throws it out. Neither side wins; the state
+machine never reaches `$0E` and the kart is never set down.
+
+**The push ignores height entirely.** During the carry the kart is at
+`z = $3000` - forty-eight units up, in Lakitu's hands - and a ground object
+still shoves it. The wall path has respected height since NOTES 136
+(`$80FA5A`); object collision never learned the same rule.
+
+Fixed narrowly, at the call site: no object collision while `p->hazard` is
+set. A kart in Lakitu's hands is not on the track, so the track cannot
+touch it. All five replay gates score identically (100.0 / 100.0 / 100.0 /
+93.0 / 81.5); Bowser Castle 1 completes in 2'48"16 and Bowser Castle 2 in
+3'40"60, both of which had failed.
+
+Left alone deliberately: the general question of whether a HOPPING kart
+should clear a ground object. That needs measuring, not guessing, and the
+narrow rule above does not depend on the answer.
+
+Bowser Castle 3 still fails, and still for the S12 reason - there the kart
+is pinned while DRIVING against four permanently-down Thwomps at
+`(428..452, 396)`, with no rescue involved. That one only the mover
+scripts will fix.
