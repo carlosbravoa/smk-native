@@ -5019,3 +5019,30 @@ Still open, and honestly not modelled: over-revving in the GAME oscillates
 19-20k - where our port simply latches the spin flag and holds at the
 ceiling.  Both end at the line over-revved, which is what the player
 feels, but the wobble is not ours.
+
+**145a** — Lakitu's semaphore: what has been ruled out, and where to look.
+
+The user wants the light because it, with the sound, is how you time the
+launch.  The TIMING half is already right - the countdown is the measured
+336 frames (NOTES 145) and the port shows 3-2-1 digits across it.  What is
+missing is the game's own Lakitu and his light.
+
+Ruled out this session:
+
+* **Not in the asset tables we decode.**  `gfx_b` and `gfx_f` - the small
+  and medium graphics - identify as mode7 track tiles under
+  `smk gfx --identify`, every entry.  Rendering `gfx_f` as 4bpp gives
+  noise.  So his art is not there.
+* **Not a discrete light state in low WRAM.**  Asking the user's four
+  starts for an address that takes 3-5 small values identically in all
+  four turns up only race-phase flags (`$003A` goes 2 -> 4 at frame 4 and
+  4 -> 6 at the release).  The light is an ANIMATION, not a counter.
+* **MAME exposes no VRAM or OAM share** to Lua (`:aram` and `:wram`
+  only), so the tiles cannot be lifted that way; a debugger script or the
+  Python oracle's own `vram` would be needed.
+
+Next step, for whoever picks it up: boot the Python oracle to a race and
+render the OBJ half of its VRAM - Lakitu's tiles are uploaded for the
+countdown and will still be resident.  Match those against the ROM to find
+the source asset, the way the kart sheets were found.  `$0142` (207 down
+by one every second frame) is the likeliest driver of his animation.
