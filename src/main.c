@@ -692,16 +692,55 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
         else return;
         if (ti >= SMK_OBJ_TIERS) ti = SMK_OBJ_TIERS - 1;
         int obase = TIER[ti].base;
-        /* The hardware cannot scale a sprite: each band draws at its own
-         * fixed art size, so the size POPS between bands.  That is the
-         * original's behaviour and it is why distant pipes had been
-         * dwindling away here - they should settle at the last drawing
-         * and then vanish. */
-        float k = (float)TIER[ti].h / (float)SMK_OBJ_PIPE_H * (float)SMK_OBJ_MAG;
+        /* The SIZE is the game's own scale, and the band only picks which
+         * drawing supplies the detail.
+         *
+         * `$4200 / zf` is that scale (NOTES 129) - read as 8.8, so 256 is
+         * 1:1 - and it lands exactly on the one size ever measured: NOTES
+         * 139 put a real pipe at 23 x 31 SNES px against a 12 x 16
+         * drawing, and 12 x 16 * ($4200 / (256 * 34)) = 23.3 x 31.1.
+         *
+         * This also closes S15.  The port used to draw every band at a
+         * FIXED size magnified 2x, on the theory that the near art had to
+         * come from somewhere we had not found.  It did not: at that
+         * reference distance the correct scale simply IS 1.94.  The fixed
+         * size is what made a pipe 342 px away and one 3 px away both
+         * draw about 24-32 px, so a distant pipe swamped a road that was
+         * only a few pixels wide on screen and looked like it stood in
+         * the middle of it - "the pipe that should be on the side of the
+         * road looks like it was in the middle when you are far" (user,
+         * NOTES 154a).  The base pixel was right all along; the mass
+         * around it was not. */
+        float k = (float)oscale / 256.0f;
         float ppx = (float)rw / 256.0f;     /* render px per SNES px */
         int pw = (int)((float)SMK_OBJ_PIPE_W * k * ppx + 0.5f);
         int ph = (int)((float)SMK_OBJ_PIPE_H * k * ppx + 0.5f);
         if (pw < 1 || ph < 1) return;
+        /* SMK_ENT_TRACE=1: does the drawn base land where the object
+         * actually stands?  Prints the entity's world position and the
+         * surface under it, then the world point the GROUND renderer shows
+         * at the pixel we drew the base on.  If those differ, the anchor
+         * is wrong; if they agree, the object really is where it looks. */
+        if (getenv("SMK_ENT_TRACE")) {
+            float l2h = (float)rh / 112.0f;
+            float dep = SMK_PROJ_K / (py / l2h - SMK_PROJ_H);
+            float f2 = dep - SMK_CAM_TRAIL;
+            float st = dep / (SMK_PROJ_LES * (float)rw / 256.0f);
+            float gx = cam->x + cosf(cam->angle) * f2
+                     - sinf(cam->angle) * st * (px - rw / 2.0f);
+            float gy = cam->y + sinf(cam->angle) * f2
+                     + cosf(cam->angle) * st * (px - rw / 2.0f);
+            uint8_t s1 = smk_track_surface(trk, course->ent[i].x, course->ent[i].y);
+            uint8_t s2 = smk_track_surface(trk, (int)gx, (int)gy);
+            fprintf(stderr, "f%ld ent %d world (%d,%d) surf $%02X %s | drawn base "
+                    "(%.0f,%.0f) -> ground (%.0f,%.0f) surf $%02X %s | dist %.0f"
+                    " size %dx%d\n",
+                    hud_race_frames, i, course->ent[i].x, course->ent[i].y, s1,
+                    smk_surface_cap_frac(s1) >= 1000 ? "ROAD" : "off",
+                    px, py, gx, gy, s2,
+                    smk_surface_cap_frac(s2) >= 1000 ? "ROAD" : "off",
+                    zf, pw, ph);
+        }
         /* A mover is drawn at its own height (NOTES 152), and that height
          * is in WORLD pixels, so smk_project's own scale converts it -
          * the same law the ground and every sprite use.  Converting at
@@ -713,34 +752,14 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
                 lift = (int)(smk_mover_world(course, s2) * sc);
         int x0 = (int)px - pw / 2, y0 = (int)py - ph - lift;
 
-        /* The SHADOW, and why it matters: it stays on the ground while the
-         * object rises, so a Thwomp overhead reads as overhead instead of
-         * floating (user).  LABELLED, ours: the game gives each object a
-         * SUB-BLOCK at +$40 running its own script ($819174), which is
-         * almost certainly this, and we model neither the sub-block nor
-         * any shadow art - so this is an ellipse on the ground, sized off
-         * the sprite and darkening what is under it. */
-        {
-            int sw = pw * 3 / 4, sh = pw / 4;
-            if (sw > 0 && sh > 0) {
-                int cx = (int)px, cy = (int)py;
-                for (int dy = -sh; dy <= sh; dy++) {
-                    int yy = cy + dy;
-                    if (yy < 0 || yy >= rh) continue;
-                    int half = (int)(sw * sqrtf(1.0f - (float)(dy * dy)
-                                                / (float)(sh * sh)));
-                    for (int dx = -half; dx <= half; dx++) {
-                        int xx = cx + dx;
-                        if (xx < 0 || xx >= rw) continue;
-                        uint32_t c = fb[yy * rw + xx];
-                        fb[yy * rw + xx] = 0xFF000000u
-                            | ((((c >> 16) & 255) * 45 / 100) << 16)
-                            | ((((c >> 8) & 255) * 45 / 100) << 8)
-                            | (((c & 255) * 45 / 100));
-                    }
-                }
-            }
-        }
+        /* No object shadow.  One was added here as an ellipse on the
+         * ground so a raised Thwomp would read as overhead - but pipes do
+         * not have a shadow in the game at all, and the ellipse is not the
+         * shape a Thwomp's would be either (user).  Drawing the wrong
+         * thing is worse than drawing nothing: the real one is presumably
+         * the object's SUB-BLOCK at +$40, which runs its own script
+         * ($819174) and which we do not model.  Left undrawn until it is
+         * decoded (NOTES 154a). */
         for (int dy = 0; dy < ph; dy++) {
             int yy = y0 + dy;
             if (yy < 0 || yy >= rh) continue;

@@ -5787,3 +5787,55 @@ drawing is 12x16. If that magnification belongs only to the near band, the
 far bands are twice the size they should be, which matches the report. Not
 guessed at here: the next step is to measure the object's real on-screen
 size from OAM at a known distance, the way NOTES 139 measured the near one.
+
+---
+
+**154a** — The pipe that looked like it stood in the road, and the end of
+S15.
+
+The user, with two screenshots of our own render: a pipe that is plainly
+off the road when you stop beside it looks like it is standing in the
+middle of it from a distance. Also: pipes have no shadow in the game, and
+the ellipse added in NOTES 153a is not the shape a Thwomp's would be
+either.
+
+**It is not the anchor.** Instrumenting the real draw loop
+(`SMK_ENT_TRACE=1`) to project each drawn entity and then invert the Mode 7
+renderer's own law at the pixel it drew the base on: the round trip returns
+the entity's exact world position at every distance from 3 to 348 px. An
+earlier version of this check only tested camera angle 0 and inverted with
+`ca=1, sa=0`, so it could not have caught an angle-dependent error; redone
+over eight angles the worst disagreement is **0.0001 world px**.
+
+**It is the SIZE.** The same trace, before the fix:
+
+    dist 342  size 24x24
+    dist 120  size 28x28
+    dist   3  size 32x32
+
+A pipe 342 px away and one 3 px away drew within eight pixels of each
+other. On a road only a few pixels wide at that depth, a 24 px sprite
+covers it, and the base - correct to the pixel - is buried under a mass
+that reads as mid-road. As you approach, the road widens on screen while
+the sprite barely grows, so it "corrects itself". Exactly the report.
+
+**The law, and S15 closed.** `$4200 / zf` is the game's own scale for an
+object (NOTES 129). Read as 8.8, the drawn size is `art * $4200 / (256 *
+zf)`, and it lands on the one size ever measured: NOTES 139 put a real pipe
+at 23 x 31 SNES px against a 12 x 16 drawing, and
+
+    12 x 16 * ($4200 / (256 * 34))  =  23.3 x 31.1
+
+So there was never a missing 2x art source. S15 invented one to explain a
+number that falls straight out of the scale law we already had; at that
+reference distance the correct scale simply IS 1.94. The band thresholds
+(`$84DA3C` = C0 60 30) now read as the drawing swapping at 12, 6 and 3 px
+tall before the cull at zf = 352, which is what a 1/distance law should do.
+
+After: 48 px at 8 px away, 24 at 44, 13 at 79, 3 at 348, gone past 352.
+
+**Shadows removed.** Pipes have none, and the ellipse was wrong for
+Thwomps too - drawing the wrong thing is worse than drawing nothing. The
+real one is presumably the object's sub-block at +`$40`, which runs its own
+script (`$819174`) and which we do not model. The kart's hop shadow stays,
+since that one was asked for and there is nothing else standing in for it.
