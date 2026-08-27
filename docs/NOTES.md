@@ -5046,3 +5046,29 @@ render the OBJ half of its VRAM - Lakitu's tiles are uploaded for the
 countdown and will still be resident.  Match those against the ROM to find
 the source asset, the way the kart sheets were found.  `$0142` (207 down
 by one every second frame) is the likeliest driver of his animation.
+
+**145b** — Ghost Valley, for the third and last time: NO moving objects.
+
+The user has now said this three times and I have re-derived the same
+wrong turn each time, so it goes in the log with the evidence.
+
+The handler table at `$84DAA9` is indexed by `$0D28` and its entry 0 is
+`$84DC80`, the path repositioner - and tracks 1, 8 and 16 (all three
+Ghost Valleys) select it.  That looks like "Ghost Valley has movers".  It
+is not.  Replaying the user's own Ghost Valley run and logging all four
+object slots for 1800 frames:
+
+    f30..f540   (924,172) (900,148) (868,140) (836,140)   unchanged
+    f570        (900,148) (868,140) (836,140) (804,140)   waypoint 3 -> 4
+    f600        (836,140) (804,140) (772,140) (740,140)   waypoint 4 -> 5
+
+The slots only ever shift when the WAYPOINT advances: the repositioner
+re-places them along a path ahead of the player, which is spawn
+behaviour, not an obstacle in motion.  Nothing on that track animates.
+
+And the same table kills the theory outright: Bowser Castle (3, 9, 17),
+Rainbow Road (5) and Donut Plains (2, 11, 19) - the tracks that DO have
+Thwomps and moles - all select `$84DBD5`, the STATIC spawner.  So motion
+is not chosen by `$0D28` and this whole line is a dead end.  Look for a
+per-object type handler, as NOTES 127 said, and look on the tracks the
+user named rather than the one the table points at.
