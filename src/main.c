@@ -713,6 +713,35 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
                 lift = smk_mover_px(course, s2) * ph
                      / (SMK_OBJ_PIPE_H * SMK_OBJ_MAG);
         int x0 = (int)px - pw / 2, y0 = (int)py - ph - lift;
+
+        /* The SHADOW, and why it matters: it stays on the ground while the
+         * object rises, so a Thwomp overhead reads as overhead instead of
+         * floating (user).  LABELLED, ours: the game gives each object a
+         * SUB-BLOCK at +$40 running its own script ($819174), which is
+         * almost certainly this, and we model neither the sub-block nor
+         * any shadow art - so this is an ellipse on the ground, sized off
+         * the sprite and darkening what is under it. */
+        {
+            int sw = pw * 3 / 4, sh = pw / 4;
+            if (sw > 0 && sh > 0) {
+                int cx = (int)px, cy = (int)py;
+                for (int dy = -sh; dy <= sh; dy++) {
+                    int yy = cy + dy;
+                    if (yy < 0 || yy >= rh) continue;
+                    int half = (int)(sw * sqrtf(1.0f - (float)(dy * dy)
+                                                / (float)(sh * sh)));
+                    for (int dx = -half; dx <= half; dx++) {
+                        int xx = cx + dx;
+                        if (xx < 0 || xx >= rw) continue;
+                        uint32_t c = fb[yy * rw + xx];
+                        fb[yy * rw + xx] = 0xFF000000u
+                            | ((((c >> 16) & 255) * 45 / 100) << 16)
+                            | ((((c >> 8) & 255) * 45 / 100) << 8)
+                            | (((c & 255) * 45 / 100));
+                    }
+                }
+            }
+        }
         for (int dy = 0; dy < ph; dy++) {
             int yy = y0 + dy;
             if (yy < 0 || yy >= rh) continue;
@@ -930,6 +959,28 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
          * into - the SNES drops the sprite below BG1 (NOTES 128). */
         if (player_below && plane_mask) smk_draw_set_clip_mask(plane_mask, rw);
         int prow = (int)(SMK_PLAYER_LINE * (float)rh / 112.0f);
+        /* The kart's own shadow, which stays on the ground while a hop
+         * lifts the sprite (user).  LABELLED, ours - same standing as the
+         * object shadow above: the game draws one, we have not decoded its
+         * art, so this is an ellipse that darkens the ground. */
+        if (lift > 0) {
+            int sw = 13 * scale, sh = 4 * scale;
+            for (int dy = -sh; dy <= sh; dy++) {
+                int yy = prow + dy;
+                if (yy < 0 || yy >= rh) continue;
+                int half = (int)(sw * sqrtf(1.0f - (float)(dy * dy)
+                                            / (float)(sh * sh)));
+                for (int dx = -half; dx <= half; dx++) {
+                    int xx = rw / 2 + dx;
+                    if (xx < 0 || xx >= rw) continue;
+                    uint32_t cc = fb[yy * rw + xx];
+                    fb[yy * rw + xx] = 0xFF000000u
+                        | ((((cc >> 16) & 255) * 45 / 100) << 16)
+                        | ((((cc >> 8) & 255) * 45 / 100) << 8)
+                        | (((cc & 255) * 45 / 100));
+                }
+            }
+        }
         if (frame == 1000)                    /* the mirrored straight pose */
             smk_draw_sprite_mirror(karts, 0, trk->palette, drv->pal,
                                    rw / 2, prow - lift, scale,

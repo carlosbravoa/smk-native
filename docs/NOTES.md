@@ -5709,3 +5709,39 @@ and the differential against a track with an empty entity list came back
 inverted rather than clean. So where the base really comes from is still
 undecoded; this fixes the one theme that is provably wrong and leaves the
 others where they were rather than guessing a rule for all eight.
+
+---
+
+**153a** — Shadows, and a negative on the Rainbow Road flash.
+
+**Shadows.** The port drew none - not under an object, not under a hopping
+kart. A shadow is what makes a raised Thwomp read as overhead rather than
+floating, and what makes a hop read as a hop. Both are now drawn as an
+ellipse that darkens the ground at the sprite's GROUND position, so the
+sprite lifts away from it.
+
+LABELLED, ours. The game gives each object a SUB-BLOCK at +`$40` running
+its own script (`$819174`), which is almost certainly the shadow - we model
+neither the sub-block nor any shadow art, and none is obvious in the 57-tile
+object sheet.
+
+**The flash is NOT palette animation.** The user reports Rainbow Road's
+Thwomps flashing colours to show they cannot be touched. Watching CGRAM
+over 240 frames of an active Rainbow Road race:
+
+* `$FA-$FF` - the object palette row - **never changes**;
+* the only entries that move at all are `$83 $93 $95 $A3 $A5 $B3 $B5`,
+  each alternating between `2525` and `35A9`, and those are KART palette
+  rows, not object ones.
+
+So whatever produces the flash, it is not the game rewriting the object's
+colours. `+$06` in the block is not it either - sampled over the same run
+it reads 37, 38, 40, 41, 43, 45, 103, 510, 0, 0, 52, which jumps around
+rather than cycling, so it is more likely a projection value than an
+animation frame (superseding the reading in NOTES 152 that called it a
+palette/frame counter).
+
+Nothing is implemented for the flash. The remaining candidate is the
+sprite's own palette BITS changing in OAM frame to frame, which the tally
+in NOTES 153 could not isolate because karts, the HUD and tyre smoke
+dominate the counts.
