@@ -697,24 +697,12 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
          * objects settle at the smallest drawing rather than
          * dwindling away, and the size POPS between steps instead of
          * gliding - which is what the original does. */
-        /* Only the FRONT-FACING drawings.  Rendering every
-         * candidate base side by side shows bases 0/2/4/6 are
-         * skewed perspective variants - the object seen at an angle
-         * - and drawing one as the "largest tier" is what looked
-         * like a torn sprite in playtest.  The clean ladder, by art
-         * height: */
-        /* Measured across both themes, the complete drawings with a
-         * BODY are bases 32/34/36 (h/w about 1.2-1.3).  Bases
-         * 8/10/12/14 are squat (h/w 0.6-0.8) - almost entirely rim -
-         * and using base 12 as the far tier is why distant pipes
-         * rendered as a lid with no length (playtest).  Beyond the
-         * smallest we keep drawing the smallest, which is what the
-         * hardware does; it never runs out of pipe. */
-        static const struct { int base, h; } TIER[SMK_OBJ_TIERS] = {
-            { SMK_OBJ_PIPE0,     16 },   /* 12x16 near  */
-            { SMK_OBJ_PIPE0 + 2, 14 },   /* 11x14       */
-            { SMK_OBJ_PIPE0 + 4, 12 },   /* 10x12 far   */
-        };
+        /* The old ladder of single 16x16 drawings - bases 32/34/36 -
+         * is gone; every distance now draws the near metasprite
+         * (NOTES 157/158).  Bases 0/2/4/6 were once read here as
+         * "skewed perspective variants" because base 0's ink is
+         * right-aligned; they are the LEFT HALVES of mirrored pairs,
+         * which is the whole reason the near drawing was missed. */
         /* The game's own scale for this object (NOTES 129):
          *   +$06 = $4200 / depth ALONG THE VIEW AXIS ahead of the kart
          * measured at 2.1% over a driven lap.  cam->x/y IS the kart; the
@@ -739,25 +727,34 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
         if (zf < 1.0f) zf = 1.0f;
         int oscale = (int)(SMK_OBJ_SCALE_K / zf + 0.5f);
         if (oscale > SMK_OBJ_SCALE_HIDE) oscale = SMK_OBJ_SCALE_HIDE;
-        /* $84DA18 walks $84DA3C = C0 60 30 00: the first threshold the
-         * scale is ABOVE picks the drawing, and past the last one the
-         * loop hits the terminator and the object is not drawn. */
-        int ti;
-        if (oscale > SMK_OBJ_BAND0)      ti = 0;
-        else if (oscale > SMK_OBJ_BAND1) ti = 1;
-        else                             ti = 2;
-        /* No distance cull.  The ROM stops at $84DA3C's last threshold
-         * (zf 352) because it is out of sprite budget, and on a 256x224
-         * screen the drawing would be three pixels anyway.  We have the
-         * resolution, so the object keeps its last drawing and simply gets
-         * smaller until it is sub-pixel or above the horizon, which
-         * smk_project already rejects.  Named divergence, with S7. */
-        if (ti >= SMK_OBJ_TIERS) ti = SMK_OBJ_TIERS - 1;
-        int obase = TIER[ti].base;
-        /* Band 0 draws the near metasprite, which is 32x32 art rather than
-         * 16x16.  Same rect, same size, four times the detail. */
-        int aw = (ti == 0) ? SMK_OBJ_NEAR_W : SMK_OBJ_PIPE_W;
-        int ah = (ti == 0) ? SMK_OBJ_NEAR_H : SMK_OBJ_PIPE_H;
+        /* No band ladder, and no distance cull.  $84DA18 walks
+         * $84DA3C = C0 60 30 00 to pick one of three drawings, and past
+         * the last threshold it stops drawing at all - both because the
+         * SNES cannot scale a sprite and because it runs out of sprite
+         * budget.  We can scale, so the ladder buys us nothing and costs
+         * us two things.
+         *
+         * It costs RESOLUTION, obviously: the far drawings are 10x12 where
+         * the near one is 24x32.
+         *
+         * It also costs CONTINUITY, which is less obvious and is what the
+         * user actually sees - "they flip to the good sprite too near the
+         * player so it looks also like some magic happened".  The drawings
+         * do not fill their blocks by the same fraction: the near
+         * metasprite is 24/32 across and 32/32 down, base 34 is 11/16 and
+         * 14/16, base 36 is 10/16 and 12/16.  The drawn size is that
+         * fraction of a rect the projection sizes, so every band boundary
+         * was a jump - about 9% wider and 14% taller at each one.  The
+         * object grew in steps as you approached, on top of growing
+         * smoothly, which reads exactly like the magic the user described
+         * for the pipes before (NOTES 154b).
+         *
+         * So: the best drawing at every distance.  The size stays the
+         * projection's, and now it is continuous all the way in.
+         * LABELLED divergence, with S7 and the always-visible objects:
+         * the ROM's ladder is a hardware limit we do not have. */
+        int obase = SMK_OBJ_PIPE0;         /* unused by the near sampler */
+        int aw = SMK_OBJ_NEAR_W, ah = SMK_OBJ_NEAR_H;
         /* The SIZE is the game's own scale, and the band only picks which
          * drawing supplies the detail.
          *

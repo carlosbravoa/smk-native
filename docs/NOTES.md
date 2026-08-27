@@ -6104,3 +6104,44 @@ and 2 are bases **32 and 34**, where the port uses 34 and 36. The port
 scales continuously, so this changes detail and not size; left alone
 because the user has approved how the far objects look, and their word on
 that outranks the inference.
+
+**158** — The best drawing at every distance, and why the ladder was a
+size bug as well as a resolution one.
+
+User, after 157 landed: "they are looking good now. But they flip to the
+good sprite too near the player so it looks also like some magic happened
+... let's use the last sprite - the one with the best resolution - all the
+time, even if they are super far away. That was a limitation back in the
+day but right now is no longer needed in this port."
+
+The flip was not only a change of detail. The drawings do not fill their
+blocks by the same fraction:
+
+    near metasprite   ink 24/32 across, 32/32 down
+    base 34           ink 11/16,        14/16
+    base 36           ink 10/16,        12/16
+
+and the drawn size is that fraction of a rect the projection sizes. So
+every band boundary was a STEP - about 9% wider and 14% taller crossing
+into band 0, more again at the next. The object grew in jumps as you
+approached, on top of growing smoothly, which is the "magic" the user
+reported here and, in a different guise, for the pipes back in NOTES 154b.
+
+Using one drawing at every distance removes the steps by construction:
+one art, one ink fraction, size = 16 world px x the projection's scale, so
+the drawn size is continuous everywhere and cannot pop. Measured on the
+scaletest straight, width x depth over the clean single pipes reads 12081,
+12112, 12241, 12152 - flat to 1.3%, which is the segmentation noise.
+
+The near field does not move: band 0 already used this drawing, so
+everything the user has approved close up is untouched. What changes is
+mid and far, which grow slightly to become CONSISTENT with the projection
+- they were the ones out of step.
+
+LABELLED divergence, alongside S7 and the always-visible objects: the
+ROM's ladder exists because the SNES cannot scale a sprite and runs out of
+sprite budget. We can scale, and we are not short of budget, so the ladder
+buys nothing and costs both resolution and continuity. The band arithmetic
+itself stays measured and stays tested - it is still the ROM's rule, we
+simply no longer need to obey it.
+
