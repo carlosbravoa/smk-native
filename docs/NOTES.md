@@ -5072,3 +5072,51 @@ Thwomps and moles - all select `$84DBD5`, the STATIC spawner.  So motion
 is not chosen by `$0D28` and this whole line is a dead end.  Look for a
 per-object type handler, as NOTES 127 said, and look on the tracks the
 user named rather than the one the table points at.
+
+---
+
+**146** — The movers found: Thwomps and moles run a per-object SCRIPT, and
+they only ever move in Z.
+
+The user, cutting through three of my wrong turns: "thwomps and moles go
+only up and down."  Forcing Bowser Castle and logging every object slot
+proves it - x and y hold still while z swings, on every frame, with the
+player's waypoint unchanged:
+
+    f599   wp 21   (143,484, 227)  (157,738, 487)
+    f899   wp 21   (160,477,1820)  (154,743, 904)
+    f1199  wp 21   (154,475,  18)  (154,747, 983)
+
+So it is a HEIGHT animation, not a path - which is why nothing in the
+position machinery ($84DC80 and friends) accounted for it, and why the
+handler table at $84DAA9 sends every Thwomp track to the STATIC spawner.
+
+**The mechanism is a bytecode interpreter, one script per object.**
+
+    +$04   the object's script pointer
+    +$08   its state
+
+    $85E0B9   ldy $04,x / bne / tyx / jsr ($0000,x)
+
+The record's FIRST WORD is the handler address; the interpreter simply
+calls it.  Each handler reads its arguments from `$0002,y` on and advances
+`+$04` past itself.  The one that matters here is `$85DDA0`:
+
+    $0002,y -> $1F,x   the HEIGHT, with $1E,x cleared
+    $0003,y -> $21,x   ($20,x cleared)
+    $0004,y -> $15,x
+    $0005,y -> $30,x
+    then $04,x += 6
+
+Command handlers sit in a table around `$85DD26`: `$DD2E $DDA0 $F871
+$0E20 $DEEF $DEDF $DD74 $DDC7 ... $DDEF $DE68 $DD82 $DF4A $DDA0 $F816`.
+
+This is the same shape as the tyre-smoke interpreter we already ported
+(`$80D530`, src/effects.c): a pointer, a record, a handler per command.
+Porting it means the interpreter, the handful of commands a Thwomp and a
+mole actually use, and where their scripts are attached at spawn - not a
+new subsystem.
+
+NOT ported in this session, deliberately: a half-done bytecode interpreter
+is exactly the kind of change that broke bouncing twice today, and the map
+above is the expensive part.  It is one focused session's work from here.
