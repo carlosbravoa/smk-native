@@ -190,8 +190,26 @@ The driving is gated by two human runs and both are at their best numbers
 (crash 86.2%, Ghost Valley 92.8%). The shell and time trial are done. In
 rough order of value:
 
-1. **Moving obstacles (S12's other half) — MAPPED, and the one thing that
-   makes courses worse than the original.** Thwomps spawn at the right
+1. **Moving obstacles (S12's other half) — the MOTION is now MEASURED,
+   and one number short of portable.**
+
+   Thwomps (NOTES 152, Rainbow Road, per frame): parked at z = 4096 until
+   the first lap completes, then fall — 15 frames, velocity from -64
+   gaining -32 a frame, clamped at 0 — hold at the bottom for **135
+   frames**, rise **+64 a frame**, fall again. x and y never move. The
+   one thing not pinned is how long the RISE lasts: 119/116/96 frames on
+   one object, 144/199/93 on the other, and NOT proximity-driven (the
+   kart was 566, 447, 311 and 566 px away at four drops). So it is script
+   data, and nothing is ported until it is known. Next: find where the
+   spawn sets that duration, or capture more cycles and see whether the
+   numbers repeat. Flashing is independent — +`$06` cycles 65 values, on
+   lap 1 too.
+
+   **Anything measuring movers must complete a lap first**, or it records
+   parked objects and reports "nothing moves" — which cost four captures
+   before the user pointed it out.
+
+   Still true, and still why this matters: Thwomps spawn at the right
    positions and never rise, so four of them in a row are a wall across
    the road. Fixing the object collision (NOTES 150/150a) let the
    autopilot shove past, so Bowser Castle 3 finishes again — but that is
@@ -205,7 +223,9 @@ rough order of value:
    at `$85DD26`), and where a script is attached at spawn.
    `src/effects.c` already has the same shape to copy from. **Gate it on
    a Bowser Castle recording** — no existing gate sees a Thwomp — with
-   `--autodrive` on tracks 3/9/17 as the cheap check.
+   `--autodrive` on tracks 3/9/17 as the cheap check. That driver now
+   gets round **20/20** GP courses (15/20 before the collision and
+   steering work), so a course it stops finishing is a real regression.
 
 2. **Grand Prix (P8).** The shell, the grid, the AI field, the lap rule
    and the finish are all in place, so what is missing is scoring and the
