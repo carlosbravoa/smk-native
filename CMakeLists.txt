@@ -26,6 +26,10 @@ add_library(smkcore STATIC
   src/ai.c
   src/sprite.c
   src/course.c
+  src/font.c
+  src/cups.c
+  src/records.c
+  src/menu.c
 )
 target_include_directories(smkcore PUBLIC include)
 target_compile_options(smkcore PRIVATE -Wall -Wextra -O2)
@@ -43,6 +47,10 @@ target_compile_options(smk_selftest PRIVATE -Wall -Wextra -O2)
 add_executable(smk_ailap tools/ailap.c)
 target_link_libraries(smk_ailap PRIVATE smkcore)
 target_compile_options(smk_ailap PRIVATE -Wall -Wextra -O2)
+
+add_executable(smk_laptest tools/laptest.c)
+target_link_libraries(smk_laptest PRIVATE smkcore)
+target_compile_options(smk_laptest PRIVATE -Wall -Wextra -O2)
 
 add_executable(smk_demoreplay tools/demoreplay.c)
 target_link_libraries(smk_demoreplay PRIVATE smkcore m)

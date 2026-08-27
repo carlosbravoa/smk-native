@@ -17,17 +17,26 @@ make game
 make run
 ```
 
+`make run` opens the shell: **title → mode → driver and class → course →
+race**.  Grand Prix is not built yet; **Time Trial** is — five laps, a lap
+clock and splits, one mushroom, and the five fastest laps per course kept
+between sessions (under `$XDG_DATA_HOME/smk-port/laptimes.txt`).
+
 ```
-arrows / WASD   steer and accelerate      shift  boost
+menu            arrows move    enter selects    esc back
+arrows / WASD   steer and accelerate      space  hop / drift
+z or ctrl       use the mushroom          shift  boost
 [  ]            previous / next track     o  p   cycle palette
-t               cycle tileset             f      toggle filtering
-esc             quit
+f               toggle filtering          esc    back, quit at the title
 ```
 
-Useful flags: `--track N` (0–23), `--width/--height`, `--pixel N` (render at
-1/N resolution — `--pixel 1` is native, `--pixel 4` is chunky and retro),
-`--fullscreen`, `--frames N` (headless benchmark), `--shot FILE` (render one
-frame to a BMP and exit).
+Useful flags: `--track N` (0–23) skips the shell and drives that course,
+`--timetrial` makes it a solo five-lap trial, `--width/--height`, `--pixel N`
+(render at 1/N resolution — `--pixel 1` is native, `--pixel 4` is chunky and
+retro), `--fullscreen`, `--frames N` (headless benchmark), `--fast` (one
+simulation tick per frame, for headless runs), `--autodrive` (steer along the
+course's own direction field), `--shot FILE` (render one frame to a BMP and
+exit).
 
 The renderer is single-threaded software and still does ~100 fps at 1920×1080,
 so resolution is not a constraint.
@@ -51,6 +60,11 @@ so resolution is not a constraint.
   other seven karts drawn in world space and scaled by distance
 - A resolution-independent perspective ground plane
 - Fixed **60.0988 Hz** tick, the SNES NTSC vblank rate
+- A **time trial** that is the game's own: five laps because `$014C = $8500`
+  and the grid sits behind the line (so five laps are six crossings), no
+  coins and no item boxes, and the kart alone on the course — all measured,
+  not assumed.  Menus draw with the ROM's own font and palettes, and the
+  cup line-up and course names come from its own tables
 
 Everything asset-side is verified byte-for-byte against the game's own
 65816 code, executed in an interpreter (see below).

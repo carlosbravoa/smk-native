@@ -5120,3 +5120,105 @@ new subsystem.
 NOT ported in this session, deliberately: a half-done bytecode interpreter
 is exactly the kind of change that broke bouncing twice today, and the map
 above is the expensive part.  It is one focused session's work from here.
+
+---
+
+**147** — The menus' font and palette, found by asking the running game.
+
+Building the shell needed text, and the project's rule is that text art is
+ROM data like any other.  Searching the asset tables for a font found
+nothing, so the question went to the oracle instead: boot to the title
+screen (`$0036/2 == 2`) and read VRAM.  The alphabet is there at 4bpp tile
+`$400` — digits, `A-Z`, punctuation, a `cc` ligature and a set of whole
+words baked as tiles (`LAP`, `TIME`, `COURSE SELECT`).
+
+Why the static search had failed: **only bitplanes 0 and 1 are ever set.**
+The glyphs are 2bpp art uploaded into a 4bpp region, so the 32-byte form
+that VRAM holds does not exist anywhere in the ROM.  Searching for the
+16-byte form instead still missed, because the load happens during boot,
+before the point the labs normally attach.
+
+Tracing it properly (write hook on `$7F:4400` installed from RESET, which
+caught `$84:E12D` — the decompressor's inner store) and then matching
+decompressed streams against live WRAM:
+
+* `$C7:0000` → **4096 bytes = 256 tiles of 2bpp**, the font.  The game
+  decompresses it to `$7F:4400`, expands 2bpp → 4bpp into `$7F:A000` and
+  DMAs 8192 bytes to VRAM word `$4000`.  All 4096 bytes match the running
+  game's WRAM exactly.
+* `$C7:1996` → 17408 bytes to `$7F:0000` (17408/17408 exact), the menu
+  screen's tiles — and its **last 256 bytes, at offset `$4000`, are the
+  eight background palettes**, matching the oracle's CGRAM entry for entry.
+
+DMA destinations, captured at `$420B`: `$7F:0000`→tile 0, `$7F:2000`→256,
+`$7F:2800`→320, `$7F:A000`→1024 (the font).
+
+Glyph order, off the sheet: `0-9` at 0, `A-Z` at 10, then `? . , ! ' "`,
+the `cc` ligature at 42, two box corners, a solid block, `:` at 46, and
+words from 48.  Ported in `src/font.c`.
+
+Still not decoded, and so not drawn: the title logo and the menu
+backdrops.  Their tiles are in the `$C7:1996` stream above; what is
+missing is the tilemap that arranges them and the BG/scroll setup.  The
+shell composes its own layout from the ROM's font and palettes instead,
+which is stated in the ledger.
+
+---
+
+**148** — Course names without a name table, and the race length.
+
+**Names.** There is no course-name string table to find: the ROM draws
+names from the word-tiles at font index 48+.  But the *ordering* is fully
+determined by two tables the project already had (NOTES 009), and that is
+enough to derive every name:
+
+* `$81EC1B[cup*5 + course]` → track index (the game's own indirection —
+  `$81EC47` computes `$0124` from `$0150`/`$0152` through it).
+* `$81EC2F[track]` → theme*2.
+
+Walk the cup order and group by theme: each theme is exactly one course
+FAMILY, and a family's courses are numbered in the order the cups present
+them.  That reproduces the printed line-up exactly:
+
+    Mushroom  7 MC1  19 DP1  16 GV1  17 BC1  15 MC2
+    Flower   18 CI1   1 GV2   2 DP2   3 BC2   0 MC3
+    Star     13 KB1  10 CI2  12 VL1   9 BC3  14 MC4
+    Special  11 DP3   6 KB2   8 GV3   4 VL2   5 RR
+
+and the per-theme counts fall out right (Mario Circuit 4; Ghost Valley,
+Donut Plains, Bowser Castle 3; Choco Island, Koopa Beach, Vanilla Lake 2;
+Rainbow Road 1).  Two independent cross-checks: theme 0 = Ghost Valley is
+already asserted by the breakable-block tile sequence in `src/blocks.c`
+(`$80FC70` is theme-0 only), and the repo's own time-trial log is track 19
+with `$0126 = 4` → theme 2 = Donut Plains 1.
+
+The eight family WORDS are English text and are labelled as ours; their
+assignment to themes is forced by the table above, not chosen.
+
+**Correction to NOTES 009.** It listed a fifth cup row
+`[2,0,4,12,8]` as "Special Cup reusing earlier courses".  There is no
+fifth row: `$81EC1B` is 20 bytes and ends at `$81EC2F`, so those five
+bytes are the *start of the theme table*.  Four cups, twenty courses.
+
+**Race length.** `$014C` is the finish threshold on the progress word
+(`lap << 8 | sector`, NOTES 052).  Measured live in a running race:
+`$014C = $8500`.  The grid sits behind the line — P1's `$C0` starts at
+`$7F1B`, lap byte `$7F`, sector 27 — so the FIRST crossing only reaches
+`$8000`, which `$8089C9` special-cases out of the finish test.  Five more
+crossings reach `$8500`.
+
+    five laps = SIX crossings, and the lap shown is the crossing count.
+
+`$8089D4`'s `cmp #$FF00` against the same threshold is what lights the
+FINAL LAP tile the HUD sheet carries.
+
+The port agreed once measured: `tools/laptest.c` drives the shipped AI
+round every GP course and finds the first crossing at 0-96 frames against
+laps of 1254-4344, i.e. the grid is behind the line on **20/20**.  This
+also fixed a standing HUD bug — the lap readout was `me->lap + 1` and so
+showed LAP 2 from the first time you passed the flag.
+
+**Time trial specifics**, from the attract loop's own `$2C = 4` demo
+(NOTES 113) and its log in this repo: no coins and no item boxes on the
+tilemap, the kart is alone on the track, and P1's `$0E00` (coins) is **0**
+on frame 0 and stays there.  All three are now what the port does.

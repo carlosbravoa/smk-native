@@ -28,6 +28,9 @@ typedef struct {
     /* sticky edges: set by events, cleared only when a tick consumes them */
     bool next_track, prev_track, next_pal, prev_pal, toggle_filter;
     bool hop;
+    /* the shell: menu navigation and the item button, all edge-triggered */
+    bool nav_up, nav_down, nav_left, nav_right, confirm, back;
+    bool item;
 } input_state;
 
 static void input_edges_clear(input_state *in)
@@ -35,6 +38,8 @@ static void input_edges_clear(input_state *in)
     in->next_track = in->prev_track = false;
     in->next_pal = in->prev_pal = in->toggle_filter = false;
     in->hop = false;
+    in->nav_up = in->nav_down = in->nav_left = in->nav_right = false;
+    in->confirm = in->back = in->item = false;
 }
 
 /* Gamepad.
@@ -82,8 +87,19 @@ static void pump(input_state *in)
             case SDL_CONTROLLER_BUTTON_LEFTSHOULDER:
             case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: in->hop = true; break;
             case SDL_CONTROLLER_BUTTON_RIGHTSTICK:    in->toggle_filter = true; break;
-            case SDL_CONTROLLER_BUTTON_BACK:          in->prev_track = true; break;
-            case SDL_CONTROLLER_BUTTON_START:         in->next_track = true; break;
+            case SDL_CONTROLLER_BUTTON_BACK:          in->prev_track = true;
+                                                      in->back = true; break;
+            case SDL_CONTROLLER_BUTTON_START:         in->next_track = true;
+                                                      in->confirm = true; break;
+            case SDL_CONTROLLER_BUTTON_DPAD_UP:       in->nav_up = true; break;
+            case SDL_CONTROLLER_BUTTON_DPAD_DOWN:     in->nav_down = true; break;
+            case SDL_CONTROLLER_BUTTON_DPAD_LEFT:     in->nav_left = true; break;
+            case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:    in->nav_right = true; break;
+            case SDL_CONTROLLER_BUTTON_A:             in->confirm = true; break;
+            /* B is the item button in a race - it must NOT also abandon
+             * it, so `back` is Select/Esc only.  The menus accept B as a
+             * back too, but they read `item` for that themselves. */
+            case SDL_CONTROLLER_BUTTON_B:             in->item = true; break;
             default: break;
             }
         }
@@ -91,13 +107,27 @@ static void pump(input_state *in)
          * iteration is invisible to SDL_GetKeyboardState alone. */
         if (e.type == SDL_KEYDOWN && e.key.repeat == 0) {
             switch (e.key.keysym.sym) {
-            case SDLK_ESCAPE: in->quit = true; break;
+            case SDLK_ESCAPE: in->back = true; break;
             case SDLK_RIGHTBRACKET: in->next_track = true; break;
             case SDLK_LEFTBRACKET:  in->prev_track = true; break;
             case SDLK_p: in->next_pal = true; break;
             case SDLK_o: in->prev_pal = true; break;
             case SDLK_f: in->toggle_filter = true; break;
             case SDLK_SPACE: in->hop = true; break;
+            case SDLK_RETURN: case SDLK_KP_ENTER: in->confirm = true; break;
+            case SDLK_z: case SDLK_LCTRL: in->item = true; break;
+            default: break;
+            }
+        }
+        /* Menu navigation REPEATS while a key is held, so a long list is
+         * not tapped through one press at a time.  Steering reads the
+         * held state below, so these edges are the menu's alone. */
+        if (e.type == SDL_KEYDOWN) {
+            switch (e.key.keysym.sym) {
+            case SDLK_UP:    case SDLK_w: in->nav_up = true; break;
+            case SDLK_DOWN:  case SDLK_s: in->nav_down = true; break;
+            case SDLK_LEFT:  case SDLK_a: in->nav_left = true; break;
+            case SDLK_RIGHT: case SDLK_d: in->nav_right = true; break;
             default: break;
             }
         }
@@ -118,7 +148,7 @@ static void pump(input_state *in)
         int rt = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
         #define BTN(b) SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_##b)
         in->up    |= BTN(A) || rt > TRIG;                 /* SNES B: accel */
-        in->down  |= BTN(X) || BTN(B) || lt > TRIG;       /* SNES Y: brake */
+        in->down  |= BTN(X) || lt > TRIG;                 /* SNES Y: brake */
         /* A stick is only believed once it has been seen at rest.  A
          * pad that reports a stuck or miscalibrated axis would otherwise
          * steer for ever with nothing touching it, and the player has no
@@ -353,6 +383,32 @@ static void draw_speedo(uint32_t *fb, int rw, int rh,
 
 static smk_player player;
 
+/* ---- the game shell ------------------------------------------------
+ * The race used to be the whole program; it is now one screen of a
+ * small state machine (src/menu.c).  These were locals of main(); they
+ * move out here so the shell can rebuild a race without threading a
+ * dozen pointers through. */
+static smk_track    trk;
+static smk_course   crs;
+static smk_physics  phys;
+static smk_sprites  karts;
+static smk_racer    racers[SMK_CHARACTERS];
+static const smk_driver *drv;
+static smk_kart     kart;
+static int          grid[8];
+
+static smk_font     menu_font;
+static smk_records  records;
+static smk_ui       ui;
+static smk_ui_result result;
+static bool shell;                  /* the menu drives the game        */
+static int  race_mode = SMK_MODE_GP;   /* the game's own $2C           */
+static long lap_start_frames;       /* clock at the last line crossing */
+static bool tt_mushroom;            /* the one time-trial mushroom     */
+static bool race_over;
+static bool race_reported;
+static int  crossings;              /* finish-line crossings this race */
+
 /* One frame of the player's kart: the DECODED control (src/player.c, NOTES
  * 103).  This function only translates the SDL input into the SNES pad word
  * the ROM composes at $80A3CC and publishes the HUD readouts. */
@@ -434,6 +490,92 @@ static void step_kart(smk_kart *k, smk_track *trk,
     player_slip_deg = (rel < 0 ? -rel : rel) * 360 / 65536;
     player_height_px = smk_kart_height_px(k);
     player_airborne = k->airborne;
+}
+
+/* ---- the race, built and rebuilt by the shell -----------------------
+ *
+ * Time trial has NO coins and NO item boxes: the running game's tilemap
+ * carries the theme's erase tile where a GP has them (NOTES 113, measured
+ * off the attract loop's own $2C = 4 demo).  The stamp is the one the coin
+ * collector writes, $81:8BBD indexed by theme - the same table pickup.c
+ * uses when a coin is taken. */
+static void strip_pickups(const smk_rom *rom, smk_track *t)
+{
+    uint32_t pc = smk_snes_to_pc(rom, 0x818BBDu + (uint32_t)t->theme);
+    uint8_t erase = pc < rom->size ? rom->data[pc] : 0;
+    for (int i = 0; i < SMK_MAP_BYTES; i++) {
+        uint8_t cls = t->surface[t->map[i]];
+        if (cls == 0x14 || cls == 0x1A) t->map[i] = erase;
+    }
+}
+
+static bool load_race(const smk_rom *rom, int track, int theme, int character,
+                      int engine_class, int mode)
+{
+    char err[256];
+    if (character < 0 || character >= SMK_CHARACTERS) character = 0;
+    if (!smk_track_load(rom, track, theme, &trk, err, sizeof err)) {
+        fprintf(stderr, "track %d: %s\n", track, err);
+        return false;
+    }
+    if (!smk_course_load(rom, track, &crs)) {
+        fprintf(stderr, "track %d: no course data\n", track);
+        return false;
+    }
+    smk_track_place_objects(rom, &trk);
+    if (mode == SMK_MODE_TT) strip_pickups(rom, &trk);
+    smk_blocks_bind(&trk);
+    smk_objgfx_load(rom, trk.theme, &obj_art);
+    smk_horizon_load(rom, trk.theme, &horizon);
+
+    drv = &SMK_DRIVERS[character];
+    if (!smk_sprites_load(rom, drv->sheet, &karts))
+        fprintf(stderr, "warning: kart sprites did not load\n");
+    if (!smk_player_setup(rom, character, engine_class, &player)
+        || !smk_physics_load(rom, engine_class, &phys)) {
+        fprintf(stderr, "error: physics tables did not load\n");
+        return false;
+    }
+
+    smk_grid_order(rom, character, 0, false, grid);
+    for (int i = 0; i < SMK_CHARACTERS; i++) {
+        smk_racer_start(&racers[i], &crs, i);
+        racers[i].character = grid[i];
+    }
+    float gx, gy;
+    uint16_t gh;
+    smk_course_start(&crs, 0, &gx, &gy, &gh);
+    kart = (smk_kart){ .x = (int32_t)(gx * SMK_POS_ONE),
+                       .y = (int32_t)(gy * SMK_POS_ONE), .angle = gh };
+    smk_player_reset(&player, gh);
+    /* Starting coins.  A GP kart gets the ROM's table entry ($81E3DA);
+     * a time trial starts on ZERO and stays there - measured in the
+     * repo's own time-trial log, where P1's $0E00 is 0 on frame 0. */
+    player.coins = (mode == SMK_MODE_TT) ? 0 : 2;
+
+    /* A time trial is run ALONE - the attract loop's own $2C = 4 demo has
+     * DK on the track by himself (NOTES 113) - so the other seven slots
+     * neither step nor draw. */
+    racer_draw_mask = (mode == SMK_MODE_TT) ? 0x00 : 0xFE;
+
+    race_mode = mode;
+    race_state = RACE_COUNTDOWN;
+    race_count = 0;
+    hud_race_frames = 0;
+    lap_start_frames = 0;
+    crossings = 0;
+    race_over = false;
+    race_reported = false;
+    /* one mushroom in a time trial, and nothing else (the user's rule for
+     * this shell; the ROM's own grant is not decoded - ledger S19) */
+    tt_mushroom = (mode == SMK_MODE_TT);
+    player.item_held = tt_mushroom;
+    memset(&result, 0, sizeof result);
+    result.best_slot = -1;
+    course_for_step = &crs;
+    player_sector = 0;
+    fx_state.kind = -1;
+    return true;
 }
 
 /* The ROM's angle is 0 = -Y increasing clockwise; the renderer wants
@@ -865,7 +1007,11 @@ static void usage(const char *argv0)
 {
     printf("usage: %s [options]\n"
            "  --rom PATH      Super Mario Kart (USA) ROM   [rom/smk_usa.sfc]\n"
-           "  --track N       0..23  (20 courses + 4 battle arenas)\n"
+           "  --menu          start in the menu shell (the default)\n"
+           "  --track N       0..23: skip the shell and drive this course\n"
+           "  --timetrial     with --track: a solo 5-lap time trial\n"
+           "  --autodrive     steer along the course's own direction field\n"
+           "  --fast          one simulation tick per frame (headless tests)\n"
            "  --theme N       override the course theme    [from ROM]\n"
            "  --class N       engine class 0/1/2 (50/100/150cc)  [0]\n"
            "  --character N   0 Mario 1 Luigi 2 Bowser 3 Peach 4 DK Jr\n"
@@ -894,7 +1040,9 @@ static void usage(const char *argv0)
            "  next track    ]            / Start\n"
            "  prev track    [            / Back\n"
            "  filter        F            / right stick click\n"
-           "  quit          Esc\n"
+           "  use mushroom  Z or Ctrl / B button   (time trial)\n"
+           "  menu          arrows move, Enter selects, Esc goes back\n"
+           "  quit          Esc at the title screen\n"
            , argv0);
 }
 
@@ -913,6 +1061,21 @@ int main(int argc, char **argv)
     float shot_x = 512, shot_y = 512, shot_a = 0;
     int have_at = 0;
     long max_frames = 0;              /* >0: run headless for N frames, then exit */
+    /* The shell (title -> mode -> driver -> course) is the default way in.
+     * Anything that names a race outright - --track, --replay, --shot,
+     * --dump - skips it, so every existing script and gate still drives
+     * the race directly. */
+    int explicit_start = 0, force_menu = 0;
+    /* Test aids, and an attract mode for free: --timetrial starts a time
+     * trial on --track without the shell, and --autodrive steers the
+     * player along the course's own direction field ($7F:4000, the same
+     * field Lakitu's rescue and the AI use) so a whole five-lap run can be
+     * played headlessly. */
+    int want_tt = 0, autodrive = 0;
+    /* --fast decouples the simulation from the wall clock: exactly one
+     * tick per iteration, so a headless run of N frames is N ticks and a
+     * whole five-lap trial takes seconds instead of minutes. */
+    int fast = 0;
     /* The camera shape is no longer tunable: it is the ROM's own DSP-1
      * geometry (SMK_PROJ_*, NOTES 083/084).  The old --height-cam /
      * --horizon / --fov knobs tuned a projection that no longer exists,
@@ -922,7 +1085,12 @@ int main(int argc, char **argv)
         const char *a = argv[i];
         #define ARG(name, var) if (!strcmp(a, name) && i + 1 < argc) { var = atoi(argv[++i]); continue; }
         if (!strcmp(a, "--rom") && i + 1 < argc) { rom_path = argv[++i]; continue; }
-        ARG("--track", track) ARG("--theme", theme) ARG("--class", engine_class)
+        if (!strcmp(a, "--track") && i + 1 < argc) { track = atoi(argv[++i]); explicit_start = 1; continue; }
+        if (!strcmp(a, "--menu")) { force_menu = 1; continue; }
+        if (!strcmp(a, "--timetrial")) { want_tt = 1; explicit_start = 1; continue; }
+        if (!strcmp(a, "--autodrive")) { autodrive = 1; continue; }
+        if (!strcmp(a, "--fast")) { fast = 1; continue; }
+        ARG("--theme", theme) ARG("--class", engine_class)
         ARG("--character", character)
         if (!strcmp(a, "--no-kart")) { show_kart = 0; continue; }
         if (!strcmp(a, "--no-grid")) { show_grid = 0; continue; }
@@ -930,10 +1098,10 @@ int main(int argc, char **argv)
         ARG("--width", win_w) ARG("--height", win_h) ARG("--pixel", pixel)
         if (!strcmp(a, "--fullscreen")) { fullscreen = 1; continue; }
         if (!strcmp(a, "--frames") && i + 1 < argc) { max_frames = atol(argv[++i]); continue; }
-        if (!strcmp(a, "--shot") && i + 1 < argc) { shot = argv[++i]; continue; }
-        if (!strcmp(a, "--replay") && i + 1 < argc) { replay_path = argv[++i]; continue; }
+        if (!strcmp(a, "--shot") && i + 1 < argc) { shot = argv[++i]; explicit_start = 1; continue; }
+        if (!strcmp(a, "--replay") && i + 1 < argc) { replay_path = argv[++i]; explicit_start = 1; continue; }
         ARG("--replay-kart", replay_kart)
-        if (!strcmp(a, "--dump") && i + 1 < argc) { dump = argv[++i]; continue; }
+        if (!strcmp(a, "--dump") && i + 1 < argc) { dump = argv[++i]; explicit_start = 1; continue; }
         #define FARG(name, var) if (!strcmp(a, name) && i + 1 < argc) { var = (float)atof(argv[++i]); continue; }
         #undef FARG
         if (!strcmp(a, "--at") && i + 3 < argc) {
@@ -978,12 +1146,10 @@ int main(int argc, char **argv)
                track, character, engine_class, replay.n);
     }
     if (character < 0 || character >= SMK_CHARACTERS) character = 0;
-    const smk_driver *drv = &SMK_DRIVERS[character];
-    static smk_sprites karts;
+    drv = &SMK_DRIVERS[character];
     if (!smk_sprites_load(&rom, drv->sheet, &karts))
         fprintf(stderr, "warning: kart sprites did not load\n");
 
-    static smk_physics phys;
     if (!smk_player_setup(&rom, character, engine_class, &player)) {
         fprintf(stderr, "error: cannot load the player physics tables\n");
         return 1;
@@ -992,12 +1158,10 @@ int main(int argc, char **argv)
         fprintf(stderr, "error: cannot load physics tables\n");
         return 1;
     }
-    static smk_course crs;
     if (!smk_course_load(&rom, track, &crs)) {
         fprintf(stderr, "error: cannot load course data for track %d\n", track);
         return 1;
     }
-    static smk_track trk;
     smk_hud_load(&rom, &hud_art);
 
     if (!smk_track_load(&rom, track, theme, &trk, err, sizeof err)) {
@@ -1126,8 +1290,6 @@ int main(int argc, char **argv)
     /* starting coins: the ROM's table at $81E3DA by the kart's $E6 field,
      * entry 0 = 2 (LABELLED: $E6 is not modelled; the demo starts with 5) */
     player.coins = 2;
-    static smk_racer racers[SMK_CHARACTERS];
-    int grid[8];
     smk_grid_order(&rom, character, 0, false, grid);
     for (int i = 0; i < SMK_CHARACTERS; i++) {
         smk_racer_start(&racers[i], &crs, i);
@@ -1139,7 +1301,7 @@ int main(int argc, char **argv)
     float g0x, g0y;
     uint16_t g0h;
     smk_course_start(&crs, 0, &g0x, &g0y, &g0h);
-    smk_kart kart = {
+    kart = (smk_kart){
         .x = (int32_t)(g0x * SMK_POS_ONE),
         .y = (int32_t)(g0y * SMK_POS_ONE),
         .angle = g0h,
@@ -1157,6 +1319,25 @@ int main(int argc, char **argv)
 
     input_state in;
     memset(&in, 0, sizeof in);
+
+    /* the shell */
+    shell = !explicit_start || force_menu;
+    smk_ui_init(&ui);
+    if (!smk_font_load(&rom, &menu_font))
+        fprintf(stderr, "warning: menu font not loaded\n");
+    smk_records_load(&records);
+    if (shell) {
+        ui.player_sel = character;
+        ui.engine_class = engine_class;
+        printf("lap records: %s\n", smk_records_path());
+    } else {
+        ui.screen = SMK_UI_RACE;
+        race_mode = SMK_MODE_GP;
+        if (want_tt && !replay_path) {
+            load_race(&rom, track, theme, character, engine_class, SMK_MODE_TT);
+            camera_from_kart(&cam, &kart);
+        }
+    }
 
     Uint64 freq = SDL_GetPerformanceFrequency();
     Uint64 prev = SDL_GetPerformanceCounter();
@@ -1187,13 +1368,46 @@ int main(int argc, char **argv)
         float dt = (float)(now - prev) / (float)freq;
         prev = now;
         if (dt > 0.25f) dt = 0.25f;            /* don't spiral after a stall */
-        accum += dt;
+        accum += fast ? TICK_DT : dt;
 
         bool stepped = false;
         while (accum >= TICK_DT) {
             accum -= TICK_DT;
             stepped = true;
 
+            /* ---- the shell ------------------------------------- */
+            if (shell && ui.screen != SMK_UI_RACE) {
+                smk_ui_input nav = { in.nav_up, in.nav_down, in.nav_left,
+                                     in.nav_right, in.confirm,
+                                     in.back || in.item };
+                if (ui.screen == SMK_UI_TITLE && in.back) in.quit = true;
+                if (smk_ui_step(&ui, &rom, &nav)) {
+                    if (load_race(&rom, ui.track, -1, ui.player_sel,
+                                  ui.engine_class, SMK_MODE_TT)) {
+                        track = ui.track; theme = -1;
+                        character = ui.player_sel;
+                        engine_class = ui.engine_class;
+                        camera_from_kart(&cam, &kart);
+                    } else {
+                        ui.screen = SMK_UI_COURSE;
+                    }
+                }
+                input_edges_clear(&in);
+                continue;
+            }
+            /* Esc in a shell race abandons it; in a direct race it quits */
+            if (in.back) {
+                if (shell) { ui.screen = SMK_UI_COURSE; input_edges_clear(&in); continue; }
+                in.quit = true;
+            }
+            /* the one mushroom */
+            if (in.item && tt_mushroom && race_state == RACE_RUN
+                && smk_player_boost(&player)) {
+                tt_mushroom = false;
+                player.item_held = false;
+            }
+            /* the debug track cycle belongs to the direct mode only */
+            if (shell) in.next_track = in.prev_track = false;
             if (in.next_track || in.prev_track || in.next_pal || in.prev_pal) {
                 int nt = track, nth = theme;
                 if (in.next_track) { nt = (track + 1) % SMK_TRACK_COUNT; nth = -1; }
@@ -1274,6 +1488,19 @@ int main(int argc, char **argv)
                     racers[1].k.airborne = (r->flags & 0x8000) != 0;
                 }
             }
+            if (autodrive && race_state == RACE_RUN && !replay_path) {
+                int cx = (smk_kart_px(kart.x) >> 4) & 63;
+                int cy = (smk_kart_px(kart.y) >> 4) & 63;
+                uint16_t want = (uint16_t)(crs.flow[cy * 64 + cx] << 8);
+                int d = (int)(int16_t)(uint16_t)(want - player.heading);
+                in.up = true; in.down = false;
+                in.left = d < -0x300; in.right = d > 0x300;
+            }
+            if (autodrive && getenv("SMK_AUTODRIVE_TRACE")
+                && hud_race_frames % 300 == 0 && race_state == RACE_RUN)
+                fprintf(stderr, "f%ld pos %d,%d spd %d head %u sec %d hazard %d\n",
+                        hud_race_frames, smk_kart_px(kart.x), smk_kart_px(kart.y),
+                        kart.speed, player.heading, player_sector, player.hazard);
             smk_blocks_step();
             step_kart(&kart, &trk, &phys, &in);
             if (replay_path && getenv("SMK_REPLAY_TRACE") && replay_i < replay.n) {
@@ -1291,7 +1518,8 @@ int main(int argc, char **argv)
             camera_from_kart(&cam, &kart);
             me->k = kart;
 
-            if (race_state == RACE_RUN && !replay_path)
+            if (race_state == RACE_RUN && !replay_path
+                && race_mode != SMK_MODE_TT)
                 for (int i = 1; i < SMK_CHARACTERS; i++)
                     smk_racer_step(&racers[i], &trk, &crs, &phys);
 
@@ -1310,20 +1538,60 @@ int main(int argc, char **argv)
                                 me->lap++;
                                 me->progress_max = prog;
                                 me->lap_cool = 90;
+                                if (race_state == RACE_RUN && !race_over)
+                                    race_over = smk_tt_crossing(
+                                        &result, &crossings,
+                                        &lap_start_frames, hud_race_frames);
                             }
                         } else if (sec >= crs.sectors - 2 && me->sector <= 1) {
                             me->lap--;
                             me->lap_cool = 90;
+                            if (crossings > 0) crossings--;
                         }
                     }
                     me->sector = sec;
                     player_sector = sec;
                 }
             }
+
+            /* the race is over: report it, bank the best lap, show it */
+            if (race_over && !race_reported) {
+                race_reported = true;
+                char tm[16];
+                printf("time trial: %s, %s, %s\n",
+                       smk_track_name(&rom, track), drv->name,
+                       engine_class == 0 ? "50cc" : engine_class == 1 ? "100cc" : "150cc");
+                for (int i = 0; i < SMK_RACE_LAPS; i++) {
+                    smk_time_text(result.lap[i], tm, sizeof tm);
+                    printf("  lap %d  %s%s\n", i + 1, tm,
+                           result.lap[i] == result.best_lap ? "   best" : "");
+                }
+                smk_time_text(result.total, tm, sizeof tm);
+                printf("  total  %s\n", tm);
+                /* An autodriven run is the direction field's lap, not the
+                 * player's, so it is reported but never banked. */
+                if (!autodrive) {
+                    result.best_slot = smk_records_add(&records, track,
+                                                       result.best_lap, character);
+                    if (result.best_slot >= 0) smk_records_save(&records);
+                }
+                if (shell) ui.screen = SMK_UI_RESULT;
+            }
         }
         (void)stepped;   /* edges deliberately survive a tickless iteration */
 
-        if (tex && fb) {
+        if (tex && fb && shell && ui.screen != SMK_UI_RACE) {
+            if (ui.screen == SMK_UI_RESULT)
+                smk_ui_draw_result(&ui, &rom, &menu_font, &records, &result,
+                                   fb, rw, rh);
+            else
+                smk_ui_draw(&ui, &rom, &menu_font, &records, trk.palette,
+                            fb, rw, rh);
+            SDL_UpdateTexture(tex, NULL, fb, rw * (int)sizeof *fb);
+            SDL_RenderClear(ren);
+            SDL_RenderCopy(ren, tex, NULL, NULL);
+            SDL_RenderPresent(ren);
+        } else if (tex && fb) {
             smk_render_set_horizon(&horizon, kart.angle);
             if (plane_mask_sz < (size_t)rw * (size_t)rh) {
                 free(plane_mask);
@@ -1335,7 +1603,13 @@ int main(int argc, char **argv)
             smk_render_mode7(&trk, &cam, fb, rw, rh, rw);
             hud_input = (in.left ? 1 : 0) | (in.right ? 2 : 0)
                       | (in.up ? 4 : 0);
-            hud_lap = me->lap + 1;
+            /* The lap SHOWN is the crossing count, not one more than it:
+             * the grid is behind the line, so the first crossing enters
+             * lap 1 rather than completing it ($8089C9 skips $8000).  This
+             * used to read me->lap + 1 and so showed LAP 2 from the first
+             * time you passed the flag. */
+            hud_lap = me->lap < 1 ? 1 : me->lap;
+            if (hud_lap > SMK_RACE_LAPS) hud_lap = SMK_RACE_LAPS;
             hud_rank = smk_race_rank(racers, 0, &crs);
             int pframe = frame_for(&in, &lean);
             {
@@ -1353,6 +1627,34 @@ int main(int argc, char **argv)
                         smk_track_surface(&trk, smk_kart_px(kart.x),
                                           smk_kart_px(kart.y)),
                         player.target);
+            if (race_mode == SMK_MODE_TT)
+                smk_ui_draw_splits(&menu_font, &result,
+                                   hud_race_frames - lap_start_frames,
+                                   result.laps_done, tt_mushroom, fb, rw, rh);
+            /* SMK_SHOT=frame:path - save a rendered frame of a live race,
+             * counted from the lights.  The replay path has its own below. */
+            if (getenv("SMK_SHOT")) {
+                static int want = -2; static char path[512];
+                if (want == -2) {
+                    want = -1;
+                    const char *e = getenv("SMK_SHOT");
+                    const char *c = strchr(e, ':');
+                    if (c) { want = atoi(e); snprintf(path, sizeof path, "%s", c + 1); }
+                }
+                if (want >= 0 && hud_race_frames >= want) {
+                    FILE *pf = fopen(path, "wb");
+                    if (pf) {
+                        fprintf(pf, "P6\n%d %d\n255\n", rw, rh);
+                        for (int i = 0; i < rw * rh; i++) {
+                            uint32_t c = fb[i];
+                            fputc((c >> 16) & 255, pf); fputc((c >> 8) & 255, pf);
+                            fputc(c & 255, pf);
+                        }
+                        fclose(pf);
+                    }
+                    in.quit = true;
+                }
+            }
             /* SMK_REPLAY_SHOT=frame:path - save the rendered frame of a replay */
             if (replay_path && getenv("SMK_REPLAY_SHOT")) {
                 static int shot_frame = -2; static char shot_path[512];

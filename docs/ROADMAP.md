@@ -67,6 +67,9 @@ re-investigating.
 | S17 | `src/player.c` start | no start boost at all: the countdown holds the kart, the lights go out, you drive | during the countdown the throttle DOES something - the kart is held but revs, you launch at "higher rev, normal speed", and pressing accelerate at one exact point gives a **turbo launch** (user, who plays it).  So there is a rev accumulator separate from `$EA` and a window that tests it - and it OVERSHOOTS: hold from the start and the kart spins on itself until the revs decay to zero.  Nothing of this is decoded | P5 - needs the `starts` recording |
 | S18 | `src/main.c` start | no Lakitu and no traffic light; the port shows 3-2-1 digits | Lakitu descends with a semaphore, and it (with the sound) is how a player times the launch.  TIMING is already right - the countdown is the measured 336 frames - so this is art plus animation.  Ruled out (NOTES 145a): not in `gfx_b`/`gfx_f`, no discrete light state in low WRAM, and MAME exposes no VRAM/OAM share.  Route: render the OBJ half of the Python oracle's VRAM after reaching a race and match back to a ROM asset; `$0142` is the likely animation driver | P5 - parked for a session of its own |
 | S9 | `tools/smktool/dsp1.py` | full command set implemented; stream never desyncs; camera model verified against the game's own usage. Residual: gyrate is a passthrough, and raster/`$08`/`$18` scalings are unchecked | the real chip's exact fixed-point pipeline | largely closed (NOTES 039); residuals logged on first contact |
+| S19 | `src/main.c` time trial | the one mushroom is granted at the start and, once used, is gone for the run | the ROM's own time-trial grant is not decoded.  Located, not read: the item state lives in `$0D70,x`/`$0D78,x` and the roulette entry that arms it is `$81B34E` (`$0D70 = $A000`, `$0D78 = $E1`); no `$2C == 4` path to it was found in bank `$81`.  So "one per run" is the user's rule, not a measurement - it may refill per lap | P5, with items |
+| S20 | `src/menu.c` | the shell's LAYOUT is ours: title, mode, driver, course and results screens composed from the ROM's font and palettes | the real screens are BG tilemaps with Lakitu, a course map preview and an animated cursor.  The tiles are in the `$C7:1996` stream we already decompress (NOTES 147); what is missing is the tilemap that arranges them and the BG/scroll setup.  The TEXT is not invented - font, palettes, cup order and course names are all ROM-derived (NOTES 147/148) | P8 |
+| S21 | `src/menu.c` `smk_tt_crossing` | lap 1 is timed from the LIGHTS, so it carries the run up to the line | the ROM's own clock start is not decoded.  The structure around it is: the grid is behind the line, so five laps are six crossings (`$014C = $8500`, NOTES 148), and `tools/laptest.c` confirms that on 20/20 courses.  Timing lap 1 from the first crossing instead would make it two seconds of rolling start rather than a lap, so this reading is the sane one - but it is a reading | P8 |
 
 *Resolved:* **S9 for command `$04` (sin/cos)** — pinned by unit analysis in
 NOTES 017; movement no longer rests on a guess. The kinematics (velocity
@@ -102,7 +105,9 @@ used; C output is byte-identical to the game's loader on all 24 courses.
 
 The strongest instrument this project has is not a rig - it is the user
 playing the real game while MAME records, and the port then replaying
-their inputs frame by frame.  Five gates run in `make check`:
+their inputs frame by frame.  Five replay gates run in `make check`,
+alongside the asset selftest, the AI lap test and `smk_laptest` (the race
+length and the shell's own bookkeeping):
 
 | run | what it covers | today |
 |---|---|---|
@@ -142,20 +147,26 @@ faster than every rig it replaced, every single time.
 | P0 oracle | **done** — 65816 interpreter, verified against the game's own decompressor |
 | P0.5 running machine | **mostly** — boots, uploads sound, runs races; no PPU picture, no SPC700, no HDMA |
 | P1 the track | **done** — themes, tilemaps, tilesets, palettes, surface table, all verified against VRAM |
-| P2 start / laps | **mostly** — real grid, decoded lap rule (NOTES 052) with the monotonic guard, race clock and start countdown.  Residual: finish/results flow, GP points |
+| P2 start / laps | **mostly** — real grid, decoded lap rule (NOTES 052) with the monotonic guard, race clock and start countdown.  The race LENGTH is now measured (`$014C = $8500`: five laps are six crossings, NOTES 148) and gated on 20/20 courses by `tools/laptest.c`; the finish and results flow exist for time trial.  Residual: GP points and standings |
 | P3 physics | **done for the player, and now gated by human runs** — the control is transcribed from the ROM and replays the attract race's human inputs frame-exact: 99.8% / 100% of frames within 1 px (NOTES 106-108), with tyre smoke and dust from the game's own effect object (NOTES 109).  The demo replay is exact end to end for both karts (NOTES 112).  Residual: the other six characters unverified (S13), water/snow effects, pipe-crash spin, kart contact (none observed in the demo - NOTES 112) |
 | P4 sprites | **done** — the projection is derived once from the ROM's own DSP-1 geometry (NOTES 083/084): depth(L)=4972/(L-20.36), scale=depth/256 (ratio = Les, the cross-check), camera trails the kart 61 px.  Pose ladder measured pixel-exact (NOTES 080/081).  Residual: kart-sheet rows 1-2 purpose, sprite size quantisation (ours is continuous, labelled) |
 | P5 race furniture | **part** - the live phase — ground objects stamped with the ROM's own tiles (NOTES 074), sprite-obstacle entity list decoded and colliding (NOTES 078), HUD set + clock + lap counter on the game's own art, start countdown (NOTES 085).  hazard classes decoded and ported - water ($22) wade/skim, the fall ($24/$26/$20/$28) and Lakitu's rescue as the ROM's own three states with a latched target (NOTES 113, 124).  Breakable blocks done and gated for both themes (NOTES 123/123a).  The sector map now matches the game's own $7F:5000 on all painted cells.  Residual: the horizon/backdrop (S5), entity motion handlers, item behaviour, Lakitu's art, the splash/sink effects |
 | P6 opponents | **done to first order** — flow-field steering (95% byte-exact), ramp launches over jump gaps, wall escapes, and a Lakitu rescue: **20/20 strict laps** at 19-74 s (NOTES 057).  Residuals: ramp velocity placeholder, `$80ABxx` lane adjusters, rubber-banding, Lakitu animation |
 | P7 audio | **decided** — pre-recorded; `smk spc` dumps the driver, rendering not wired up |
-| P8 modes / menus | not started |
+| P8 modes / menus | **part** — a working shell: title → mode → driver+class → course-by-cup → 5-lap time trial → results, with the top five lap times per course kept on disk.  Font, palettes, cup order, course names, lap count and the time-trial rules are all ROM-derived (NOTES 147/148).  Residual: Grand Prix (and with it points and standings), the real menu art (S20), the mushroom grant rule (S19) |
 
 ## Where to pick up next
 
 Physics is in good shape and gated by human runs; the divergences that
 remain in them are drift, not wrong rules.  In rough order of value:
 
-1. **Moving obstacles (S12's other half) - MAPPED, ready to port.**
+1. **Grand Prix (P8).**  The shell exists and time trial runs end to end,
+   so this is now the visible gap: four cups of five races, the AI field
+   we already have, finishing order, points and standings.  The lap and
+   finish rule is measured and shared (`$014C`, NOTES 148); what is new is
+   scoring and the between-race flow.  Not a decode problem so much as a
+   game-state one.
+2. **Moving obstacles (S12's other half) - MAPPED, ready to port.**
    Thwomps and moles move only in Z, on a per-object bytecode script
    (NOTES 146).  The work is: the interpreter (`$85E0B9`), the handful of
    commands a Thwomp and a mole use (`$85DDA0` is the height one, table
@@ -164,19 +175,19 @@ remain in them are drift, not wrong rules.  In rough order of value:
    recording** - the demo never sees a Thwomp, so nothing existing would
    catch a regression.  This is what stands between us and a track that
    behaves completely.
-2. **Items (P5).**  The largest gameplay gap and the one you notice in ten
+3. **Items (P5).**  The largest gameplay gap and the one you notice in ten
    seconds of a real race.  We have the mushroom as a special case; the
    roulette, the item set and the award-by-rank rule are all undecoded.
    Big, but it is what turns a faithful driving model into the game.
-3. **Per-character verification (S13).**  Nearly free now - both human
+4. **Per-character verification (S13).**  Nearly free now - both human
    runs used character 1, so gating one more character is mostly
    bookkeeping.  Six of eight remain unverified.
-4. **The near-object art (S15).**  We reproduce the SIZE by magnifying;
+5. **The near-object art (S15).**  We reproduce the SIZE by magnifying;
    finding the real source would close it properly.  Fingerprint: a wide
    lid overhanging a narrower body, ~24x32.
-5. **Kart size ladder (S10's other half).**  Same `+$06` law, unmeasured
+6. **Kart size ladder (S10's other half).**  Same `+$06` law, unmeasured
    drawing ladder.  Visible.
-6. **The start (S2, S17) - one decode, three ledger rows.**  The
+7. **The start (S2, S17) - one decode, three ledger rows.**  The
    grid origin is out by up to 152 px.  S11 (the countdown) and S17 (the
    rocket start) are CLOSED; S18 (Lakitu and his light) is parked.  All three live in the same few
    frames of the same routine, so they are worth doing together rather

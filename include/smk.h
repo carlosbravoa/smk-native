@@ -759,4 +759,107 @@ void smk_effects_draw(const smk_effects *fx, const smk_effect_state *st, bool mi
                       unsigned frame_counter, int base_x, int base_y, int scale,
                       const uint32_t *palette, uint32_t *fb, int w, int h);
 
+/* ---- Menu font, cups, records, and the game shell ----------------------
+ *
+ * The font and the cup order are the ROM's own (src/font.c, src/cups.c);
+ * the lap records are ours (src/records.c).  See those files for where
+ * each number comes from. */
+#define SMK_FONT_TILES 256
+typedef struct {
+    uint8_t  px[SMK_FONT_TILES][64];   /* 2bpp values 0..3, from $C7:0000 */
+    uint32_t pal[8][16];               /* the menu's own BG palettes      */
+    bool ok, has_pal;
+} smk_font;
+bool smk_font_load(const smk_rom *rom, smk_font *f);
+int  smk_font_glyph(int ch);           /* -1 for space and unknown        */
+int  smk_font_text_w(const char *s, int scale);
+void smk_font_draw(const smk_font *f, uint32_t *fb, int w, int h,
+                   int x, int y, const char *s, int scale, const uint32_t col[4]);
+
+#define SMK_CUPS         4
+#define SMK_CUP_COURSES  5
+extern const char *const SMK_CUP_NAMES[SMK_CUPS];
+/* $81EC1B: the game's own cup*5 + course -> track index */
+int smk_cup_track(const smk_rom *rom, int cup, int course);
+/* "MARIO CIRCUIT 1" - family from $81EC2F, ordinal from the cup order */
+const char *smk_track_name(const smk_rom *rom, int track);
+
+#define SMK_RECORD_SLOTS 5
+typedef struct { long frames; int character; } smk_record;
+typedef struct { smk_record best[SMK_TRACK_COUNT][SMK_RECORD_SLOTS]; } smk_records;
+const char *smk_records_path(void);
+void smk_records_clear(smk_records *r);
+void smk_records_load(smk_records *r);
+bool smk_records_save(const smk_records *r);
+/* insert if it makes the table; returns the slot or -1 */
+int  smk_records_add(smk_records *r, int track, long frames, int character);
+/* the game's own M'SS"HH from a frame count */
+void smk_time_text(long frames, char *out, size_t n);
+
+/* The race length, from the ROM: $014C = $8500 is the finish threshold on
+ * the progress word (lap << 8 | sector), and the grid's first crossing is
+ * $8000 ($8089C9 skips it), so a race is exactly five laps.  $8089D4's
+ * `cmp #$FF00` against the same threshold is what lights FINAL LAP. */
+#define SMK_RACE_LAPS 5
+
+/* The screens.  $002C is the game's own mode word - 0 GP, 2 match race,
+ * 4 time trial, 6 battle (NOTES 113) - and time trial is the one this
+ * shell drives. */
+typedef enum {
+    SMK_UI_TITLE, SMK_UI_MODE, SMK_UI_PLAYER, SMK_UI_COURSE,
+    SMK_UI_RACE, SMK_UI_RESULT
+} smk_ui_screen;
+#define SMK_MODE_GP    0
+#define SMK_MODE_TT    4
+typedef struct { bool up, down, left, right, confirm, back; } smk_ui_input;
+typedef struct {
+    smk_ui_screen screen;
+    int  mode_sel;        /* 0 Grand Prix (disabled), 1 Time Trial */
+    int  player_sel;      /* SMK_DRIVERS index                     */
+    int  cup_sel, course_sel;
+    int  engine_class;
+    int  track;           /* resolved on confirm                   */
+    unsigned tick;        /* blink phase                           */
+    bool denied;          /* flash: Grand Prix is not built yet    */
+    int  denied_t;
+} smk_ui;
+void smk_ui_init(smk_ui *ui);
+/* advance one frame; true when a race should start */
+bool smk_ui_step(smk_ui *ui, const smk_rom *rom, const smk_ui_input *in);
+void smk_ui_draw(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
+                 const smk_records *rec, const uint32_t *palette,
+                 uint32_t *fb, int w, int h);
+/* the results screen after a time trial */
+typedef struct {
+    long lap[SMK_RACE_LAPS];
+    long total;
+    int  laps_done;
+    int  best_slot;       /* where the best lap landed in the table, or -1 */
+    long best_lap;
+} smk_ui_result;
+void smk_ui_draw_result(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
+                        const smk_records *rec, const smk_ui_result *res,
+                        uint32_t *fb, int w, int h);
+/* One forward crossing of the finish strip in a time trial.
+ *
+ * The ROM's own bookkeeping ($8089B6 with $014C = $8500, NOTES 052): the
+ * progress word starts at lap $7F because the grid sits BEHIND the line,
+ * so the FIRST crossing only takes it to $80 - entering lap 1, not
+ * completing one - and the five that follow reach the threshold.  Five
+ * laps are therefore SIX crossings, which tools/laptest.c checks on every
+ * GP course.
+ *
+ * `now` is the race clock in frames since the lights.  Returns true when
+ * the race is over.  LABELLED: lap 1 is timed from the LIGHTS, so it
+ * carries the run up to the line - the ROM's own clock start is not
+ * decoded, and timing lap 1 from the first crossing instead would make it
+ * a couple of seconds of rolling start rather than a lap. */
+bool smk_tt_crossing(smk_ui_result *res, int *crossings, long *lap_start,
+                     long now);
+
+/* the in-race time panel: current lap clock, the splits so far, best lap */
+void smk_ui_draw_splits(const smk_font *f, const smk_ui_result *res,
+                        long cur_lap_frames, int lap, bool mushroom,
+                        uint32_t *fb, int w, int h);
+
 #endif /* SMK_H */
