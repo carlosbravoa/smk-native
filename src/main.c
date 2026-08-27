@@ -156,7 +156,13 @@ static int  hud_input;                   /* L/R/accel bits, for the HUD */
 enum { RACE_COUNTDOWN, RACE_RUN };
 static int race_state = RACE_COUNTDOWN;
 static int race_count;                   /* frames spent counting down  */
-#define RACE_COUNT_FRAMES 180
+/* MEASURED (NOTES 145): $809FE1 loads $0146 with $FEB0 = -336 and
+ * $80A1F8 increments it once a frame, releasing the karts on the frame it
+ * reaches zero.  So the countdown is 336 frames, not the 180 that was
+ * invented here.  Confirmed in the user's four-start recording, where
+ * $0146 runs -333 at frame 4 to 0 at frame 337 and the race clock $0100
+ * starts ticking immediately after. */
+#define RACE_COUNT_FRAMES 336
 static smk_hud hud_art;
 static smk_objgfx obj_art;          /* pipes and other entities */                  /* the game's own HUD sprites */
 
@@ -1234,7 +1240,12 @@ int main(int argc, char **argv)
                     race_state = RACE_RUN;
                     smk_player_launch(&player);   /* $80956A pays out here */
                 }
-                hud_countdown = 3 - race_count / 60;
+                /* LABELLED: the 3-2-1 digits are split evenly across the
+                 * measured 336.  What the game actually shows is Lakitu
+                 * with a traffic light, on a timer of its own ($0142,
+                 * which runs 207 down by one every second frame) - and we
+                 * have neither his art nor that decode. */
+                hud_countdown = 3 - race_count / (RACE_COUNT_FRAMES / 3);
                 if (hud_countdown < 1) hud_countdown = 1;
                 in.up = in.down = in.left = in.right = false;
                 in.hop_held = false;

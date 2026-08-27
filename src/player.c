@@ -150,13 +150,17 @@ bool smk_player_setup(const smk_rom *rom, int character, int engine_class,
  * which lands on $2E80 = 11904 exactly at the line (NOTES 143). */
 void smk_player_rev(smk_player *p, bool throttle)
 {
-    if (p->rev_spin) {                        /* $80B0EE */
-        if (p->rev >= 0x2000) { p->rev = (int16_t)(p->rev - 0x0070); return; }
-        p->rev_spin = 0;
-    }
-    int32_t d = throttle ? (p->rev < 0x2000 ? p->rev_up_lo : p->rev_up_hi)
-                         : p->rev_off;
-    int32_t v = (int32_t)p->rev + d;          /* $80B169 */
+    /* The build rate is MEASURED, not read: $C2 climbs a flat 96 a frame
+     * in all three of the user's throttled starts, from 256 right through
+     * the window - no two-rate curve, no $2000 knee.  The row I found at
+     * $81:EFF3 ($0200 under $2000, $0040 over) does NOT produce that, so
+     * either it is not the row in play or it is scaled somewhere; the
+     * measurement wins and the discrepancy is logged (NOTES 145).
+     *
+     * It also checks out against the user's two clean runs: run 4 began
+     * revving eight frames before run 3, and 8 * 96 = 768 is exactly the
+     * gap between their readings at the line, 11776 against 11008. */
+    int32_t v = (int32_t)p->rev + (throttle ? 96 : 0);
     if (v < 0x0100) v = 0x0100;
     if (v > (int32_t)p->rev_ceiling) v = p->rev_ceiling;
     p->rev = (int16_t)v;
@@ -322,7 +326,11 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
      * nothing until $C2 falls under $2000 (measured: $EE = 0 throughout,
      * NOTES 143).  The rev keeps bleeding while it does. */
     if (p->rev_spin) {
-        smk_player_rev(p, false);
+        /* $80B0EE: the wheels spin, bleeding $70 a frame, and the
+         * throttle does nothing at all until the rev drops under $2000
+         * (measured: $EE = 0 for the whole penalty, NOTES 143). */
+        if (p->rev >= 0x2000) p->rev = (int16_t)(p->rev - 0x0070);
+        else p->rev_spin = 0;
         p->accel32 = 0; k->accel = 0; k->accel_frac = 0;
     } else if (k->bounce_cool == 0) {
         /* $80A55B, drive state $16: once the window lets go, the kart is

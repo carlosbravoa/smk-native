@@ -320,18 +320,20 @@ int main(int argc, char **argv)
 
     test_player_replay(&rom);
     {
-        /* The start rev and the turbo launch (NOTES 143), from the user's
-         * four-start recording: hold from the beginning and you over-rev
-         * into a wheelspin, catch a narrow band and you get the mushroom's
-         * own boost, miss it and nothing happens. */
-        struct { int press, spin, window, drive; } W[] = {
-            { 999, 0, 0, 0x00 },   /* never touched: idle, nothing        */
-            {   0, 1, 0, 0x00 },   /* held throughout: over-revved, spins */
-            { 102, 1, 0, 0x00 },   /* still too early                     */
-            { 105, 0, 1, 0x10 },   /* the window opens                    */
-            { 110, 0, 1, 0x10 },   /* and closes six frames later         */
-            { 111, 0, 0, 0x00 },   /* just missed                         */
-            { 150, 0, 0, 0x00 },   /* far too late                        */
+        /* The start rev, the turbo band and the wheelspin (NOTES 143/145),
+         * over the MEASURED 336-frame countdown.  The last two rows are
+         * the user's own recording: their normal start read 11008 at the
+         * line and their turbo one 11776 two frames out - both reproduced
+         * to the unit by a flat 96-a-frame build. */
+        struct { int press, rev, spin, window, drive; } W[] = {
+            { 999,   256, 0, 0, 0x00 },   /* never touched                */
+            {   0, 24575, 1, 0, 0x00 },   /* held throughout: over-revved */
+            { 210, 12352, 1, 0, 0x00 },   /* one frame too early          */
+            { 211, 12256, 0, 1, 0x10 },   /* the window opens             */
+            { 214, 11968, 0, 1, 0x10 },   /* four frames wide             */
+            { 215, 11872, 0, 0, 0x00 },   /* just missed                  */
+            { 216, 11776, 0, 0, 0x00 },   /* the user's turbo run, 2 out  */
+            { 224, 11008, 0, 0, 0x00 },   /* the user's normal run        */
         };
         int bad = 0;
         char d[160];
@@ -339,16 +341,17 @@ int main(int argc, char **argv)
         for (size_t i = 0; i < sizeof W / sizeof W[0]; i++) {
             static smk_player pr;
             smk_player_setup(&rom, 0, 1, &pr); smk_player_reset(&pr, 0);
-            for (int f = 0; f < 180; f++) smk_player_rev(&pr, f >= W[i].press);
+            for (int f = 0; f < 336; f++) smk_player_rev(&pr, f >= W[i].press);
             int spin = pr.rev_spin, win = pr.rev_window, rev = pr.rev;
             smk_player_launch(&pr);
-            if (spin != W[i].spin || win != W[i].window || pr.drive != W[i].drive) {
+            if (rev != W[i].rev || spin != W[i].spin || win != W[i].window
+                || pr.drive != W[i].drive) {
                 bad++;
-                snprintf(d, sizeof d, "press f%d: rev %d spin %d win %d drive $%02X",
-                         W[i].press, rev, spin, win, pr.drive);
+                snprintf(d, sizeof d, "press f%d: rev %d (want %d) spin %d win %d drive $%02X",
+                         W[i].press, rev, W[i].rev, spin, win, pr.drive);
             }
         }
-        if (!d[0]) snprintf(d, sizeof d, "window is f105..f110, six frames wide");
+        if (!d[0]) snprintf(d, sizeof d, "window f211..f214 of 336; the user's 11008 and 11776 reproduce");
         check("the start rev over-revs, hits the turbo band, or misses", !bad, d);
     }
     {

@@ -4977,3 +4977,45 @@ Labelled and outstanding: our countdown is still 180 frames of invention
 (S11) where the game's is about 338, so the window sits at the right
 DEPTH in the rev curve but not at the right wall-clock moment.  Closing
 S11 moves it without touching any of this.
+
+---
+
+**145** — S11 closed, and NOTES 144's rev curve corrected by measurement.
+
+*The countdown is 336 frames.*  `$809FE1` loads `$0146` with `$FEB0` =
+-336 and `$80A1F8` does `inc $0146 / bne` - the karts are released on the
+frame it reaches zero.  Found by asking the user's four starts which
+address moves identically in all four and changes exactly at the release:
+`$0146`, `$FFFF` -> 0, in every run.  The race clock `$0100` starts
+ticking immediately after.  The port had 180 invented frames.
+
+LABELLED: the 3-2-1 digits are still an even split of the 336.  What the
+game shows is Lakitu with a traffic light on a timer of its own (`$0142`,
+207 down by one every second frame) and we have neither his art nor that
+decode.
+
+*And the rev builds at a flat 96 a frame.*  NOTES 144 read `$80B169`'s
+deltas out of the row at `$81:EFF3` - `$0200` under `$2000`, `$0040` over
+- and built a two-rate curve from them.  The recording says otherwise, in
+all three throttled runs and across the supposed knee:
+
+    run 2  f200=17856  +96/f ... then bleeds -320/f and climbs again
+    run 3  f232=1024   +96/f steadily to 11008 at the line
+    run 4  f224=1024   +96/f steadily to 11776
+
+**A flat 96, no knee.**  So that row is either not the one in play or is
+scaled somewhere we have not found; the measurement wins and the port uses
+it.  The check that settles it: run 4 began revving eight frames before
+run 3, and 8 * 96 = 768 is exactly the gap between their readings at the
+line, 11776 against 11008 - and the port now reproduces both to the unit.
+
+With the real countdown and the real rate the window is **four frames
+wide** (press at f211..f214 of 336; f210 over-revs, f215 misses), which is
+the user's "one particular point" at last standing on two measurements
+rather than one reading.
+
+Still open, and honestly not modelled: over-revving in the GAME oscillates
+- run 2 climbs at +96, bleeds at -320, and climbs again, wobbling around
+19-20k - where our port simply latches the spin flag and holds at the
+ceiling.  Both end at the line over-revved, which is what the player
+feels, but the wobble is not ours.
