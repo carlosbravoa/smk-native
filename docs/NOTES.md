@@ -5745,3 +5745,45 @@ Nothing is implemented for the flash. The remaining candidate is the
 sprite's own palette BITS changing in OAM frame to frame, which the tally
 in NOTES 153 could not isolate because karts, the HUD and tyre smoke
 dominate the counts.
+
+---
+
+**154** — Three sightings on the movers: the height was ours, the anchor is
+not what it looks like.
+
+**1. "They do look too high" - fixed.** `smk_mover_px` converted the
+object's `$1F` to SCREEN pixels using the kart's own rule (one screen pixel
+per 25029 of a 16.16 z), which is only valid at the kart's own depth of 61
+px from the eye. Reused at any distance it put a Thwomp a third of the way
+up the screen. Height is now returned in WORLD pixels and multiplied by
+`smk_project`'s scale, exactly as the ground and every sprite do, so the
+lift shrinks with distance.
+
+The unit: the kart's hop peaks at `$1F` = 1173 and reads 12 SNES px at
+depth 61, where the scale is 256/61 = 4.20 screen px per world px. So 12 px
+is 2.86 world px and **one world pixel is 410 units of `$1F`**.
+
+**3. The anchor is NOT a projection error.** The report - a pipe looks like
+it sits in the middle of the road when far off and "corrects" as you
+approach - reads exactly like the sprite and ground projections
+disagreeing. They do not. Projecting a world point with `smk_project` and
+then inverting the Mode 7 renderer's own per-scanline law at that screen
+pixel agrees to **0.00 px** at every distance from 40 to 400 world px and
+every lateral offset tested:
+
+    fwd  40 lat +60  d 101.0  (280.1,139.2)  ->  (552.0, 572.0)  err 0.00
+    fwd 400 lat +60  d 461.0  (161.3, 62.3)  ->  (912.0, 572.0)  err 0.00
+
+So the position is right and the SIZE is what is wrong. An object drawn
+too large for its distance reads as a nearer object, and a nearer object
+at that screen column would be closer to the road's centre line - which is
+what the eye reports as a bad anchor. Same root cause as sighting 2,
+"they appear too close".
+
+**2. Still open: the size at distance.** The drawing is quantised into
+three tiers, and every tier is magnified 2x (S15, labelled) because the
+near size was measured at 23x31 SNES px against a sheet whose largest
+drawing is 12x16. If that magnification belongs only to the near band, the
+far bands are twice the size they should be, which matches the report. Not
+guessed at here: the next step is to measure the object's real on-screen
+size from OAM at a known distance, the way NOTES 139 measured the near one.

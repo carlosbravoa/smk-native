@@ -703,15 +703,14 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
         int ph = (int)((float)SMK_OBJ_PIPE_H * k * ppx + 0.5f);
         if (pw < 1 || ph < 1) return;
         /* A mover is drawn at its own height (NOTES 152), and that height
-         * has to shrink with distance like everything else: `ph` is what
-         * SMK_OBJ_PIPE_H * SMK_OBJ_MAG world pixels of object measure on
-         * screen here, so that ratio converts the height too.  Lifting by
-         * a fixed screen amount would float far Thwomps into the sky. */
+         * is in WORLD pixels, so smk_project's own scale converts it -
+         * the same law the ground and every sprite use.  Converting at
+         * the kart's depth and reusing that at any distance floated far
+         * Thwomps a third of the way up the screen. */
         int lift = 0;
         for (int s2 = 0; s2 < course->nlive; s2++)
             if (course->live[s2] == i)
-                lift = smk_mover_px(course, s2) * ph
-                     / (SMK_OBJ_PIPE_H * SMK_OBJ_MAG);
+                lift = (int)(smk_mover_world(course, s2) * sc);
         int x0 = (int)px - pw / 2, y0 = (int)py - ph - lift;
 
         /* The SHADOW, and why it matters: it stays on the ground while the

@@ -512,8 +512,20 @@ bool smk_theme_has_movers(int theme);
 void smk_course_movers_reset(smk_course *c);
 /* one frame; `activated` is false until the first lap is complete */
 void smk_course_movers_step(smk_course *c, bool activated);
-/* the height of live slot j, in screen pixels at SNES scale */
-int  smk_mover_px(const smk_course *c, int slot);
+/* The height of live slot j, in WORLD pixels.
+ *
+ * It must be world units, not screen ones: a height converted at the
+ * kart's own depth and then reused at any distance puts a far Thwomp a
+ * third of the way up the screen (user: "they do look too high").  The
+ * caller multiplies by smk_project's scale, exactly as the ground and the
+ * sprites do, so the lift shrinks with distance like everything else.
+ *
+ * The unit comes from the kart's own hop: $1F = 1173 reads 12 SNES px at
+ * the kart's depth of 61 px from the eye, where the scale is 256/61 =
+ * 4.20 screen px per world px - so 12 px is 2.86 world px, and one world
+ * pixel is 1173/2.86 = 410 units of $1F. */
+#define SMK_MOVER_UNIT 410.0f
+float smk_mover_world(const smk_course *c, int slot);
 
 
 /* Starting-grid placement derived from decoded course data: two columns

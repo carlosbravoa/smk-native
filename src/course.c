@@ -284,11 +284,8 @@ void smk_course_movers_step(smk_course *c, bool activated)
     }
 }
 
-int smk_mover_px(const smk_course *c, int slot)
+float smk_mover_world(const smk_course *c, int slot)
 {
-    if (slot < 0 || slot >= 4 || !smk_theme_has_movers(c->theme)) return 0;
-    /* The kart's own height rule (smk_kart_height_px): its $1F feeds a
-     * 16.16 z and one screen pixel is 25029 of those, so one screen pixel
-     * is 25029/256 = 97.8 units of $1F.  An object's height IS $1F. */
-    return (int)(((int32_t)c->mv[slot].z * 256) / 25029);
+    if (slot < 0 || slot >= 4 || !smk_theme_has_movers(c->theme)) return 0.0f;
+    return (float)c->mv[slot].z / SMK_MOVER_UNIT;
 }
