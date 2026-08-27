@@ -5960,3 +5960,42 @@ and cyan ticks where the road's edges fall at that same depth. If a cross
 sits mid-road while the pipe belongs at the side, the placement is wrong
 and the marks prove it; if the cross is at the edge and the pipe still
 looks central, it is the sprite's width, not its anchor.
+
+---
+
+**155b** — The pipe really was in the middle of the road, and it was the
+same pipe. The anchor was hanging off the wrong edge of the sprite.
+
+Reported three times, and I explained it away twice - first as the size,
+then by suggesting two different pipes were being compared. It was one
+pipe, and the cause is this:
+
+The three band drawings do not fill their 16x16 block the same way.
+
+    band 0 (near)  ink rows  0..15   no blank rows below
+    band 1 (mid)   ink rows  1..14   ONE blank row below
+    band 2 (far)   ink rows  2..13   TWO blank rows below
+
+`draw_entity` hung the RECT's bottom on the projected ground point, so the
+mid and far drawings floated above the road by 1/16 and 2/16 of their
+height. Measured on the test track, that is **3 to 4 screen pixels**.
+
+Near the horizon that is not a small error. Depth is `K / (line - H)`, so
+its slope is `-K / (line - H)^2`, and at frame line 24 **one screen pixel
+of vertical error is 88 world pixels of depth**. A pipe floating three or
+four pixels reads as several hundred world px further up the track - and
+further up the track is nearer the vanishing point, where the road is
+narrow and central. Hence: in the middle of the road. Close up, band 0 has
+no blank rows, the same pipe sits on the ground, and it looks correctly
+placed at the roadside.
+
+Fixed by anchoring the INK rather than the rect: find where the drawing
+actually ends inside the block, put that row on the ground point, and
+centre on the ink's own columns rather than the rect's.
+
+**Why three checks missed it.** All of them tested the PROJECTION - is the
+computed ground pixel right? It always was, to 0.0001 world px. None of
+them asked whether the sprite is drawn where the projection says, which is
+a different question and the one that was wrong. `--obj-marks` draws the
+projected point precisely so the two can be told apart by eye; it should
+have been the first thing built, not the fourth.

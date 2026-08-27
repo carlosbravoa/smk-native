@@ -801,7 +801,40 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
          * the kart's depth and reusing that at any distance floated far
          * Thwomps a third of the way up the screen. */
         int lift = (int)(smk_mover_world(course, i) * sc);
-        int x0 = (int)px - pw / 2, y0 = (int)py - ph - lift;
+        /* Anchor the INK, not the rect.
+         *
+         * The three drawings do not fill their 16x16 block the same way:
+         * the near one uses all 16 rows, the middle leaves one blank row
+         * below and the far one leaves two.  Hanging the RECT's bottom on
+         * the ground point therefore floats the far drawings above the
+         * road - and one pixel of vertical error near the horizon is an
+         * enormous depth error, because depth = K/(line - H) and its slope
+         * is -K/(line-H)^2.  The pipe reads as being much further up the
+         * track, and further up the track is nearer the vanishing point:
+         * it looks like it is standing in the MIDDLE of the road.  Close
+         * up, band 0 has no blank rows and the same pipe looks correctly
+         * placed at the roadside - which is exactly what the user reported,
+         * twice, for one pipe (NOTES 155b).
+         *
+         * So: find where the ink actually ends inside the block and put
+         * THAT on the ground, and centre on the ink rather than the rect. */
+        int ink_b = SMK_OBJ_PIPE_H - 1, ink_l = 0, ink_r = SMK_OBJ_PIPE_W - 1;
+        {
+            int lo = 99, hi = -1, bot = -1;
+            for (int ay = 0; ay < SMK_OBJ_PIPE_H; ay++)
+                for (int ax = 0; ax < SMK_OBJ_PIPE_W; ax++) {
+                    int tl = obase + (ay / 8) * SMK_OBJ_STRIDE + (ax / 8);
+                    if (tl >= SMK_OBJ_TILES) continue;
+                    if (!obj_art.px[tl][(ay % 8) * 8 + (ax % 8)]) continue;
+                    if (ax < lo) lo = ax;
+                    if (ax > hi) hi = ax;
+                    if (ay > bot) bot = ay;
+                }
+            if (bot >= 0) { ink_b = bot; ink_l = lo; ink_r = hi; }
+        }
+        int inkcx = (ink_l + ink_r + 1) * pw / (2 * SMK_OBJ_PIPE_W);
+        int x0 = (int)px - inkcx;
+        int y0 = (int)py - (ink_b + 1) * ph / SMK_OBJ_PIPE_H - lift;
 
         /* No object shadow.  One was added here as an ellipse on the
          * ground so a raised Thwomp would read as overhead - but pipes do
