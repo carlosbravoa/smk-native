@@ -407,6 +407,7 @@ static long lap_start_frames;       /* clock at the last line crossing */
 static bool tt_mushroom;            /* the one time-trial mushroom     */
 static bool race_over;
 static bool race_reported;
+static bool obj_marks;   /* --obj-marks: show each object's ground point */
 static smk_autopilot autopilot;
 static int  crossings;              /* finish-line crossings this race */
 
@@ -736,6 +737,39 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
         int pw = (int)((float)SMK_OBJ_PIPE_W * sc + 0.5f);
         int ph = (int)((float)SMK_OBJ_PIPE_H * sc + 0.5f);
         if (pw < 1 || ph < 1) return;
+        /* --obj-marks: draw where the object's BASE is, and where the road
+         * is on that same row, so "is this pipe on the road" can be read
+         * off the screen instead of judged by eye.  Magenta cross = the
+         * projected ground point; cyan ticks = the road edges at that
+         * depth. */
+        if (obj_marks) {
+            float l2h2 = (float)rh / 112.0f;
+            float dep2 = SMK_PROJ_K / (py / l2h2 - SMK_PROJ_H);
+            float f22 = dep2 - SMK_CAM_TRAIL;
+            float st2 = dep2 / (SMK_PROJ_LES * (float)rw / 256.0f);
+            int by = (int)py;
+            for (int xx = 0; xx + 1 < rw; xx++) {
+                float ux = -sinf(cam->angle) * st2, uy = cosf(cam->angle) * st2;
+                float bx = cam->x + cosf(cam->angle) * f22, byw = cam->y + sinf(cam->angle) * f22;
+                uint8_t sa2 = smk_track_surface(trk, (int)(bx + ux * (xx - rw / 2.0f)),
+                                                     (int)(byw + uy * (xx - rw / 2.0f)));
+                uint8_t sb2 = smk_track_surface(trk, (int)(bx + ux * (xx + 1 - rw / 2.0f)),
+                                                     (int)(byw + uy * (xx + 1 - rw / 2.0f)));
+                bool on1 = smk_surface_cap_frac(sa2) >= 1000 && !smk_surface_solid(sa2);
+                bool on2 = smk_surface_cap_frac(sb2) >= 1000 && !smk_surface_solid(sb2);
+                if (on1 != on2)
+                    for (int t3 = -3; t3 <= 3; t3++)
+                        if (by + t3 >= 0 && by + t3 < rh)
+                            fb[(by + t3) * rw + xx] = 0xFF00FFFF;
+            }
+            for (int t3 = -4; t3 <= 4; t3++) {
+                int mx = (int)px;
+                if (by >= 0 && by < rh && mx + t3 >= 0 && mx + t3 < rw)
+                    fb[by * rw + mx + t3] = 0xFFFF00FF;
+                if (mx >= 0 && mx < rw && by + t3 >= 0 && by + t3 < rh)
+                    fb[(by + t3) * rw + mx] = 0xFFFF00FF;
+            }
+        }
         /* SMK_ENT_TRACE=1: does the drawn base land where the object
          * actually stands?  Prints the entity's world position and the
          * surface under it, then the world point the GROUND renderer shows
@@ -1126,6 +1160,8 @@ static void usage(const char *argv0)
            "  --autodrive     drive itself (a test aid, not the AI: it gets\n"
            "                  round most courses, not all)\n"
            "  --fast          one simulation tick per frame (headless tests)\n"
+           "  --obj-marks     mark each object's ground point (magenta) and the\n"
+           "                  road edges at that depth (cyan), to check placement\n"
            "  --rom-spawn     only the ROM's two live objects, which pop in\n"
            "                  and out as you drive; the default shows them all\n"
            "  --theme N       override the course theme    [from ROM]\n"
@@ -1222,6 +1258,7 @@ int main(int argc, char **argv)
         if (!strcmp(a, "--fast")) { fast = 1; continue; }
         if (!strcmp(a, "--scaletest")) { scaletest = 1; explicit_start = 1; continue; }
         if (!strcmp(a, "--rom-spawn")) { smk_obj_show_all = false; continue; }
+        if (!strcmp(a, "--obj-marks")) { obj_marks = true; continue; }
         ARG("--theme", theme) ARG("--class", engine_class)
         ARG("--character", character)
         if (!strcmp(a, "--no-kart")) { show_kart = 0; continue; }
@@ -1365,10 +1402,19 @@ int main(int argc, char **argv)
                     (uint8_t)((wy >= 448 && wy < 576) ? road : off);
             }
         crs.nent = 0;
-        for (int d = 40; d <= 400 && crs.nent < 32; d += 40) {
+        /* Two rows: one down the CENTRE line and one hugging the left
+         * EDGE of the road.  The edge row is the direct test of "a pipe
+         * that should be at the side looks like it is in the middle when
+         * you are far" - if the far ones drift inward, it is visible
+         * against the road's own edge in a single frame. */
+        for (int d = 40; d <= 400 && crs.nent < 30; d += 40) {
             crs.ent[crs.nent].kind = 0;
             crs.ent[crs.nent].x = (uint16_t)(120 + d);
-            crs.ent[crs.nent].y = 512;
+            crs.ent[crs.nent].y = 512;          /* centre line */
+            crs.nent++;
+            crs.ent[crs.nent].kind = 0;
+            crs.ent[crs.nent].x = (uint16_t)(120 + d);
+            crs.ent[crs.nent].y = 456;          /* just inside the left edge */
             crs.nent++;
         }
         crs.nlive = 0;                 /* draw them all, not a live pair */
@@ -1376,7 +1422,7 @@ int main(int argc, char **argv)
         printf("scaletest: road tile %d (class $%02X), off tile %d (class $%02X), "
                "%d pipes every 40 px from 40 to %d ahead\n",
                road, trk.surface[road], off, trk.surface[off],
-               crs.nent, 40 * crs.nent);
+               crs.nent, 40 * (crs.nent / 2));
     }
     smk_blocks_bind(&trk);
     smk_objgfx_load(&rom, trk.theme, &obj_art);   /* the theme's objects */

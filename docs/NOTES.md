@@ -5921,3 +5921,42 @@ at once, every Thwomp slamming in unison looks mechanical, and the two the
 oracle caught ran periods of 270 and 294 frames, so they are not in phase
 in the game either. LABELLED: the offset is ours - the real per-object
 timing is the script data NOTES 152 could not pin.
+
+---
+
+**155a** — Chasing the "pipe in the middle of the road" a second time, and
+the instrument for settling it.
+
+Reported again with fresh screenshots: a pipe looks like it is in the road
+when far off, and beside it when you pull up next to it.
+
+Checked three ways, all of which say the BASE is placed exactly:
+
+* analytically - `smk_project`'s lateral term is `xr * (Les*w/256) / d`,
+  the exact inverse of what the Mode 7 renderer walks across a scanline;
+* against the ground renderer's own law at eight camera angles - worst
+  disagreement **0.0001 world px** (NOTES 154a; the first version of that
+  check tested only angle 0 and was worthless);
+* in the live draw loop, projecting each entity and inverting at the pixel
+  the base was drawn on - returns the entity's own world position at every
+  distance from 3 to 348 px.
+
+And a controlled scene: `--scaletest` now lays TWO rows of pipes, one down
+the centre line and one 8 world px inside the left edge. The edge row hugs
+the edge at every distance; the centre row sits on screen centre at every
+row (measured off the frame: road centre 256-258, centre pipes 256).
+
+**What our data says.** Mario Circuit 1's entities are not all at the
+roadside. Entities 0 `(268,92)`, 2 `(188,52)` and 3 `(252,124)` stand on
+surface `$40` - road - 29, 28 and 5 px from the nearest edge, while 1, 4,
+5, 6 and 7 are off-road 4-5 px out. NOTES 078 verified those coordinates
+against the game's own live entity blocks. So a pipe seen far up the track
+that looks like it is in the road may simply BE in the road, and the one
+you stop beside is a different, roadside one.
+
+**The instrument, so this stops being an argument about pixels.**
+`--obj-marks` draws a magenta cross at each object's projected ground point
+and cyan ticks where the road's edges fall at that same depth. If a cross
+sits mid-road while the pipe belongs at the side, the placement is wrong
+and the marks prove it; if the cross is at the edge and the pipe still
+looks central, it is the sprite's width, not its anchor.
