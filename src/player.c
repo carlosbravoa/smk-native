@@ -30,6 +30,7 @@
 #define T_TOP      0x818000u  /* 8 words: base top speed per character -> $B4 */
 #define T_ACCEL_P  0x818010u  /* 8 pointers -> 16 bytes, <<4 (x1.5 at 150cc)  */
 #define T_CAP_P    0x818060u  /* 8 pointers -> 6 bytes, types 10..15, <<4    */
+#define T_REV      0x81EFF3u  /* the rev row: ceiling, +lo, +hi, off, .., .. */
 #define T_STEER_P  0x818088u  /* 8 pointers -> 3 x [max.w, rev.b, ramp.b, decay.b] */
 #define T_DRIFT    0x80AC36u  /* 8 rows x 8 words, the drift parameters       */
 #define T_ROWBASE  0x80A4A0u  /* 16 words: drift row base by surface type    */
@@ -69,6 +70,16 @@ bool smk_player_setup(const smk_rom *rom, int character, int engine_class,
 
     /* $81F026: base top speed by character, then the class adjustment
      * ($2C == 0 selects it): 50cc -$80, 100cc +0, 150cc +$A0. */
+    /* the countdown's rev parameters (NOTES 143).  Two clean rows sit at
+     * $81:EFE7 and $81:EFF3; the second is the one measured live in a
+     * one-player race, which is all this port runs.  LABELLED: what
+     * selects between them is not established. */
+    p->rev_ceiling = rd16(rom, T_REV);
+    p->rev_up_lo   = (int16_t)rd16(rom, T_REV + 2u);
+    p->rev_up_hi   = (int16_t)rd16(rom, T_REV + 4u);
+    p->rev_off     = (int16_t)rd16(rom, T_REV + 6u);
+    p->rev = 0x0100; p->rev_window = 0; p->rev_spin = 0;
+
     int top = (int16_t)rd16(rom, T_TOP + (uint32_t)character * 2u);
     if (engine_class == 0) top -= 0x80;
     else if (engine_class == 2) top += 0xA0;
@@ -123,6 +134,49 @@ bool smk_player_setup(const smk_rom *rom, int character, int engine_class,
 
 /* $80B46B/$80B47C/$80B489: a mushroom.  Refused in the spin states
  * ($809E0B: $0A-$10 and $1A); otherwise 32 frames of boost. */
+/* $80B0EE / $80B112 / $80B169 - the countdown's rev, and $80956A's test.
+ *
+ *   over-revved ($E2 bit 0): while $C2 >= $2000 bleed $70 a frame; below
+ *   it, let go.  Otherwise build by the row's delta - $0200 under $2000,
+ *   $0040 over it, and the off-throttle rate when the pad is up - clamped
+ *   to [$0100, the row's ceiling].
+ *
+ *   Then the band: $C2 >= $3000 is over-revved (and earns the spin),
+ *   $2E80..$2FFF is the TURBO window, below it is nothing.  Two-player
+ *   uses $30C0/$2DC0 ($809555); this port is one-player.
+ *
+ * Measured against the user's four starts: idle 256, penalised 19264,
+ * normal 11008, turbo 11776 two frames out and climbing $40 a frame -
+ * which lands on $2E80 = 11904 exactly at the line (NOTES 143). */
+void smk_player_rev(smk_player *p, bool throttle)
+{
+    if (p->rev_spin) {                        /* $80B0EE */
+        if (p->rev >= 0x2000) { p->rev = (int16_t)(p->rev - 0x0070); return; }
+        p->rev_spin = 0;
+    }
+    int32_t d = throttle ? (p->rev < 0x2000 ? p->rev_up_lo : p->rev_up_hi)
+                         : p->rev_off;
+    int32_t v = (int32_t)p->rev + d;          /* $80B169 */
+    if (v < 0x0100) v = 0x0100;
+    if (v > (int32_t)p->rev_ceiling) v = p->rev_ceiling;
+    p->rev = (int16_t)v;
+
+    if (p->rev >= 0x3000) {                   /* $809591 */
+        p->rev_window = 0; p->rev_spin = 1;
+    } else if (p->rev >= 0x2E80) {            /* $809571: the window */
+        p->rev_window = 1;
+    } else {
+        p->rev_window = 0;
+    }
+}
+
+/* The lights go out: the window pays the mushroom's own boost. */
+void smk_player_launch(smk_player *p)
+{
+    if (p->rev_window) smk_player_boost(p);
+    p->rev_window = 0;
+}
+
 bool smk_player_boost(smk_player *p)
 {
     int st = p->state;
@@ -264,7 +318,13 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
      * 418 for all eight frames and only moved once control came back.
      * Accelerating through the window is what made bouncing free - you
      * came off the wall already back up to speed. */
-    if (k->bounce_cool == 0) {
+    /* Over-revved off the line: the wheels spin and the throttle does
+     * nothing until $C2 falls under $2000 (measured: $EE = 0 throughout,
+     * NOTES 143).  The rev keeps bleeding while it does. */
+    if (p->rev_spin) {
+        smk_player_rev(p, false);
+        p->accel32 = 0; k->accel = 0; k->accel_frac = 0;
+    } else if (k->bounce_cool == 0) {
         /* $80A55B, drive state $16: once the window lets go, the kart is
          * still travelling sideways to where it points, and THAT costs
          * speed.  $EE comes from the table at $80A590 indexed by the

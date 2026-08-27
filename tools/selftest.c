@@ -320,6 +320,38 @@ int main(int argc, char **argv)
 
     test_player_replay(&rom);
     {
+        /* The start rev and the turbo launch (NOTES 143), from the user's
+         * four-start recording: hold from the beginning and you over-rev
+         * into a wheelspin, catch a narrow band and you get the mushroom's
+         * own boost, miss it and nothing happens. */
+        struct { int press, spin, window, drive; } W[] = {
+            { 999, 0, 0, 0x00 },   /* never touched: idle, nothing        */
+            {   0, 1, 0, 0x00 },   /* held throughout: over-revved, spins */
+            { 102, 1, 0, 0x00 },   /* still too early                     */
+            { 105, 0, 1, 0x10 },   /* the window opens                    */
+            { 110, 0, 1, 0x10 },   /* and closes six frames later         */
+            { 111, 0, 0, 0x00 },   /* just missed                         */
+            { 150, 0, 0, 0x00 },   /* far too late                        */
+        };
+        int bad = 0;
+        char d[160];
+        d[0] = 0;
+        for (size_t i = 0; i < sizeof W / sizeof W[0]; i++) {
+            static smk_player pr;
+            smk_player_setup(&rom, 0, 1, &pr); smk_player_reset(&pr, 0);
+            for (int f = 0; f < 180; f++) smk_player_rev(&pr, f >= W[i].press);
+            int spin = pr.rev_spin, win = pr.rev_window, rev = pr.rev;
+            smk_player_launch(&pr);
+            if (spin != W[i].spin || win != W[i].window || pr.drive != W[i].drive) {
+                bad++;
+                snprintf(d, sizeof d, "press f%d: rev %d spin %d win %d drive $%02X",
+                         W[i].press, rev, spin, win, pr.drive);
+            }
+        }
+        if (!d[0]) snprintf(d, sizeof d, "window is f105..f110, six frames wide");
+        check("the start rev over-revs, hits the turbo band, or misses", !bad, d);
+    }
+    {
         /* $80B5CD sets $1F = 1 and the game leaves it there for the whole
          * 60-frame countdown - the physics stops and waits (NOTES 135a).
          * Ours used to sink the kart under the plane instead (NOTES 142). */

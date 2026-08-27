@@ -4937,3 +4937,43 @@ back to zero", and it is `$2000`, not zero.
 Still to find: the test at the line that turns 11776 into a boost and
 11008 into nothing.  Everything else is in hand, including that the reward
 is a mechanism we already have.
+
+---
+
+**144** — S17 ported: the rev, the wheelspin and the turbo launch.
+
+The comparison NOTES 143 was missing is `$80956A`, and it is a BAND:
+
+    lda $C2,x
+    cmp #$3000   ; 12288 and over -> $809591: $E2 |= 1, the WHEELSPIN
+    cmp #$2E80   ; 11904..12287   -> $E0 |= 1, the TURBO window
+                 ; under          -> nothing
+
+(Two-player uses `$30C0`/`$2DC0` at `$809555`; this port is one-player and
+that is labelled.)
+
+The user's own numbers land on it exactly.  Their turbo run read 11776 two
+frames before the line and the rev climbs `$40` a frame above `$2000`:
+11776 + 128 = **11904 = `$2E80`**, the first value in the band.  Their
+normal run read 11008 and would reach 11136 - short.  Their penalised run
+sat at 19264, far past `$3000`.
+
+Ported whole:
+
+* the parameters are read from the ROM row at `$81:EFF3` - ceiling 24575,
+  `+$0200` under `$2000`, `+$0040` over it, `-$0280` off-throttle;
+* `smk_player_rev` builds and clamps to `[$0100, ceiling]`, and once
+  over-revved bleeds `$70` a frame until it drops under `$2000`;
+* while the wheels spin the throttle does nothing at all - measured, `$EE`
+  = 0 for the whole penalty;
+* `smk_player_launch` pays the window out through `smk_player_boost` -
+  **the mushroom's own boost**, which the port already had.
+
+The window in the port is **six frames wide** (press at f105..f110 of a
+180-frame countdown; f104 over-revs, f111 misses), which is the user's
+"one particular point" with a number on it.
+
+Labelled and outstanding: our countdown is still 180 frames of invention
+(S11) where the game's is about 338, so the window sits at the right
+DEPTH in the rev curve but not at the right wall-clock moment.  Closing
+S11 moves it without touching any of this.

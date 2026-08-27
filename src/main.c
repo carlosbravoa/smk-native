@@ -1225,8 +1225,15 @@ int main(int argc, char **argv)
                 if (tex) { SDL_DestroyTexture(tex); tex = NULL; rw = rh = 0; }
             }
             if (race_state == RACE_COUNTDOWN) {
-                /* the lights: no throttle, no steering, kart held */
-                if (++race_count >= RACE_COUNT_FRAMES) race_state = RACE_RUN;
+                /* The lights.  The kart is held, but the throttle is NOT
+                 * ignored - it builds the rev, and where the rev sits when
+                 * the lights go out decides whether you get the turbo
+                 * launch, nothing, or a wheelspin (NOTES 143). */
+                smk_player_rev(&player, in.up);
+                if (++race_count >= RACE_COUNT_FRAMES) {
+                    race_state = RACE_RUN;
+                    smk_player_launch(&player);   /* $80956A pays out here */
+                }
                 hud_countdown = 3 - race_count / 60;
                 if (hud_countdown < 1) hud_countdown = 1;
                 in.up = in.down = in.left = in.right = false;

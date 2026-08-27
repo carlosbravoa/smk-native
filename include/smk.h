@@ -284,6 +284,13 @@ typedef struct {
     int      state;            /* $A6 - slide machine state                 */
     int      drive;            /* $AC - drive state (0 = normal)            */
     int      jump_state;       /* $A0                                       */
+    /* the start rev and its flags (NOTES 143).  $C2 is not only the
+     * launch: $80A10F halves it on a crash, with a floor of $0100. */
+    int16_t  rev;              /* $C2                                       */
+    uint16_t rev_ceiling;      /* the $81:EFF3 row, read at setup           */
+    int16_t  rev_up_lo, rev_up_hi, rev_off;
+    uint8_t  rev_window;       /* $E0 bit 0: inside the turbo band          */
+    uint8_t  rev_spin;         /* $E2 bit 0: over-revved, wheels spinning   */
     uint16_t pad, pad_prev;    /* $C4 - the composed pad word, and last frame's */
     uint16_t flags;            /* $E2 - bit 15 airborne, 2/5 drift pose,
                                   3 spinning, 6 reward armed                */
@@ -307,6 +314,11 @@ bool smk_player_setup(const smk_rom *rom, int character, int engine_class,
                       smk_player *p);
 /* use a mushroom ($80B47C): false if the kart is spinning */
 bool smk_player_boost(smk_player *p);
+/* The countdown's rev ($C2) and the launch test (NOTES 143): call
+ * smk_player_rev once a frame while the lights run, then
+ * smk_player_launch when they go out. */
+void smk_player_rev(smk_player *p, bool throttle);
+void smk_player_launch(smk_player *p);
 /* place the kart: all three angles, machine at rest */
 void smk_player_reset(smk_player *p, uint16_t heading);
 /* one frame.  held / pressed are SNES pad words: B $8000 Y $4000 Left $0200
