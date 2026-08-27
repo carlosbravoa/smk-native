@@ -5999,3 +5999,108 @@ them asked whether the sprite is drawn where the projection says, which is
 a different question and the one that was wrong. `--obj-marks` draws the
 projected point precisely so the two can be told apart by eye; it should
 have been the first thing built, not the fourth.
+
+**156** — The shadow, and how high a Thwomp actually gets.
+
+The user, on Bowser Castle: the Thwomps are missing their shadow, the
+height they reach is lower than in the game, and — later, decisively —
+"shadow is exactly the same for all objects, because it is an oval, so
+maybe it is just generated?" and "shadows are flickering black ovals,
+meaning that they are in a different logic (visible every other frame)".
+
+**The shadow is not generated, and it is not in the theme sheet.** It is
+two 4bpp tiles in the shared sprite blob `$C1:0000` at decompressed offset
+`$120` — the same blob the HUD comes from. The game blits them into
+object-sheet slots **43/44**, and slots 43–47 are blank in all six
+distinct theme sheets: that is exactly why one oval serves every object.
+OAM assembles it as four 8×8 sprites, tiles `$0EB $0EC $0EC $0EB`-mirrored,
+palette 5 index 14 = `$0000` — pure black, no shading, a 32×8 ellipse.
+
+It is drawn on **alternate frames only** — measured: the strip is present
+on every odd frame of a kart hop and on no even one. That is the SNES
+faking translucency, since sprites cannot blend. The port renders the
+*result* of that flicker, a 50% darkening, because at an unlocked frame
+rate a real flicker strobes rather than shades. LABELLED divergence; the
+art and the colour are the ROM's.
+
+**The height.** `SMK_MOVER_UNIT` was 410, from a SINGLE reading. Hopping
+the kart in the oracle and logging every frame of the arc
+(`tools/labs/hop_shadow.py`) gives sixteen (`$1F`, lift) pairs over
+`$1F` = 48…856:
+
+    lift = $1F / 65.3 screen lines,  rms 0.39 px
+
+at the kart's depth of 61. The fit is confirmed by geometry it was not
+given: it implies a ground line of `20.36 + 4972/61 = 101.9`, and
+`SMK_PLAYER_LINE`, measured independently, is 102.0. One world pixel is
+therefore `65.3 × 256/61 = 274` units of `$1F`, not 410 — every Thwomp
+sat **1.50× too low**.
+
+**A second bug, in the projection rather than the constant.** The lift is
+a VERTICAL quantity but was multiplied by `smk_project`'s `sc`, which is
+horizontal (`rw/d`). Those agree only when the window is the view's own
+256:112. Rendering the user's exact save-state pose at their screenshot's
+1350×505 and measuring both images the same way:
+
+    projected ground row 354        real 362 (shadow bottom)
+    Thwomp feet    real y 141        port y 102  (before)  y 136 (after)
+    lift           real 47.2 lines   port 55.9 (before)   48.3 (after)
+
+**Why four sweeps found nothing first.** The oracle was driven in a GP
+race and the Thwomps never emitted a sprite at any distance, so OAM was
+searched for something that was not there. Reading the block's own `$30`
+was the wrong instrument — it stays parked at `$0140`, and `$2C` does not
+map to screen x by any fixed offset. The kart's own hop is the same
+mechanism and is reachable in eight frames; it should have been the first
+experiment, not the fifth. The user's two observations — the oval is
+shared, and it flickers — are what redirected it.
+
+**Still open.** At this pose the port draws a Thwomp **157 px wide against
+the game's 78** — 2.05× too big, measured on matched frames. That is the
+same complaint as "our thwomps are more blocky/pixelated than in real
+game": a 12×15 drawing magnified twice as far as the hardware ever
+magnifies it. Not changed here; it moves every object, pipes included.
+
+**157** — The near drawing: an object is not one 16x16 sprite.
+
+User, after the height and shadow work: "pipe scaling is finally right.
+dont touch it, ever. I also checked the thwomp's scaling and is also
+correct. The only thing that is incorrect in both is the sprite shown when
+getting closer. We are only scaling the sprite used for far away objects."
+
+Exactly right. Band 0 is a **32x32 metasprite**, built the way this game
+builds every symmetric thing (the kart is $180/$180-H over $1A0/$1A0-H,
+the shadow $0EB $0EC $0EC $0EB-H):
+
+    [ base 0 | base 0 mirrored ]      sheet tiles 0,1,16,17
+    [ base 2 | base 2 mirrored ]      sheet tiles 2,3,18,19
+    ink 24 x 32
+
+Measured off two uncropped 1444x1036 frames the user captured, by matching
+each sprite's row-width profile against every assembly the sheet can make.
+A Bowser Castle Thwomp at band 0 measures 21.8 x 30.5 body px and picks
+this pair at rms 2.50 against 4.30 for the next candidate; a Mario Circuit
+pipe picks the SAME pair independently at rms 3.78. Two themes, one rule.
+
+**Why it was never found.** Bases 0/2/4/6 were dismissed (NOTES 139, and
+the TIER comment in main.c) as "skewed perspective variants" because base
+0's ink is right-aligned at x 4..15. That is precisely what the LEFT HALF
+of a mirrored pair looks like. Reading a half-sprite as a whole drawing is
+what left the port magnifying the far drawing at every distance - and what
+made a near Thwomp read as blocky, since a 12x15 drawing was being blown
+up three-fold.
+
+**The size did not change and must not.** The ink fills the same fraction
+of its block as the 16x16 drawings do - 24/32 across, 32/32 down, against
+12/16 and 16/16 - so the new art goes into the same rect at the same size.
+Measured on matched poses: the port draws 21.5 SNES px wide where the game
+draws 21.8, and 30.7 tall against 30.5.
+
+**Also measured, NOT applied.** The SNES cannot scale a sprite, so in the
+real game the drawn size IS the art size - which makes the far pipes in
+that frame readable directly: 12.1 x 16.6 and 11.2 x 14.7 body px, against
+the sheet's base 32 at 12x16 and base 34 at 11x14. So the game's bands 1
+and 2 are bases **32 and 34**, where the port uses 34 and 36. The port
+scales continuously, so this changes detail and not size; left alone
+because the user has approved how the far objects look, and their word on
+that outranks the inference.

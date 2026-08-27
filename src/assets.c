@@ -259,6 +259,50 @@ bool smk_hud_load(const smk_rom *rom, smk_hud *out)
     return true;
 }
 
+/* The shadow every object and the hopping kart share.
+ *
+ * Two 4bpp tiles at offset $120 of the shared sprite blob $C1:0000 (the
+ * same blob the HUD comes from), which the game blits into object-sheet
+ * slots 43/44 - the slots every theme leaves blank.  OAM lays them out as
+ * four 8x8 sprites, T0 T1 T1 mirror(T0), so the 32x8 ellipse is built
+ * here the same way.  One flat colour, so a mask is all it is. */
+bool smk_shadow_load(const smk_rom *rom, smk_shadow *out)
+{
+    static uint8_t buf[WRAM_SIZE];
+    memset(out, 0, sizeof *out);
+    memset(buf, 0, sizeof buf);
+    long n = smk_decompress_into(rom->data, rom->size,
+                                 smk_snes_to_pc(rom, SMK_SHADOW_SRC),
+                                 buf, WRAM_SIZE, 0, NULL);
+    if (n < SMK_SHADOW_OFF + 64) return false;
+    uint8_t half[2][8][8];
+    memset(half, 0, sizeof half);
+    for (int t = 0; t < 2; t++) {
+        const uint8_t *src = buf + SMK_SHADOW_OFF + t * 32;
+        for (int pair = 0; pair < 2; pair++) {
+            const uint8_t *q = src + pair * 16;
+            for (int y = 0; y < 8; y++) {
+                uint8_t lo = q[y * 2], hi = q[y * 2 + 1];
+                for (int x = 0; x < 8; x++) {
+                    int bit = 7 - x;
+                    int v = ((lo >> bit) & 1) | (((hi >> bit) & 1) << 1);
+                    half[t][y][x] |= (uint8_t)(v << (pair * 2));
+                }
+            }
+        }
+    }
+    /* the strip as OAM lays it out: T0, T1, T1, T0 mirrored */
+    for (int y = 0; y < SMK_SHADOW_H; y++)
+        for (int x = 0; x < 8; x++) {
+            out->px[y][x]      = half[0][y][x] != 0;
+            out->px[y][8 + x]  = half[1][y][x] != 0;
+            out->px[y][16 + x] = half[1][y][x] != 0;
+            out->px[y][24 + x] = half[0][y][7 - x] != 0;
+        }
+    out->ok = true;
+    return true;
+}
+
 /* The entity sprite set - pipes and friends. */
 bool smk_objgfx_load(const smk_rom *rom, int theme, smk_objgfx *out)
 {

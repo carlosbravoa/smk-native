@@ -194,7 +194,8 @@ static int race_count;                   /* frames spent counting down  */
  * starts ticking immediately after. */
 #define RACE_COUNT_FRAMES 336
 static smk_hud hud_art;
-static smk_objgfx obj_art;          /* pipes and other entities */                  /* the game's own HUD sprites */
+static smk_objgfx obj_art;          /* pipes and other entities */
+static smk_shadow shadow_art;       /* the one oval every object shares */                  /* the game's own HUD sprites */
 
 /* Draw one HUD tile at 8x8 * scale, palette $C0, index 0 transparent. */
 static void hud_tile(uint32_t *fb, int rw, int rh, int x, int y, int tile,
@@ -540,6 +541,7 @@ static bool load_race(const smk_rom *rom, int track, int theme, int character,
     if (mode == SMK_MODE_TT) strip_pickups(rom, &trk);
     smk_blocks_bind(&trk);
     smk_objgfx_load(rom, trk.theme, &obj_art);
+    smk_shadow_load(rom, &shadow_art);
     smk_horizon_load(rom, trk.theme, &horizon);
 
     drv = &SMK_DRIVERS[character];
@@ -604,6 +606,60 @@ static void camera_from_kart(smk_camera *cam, const smk_kart *k)
     uint16_t az = (uint16_t)(k->angle + SMK_CAM_LEAD);
     cam->angle = (float)az * (2.0f * (float)M_PI / (float)SMK_ANGLE_TURN)
                  - (float)M_PI / 2.0f;
+}
+
+
+/* One art pixel of an object's drawing.
+ *
+ * Bands 1 and 2 are a single 16x16 drawing and index the sheet directly.
+ * Band 0 is the 32x32 metasprite (NOTES 157): four 16x16 sprites, the
+ * right column being the left one mirrored, top row from base
+ * SMK_OBJ_NEAR_TOP and bottom row from SMK_OBJ_NEAR_BOT. */
+static uint8_t obj_texel(int base, int aw, int ax, int ay)
+{
+    int sbase = base;
+    if (aw == SMK_OBJ_NEAR_W) {
+        sbase = (ay < 16) ? SMK_OBJ_NEAR_TOP : SMK_OBJ_NEAR_BOT;
+        ay &= 15;
+        if (ax >= 16) ax = 31 - ax;      /* the mirrored right column */
+    }
+    int tl = sbase + (ay / 8) * SMK_OBJ_STRIDE + (ax / 8);
+    if (tl < 0 || tl >= SMK_OBJ_TILES) return 0;
+    return obj_art.px[tl][(ay % 8) * 8 + (ax % 8)];
+}
+
+
+/* The shadow, from the ROM's own 32x8 ellipse.
+ *
+ * The game draws it as four sprites on ALTERNATE FRAMES so it reads as
+ * translucent; we draw the result of that flicker instead - a 50%
+ * darkening - because at the port's frame rate a real flicker strobes.
+ * `gx` is the ground point and the ellipse's BOTTOM sits on it, which is
+ * where the game puts it: the kart's shadow spans rows 95..102 against a
+ * ground line of 101.9 (measured in OAM). */
+static void draw_shadow(uint32_t *fb, int rw, int rh,
+                        float gx, float gy, float sc)
+{
+    if (!shadow_art.ok) return;
+    int w = (int)(SMK_SHADOW_WW * sc + 0.5f);
+    int h = (int)(SMK_SHADOW_WH * sc + 0.5f);
+    if (w < 2 || h < 1) return;
+    int x0 = (int)gx - w / 2, y0 = (int)gy - h;
+    for (int dy = 0; dy < h; dy++) {
+        int yy = y0 + dy;
+        if (yy < 0 || yy >= rh) continue;
+        int ty = dy * SMK_SHADOW_H / h;
+        for (int dx = 0; dx < w; dx++) {
+            int xx = x0 + dx;
+            if (xx < 0 || xx >= rw) continue;
+            if (!shadow_art.px[ty][dx * SMK_SHADOW_W / w]) continue;
+            uint32_t c = fb[yy * rw + xx];
+            fb[yy * rw + xx] = 0xFF000000u
+                | ((((c >> 16) & 255) * SMK_SHADOW_DARK / 100) << 16)
+                | ((((c >> 8) & 255) * SMK_SHADOW_DARK / 100) << 8)
+                | (((c & 255) * SMK_SHADOW_DARK / 100));
+        }
+    }
 }
 
 
@@ -698,6 +754,10 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
          * smk_project already rejects.  Named divergence, with S7. */
         if (ti >= SMK_OBJ_TIERS) ti = SMK_OBJ_TIERS - 1;
         int obase = TIER[ti].base;
+        /* Band 0 draws the near metasprite, which is 32x32 art rather than
+         * 16x16.  Same rect, same size, four times the detail. */
+        int aw = (ti == 0) ? SMK_OBJ_NEAR_W : SMK_OBJ_PIPE_W;
+        int ah = (ti == 0) ? SMK_OBJ_NEAR_H : SMK_OBJ_PIPE_H;
         /* The SIZE is the game's own scale, and the band only picks which
          * drawing supplies the detail.
          *
@@ -800,7 +860,16 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
          * the same law the ground and every sprite use.  Converting at
          * the kart's depth and reusing that at any distance floated far
          * Thwomps a third of the way up the screen. */
-        int lift = (int)(smk_mover_world(course, i) * sc);
+        /* The lift is a VERTICAL quantity, so it is projected the way
+         * the ground is - into `line` units, which the renderer maps by
+         * rh/112 - and NOT by smk_project's `sc`, which is horizontal
+         * (rw/d).  Those two agree only when the window happens to be the
+         * view's own 256:112; at 1350x505 they differ by 17%, and a
+         * Thwomp measured 55.9 lines up where the game puts it 46.8.
+         * Inverting smk_project's own line recovers the depth. */
+        float depth = (SMK_PROJ_LES * (float)rw / 256.0f) / sc;
+        int lift = (int)(smk_mover_world(course, i)
+                         * (SMK_PROJ_LES / depth) * ((float)rh / 112.0f));
         /* Anchor the INK, not the rect.
          *
          * The three drawings do not fill their 16x16 block the same way:
@@ -818,43 +887,37 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
          *
          * So: find where the ink actually ends inside the block and put
          * THAT on the ground, and centre on the ink rather than the rect. */
-        int ink_b = SMK_OBJ_PIPE_H - 1, ink_l = 0, ink_r = SMK_OBJ_PIPE_W - 1;
+        int ink_b = ah - 1, ink_l = 0, ink_r = aw - 1;
         {
-            int lo = 99, hi = -1, bot = -1;
-            for (int ay = 0; ay < SMK_OBJ_PIPE_H; ay++)
-                for (int ax = 0; ax < SMK_OBJ_PIPE_W; ax++) {
-                    int tl = obase + (ay / 8) * SMK_OBJ_STRIDE + (ax / 8);
-                    if (tl >= SMK_OBJ_TILES) continue;
-                    if (!obj_art.px[tl][(ay % 8) * 8 + (ax % 8)]) continue;
+            int lo = 999, hi = -1, bot = -1;
+            for (int ay = 0; ay < ah; ay++)
+                for (int ax = 0; ax < aw; ax++) {
+                    if (!obj_texel(obase, aw, ax, ay)) continue;
                     if (ax < lo) lo = ax;
                     if (ax > hi) hi = ax;
                     if (ay > bot) bot = ay;
                 }
             if (bot >= 0) { ink_b = bot; ink_l = lo; ink_r = hi; }
         }
-        int inkcx = (ink_l + ink_r + 1) * pw / (2 * SMK_OBJ_PIPE_W);
+        int inkcx = (ink_l + ink_r + 1) * pw / (2 * aw);
         int x0 = (int)px - inkcx;
-        int y0 = (int)py - (ink_b + 1) * ph / SMK_OBJ_PIPE_H - lift;
+        int y0 = (int)py - (ink_b + 1) * ph / ah - lift;
 
-        /* No object shadow.  One was added here as an ellipse on the
-         * ground so a raised Thwomp would read as overhead - but pipes do
-         * not have a shadow in the game at all, and the ellipse is not the
-         * shape a Thwomp's would be either (user).  Drawing the wrong
-         * thing is worse than drawing nothing: the real one is presumably
-         * the object's SUB-BLOCK at +$40, which runs its own script
-         * ($819174) and which we do not model.  Left undrawn until it is
-         * decoded (NOTES 154a). */
+        /* The shadow, under an object that is off the ground.  It is the
+         * object's SUB-BLOCK at +$40 that draws this in the game, and the
+         * art is the shared oval - the same one the kart hops over, which
+         * is why it looks identical under everything (user).  A pipe never
+         * leaves the ground, so `lift` is zero and it never gets one. */
+        if (lift > 0) draw_shadow(fb, rw, rh, px, py, sc);
         for (int dy = 0; dy < ph; dy++) {
             int yy = y0 + dy;
             if (yy < 0 || yy >= rh) continue;
-            int ty = dy * SMK_OBJ_PIPE_H / ph;
+            int ty = dy * ah / ph;
             for (int dx = 0; dx < pw; dx++) {
                 int xx = x0 + dx;
                 if (xx < 0 || xx >= rw) continue;
-                int tx = dx * SMK_OBJ_PIPE_W / pw;
-                int tile = obase + (ty / 8) * SMK_OBJ_STRIDE + (tx / 8);
-                if (tile >= SMK_OBJ_TILES) continue;
-                uint8_t v = obj_art.px[tile][(ty % 8) * 8 + (tx % 8)];
+                int tx = dx * aw / pw;
+                uint8_t v = obj_texel(obase, aw, tx, ty);
                 if (!v) continue;
                 fb[yy * rw + xx] =
                     trk->palette[(smk_obj_pal(trk->theme) + v) & 0xFF];
@@ -1064,27 +1127,13 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
         if (player_below && plane_mask) smk_draw_set_clip_mask(plane_mask, rw);
         int prow = (int)(SMK_PLAYER_LINE * (float)rh / 112.0f);
         /* The kart's own shadow, which stays on the ground while a hop
-         * lifts the sprite (user).  LABELLED, ours - same standing as the
-         * object shadow above: the game draws one, we have not decoded its
-         * art, so this is an ellipse that darkens the ground. */
-        if (lift > 0) {
-            int sw = 13 * scale, sh = 4 * scale;
-            for (int dy = -sh; dy <= sh; dy++) {
-                int yy = prow + dy;
-                if (yy < 0 || yy >= rh) continue;
-                int half = (int)(sw * sqrtf(1.0f - (float)(dy * dy)
-                                            / (float)(sh * sh)));
-                for (int dx = -half; dx <= half; dx++) {
-                    int xx = rw / 2 + dx;
-                    if (xx < 0 || xx >= rw) continue;
-                    uint32_t cc = fb[yy * rw + xx];
-                    fb[yy * rw + xx] = 0xFF000000u
-                        | ((((cc >> 16) & 255) * 45 / 100) << 16)
-                        | ((((cc >> 8) & 255) * 45 / 100) << 8)
-                        | (((cc & 255) * 45 / 100));
-                }
-            }
-        }
+         * lifts the sprite (user).  The SAME ROM oval the objects use -
+         * this is where it was measured: hopping the kart is what makes
+         * the sprite appear in OAM at all. The kart sits at the eye's own
+         * trail distance, so that is the scale its shadow is drawn at. */
+        if (lift > 0)
+            draw_shadow(fb, rw, rh, (float)(rw / 2), (float)prow,
+                        SMK_PROJ_LES * (float)rw / 256.0f / SMK_CAM_TRAIL);
         if (frame == 1000)                    /* the mirrored straight pose */
             smk_draw_sprite_mirror(karts, 0, trk->palette, drv->pal,
                                    rw / 2, prow - lift, scale,
@@ -1459,6 +1508,7 @@ int main(int argc, char **argv)
     }
     smk_blocks_bind(&trk);
     smk_objgfx_load(&rom, trk.theme, &obj_art);   /* the theme's objects */
+    smk_shadow_load(&rom, &shadow_art);
     if (!smk_horizon_load(&rom, trk.theme, &horizon))
         fprintf(stderr, "warning: horizon not loaded\n");
     if (!smk_effects_load(&rom, &fx))

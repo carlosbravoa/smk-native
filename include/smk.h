@@ -529,12 +529,63 @@ void smk_course_movers_step(smk_course *c, bool activated);
  * caller multiplies by smk_project's scale, exactly as the ground and the
  * sprites do, so the lift shrinks with distance like everything else.
  *
- * The unit comes from the kart's own hop: $1F = 1173 reads 12 SNES px at
- * the kart's depth of 61 px from the eye, where the scale is 256/61 =
- * 4.20 screen px per world px - so 12 px is 2.86 world px, and one world
- * pixel is 1173/2.86 = 410 units of $1F. */
-#define SMK_MOVER_UNIT 410.0f
+ * The unit comes from the kart's own hop, SWEPT rather than sampled
+ * (tools/labs/hop_shadow.py).  Hopping the kart in the oracle and logging
+ * every frame of the arc gives sixteen ($1F, screen lift) pairs spanning
+ * $1F = 48..856, and a fit through the origin is
+ *
+ *     lift = $1F / 65.3 screen lines,  rms 0.39 px
+ *
+ * at the kart's depth of 61 px from the eye.  The fit is confirmed by
+ * geometry it was not given: it implies the kart's ground line is
+ * 20.36 + 4972/61 = 101.9, and SMK_PLAYER_LINE - measured independently -
+ * is 102.0.  At that depth the scale is 256/61 = 4.197 screen px per
+ * world px, so one world pixel is 65.3 * 4.197 = 274 units of $1F.
+ *
+ * The old 410 came from a SINGLE reading ($1F = 1173 -> 12 px) and made
+ * every Thwomp sit 1.50x too low - "the height they get is lower than in
+ * game" (user).  One point can calibrate a law but cannot choose between
+ * laws; this one is a sweep.
+ *
+ * LABELLED: the 1/depth falloff is the projection's own law, applied here
+ * as it is everywhere else, not separately measured - the sweep is all at
+ * the player's fixed depth. */
+#define SMK_MOVER_UNIT 274.0f
 float smk_mover_world(const smk_course *c, int slot);
+
+/* ---- The object shadow -------------------------------------------------
+ *
+ * One shared 32x8 solid-black ellipse, and the SAME one under every object
+ * and under the player's kart when it hops (user: "shadow is exactly the
+ * same for all objects, because it is an oval").  It is not generated: it
+ * is two 4bpp tiles in the shared sprite blob at $C1:0000, decompressed
+ * offset $120, which the game blits into object-sheet slots 43/44 - slots
+ * that all six distinct theme sheets leave blank, which is exactly why it
+ * is the same oval everywhere.  OAM assembles it as four 8x8 sprites,
+ * tiles $0EB $0EC $0EC $0EB-mirrored, palette 5 index 14 = $0000, pure
+ * black with no shading.
+ *
+ * It is drawn on ALTERNATE FRAMES ONLY (measured: the strip appears on
+ * every odd frame of the kart's hop and on no even one) - the SNES faking
+ * a translucent shadow, since sprites cannot blend.  We render the effect
+ * that flicker produces, a 50% darkening, rather than the flicker itself:
+ * the port runs at a higher and unlocked frame rate, where the flicker
+ * would read as strobing rather than as shade.  LABELLED as a deliberate
+ * divergence; the ART and the colour are the ROM's.
+ *
+ * The art is 32x8 screen px at the kart's own depth of 61, so in world
+ * terms it is 32*61/256 = 7.63 by 1.91 px, and it scales with distance by
+ * the same projection as everything else. */
+#define SMK_SHADOW_W    32
+#define SMK_SHADOW_H     8
+#define SMK_SHADOW_SRC  0xC10000u   /* the shared sprite blob            */
+#define SMK_SHADOW_OFF  0x120       /* byte offset of the first tile     */
+#define SMK_SHADOW_DARK 50          /* percent of the ground left showing */
+/* world size = screen size at the kart's depth / the scale there */
+#define SMK_SHADOW_WW   (SMK_SHADOW_W * SMK_CAM_TRAIL / SMK_PROJ_LES)
+#define SMK_SHADOW_WH   (SMK_SHADOW_H * SMK_CAM_TRAIL / SMK_PROJ_LES)
+typedef struct { uint8_t px[SMK_SHADOW_H][SMK_SHADOW_W]; bool ok; } smk_shadow;
+bool smk_shadow_load(const smk_rom *rom, smk_shadow *out);
 
 
 /* Starting-grid placement derived from decoded course data: two columns
@@ -707,6 +758,40 @@ int smk_obj_pal(int theme);
  * this magnifies what we have.  LABELLED: the size is measured, the
  * mechanism is not. */
 #define SMK_OBJ_MAG      2
+
+/* The NEAR drawing, measured on the real game (NOTES 157).
+ *
+ * User: "pipe scaling is finally right, don't touch it, ever ... The only
+ * thing that is incorrect in both is the sprite shown when getting closer.
+ * We are only scaling the sprite used for far away objects."
+ *
+ * Right.  Band 0 is not a 16x16 drawing at all - it is a 32x32 metasprite
+ * built the way the SNES builds every symmetric thing in this game (the
+ * kart is $180/$180-H over $1A0/$1A0-H, the shadow $0EB $0EC $0EC $0EB-H):
+ *
+ *     [ base 0 | base 0 mirrored ]      tiles 0,1,16,17
+ *     [ base 2 | base 2 mirrored ]      tiles 2,3,18,19
+ *
+ * Measured off two uncropped 1444x1036 frames the user captured, by
+ * matching the sprite's row-width profile against every assembly the sheet
+ * can make: a Bowser Castle Thwomp at band 0 is 24x32 and picks this at
+ * rms 2.50 with the next candidate at 4.30, and a Mario Circuit pipe picks
+ * the SAME pair independently at rms 3.78.
+ *
+ * Bases 0/2/4/6 were previously dismissed as "skewed perspective variants"
+ * because base 0's ink is right-aligned (x 4..15).  That is exactly what
+ * the LEFT HALF of a mirrored pair looks like; reading it as a whole
+ * drawing is why the near art was never found and why the port magnified
+ * the far one instead.
+ *
+ * The ink fills the same fraction of its block as the 16x16 drawings do
+ * (24/32 = 12/16 across, 32/32 = 16/16 down), so this is drawn into the
+ * SAME rect at the SAME size - four times the detail, and the scaling law
+ * is untouched.  Bands 1 and 2 keep the drawings they had. */
+#define SMK_OBJ_NEAR_TOP  0        /* top row's left half   */
+#define SMK_OBJ_NEAR_BOT  2        /* bottom row's left half */
+#define SMK_OBJ_NEAR_W   32
+#define SMK_OBJ_NEAR_H   32
 
 #define SMK_OBJ_NEAR    ((float)SMK_OBJ_RADIUS)
 typedef struct { uint8_t px[SMK_OBJ_TILES][64]; bool ok; } smk_objgfx;
