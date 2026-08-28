@@ -171,6 +171,9 @@ static int racer_draw_mask = 0xFE;      /* which racer slots draw_scene draws */
  * screen) and wrong the moment the camera moves, which left the driver
  * jammed against the bottom edge of the first version of this. */
 #define SMK_POSE_LEAN 1001      /* the block unfolded; negative = hflipped */
+/* Coins knocked out of the player, and the game's own art for them. */
+static smk_coinart coin_art;
+static smk_coin    coins_fx[SMK_COINFX_MAX];
 static int celebrating;
 /* How far the celebration camera has turned, in ROM angle units.  The
  * SPRITES are projected from a cam_heading passed separately to
@@ -1404,6 +1407,44 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
                              other, loaded, fb, rw, rh);
         }
     }
+    /* the spilled coins: projected like any world object, lifted by their
+     * own height, and spinning through the three measured frames */
+    if (coin_art.ok) {
+        for (int i = 0; i < SMK_COINFX_MAX; i++) {
+            const smk_coin *kc = &coins_fx[i];
+            if (!kc->live) continue;
+            float px, py, sc;
+            if (!smk_project(cam, (float)smk_kart_px(kc->x),
+                             (float)smk_kart_px(kc->y), rw, rh, &px, &py, &sc))
+                continue;
+            int scale = rw / 256; if (scale < 1) scale = 1;
+            float kdx = (float)smk_kart_px(kc->x) - cam->x;
+            float kdy = (float)smk_kart_px(kc->y) - cam->y;
+            float kd = sqrtf(kdx * kdx + kdy * kdy);
+            if (kd < SMK_OBJ_NEAR) kd = SMK_OBJ_NEAR;
+            /* the same 1/distance law the entities use, and never bigger
+             * than the kart it fell out of */
+            int cs = (int)((float)scale * SMK_KART_SCALE_K / kd * 0.5f + 0.5f);
+            if (cs < 1) cs = 1;
+            if (cs > scale) cs = scale;
+            int f = (kc->t / SMK_COIN_SPIN) % SMK_COIN_FRAMES;
+            int lift = (int)(kc->z / 25029) * scale;
+            int x0 = (int)px - SMK_COIN_PX * cs / 2;
+            int y0 = (int)py - SMK_COIN_PX * cs - lift;
+            for (int yy = 0; yy < SMK_COIN_PX * cs; yy++) {
+                int sy = y0 + yy;
+                if (sy < 0 || sy >= rh) continue;
+                const uint8_t *row = coin_art.px[f] + (yy / cs) * SMK_COIN_PX;
+                for (int xx = 0; xx < SMK_COIN_PX * cs; xx++) {
+                    int sx = x0 + xx;
+                    if (sx < 0 || sx >= rw) continue;
+                    uint8_t v = row[xx / cs];
+                    if (!v) continue;
+                    fb[(size_t)sy * rw + sx] = trk->palette[(0xE0 + v) & 0xFF];
+                }
+            }
+        }
+    }
     if (show_kart && !celebrating && karts->frames) {
         int scale = rw / 256;                 /* the SNES 32px proportion */
         if (scale < 1) scale = 1;
@@ -1757,6 +1798,8 @@ int main(int argc, char **argv)
         return 1;
     }
     smk_hud_load(&rom, &hud_art);
+    if (!smk_coin_load(&rom, &coin_art))
+        fprintf(stderr, "warning: coin sprite not loaded\n");
 
     if (!smk_track_load(&rom, track, theme, &trk, err, sizeof err)) {
         fprintf(stderr, "error: %s\n", err);
@@ -2296,6 +2339,13 @@ int main(int argc, char **argv)
                     wt[i] = SMK_KART_WEIGHT[racers[i].character
                                             % SMK_CHARACTERS];
                 }
+                /* THE COIN LOSS, which this port never had.  $85:E4B2
+                 * takes one coin on a plain contact - the user: "regular
+                 * bumps against other players is just one coin" - and
+                 * $85:E4E5 takes four for an item hit, which is not
+                 * reachable yet with no items.  The coins are thrown up
+                 * and fall back (NOTES 183). */
+                int8_t was_cool = kart.bump_cool;
                 if (getenv("SMK_NO_BUMP")) {
                     /* A/B: run the field with kart contact switched off */
                 } else if (getenv("SMK_BUMP_TRACE")) {
@@ -2317,7 +2367,28 @@ int main(int argc, char **argv)
                     smk_karts_collide(field, wt, SMK_CHARACTERS);
                 }
                 kart = me->k;
+                /* a FRESH contact on the player costs one coin, and the
+                 * coins are thrown out of him (NOTES 183) */
+                /* not while replaying: coins set the top speed
+                 * ($D6 = $B4 + 8*min(coins,10)), so dropping one would
+                 * make the ghost diverge from the recording it is being
+                 * compared against. */
+                if (kart.bump_cool == SMK_BUMP_COOL && was_cool == 0
+                    && player.coins > 0 && !replay_path) {
+                    player.coins--;
+                    smk_coinfx_spawn(coins_fx, SMK_COINFX_MAX,
+                                     kart.x, kart.y, player.heading,
+                                     kart.vx, kart.vy, 1);
+                }
             }
+            /* SMK_COIN_TEST=frame - throw coins on that race frame with
+             * no collision needed, so the arc can be shot and looked at */
+            { const char *e = getenv("SMK_COIN_TEST");
+              if (e && hud_race_frames == atol(e))
+                  smk_coinfx_spawn(coins_fx, SMK_COINFX_MAX,
+                                   kart.x, kart.y, player.heading,
+                                   kart.vx, kart.vy, 1); }
+            smk_coinfx_step(coins_fx, SMK_COINFX_MAX);
 
             /* player lap counting - the decoded rule via racer state */
             {

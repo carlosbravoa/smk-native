@@ -1336,6 +1336,46 @@ bool smk_kart_bump(smk_kart *a, int wa, smk_kart *b, int wb);
 /* The whole field, once a frame: every pair tested, heaviest first. */
 void smk_karts_collide(smk_kart **karts, const uint8_t *weight, int n);
 
+/* ---- Spilled coins (src/coinfx.c, NOTES 183) --------------------------
+ *
+ * When a kart is hit it drops coins, and they are thrown UP and fall back
+ * (the user).  The ROM side is decoded: $85:E4B2 takes ONE coin, $85:E4E5
+ * takes FOUR, and both reach $85:E5E3 which spawns effect objects.
+ *
+ * The ART is the game's, found by dumping VRAM at the moment of a loss and
+ * searching the shared sprite blob for the tiles OAM named: three 16x16
+ * spin frames - wide, edge-on, wide - at VRAM tiles $86, $A2 and $60,
+ * palette 6, about four frames each.  The blob at $C1:0000 is uploaded
+ * from tile 48, so a tile's bytes are at (tile - 48) * 32 in it; the port
+ * already decompresses that blob for the HUD and the kart shadow.
+ *
+ * The MOTION is OURS and ledgered (S29).  The game's own launch constants
+ * live in an effect slot this log could not pin down - $0FE2 does not
+ * point at it - and under the user's standing rule for presentation
+ * ("faithful is for driving experience, not for hud, menus, and things
+ * that can be better without constraints") a measured-looking arc is
+ * worth more than another afternoon of hunting. */
+#define SMK_COIN_FRAMES  3
+#define SMK_COIN_PX     16
+typedef struct { bool ok; uint8_t px[SMK_COIN_FRAMES][SMK_COIN_PX * SMK_COIN_PX]; } smk_coinart;
+bool smk_coin_load(const smk_rom *rom, smk_coinart *out);
+
+#define SMK_COINFX_MAX   12
+#define SMK_COIN_RISE   320     /* OURS: launch, in the kart's own z units */
+#define SMK_COIN_GRAV    26     /* the kart's own gravity ($80B1D5)        */
+#define SMK_COIN_SPIN     4     /* frames per spin frame, measured         */
+#define SMK_COIN_LIFE   150     /* frames before it gives up               */
+typedef struct {
+    int      live;
+    int32_t  x, y, z;
+    int16_t  vx, vy, vz;
+    int      t;
+} smk_coin;
+/* `count` coins out of a kart at (x,y) travelling on `heading` */
+void smk_coinfx_spawn(smk_coin *c, int n, int32_t x, int32_t y,
+                      uint16_t heading, int16_t kvx, int16_t kvy, int count);
+void smk_coinfx_step(smk_coin *c, int n);
+
 /* ---- Ground effects: tyre smoke and dust (src/effects.c, NOTES 109) ---- */
 typedef struct { int n; int8_t x[8], y[8]; uint8_t tile[8], attr[8]; } smk_effect_template;
 typedef struct { int n; uint8_t dur[8], tpl[8]; smk_effect_template t[8]; } smk_effect_script;

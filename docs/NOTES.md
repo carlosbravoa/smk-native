@@ -7554,3 +7554,37 @@ One wrong turn on the way: the first attempt drew frame 0 unfolded,
 because the port's own comment calls its right half "the junk right half".
 It is junk - frame 0 is a half sprite and its right side is a different
 drawing entirely. The block that folds AND unfolds is 47.
+
+---
+
+**183** — Coins spill when you are bumped, with the game's own coin.
+
+The user: *"when passing over one, coins are thrown up and then fall
+down"*, and on scope: *"leave the 4 coin drop for later because they are
+part of 'being hit' animation (which is a series of spins). One coin drop
+is more relevant since you get to bump into others a lot."*
+
+**The port had no coin loss at all** - `src/pickup.c` said so - so this
+adds the mechanic as well as the animation: a fresh kart-to-kart contact
+takes ONE coin, which is `$85:E4B2` and matches the user's own account.
+The four-coin path (`$85:E4E5`, `sbc #$0004`) is decoded and deliberately
+left for the spin-out.
+
+**The art is the game's, found through OAM.** Dumping VRAM and CGRAM at a
+real loss, the coin is three 16x16 frames - wide, edge-on, wide - at tiles
+`$86`, `$A2`, `$60`, palette 6, about four frames each. Searching the
+shared sprite blob at `$C1:0000` for those exact bytes places them at
+`(tile - 48) * 32`, so the blob is uploaded from tile 48 - and the port
+already decompresses that blob for the HUD and the kart shadow.
+
+**The arc is OURS (S29)**, and one part of it is not: the coin is thrown
+FORWARD and inherits the kart's velocity. That is from the recording -
+the coin appears high on screen (y 67) and comes DOWN toward the camera
+(y 114) - and it matters, because the first version threw coins backwards
+where a forward-looking camera never sees them. Nothing was drawn at all
+and the arc looked broken when the direction was the bug.
+
+Guarded against the replay gates: coins set the top speed
+(`$D6 = $B4 + 8*min(coins,10)`), so dropping one mid-replay would make the
+ghost diverge from the recording it is measured against. `demoreplay` is
+still 100% within 1 px, coins wrong on 0 frames.
