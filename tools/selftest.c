@@ -268,6 +268,25 @@ int main(int argc, char **argv)
         check("track 7's grid matches the game's own", pinned == 3, det);
     }
 
+    printf("\nthe draw list\n");
+    {
+        /* Everything on the plane shares ONE depth-sorted list.  If it
+         * cannot hold a course's entities AND the eight karts, the karts
+         * are the ones that fall off the end - silently, and only on the
+         * busy courses (NOTES 165). */
+        int worst = 0, worst_t = -1, bad = 0;
+        for (int tr = 0; tr < SMK_TRACK_COUNT; tr++) {
+            static smk_course cd;
+            if (!smk_course_load(&rom, tr, &cd)) continue;
+            if (cd.nent > worst) { worst = cd.nent; worst_t = tr; }
+            if (cd.nent + SMK_CHARACTERS > SMK_DRAW_LIST) bad++;
+            if (cd.nent > SMK_COURSE_ENTS) bad++;
+        }
+        snprintf(det, sizeof det, "busiest is track %d with %d entities + %d karts, list holds %d",
+                 worst_t, worst, SMK_CHARACTERS, SMK_DRAW_LIST);
+        check("the draw list fits every entity AND the whole field", !bad, det);
+    }
+
     printf("\nthe starting order\n");
     {
         /* racers[] is indexed by the game's kart BLOCK; SMK_GRID_SLOT

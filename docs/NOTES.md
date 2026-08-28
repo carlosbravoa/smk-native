@@ -6501,3 +6501,49 @@ screen shows the place instead of the record line.
 
 Not built, deliberately, and the user said so: no items, no AI
 personality, no cup. A race is a thing to test against now.
+
+---
+
+**165** — Eleven courses had no opponents, and the same list was dropping
+obstacles too.
+
+The user, one race in: *"there are some tracks where there is no AI
+players on the grid."*  Reproduced by shooting the grid on all twenty:
+nothing on 0, 2, 3, 5, 9, 10, 11, 14, 15, 17 and 19, the whole field on
+the other nine.
+
+The placement is not the cause and was ruled out first - tracks 7 and 14
+share a grid record to the pixel, and printing both gives identical
+positions, characters and surfaces, yet one draws seven karts and the
+other none.  So it is the drawing, and something per-track that is not
+geometry.
+
+It is the draw list.  NOTES 128 made everything on the plane share ONE
+depth-sorted pass so a nearer sprite of any kind can cover a farther one,
+and the array it sorts into was declared
+
+    struct { float dep; int kind, idx; } item[SMK_CHARACTERS + 8];
+
+sixteen entries - while the course entities are enumerated into it FIRST,
+guarded by `n < sizeof item / sizeof item[0]`.  So on any course with 16
+or more entities the list was full before a single kart was considered,
+and the guard silently skipped the entire field.  The predicate is exact:
+
+    nent >= 16  ->  no opponents drawn
+
+and eleven courses qualify, from track 5's 16 to track 3's 19.  It has
+been there since the sort landed; the time trial never showed it because
+a time trial draws no opponents at all, and it took a race to make eleven
+courses look empty.
+
+The second half is quieter.  With only sixteen slots, a course with 17-19
+entities also lost the last few OBSTACLES, so NOTES 155's "every object
+on the course is drawn" was untrue on exactly those tracks.  Both halves
+go away together.
+
+Sized properly now: `SMK_DRAW_LIST` = `SMK_COURSE_ENTS` + `SMK_CHARACTERS`
+= 40, with the entity cap named rather than a bare 32 in two places, and
+a self-test that walks all twenty courses and asserts the busiest one's
+entities plus the whole field still fit.  A cap that silently drops the
+thing you are looking for is worth a test even when it is currently
+generous.

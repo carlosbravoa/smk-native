@@ -1122,7 +1122,12 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
     {
         static smk_sprites other[SMK_CHARACTERS];
         static int loaded[SMK_CHARACTERS];      /* character + 1 whose sheet is in other[k] */
-        struct { float dep; int kind, idx; } item[SMK_CHARACTERS + 8];
+        /* Room for every entity AND every kart.  This used to be
+         * SMK_CHARACTERS + 8 = 16, and the entities are enumerated
+         * first, so on any course with 16 or more of them the list was
+         * full before a single opponent was added and the whole field
+         * vanished (NOTES 165). */
+        struct { float dep; int kind, idx; } item[SMK_DRAW_LIST];
         int n = 0;
         float a2 = (float)cam_heading * (float)(2.0 * M_PI) / 65536.0f;
         if (course) {

@@ -429,6 +429,14 @@ extern const smk_driver SMK_DRIVERS[SMK_CHARACTERS];
 #define SMK_SECT_W       64
 #define SMK_SECT_CELLS   (SMK_SECT_W * SMK_SECT_W)
 #define SMK_SECT_CELL_PX 16
+/* The per-track entity list is 32 words at $85:C800 + track*64, so this
+ * is the most a course can hold. */
+#define SMK_COURSE_ENTS  32
+/* Everything on the plane goes through ONE depth-sorted list, and it has
+ * to hold every entity AND the whole field: sized smaller, a busy course
+ * fills it with obstacles and the opponents are never drawn at all -
+ * which is exactly what happened on 11 of the 20 courses (NOTES 165). */
+#define SMK_DRAW_LIST   (SMK_COURSE_ENTS + SMK_CHARACTERS)
 #define SMK_SECT_FINISH  0x80u
 #define SMK_SECT_OFF     0x7Fu
 #define SMK_MAX_SECTORS  128
@@ -497,7 +505,7 @@ typedef struct {
     /* Sprite obstacles (pipes, Thwomps, moles...), decoded from the
      * spawner at $84DC20: per-track word list at $85:C800 + track*64,
      * [kind:2][y:7][x:7], coordinates cell*8+4, zero-terminated. */
-    struct { uint8_t kind; uint16_t x, y; } ent[32];
+    struct { uint8_t kind; uint16_t x, y; } ent[SMK_COURSE_ENTS];
     int      nent;
     smk_mover mv[32];         /* one per ENTITY, NOTES 152/155 */
     int      theme;           /* for smk_theme_has_movers */
