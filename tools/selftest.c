@@ -3,6 +3,7 @@
  * Checks the same facts the Python suite checks, but through the code the
  * game actually runs, so the two implementations cannot silently diverge.
  */
+#include <math.h>
 #include "smk.h"
 #include <stdio.h>
 #include <string.h>
@@ -266,6 +267,83 @@ int main(int argc, char **argv)
         }
         snprintf(det, sizeof det, "%d/3", pinned);
         check("track 7's grid matches the game's own", pinned == 3, det);
+    }
+
+    printf("\nkart against kart\n");
+    {
+        /* Every number here was read out of the running game with
+         * tools/labs/bump4.py: two karts placed at a chosen separation,
+         * one frame stepped, the velocities read back (NOTES 166). */
+        static smk_kart ka, kb;
+        #define SET(K, PX, PY, VX, VY) do {                    \
+            memset(&(K), 0, sizeof (K));                       \
+            (K).x = (int32_t)(PX) << SMK_POS_SHIFT;            \
+            (K).y = (int32_t)(PY) << SMK_POS_SHIFT;            \
+            (K).vx = (VX); (K).vy = (VY);                      \
+            (K).speed = (int16_t)(((VX)*(VX)+(VY)*(VY)) > 0 ?  \
+                 (int)(sqrt((double)((VX)*(VX)+(VY)*(VY)))+0.5) : 0); \
+        } while (0)
+
+        /* the box: the ROM's `d + 4 < 8` window, [-4, +3] */
+        int box = 0, want_box = 0;
+        for (int d = -6; d <= 6; d++) {
+            SET(ka, 500, 500, 0, -600);
+            SET(kb, 500 + d, 500, 0, -400);
+            bool hit = smk_kart_bump(&ka, 0x1A, &kb, 0x1A);
+            bool in = (d >= -4 && d <= 3);
+            want_box++;
+            if (hit == in) box++;
+        }
+        for (int d = -6; d <= 6; d++) {
+            SET(ka, 500, 500, 0, -600);
+            SET(kb, 500, 500 + d, 0, -400);
+            bool hit = smk_kart_bump(&ka, 0x1A, &kb, 0x1A);
+            bool in = (d >= -4 && d <= 3);
+            want_box++;
+            if (hit == in) box++;
+        }
+        snprintf(det, sizeof det, "%d/%d separations", box, want_box);
+        check("the contact box is the ROM's [-4,+3] on both axes",
+              box == want_box, det);
+
+        /* equal weights: the vectors are EXCHANGED, exactly */
+        SET(ka, 500, 500, 0, -600);
+        SET(kb, 500, 500, 0, -400);
+        bool hit1 = smk_kart_bump(&ka, 0x1A, &kb, 0x1A);
+        snprintf(det, sizeof det, "a (%d,%d) b (%d,%d)", ka.vx, ka.vy, kb.vx, kb.vy);
+        check("equal weights exchange the velocity vectors, and only that",
+              hit1 && ka.vx == 0 && ka.vy == -400
+                   && kb.vx == 0 && kb.vy == -600, det);
+
+        /* and the pair is shut for eight frames afterwards */
+        bool again = smk_kart_bump(&ka, 0x1A, &kb, 0x1A);
+        snprintf(det, sizeof det, "cool %d, second hit %s", ka.bump_cool,
+                 again ? "FIRED" : "blocked");
+        check("the pair is closed for the ROM's eight frames",
+              !again && ka.bump_cool == SMK_BUMP_COOL, det);
+
+        /* heavier AND faster: it keeps its line at speed - half the
+         * closing speed, the light one is flung at that speed + $20 */
+        SET(ka, 500, 500, 0, -600);
+        SET(kb, 500, 500, 0, -400);
+        smk_kart_bump(&ka, 0x1B, &kb, 0x19);
+        int flung = kb.speed;
+        snprintf(det, sizeof det, "heavy %d (want 500), light %d (want 632)",
+                 ka.speed, flung);
+        check("the heavier kart keeps its line, the lighter is flung off",
+              ka.speed == 500 && ka.vx == 0 && flung >= 628 && flung <= 636, det);
+
+        /* rammed from behind by a lighter kart two classes down: the
+         * heavy one is untouched, the rammer is cut to a quarter */
+        SET(ka, 500, 500, 0, -400);
+        SET(kb, 500, 500, 0, -600);
+        smk_kart_bump(&ka, 0x1B, &kb, 0x19);
+        snprintf(det, sizeof det, "heavy %d (want 400), rammer %d (want ~100)",
+                 ka.speed, kb.speed);
+        check("ramming a heavier kart from behind costs three quarters",
+              ka.speed == 400 && ka.vy == -400
+                  && kb.speed >= 96 && kb.speed <= 104, det);
+        #undef SET
     }
 
     printf("\nthe draw list\n");

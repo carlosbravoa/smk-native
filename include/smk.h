@@ -174,6 +174,8 @@ typedef struct {
     int8_t   crash_frames;  /* how long $AC = $16 decelerates (see NOTES 132)*/
     uint8_t  bounce_obj;    /* the window came from an OBJECT, not a wall    */
     uint8_t  stuck;         /* $5A: consecutive frames with nowhere to go   */
+    int8_t   bump_cool;     /* $5E: the kart-to-kart pair cooldown, and the
+                               window the exchanged velocity survives      */
     /* Speed and acceleration are both 32-bit, split across two words,
      * and the *high* word is the 8.8 value handed to DSP-1 as the radius. */
     int16_t  speed;         /* $EA */
@@ -1048,6 +1050,46 @@ void smk_horizon_draw(const smk_horizon *hz, const uint32_t *palette,
                       int w, int h, int scale);
 /* give the renderer the layer to draw above the horizon (NULL = flat sky) */
 void smk_render_set_horizon(const smk_horizon *hz, uint16_t heading);
+
+/* ---- Kart against kart (NOTES 166) ------------------------------------
+ *
+ * NOTES 112 concluded there was no kart-to-kart response, from a demo in
+ * which nobody actually leant on anybody.  There is one, and it is three
+ * routines:
+ *
+ *   $81982A  the test.  |dx| and |dy| both under 4 PIXELS on the two
+ *            karts' centres, neither in the pair's cooldown ($5E), and
+ *            both near the ground ($1F <= $0420).  A broadphase over two
+ *            position-sorted lists feeds it.
+ *   $819867  marks the pair - $5E = 8 on both - and ORDERS them so the
+ *            heavier is X, by $4E, which $81923A loads from the table at
+ *            $81:9277 indexed by the object type.  Its first eight
+ *            entries are the drivers, and they are SMK's weight classes:
+ *            Bowser and DK Jr $1B, Mario and Luigi $1A, the other four
+ *            $19.
+ *   $819B06  the answer.  For an equal-weight pair it EXCHANGES the two
+ *            velocity vectors ($819CB8) and then, if both components
+ *            still share a sign - the exchange left them converging -
+ *            shoves them apart ($819CD2) - that separation is measured
+ *            but NOT ported, see src/kart.c and ledger S24.  Measured in
+ *            the oracle: two karts placed on the same pixel came out
+ *            with each other's velocity exactly.
+ *
+ * The port carries the exchange in the kart's own $22/$24 and holds it
+ * for the pair's eight frames the way the wall bounce holds its own
+ * (NOTES 044) - without that, smk_kart_face rebuilds the velocity from
+ * speed and heading on the next frame and the bump never happens. */
+#define SMK_BUMP_BOX     4      /* $81982A: |dx|, |dy| strictly under 4  */
+#define SMK_BUMP_COOL    8      /* $8198A8: $5E = 8 on both karts        */
+#define SMK_BUMP_PUSH    0x80   /* $819CD2: the shove when still closing */
+#define SMK_BUMP_Z_MAX   4      /* $81985A: $1F <= $0420, so 4 px of air */
+/* $81:9277, first eight entries, in SMK_DRIVERS order */
+extern const uint8_t SMK_KART_WEIGHT[SMK_CHARACTERS];
+/* One contact.  Order is the game's: `a` must be the heavier kart.
+ * Returns true if the pair touched and the response ran. */
+bool smk_kart_bump(smk_kart *a, int wa, smk_kart *b, int wb);
+/* The whole field, once a frame: every pair tested, heaviest first. */
+void smk_karts_collide(smk_kart **karts, const uint8_t *weight, int n);
 
 /* ---- Ground effects: tyre smoke and dust (src/effects.c, NOTES 109) ---- */
 typedef struct { int n; int8_t x[8], y[8]; uint8_t tile[8], attr[8]; } smk_effect_template;

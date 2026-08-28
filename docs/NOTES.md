@@ -6547,3 +6547,72 @@ a self-test that walks all twenty courses and asserts the busiest one's
 entities plus the whole field still fit.  A cap that silently drops the
 thing you are looking for is worth a test even when it is currently
 generous.
+
+---
+
+**166** — Kart against kart: it does exist, and NOTES 112 closed the case
+on a race where nobody touched.
+
+The user: *"collision detection and reaction between AI players against
+the human player and between them."*
+
+NOTES 112 had ruled it out - "no kart-to-kart response exists in the
+demo", from two AI karts passing within 3 px and P2 within 7 px of one,
+with nothing reacting. That is one recording of a race in which nobody
+leant on anybody, and the conclusion was wrong.
+
+*Finding it, from both ends at once.* Statically: a two-body response has
+to write the OTHER kart's state, so search for `sta $0022,y` - the
+velocity of the kart Y indexes. Three sites, and `$819BBD` is one.
+Dynamically: put P1 on the same pixel as an AI kart in the oracle and
+record the PC of every write to either block. `$819BBD` fires, once. The
+same routine from both directions, in about ten minutes.
+
+*The test, `$81982A`.* `|dx|` and `|dy|` inside the ROM's `d + 4 < 8`
+window, so **[-4, +3] pixels** on the two karts' centres - which is about
+one kart wide, a kart being some 8 world px. Then: neither kart in the
+pair's cooldown (`$5E`), neither stuck (`$5A`), both within `$0420` of
+the ground. A broadphase over two position-sorted linked lists feeds it,
+which is why the window is not symmetric: which kart is X depends on
+which list is walking.
+
+*The order, `$819867`.* Mark the pair - `$5E` = 8 on both - and sort them
+so the HEAVIER is X, by `$4E`, which `$81923A` loads from the table at
+`$81:9277` indexed by object type. Its first eight entries are the
+drivers, and they are SMK's weight classes:
+
+    Bowser $1B   DK Jr $1B   Mario $1A   Luigi $1A
+    Peach  $19   Yoshi $19   Koopa $19   Toad  $19
+
+*The answer, `$819B06`, by the weight difference.* All four branches, each
+measured in the oracle:
+
+* **equal** - EXCHANGE the two velocity vectors (`$819CB8`). Two karts on
+  one pixel carrying `(0,-600)` and `(0,-400)` came back with exactly
+  each other's velocity.
+* **heavier, and faster** (`$819C0D`) - the heavy kart keeps its line and
+  pays half the closing speed; the light one is flung off its shoulder at
+  that speed plus `$20`, `$1800` off the line. To the unit: 600 against
+  400 left the heavy kart on 500 and the light one on 632 at 33.75
+  degrees.
+* **heavier, rammed from behind, two classes apart** (`$819BE4`) - the
+  heavy kart is not touched at all and the rammer is turned `$1000` and
+  cut to a QUARTER. Measured 99, where a quarter of 400 is 100.
+* **one class apart, rammed** - the plain exchange.
+
+*What the port had to add.* An exchanged velocity means nothing if the
+next frame rebuilds it: both `smk_kart_face` and `src/player.c` derive
+`$22`/`$24` from speed and heading. So the pair's own eight-frame window
+does double duty and holds the vector, exactly as the wall bounce's does
+(NOTES 044) - and the player's path, which never calls `smk_kart_face`,
+runs the same countdown itself.
+
+*The one disagreement, labelled as S24.* `$819CC9`'s separation is
+indexed `$14,x` with x = 0 then 2, which does not pair the components the
+way the loads at `$819B7F` do; and the single geometry the oracle could
+make it fire in came back with `$80` off BOTH x components, which
+separates nothing. That measurement is not clean - the partner is an AI
+kart whose own frame ran too - and without a separation the field grinds
+into a heap within a lap. What ships is the READING, which does the job
+the routine exists for, with the disagreement in the source.
+

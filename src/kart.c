@@ -49,6 +49,11 @@ void smk_kart_face(smk_kart *k)
         k->bounce_cool--;
         return;
     }
+    /* the kart-to-kart window does the same thing (NOTES 166) */
+    if (k->bump_cool > 0) {
+        k->bump_cool--;
+        return;
+    }
     smk_kart_face_real(k);
 }
 
@@ -362,4 +367,143 @@ void smk_kart_move_ex(smk_kart *k, const smk_track *t, bool auto_ramp)
     }
     k->x = nx;
     k->y = ny;
+}
+
+/* ---- Kart against kart (NOTES 166) ------------------------------------
+ *
+ * $81:9277's first eight entries, in the drivers' own order: SMK's weight
+ * classes, and the only thing that decides who wins a bump. */
+const uint8_t SMK_KART_WEIGHT[SMK_CHARACTERS] =
+    { 0x1A, 0x1A, 0x1B, 0x19, 0x1B, 0x19, 0x19, 0x19 };
+
+/* $819CD2/$819CEC: whichever of the converging pair is NEARER ZERO is
+ * moved $80 further from the other, so an exchange that left them still
+ * closing separates them instead.
+ *
+ * LABELLED, and the one place the reading and the measurement disagree.
+ * The routine is indexed $14,x with x = 0 then 2, which does not pair
+ * the components the way the loads at $819B7F do; and the single
+ * geometry the oracle could make it fire in - (300,-400) against
+ * (500,-200) - came back with $80 off BOTH x components, which does not
+ * separate anything.  That measurement is not clean: the partner is an
+ * AI kart whose own frame ran too.  What ships is the READING, because
+ * it is the only version that does the job the routine exists for, and
+ * without it the field grinds to a halt in a heap.  S24. */
+static void bump_push(int16_t *p, int16_t *q)
+{
+    if (*p >= 0) {                            /* $819CD2 */
+        if (*p < *q) *p = (int16_t)(*p - SMK_BUMP_PUSH);
+        else         *q = (int16_t)(*q - SMK_BUMP_PUSH);
+    } else {                                  /* $819CEC */
+        if (*p >= *q) *p = (int16_t)(*p + SMK_BUMP_PUSH);
+        else          *q = (int16_t)(*q + SMK_BUMP_PUSH);
+    }
+}
+
+/* $819C6B is smk_dsp_sincos with the result stored as the velocity. */
+static void bump_polar(smk_kart *k, uint16_t angle, int16_t radius)
+{
+    int16_t sx, cy;
+    smk_dsp_sincos(angle, radius, &sx, &cy);
+    k->vx = sx;
+    k->vy = cy;
+    /* the radius IS the speed; deriving it back out of the vector loses
+     * a unit to rounding and the port's physics reads $EA, not $22/$24 */
+    k->speed = radius;
+}
+
+bool smk_kart_bump(smk_kart *a, int wa, smk_kart *b, int wb)
+{
+    /* $81982A.  The ROM's test is `d + 4 < 8` on the difference the
+     * broadphase's list order produces, so the window is [-4, +3] and
+     * not quite symmetric; measured in the oracle it fires at dx -4..3
+     * and dy -3..3, which is that window seen from both list orders. */
+    int dx = smk_kart_px(b->x) - smk_kart_px(a->x);
+    int dy = smk_kart_px(b->y) - smk_kart_px(a->y);
+    if (dx + SMK_BUMP_BOX < 0 || dx + SMK_BUMP_BOX >= 2 * SMK_BUMP_BOX) return false;
+    if (dy + SMK_BUMP_BOX < 0 || dy + SMK_BUMP_BOX >= 2 * SMK_BUMP_BOX) return false;
+    if (a->bump_cool > 1 || b->bump_cool > 1) return false;   /* $819848 */
+    if (a->stuck || b->stuck) return false;                   /* $819853 */
+    if (smk_kart_height_px(a) > SMK_BUMP_Z_MAX
+        || smk_kart_height_px(b) > SMK_BUMP_Z_MAX) return false;   /* $81985A */
+
+    /* $A2 is the direction of TRAVEL, which is what the velocity says. */
+    uint16_t va = smk_angle_of(a->vx, a->vy);
+    int d = wa - wb;                     /* $819B1D, >= 0: a is the heavier */
+
+    if (d == 0) {
+        /* $819B75 -> $819B7F: exchange the two vectors ($819CB8) ... */
+        int16_t t;
+        t = a->vx; a->vx = b->vx; b->vx = t;
+        t = a->vy; a->vy = b->vy; b->vy = t;
+        /* $819B94: an exchange that leaves BOTH pairs sharing a sign has
+         * left them closing, so separate them ($819CC9).  A zero
+         * component is not a converging one - the ROM's `bpl` calls it
+         * positive, but the measured head-on pair, both with vx = 0,
+         * came back exchanged and nothing else. */
+        if (a->vx && b->vx && a->vy && b->vy
+            && ((a->vx < 0) == (b->vx < 0)) && ((a->vy < 0) == (b->vy < 0))) {
+            bump_push(&a->vx, &b->vx);
+            bump_push(&a->vy, &b->vy);
+        }
+        a->speed = vec_len(a->vx, a->vy);
+        b->speed = vec_len(b->vx, b->vy);
+    } else if (a->speed >= b->speed) {
+        /* $819C0D: the heavier kart is also the faster one, so it keeps
+         * its line and pays half the closing speed, and the lighter is
+         * flung off its shoulder at that speed plus $20.  Both halves
+         * measured to the unit: 600 against 400 left the heavy kart on
+         * 500, and the light one at 632 - $1800 off its line. */
+        int16_t keep = (int16_t)(a->speed - ((a->speed - b->speed) >> 1));
+        /* LABELLED: which shoulder is OURS.  $819C4B picks the sign from
+         * $2C/$32, two fields this port does not model; the side b is
+         * actually on is the same answer for every case we can measure. */
+        int16_t rel = (int16_t)((uint16_t)smk_angle_of((int16_t)(dx * 256),
+                                                       (int16_t)(dy * 256)) - va);
+        uint16_t off = (uint16_t)(rel >= 0 ? 0x1800 : -0x1800);
+        int16_t fling = (int16_t)(a->speed + 0x20);
+        bump_polar(a, va, keep);
+        bump_polar(b, (uint16_t)(va + off), fling);
+    } else if (d == 1) {
+        /* $819BCA: heavier but slower, one class apart - the plain
+         * exchange ($819B7F). */
+        int16_t t;
+        t = a->vx; a->vx = b->vx; b->vx = t;
+        t = a->vy; a->vy = b->vy; b->vy = t;
+        a->speed = vec_len(a->vx, a->vy);
+        b->speed = vec_len(b->vx, b->vy);
+    } else {
+        /* $819BD5 -> $819BE4: two classes apart and rammed from behind.
+         * The heavy kart is not touched at all; the light one is turned
+         * $1000 off its victim's line and cut to a QUARTER of its speed,
+         * which is the measurement - 400 against 600 left the rammer on
+         * 99 where a quarter of 400 is 100.  Under $0100 the game turns
+         * it $6000 instead ($819BF4), at half of at least $0200. */
+        if (a->speed >= 0x0100)
+            bump_polar(b, (uint16_t)(va + 0x1000), (int16_t)(a->speed >> 2));
+        else
+            bump_polar(b, (uint16_t)(va + 0x6000),
+                       (int16_t)((a->speed < 0x0200 ? 0x0200 : a->speed) >> 1));
+    }
+
+    /* $8198A8: the pair is marked for eight frames.  In the port that
+     * window does double duty - it is also what keeps smk_kart_face from
+     * rebuilding the velocity out of speed and heading before the bump
+     * has moved anybody. */
+    a->bump_cool = SMK_BUMP_COOL;
+    b->bump_cool = SMK_BUMP_COOL;
+    return true;
+}
+
+void smk_karts_collide(smk_kart **karts, const uint8_t *weight, int n)
+{
+    for (int i = 0; i < n; i++)
+        for (int j = i + 1; j < n; j++) {
+            if (!karts[i] || !karts[j]) continue;
+            /* $819867 orders the pair so the heavier is X */
+            if (weight[i] >= weight[j])
+                smk_kart_bump(karts[i], weight[i], karts[j], weight[j]);
+            else
+                smk_kart_bump(karts[j], weight[j], karts[i], weight[i]);
+        }
 }

@@ -425,7 +425,11 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
         }
         smk_kart_accelerate(k);
     }
-    if (k->bounce_cool == 0) {
+    /* The kart-to-kart window holds the exchanged velocity exactly as a
+     * wall's does (NOTES 166): without it this rebuild would put the
+     * player straight back on its own heading and the bump would only
+     * ever change its speed. */
+    if (k->bounce_cool == 0 && k->bump_cool == 0) {
         int16_t sx, cy;
         smk_dsp_sincos(p->vel_angle, k->speed, &sx, &cy);   /* DSP-1 cmd $04 */
         k->vx = sx;
@@ -717,6 +721,9 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
     if (k->bounce_cool > 0 && (!k->airborne || k->bounce_obj))
         k->bounce_cool--;
     if (k->bounce_cool == 0) k->bounce_obj = 0;
+    /* the same countdown for a kart-to-kart bump; this path never calls
+     * smk_kart_face, which is where the AI karts' window is run down */
+    if (k->bump_cool > 0) k->bump_cool--;
 
     /* 3. $80A892 - heading, velocity angle, pose */
     {

@@ -1926,9 +1926,43 @@ int main(int argc, char **argv)
             me->k = kart;
 
             if (race_state == RACE_RUN && !replay_path
-                && race_mode != SMK_MODE_TT)
+                && race_mode != SMK_MODE_TT) {
                 for (int i = 1; i < SMK_CHARACTERS; i++)
                     smk_racer_step(&racers[i], &trk, &crs, &phys);
+                /* Kart against kart, once a frame over the whole field
+                 * (NOTES 166).  racers[0] IS the player's kart - me->k is
+                 * copied from it above - so the player takes part on the
+                 * same terms as everyone else, and the response lands
+                 * back on `kart` when the pass is done. */
+                smk_kart *field[SMK_CHARACTERS];
+                uint8_t wt[SMK_CHARACTERS];
+                for (int i = 0; i < SMK_CHARACTERS; i++) {
+                    field[i] = &racers[i].k;
+                    wt[i] = SMK_KART_WEIGHT[racers[i].character
+                                            % SMK_CHARACTERS];
+                }
+                if (getenv("SMK_NO_BUMP")) {
+                    /* A/B: run the field with kart contact switched off */
+                } else if (getenv("SMK_BUMP_TRACE")) {
+                    static int8_t was[SMK_CHARACTERS];
+                    smk_karts_collide(field, wt, SMK_CHARACTERS);
+                    for (int i = 0; i < SMK_CHARACTERS; i++) {
+                        if (field[i]->bump_cool == SMK_BUMP_COOL && !was[i])
+                            printf("bump f%ld: kart %d (%s, weight $%02X)"
+                                   " speed %d at (%d,%d)\n",
+                                   hud_race_frames, i,
+                                   SMK_DRIVERS[racers[i].character
+                                               % SMK_CHARACTERS].name,
+                                   wt[i], field[i]->speed,
+                                   smk_kart_px(field[i]->x),
+                                   smk_kart_px(field[i]->y));
+                        was[i] = field[i]->bump_cool;
+                    }
+                } else {
+                    smk_karts_collide(field, wt, SMK_CHARACTERS);
+                }
+                kart = me->k;
+            }
 
             /* player lap counting - the decoded rule via racer state */
             {
