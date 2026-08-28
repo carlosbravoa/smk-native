@@ -8,6 +8,12 @@ This file is the single place where we are honest about the gap between the
 two. Every shortcut lives in the ledger below; a shortcut not written down
 here is a bug in this file.
 
+**If you have ten minutes and a controller, read "What needs playing"
+first.** Four mechanics are decoded, ported and gated by the headless
+tools but have never been judged by a person, and the port cannot be
+driven end to end from an agent shell - it blocks on SDL. Those four are
+where the next real bug is.
+
 ---
 
 ## Working principles
@@ -59,6 +65,7 @@ re-investigating.
 | S22 | `src/ai.c` `smk_collide_objects` | the object hit is the ROM's measured response (reflect, 308/581, NOTES 072) plus the impact SLIP so it survives the window, plus a `$80` low-speed floor so a slow hit is not glued.  The GEOMETRY is ours: a 6 px circle with a positional push-out | the ROM's own object collision shape is not decoded, and NOTES 072's measured response has no floor at all - with none the kart is glued to what it hit, so something in that measurement is missing rather than in the fit.  The `$80` value is fitted to behaviour the user confirmed, not read (NOTES 150/150a) | P5 |
 | S23 | `src/course.c` / `src/main.c` | **named divergence, on purpose.**  Every object on the course is drawn AND collided, at any distance.  The ROM keeps two live blocks in a one-player race (`$819136`) and respawns them as the lap segment changes, and culls past `$84DA3C`'s last threshold (zf 352) - so pipes wink in and out as you drive.  Both are an OAM and a 256x224 budget, not a statement about the track: at our resolution the third band is still several pixels.  `--rom-spawn` restores the live pair and the cull.  Same standing as S7 | two live objects, culled at 352 | keep |
 | S24 | `src/kart.c` `smk_kart_bump` | kart-to-kart contact is the ROM's: the `[-4,+3]` box, the `$5E` pair cooldown, the `$81:9277` weight order and all four branches of `$819B06`, each measured in the oracle (NOTES 166).  **Labelled**: `$819CC9`'s separation ships as the READING, not the measurement - its own indexing does not pair the components the way `$819B7F` loads them, and the one geometry that fired came back with `$80` off both x components, which separates nothing.  Without some separation the field heaps up | `$819CC9` | P5 - wants a clean sweep of the separation with a partner that is not a live AI kart |
+| S25 | `src/ai.c` `smk_ai_rubber` | the rubber band is the ROM's: the target-speed ROW (`$80AD96` -> `$C8`, read by `$80B074`), chosen from rank and the distance to the kart one place ahead against `$80AF0F`, plus `$80B0A1`'s flat per-rank correction.  Both tables are diffed against the ROM in the self-test (NOTES 167).  **Labelled**: the class index is the engine class where the ROM uses `$C1,x & 7` over four rows; `$DA`'s meaning is unknown so `$B099`'s correction is out; and the `$18` row is never selected because the state that hands it out (`$84,x`) is not modelled | `$80AD5E` per frame, per kart | P6 - wants `$DA` decoded, and a playtest |
 | S8 | no audio | silence | SPC700 + S-DSP running its own program | P7 |
 | S10 | `src/main.c` draw | **entities RESOLVED for law and size.** The scale is the DSP-1 projection's own third output, `$4200 / depth ALONG THE VIEW AXIS ahead of the kart` (2.1% over 975 samples, against 19% for the euclidean distance the port used), and the drawing is chosen by walking `$84DA3C` = C0 60 30 00 (NOTES 129).  The drawn SIZE is twice the sheet's drawing, measured against a real frame with the kart as the ruler - 23x31 SNES px where the sheet holds 12x16 (NOTES 139).  Labelled: (a) where the larger art comes from is unknown - the whole object sheet tops out at 16x16, so the port magnifies; (b) that nothing draws past the last threshold is a reading of `$84DA38`, not a measurement.  **KARTS still open**: same `+$06`, but their drawing ladder is a different table and has not been measured | same | entities closed; karts P5 |
 | S11 | `src/main.c` start sequence | **RESOLVED** — the countdown is the ROM's own 336 frames (`$809FE1` loads `$0146` with `-$150`, `$80A1F8` counts it up, the field goes on zero; NOTES 145), and what runs over it is now Lakitu and his light rather than invented digits (NOTES 162) | same | closed |
@@ -116,6 +123,24 @@ used; C output is byte-identical to the game's loader on all 24 courses.
   very state - and every gate stayed green for weeks, because no recorded
   run crosses a ramp while boosting (NOTES 149).
 
+* **A routine that returns small constants is not necessarily a
+  priority or an index into art.**  `$80ADE0` returns `$00`/`$08`/`$10`/
+  `$18` and was read as sprite priority while hunting kart collision, in
+  the same session that later needed it: they are byte offsets into the
+  target-speed table, and they are the whole rubber band (NOTES 167).
+  Two hours were spent on the wrong side of the same routine.
+* **A negative result is only as broad as the run it came from.**  NOTES
+  112 closed kart-to-kart collision as "not in the data" from one demo in
+  which no two karts ever touched.  There is a full response, weight
+  classes and all, and finding it took ten minutes once the question was
+  asked of a race where they DID touch (NOTES 166).
+* **Wall-clock timings of the port from an agent shell measure SDL, not
+  the game.**  61 seconds of wall clock for 0.49s of CPU: the process
+  sleeps waiting to present.  Two "the race no longer finishes"
+  regressions were chased that way, one of them additionally starved by
+  six of our own races running at once.  Compare builds by CPU time, or
+  through the headless tools, and never run two.
+
 ## The gate, and how work gets proved now
 
 The strongest instrument this project has is not a rig - it is the user
@@ -171,6 +196,84 @@ Time Trial and a verified character (Mario, Toad) keep the run clean.
 Ask for one whenever a decode depends on "the game doing X" - it has been
 faster than every rig it replaced, every single time.
 
+## What needs playing, and what to look for
+
+Everything below is decoded, ported and gated by the headless tools, and
+none of it has been judged **in play** except where it says so. That is
+not laziness: `--frames` runs from an agent shell block on SDL - 61
+seconds of wall clock for 0.49 seconds of CPU (see the wrong turns list)
+- so the port cannot be driven end to end from there at all. A single lap
+by a person settles more than any rig here can.
+
+In rough order of how likely it is to be wrong:
+
+**1. The rubber band (NOTES 167) — completely untried.**
+The whole point of it: the field should now stick to you instead of
+falling away. Drive well and they should still be there; drive badly and
+one that has dropped back should visibly wind up and reel you in.
+
+* Does a kart that loses touch come back, and does it *stop* winding up
+  once it is near again? (chase row `$08` -> hold row `$10`)
+* Does the leader ease off when it gets clear air? That is the half that
+  is easiest to get wrong, and the half that stops the leader vanishing.
+* 50cc against 150cc: the catch-up distances and the rows both scale, so
+  150cc should feel much stickier. If it does not, the class index is the
+  suspect - the port uses the engine class where the ROM uses `$C1,x & 7`
+  over FOUR rows, and that is labelled (S25).
+* Is the field now too fast? The AI were easy to beat before this landed
+  and row 0 was the reason; if they have gone from too slow to unfair,
+  the `$18` row we never select, or `$DA`, is where the missing brake is.
+
+**2. Kart-to-kart contact after the re-contact fix (NOTES 166/166a).**
+The user already reported the first version as too aggressive between AI
+karts, and `$819C93` was missing - a second contact inside the pair's
+eight-frame cooldown should now cost nothing at all unless both karts
+have nearly stopped.
+
+* Does the pack still knock itself apart through a corner, or does it
+  lean and stay?
+* Bowser or DK Jr against Toad or Koopa: two weight classes should feel
+  clearly different from same-weight contact. Ramming a heavier kart from
+  behind should cost you three quarters of your speed.
+* `SMK_NO_BUMP=1` turns it all off for an A/B in the same session, and
+  `SMK_BUMP_TRACE=1` prints one line per contact.
+* Watch for karts heaping up and stalling. Without the separation step
+  they did; it now ships as the READING of `$819CC9` rather than the
+  measurement, which is the one place the two disagree (S24).
+
+**3. The start rev, the wheelspin and the turbo launch (NOTES 163).**
+The mechanism has been in since NOTES 144 but had no feedback at all
+until now, so it has never actually been *seen* working.
+
+* Hold accelerate from the moment Lakitu appears: the kart should sit
+  there spinning its wheels with smoke, creeping forward at walking pace,
+  for about 37 frames, then go.
+* Press at the right moment and you should get the boost. The window is
+  two ticks - frames 214-217 of 336 - which is **between the first and
+  second red lamp**, and 95 frames BEFORE the green. If that feels wrong
+  to a player who knows the game, say so: it is measured, but the cue a
+  player actually times against is the sound, and there is none.
+* `SMK_START_HOLD=frame` holds the throttle from a chosen countdown frame
+  if you want to hit the window reliably.
+
+**4. Single race (NOTES 164/165).**
+* Eight karts on the grid on **every** course - eleven of them drew no
+  opponents at all before NOTES 165, so this is worth a quick tour rather
+  than one track.
+* You start eighth, which is the ROM's own order; if that feels wrong for
+  a single race rather than a GP, that is a design call, not a decode.
+* Item boxes still register a pickup that does nothing. Harmless, easy to
+  strip if it annoys.
+
+**5. Lakitu and the light (NOTES 162) — reported good, one thing left.**
+The green lights 27 frames before the field is released. That is
+measured three ways and it is what the game does, but it reads oddly, so
+it is worth a second opinion from someone who knows the original.
+
+**6. Menu text (NOTES 165's sibling), the grid and the time-trial start
+(NOTES 161)** — all three reported good by the user. Listed only so a
+regression in them is noticed.
+
 ## Status at a glance
 
 | phase | state |
@@ -178,89 +281,92 @@ faster than every rig it replaced, every single time.
 | P0 oracle | **done** — 65816 interpreter, verified against the game's own decompressor |
 | P0.5 running machine | **mostly** — boots, uploads sound, runs races; no PPU picture, no SPC700, no HDMA |
 | P1 the track | **done** — themes, tilemaps, tilesets, palettes, surface table, all verified against VRAM |
-| P2 start / laps | **mostly** — real grid, decoded lap rule (NOTES 052) with the monotonic guard, race clock and start countdown.  The race LENGTH is now measured (`$014C = $8500`: five laps are six crossings, NOTES 148) and gated on 20/20 courses by `tools/laptest.c`; the finish and results flow exist for time trial.  Residual: GP points and standings |
+| P2 start / laps | **done for one race.**  The grid is the game's own per-track record with the player eighth (NOTES 161/164), the countdown is the measured 336 frames with Lakitu and his light over it (NOTES 162), the rev/wheelspin/turbo launch is the ROM's (NOTES 163), the lap rule is decoded (NOTES 052) and gated on 20/20 courses.  Residual: GP points and standings |
 | P3 physics | **done for the player, and now gated by human runs** — the control is transcribed from the ROM and replays the attract race's human inputs frame-exact: 99.8% / 100% of frames within 1 px (NOTES 106-108), with tyre smoke and dust from the game's own effect object (NOTES 109).  The demo replay is exact end to end for both karts (NOTES 112).  Residual: the other six characters unverified (S13), water/snow effects, pipe-crash spin, kart contact (none observed in the demo - NOTES 112) |
 | P4 sprites | **done** — the projection is derived once from the ROM's own DSP-1 geometry (NOTES 083/084): depth(L)=4972/(L-20.36), scale=depth/256 (ratio = Les, the cross-check), camera trails the kart 61 px.  Pose ladder measured pixel-exact (NOTES 080/081).  Residual: kart-sheet rows 1-2 purpose, sprite size quantisation (ours is continuous, labelled) |
-| P5 race furniture | **part** - the live phase — ground objects stamped with the ROM's own tiles (NOTES 074), sprite-obstacle entity list decoded and colliding (NOTES 078), HUD set + clock + lap counter on the game's own art, start countdown (NOTES 085).  hazard classes decoded and ported - water ($22) wade/skim, the fall ($24/$26/$20/$28) and Lakitu's rescue as the ROM's own three states with a latched target (NOTES 113, 124).  Breakable blocks done and gated for both themes (NOTES 123/123a).  The sector map now matches the game's own $7F:5000 on all painted cells.  Residual: the horizon/backdrop (S5), entity motion handlers, item behaviour, Lakitu's art, the splash/sink effects |
-| P6 opponents | **done to first order** — flow-field steering (95% byte-exact), ramp launches over jump gaps, wall escapes, and a Lakitu rescue: **20/20 strict laps** at 19-74 s (NOTES 057).  Residuals: ramp velocity placeholder, `$80ABxx` lane adjusters, rubber-banding, Lakitu animation |
+| P5 race furniture | **part** - the live phase — ground objects stamped with the ROM's own tiles (NOTES 074), sprite-obstacle entity list decoded and colliding (NOTES 078), HUD set + clock + lap counter on the game's own art, start countdown (NOTES 085).  hazard classes decoded and ported - water ($22) wade/skim, the fall ($24/$26/$20/$28) and Lakitu's rescue as the ROM's own three states with a latched target (NOTES 113, 124).  Breakable blocks done and gated for both themes (NOTES 123/123a).  The sector map now matches the game's own $7F:5000 on all painted cells.  Lakitu's own art is now decoded and drawn for the start (NOTES 162).  Residual: the horizon/backdrop (S5), entity MOTION (S12), item behaviour, the splash/sink effects |
+| P6 opponents | **driving and competitiveness in, personality not.**  Flow-field steering (95% byte-exact), ramp launches, wall escapes and a Lakitu rescue get the field round **20/20** GP courses.  Kart-to-kart contact is the ROM's, weight classes and all (NOTES 166).  The rubber band is the ROM's target-speed row (NOTES 167) - chase, hold, ease - which is what makes them keep up.  Residual: `$DA`, the `$18` row, per-kart driving personality, and items |
 | P7 audio | **decided** — pre-recorded; `smk spc` dumps the driver, rendering not wired up |
 | P8 modes / menus | **part** — a working shell: title → mode → driver+class → course-by-cup → race → results, in two modes.  SINGLE RACE is a Grand Prix course on its own: eight karts, the ROM's per-character grid order (`$81EE97`, NOTES 111) on the ROM's own grid rows with the player at the back (NOTES 164), starting coins, and a finishing place.  TIME TRIAL is alone with one mushroom and keeps the top five lap times per course on disk.  Font, palettes, cup order, course names, lap count and the time-trial rules are all ROM-derived (NOTES 147/148).  Residual: the CUP around a race (points and standings), items, the real menu art (S20), the mushroom grant rule (S19) |
 
 ## Where to pick up next
 
-The driving is gated by two human runs and both are at their best numbers
-(crash 86.2%, Ghost Valley 92.8%). The shell and time trial are done. In
-rough order of value:
+The driving is gated by two human runs at their best numbers (crash
+86.2%, Ghost Valley 92.8%), the shell runs two modes, and the field now
+races rather than parades. **Before any of the below, the playtest list
+above** - four of those items have never been judged by a person, and one
+of them changes how every race feels.
 
-1. **Moving obstacles (S12's other half) — the MOTION is now MEASURED,
-   and one number short of portable.**
+In rough order of value:
+
+1. **Sound (S8, P7).** It has moved from "polish" to "the missing half of
+   a mechanic". The turbo start's window is 95 frames before the green
+   lamp and lines up with no lamp at all - the cue a player times against
+   is the engine note, and the port is silent, so a decoded, correct
+   mechanic is unusable by a human. The user said as much: the light
+   "with the sound" is how you time the launch. `smk spc` already dumps
+   the driver; nothing renders it.
+
+2. **Items (P5).** The largest gameplay gap and the one you notice in ten
+   seconds of a real race. Boxes are stamped and even register a pickup;
+   the roulette, the item set and the award-by-rank rule are undecoded.
+   With the field now competitive this is what is left between us and a
+   race that plays like the game.
+
+3. **Moving obstacles (S12's other half) — the MOTION is MEASURED and one
+   number short of portable.**
 
    Thwomps (NOTES 152, Rainbow Road, per frame): parked at z = 4096 until
    the first lap completes, then fall — 15 frames, velocity from -64
    gaining -32 a frame, clamped at 0 — hold at the bottom for **135
    frames**, rise **+64 a frame**, fall again. x and y never move. The
    one thing not pinned is how long the RISE lasts: 119/116/96 frames on
-   one object, 144/199/93 on the other, and NOT proximity-driven (the
-   kart was 566, 447, 311 and 566 px away at four drops). So it is script
-   data, and nothing is ported until it is known. Next: find where the
-   spawn sets that duration, or capture more cycles and see whether the
-   numbers repeat. Flashing is independent — +`$06` cycles 65 values, on
-   lap 1 too.
+   one object, 144/199/93 on the other, and NOT proximity-driven. So it
+   is script data, and nothing is ported until it is known.
 
    **Anything measuring movers must complete a lap first**, or it records
    parked objects and reports "nothing moves" — which cost four captures
    before the user pointed it out.
 
-   Still true, and still why this matters: Thwomps spawn at the right
-   positions and never rise, so four of them in a row are a wall across
-   the road. Fixing the object collision (NOTES 150/150a) let the
-   autopilot shove past, so Bowser Castle 3 finishes again — but that is
-   a bot grinding through a wall that should not exist, not the wall
-   going away. A player still meets a permanent barricade on all three
-   Bowser Castles.
+   Why it matters: Thwomps spawn at the right positions and never rise,
+   so four in a row are a wall across the road. A player meets a
+   permanent barricade on all three Bowser Castles. The decode is done
+   (NOTES 146): Z-only motion on a per-object bytecode script; the work
+   is the interpreter (`$85E0B9`), the few commands a Thwomp and a mole
+   use (`$85DDA0`, table at `$85DD26`), and where a script is attached.
+   **Gate it on a Bowser Castle recording** - no existing gate sees a
+   Thwomp - with `--autodrive` on tracks 3/9/17 as the cheap check.
 
-   The decode is done (NOTES 146): motion is Z-only, on a per-object
-   bytecode script. The work is the interpreter (`$85E0B9`), the few
-   commands a Thwomp and a mole use (`$85DDA0` is the height one, table
-   at `$85DD26`), and where a script is attached at spawn.
-   `src/effects.c` already has the same shape to copy from. **Gate it on
-   a Bowser Castle recording** — no existing gate sees a Thwomp — with
-   `--autodrive` on tracks 3/9/17 as the cheap check. That driver now
-   gets round **20/20** GP courses (15/20 before the collision and
-   steering work), so a course it stops finishing is a real regression.
+4. **Grand Prix (P8).** The shell, the grid, the field, the lap rule, the
+   finish and now the rubber band are all in place, so what is missing is
+   scoring and the between-race flow: four cups of five, finishing order,
+   points, standings. A game-state problem rather than a decode one.
 
-2. **Grand Prix (P8).** The shell, the grid, the AI field, the lap rule
-   and the finish are all in place, so what is missing is scoring and the
-   between-race flow: four cups of five, finishing order, points,
-   standings. A game-state problem rather than a decode one, which makes
-   it the biggest visible gain per hour of the items here.
+5. **Finish the rubber band's two loose ends (S25).** `$DA` is a 0-60
+   counter (`$80A482`) that gates a second correction table (`$B099`) and
+   appears in the row branches; its meaning is unknown and everything
+   built on top of it is guesswork until it is measured. And the class
+   index: the ROM selects among FOUR rows with `$C1,x & 7` where the port
+   passes the engine class. Both are cheap oracle runs.
 
-3. **Items (P5).** The largest gameplay gap and the one you notice in ten
-   seconds of a real race. The mushroom exists as a special case; the
-   roulette, the item set and the award-by-rank rule are all undecoded.
-   Big. It is what turns a faithful driving model into the game.
+6. **The graze exemption (S6).** The ROM exempts a slip under 45 degrees
+   from the crash deceleration (`$80A0EB`), the recording shows the game
+   doing it, and applying it used to make the port WORSE (82.0% ->
+   73.4%). The reason may have been removed since: the slip now reaches
+   `vel_angle` (NOTES 150), which is the upstream difference that decode
+   was fighting. Cheap to retest, would likely lift both human gates.
 
-4. **The graze exemption (S6) — newly worth another look.** The ROM
-   exempts a slip under 45 degrees from the crash deceleration
-   (`$80A0EB`), the recording shows the game doing it, and applying it
-   used to make the port WORSE (82.0% -> 73.4%). But the reason may have
-   just been removed: the slip now reaches `vel_angle` (NOTES 150), which
-   is the upstream difference that decode was fighting. Cheap to retest,
-   and it would likely lift both human gates.
+7. **The kart-to-kart separation (S24).** `$819CC9` ships as the READING
+   of the routine, not the measurement - the one place in this port where
+   the two disagree. It wants a clean sweep with a partner that is not a
+   live AI kart driving its own frame.
 
-5. **Per-character verification (S13).** Nearly free: both human runs use
+8. **Per-character verification (S13).** Nearly free: both human runs use
    character 1, so gating another character is mostly bookkeeping. Six of
    eight unverified.
 
-6. **The start grid (S2).** The origin is out by up to 152 px on the five
-   courses whose record we have not read. S11, S16 and S17 are closed and
-   S18 (Lakitu and his light) is parked, so this one no longer travels
-   with company.
-
-7. **Art detail.** The near-object source (S15 — a wide lid over a
-   narrower body, ~24x32, currently magnified) and the kart size ladder
-   (S10's other half — same `+$06` law, unmeasured drawing table). Both
-   visible, neither affecting how it plays.
+9. **Art detail.** The near-object source (S15) and the kart size ladder
+   (S10's other half). Both visible, neither affecting how it plays.
 
 Deliberately parked: the background's near plane and sky gradient (S5) —
 the user has said it matters less than feel.
@@ -327,12 +433,15 @@ call frequency (R1).
 - Acceptance: render all 24 tracks with correct themes; overlay the surface
   classes as colour; the overlay must visibly match roads/walls.
 
-### P2 — Start line, checkpoints, lap logic  ✅ MOSTLY
-- Real start positions and grid (kills S2).
-- Lap counting is checkpoint-based (the game detects backwards driving), so
-  there is per-track checkpoint data. Find it near the object lists.
-- Acceptance: our lap counter agrees with the checkpoint data on a hand-driven
-  path around each track.
+### P2 — Start line, checkpoints, lap logic  ✅ DONE for one race
+- ✅ Real start positions and grid, per track, from the game's own record
+  (S2 closed, NOTES 161) - and the player starts eighth, which is the
+  block order the ROM lines up (NOTES 164).
+- ✅ Lap counting from the decoded rule (NOTES 052) with the monotonic
+  guard, gated on 20/20 courses by `tools/laptest.c`.
+- ✅ The countdown: 336 measured frames, Lakitu and his light over it
+  (NOTES 162), and the rev / wheelspin / turbo launch (NOTES 163).
+- Next: the cup around it — points and standings.
 
 ### P3 — Kart physics (the core of "feel")   ✅ DONE for the player (NOTES 106-109)
 
@@ -387,13 +496,19 @@ ROM's own (NOTES 083/084).  Residual: what the sheet's rows 1-2 are for.
   rendered on-track at the right scale for its distance.
 
 ### P5 — Race furniture  (part)
-- Item boxes, coins, pipes/obstacles behaving; the real horizon/backdrop
-  per track (kills S5); start-light sequence.
+- ✅ Ground objects stamped with the ROM's own tiles; the sprite-obstacle
+  entity list decoded, drawn and collided; the start-light sequence, with
+  Lakitu (NOTES 162).
+- Next: ITEMS - the biggest remaining gameplay gap - then entity MOTION
+  (S12), then the real horizon/backdrop per track (kills S5).
 
-### P6 — Opponents
-- AI drives per-track waypoint/racing-line data (it must exist — find it
-  with the object lists in P1). Rubber-banding parameters. Items later;
-  plain driving opponents first.
+### P6 — Opponents  (driving ✅, competitiveness ✅, personality next)
+- ✅ Steering from the game's own direction field, wall escape, ramp
+  launches, Lakitu rescue: 20/20 GP courses lapped.
+- ✅ Kart-to-kart contact, weight classes and all (NOTES 166).
+- ✅ Rubber-banding: the target-speed row from rank and gap (NOTES 167).
+- Next: `$DA` and the fourth class row (S25), then per-kart personality —
+  the ROM has per-character AI data we have not looked for — and items.
 
 ### P7 — Audio  — **DECIDED: pre-recorded, no SPC700 in the shipped game**
 
@@ -448,10 +563,14 @@ it must be switchable so the original can always be seen.
 Everything in this phase is off by default until the faithful path is
 green.
 
-### P8 — Modes, menus, HUD, polish
-- Time trial first (no AI dependency), then GP structure, points, ranks.
-- HUD (the game renders it on BG1 over Mode 7), menus, 2P split-screen
-  (two Mode 7 views — renderer already resolution-independent, cheap for us).
+### P8 — Modes, menus, HUD, polish  (two modes ✅, the cup next)
+- ✅ Time trial: five laps, splits, the top five per course kept on disk.
+- ✅ Single race: eight karts, the ROM's grid order, a finishing place.
+- ✅ The shell: title → mode → driver+class → course-by-cup → results, in
+  the ROM's own font and palettes (NOTES 147/148).
+- Next: the CUP around a race — four of five, finishing order, points,
+  standings — then the real menu art (S20) and 2P split-screen (two Mode 7
+  views; the renderer is already resolution-independent, cheap for us).
 
 ---
 
