@@ -6983,3 +6983,44 @@ to pull off given that there is no sound yet."
 The lesson for this log: look at the distribution before the maximum. The
 sustained value was sitting in the same file saying 50cc while a
 four-frame transient was read as the answer.
+
+---
+
+**172** — The coin loss exists, and a negative result was wrong about the
+addressing form.
+
+The user, looking at the coin column of their own race: *"you can't hold
+15 coins at the same time."*
+
+Chasing that turned up something the project had written off. `src/
+pickup.c` said, from an earlier sweep: *"No coin is ever LOST through
+`$0E00` in banks $80-$85 (all addressing forms searched)."* It is at
+**`$85:E4B2`**:
+
+    $85E4B2  lda $000E00,x     the coin count
+    $85E4B6  beq  ...          none to lose
+    $85E4B8  dec A             lose ONE
+    $85E4B9  sta $000E00,x
+    $85E4BD  $0FC0,x += 2      the sound
+
+"All addressing forms" was not all of them: this uses the LONG form
+`$000E00,x`, a four-byte opcode (`$9F 00 0E 00`) that none of the short
+`sta abs,x` patterns match. The same sweep found the increment at
+`$81B7D2` because that one IS short.
+
+What proved the note wrong was not a better search - it was the user's
+recorded race, where the counter goes DOWN four times. A negative result
+in this log is only as good as the pattern list behind it, and the way to
+test one is data, not more reading.
+
+It decrements by ONE per call, which fits the user's own account exactly:
+a bump against another kart costs one coin, and the banana they drove
+over cost four - four calls, not a bigger constant.
+
+*And the counter's ceiling is 100, not 10.* `$81B7C7` adds one and wraps
+at `cmp #$0064`. The ten lives in the SPEED rule instead - `$D6 = $B4 +
+8 * min(coins, 10)` - which is exactly why their run plateaued at 864
+from 10 coins all the way through 15 (NOTES 171). Two different numbers
+that both look like "the coin cap" from the driver's seat.
+
+Still not ported, and now labelled precisely: WHICH hits call `$85E4B2`.

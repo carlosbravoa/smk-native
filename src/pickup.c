@@ -16,10 +16,25 @@
  *        the table at $81:8BBD by theme) and $0FC0,y = 1 (the pickup
  *        sound).  It is the CELL that decides, not a radius.
  *
- * No coin is ever LOST through $0E00 in banks $80-$85 (all addressing
- * forms searched); the "hit while holding coins" code at $80D82D only
- * plays a sound.  LABELLED: coin loss on a hit, the box respawn timer and
- * the item roulette are not ported.
+ * The LOSS is at $85:E4B2, and the note that used to sit here - "no coin
+ * is ever lost through $0E00 in banks $80-$85, all addressing forms
+ * searched" - was wrong.  The search used the short forms; this one is
+ * long, `lda $000E00,x` / `dec A` / `sta $000E00,x`, four-byte opcodes
+ * the patterns never matched.  What proved the note wrong was the user's
+ * own recorded race, where the counter demonstrably goes DOWN four
+ * times (NOTES 172).
+ *
+ *   $85E4B2  lda $000E00,x ; beq (none to lose) ; dec A ; sta $000E00,x
+ *   $85E4BD  and $0FC0,x += 2, the sound
+ *
+ * ONE coin per call, so a banana's four coins are four calls.  LABELLED
+ * and still not ported: WHICH hits call it, the box respawn timer and
+ * the item roulette.
+ *
+ * And the counter's own ceiling is 100, not 10: $81B7C7 adds one and
+ * wraps at `cmp #$0064`.  The ten is in the SPEED rule instead,
+ * $D6 = $B4 + 8 * min(coins, 10), which is why a run carrying 11 to 15
+ * coins still plateaus at exactly 864 for Mario at 50cc (NOTES 171).
  */
 #include "smk.h"
 
