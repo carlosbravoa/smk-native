@@ -7467,3 +7467,20 @@ right in a montage and each was wrong. Two of them were wrong because of
 how I was DRAWING the sheet, not what was in it (the wheel anchor, then
 the tile order). When the thing under inspection is the renderer, a
 picture of the renderer's output is not evidence about the data.
+
+**And the right instrument was available the whole time.** The user:
+*"I find it weird that you are unable to find this if you have full
+access to the cpu debugger, memory and the game rom storing the
+graphics."* That is correct, and the answer is that none of the above
+used the debugger at all. **OAM names the sprite.** At the celebration
+frame it holds the exact tile numbers the game is drawing, their size bit
+and their palette - which identifies the pose outright and needs no
+theory about how the sheet is packed, which is precisely the thing that
+was guessed wrong three times. The oracle exposes OAM, VRAM and CGRAM;
+MAME exposes none of them, which is why this had to be the oracle and
+not the recording. `movers.py` already shows how to drive the oracle to
+an arbitrary race state - reach a finish, dump OAM, read the tiles off.
+
+Filed as S28 with that method written down, because the lesson is not
+"the packing is tricky" - it is that a static sheet was read when a
+running machine was there to be asked.

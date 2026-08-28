@@ -54,15 +54,22 @@ re-investigating.
 
 ## Shortcut & assumption ledger (current)
 
-**S28 — The winner's celebration pose is not drawn.**
+**S28 — STILL NOT DONE: the winner's celebration sprites and animation.**
 The user's screenshot of the original settles what it looks like: face on,
 mouth open, both white gloves raised, kart-sized. It is in the sheet - the
 packed frames 33-43, which hold four small sprites each - but those frames
 do NOT use the tile arrangement `smk_sprites_load` assumes for a 32x32
-(N, N+1, N+16, N+17), so slicing them gives heads without bodies. What is
-needed is the packed frames' own tile order, then one draw call; the
-quadrant drawing (`smk_draw_sprite_quad`, `SMK_WIN_POSE=1`) is already
-there and correct for a 2x2 layout. Until then the finish shows the
+(N, N+1, N+16, N+17), so slicing them gives heads without bodies. It is also ANIMATED in the original and we
+have not even established how many frames it runs through.
+
+**The way to do it is OAM, and it was available the whole time.** The
+oracle exposes OAM, VRAM and CGRAM (MAME exposes none of them). At the
+celebration frame, OAM names the exact tile numbers the game is drawing,
+their size bit and their palette - which identifies the sprite outright
+and needs no theory about how the sheet is packed. `movers.py` already
+shows how to drive the oracle to an arbitrary race state. Reading a
+static sheet and guessing, which is what was done instead, produced three
+confident wrong answers in a row (NOTES 180). Until then the finish shows the
 ordinary front-facing driver, which is right in every respect except the
 arms. The CAMERA is measured and not a shortcut (NOTES 179).
 
@@ -434,7 +441,8 @@ In rough order of value:
    work and which hits call it. Small, visible, and the counter it
    animates is already correct.
 
-10. **~~The finish sequence~~ — DONE, needs playing.** *"the race doesn't stop
+10. **The finish sequence — camera and results DONE, the celebration
+    SPRITES AND ANIMATION STILL NOT DONE (S28).** *"the race doesn't stop
     abruptly. If you arrive top 4, camera shows you from the front while
     the character celebrates for a few seconds. Then after that, you get
     times: your times, and the AI's total times and positions."* Three
