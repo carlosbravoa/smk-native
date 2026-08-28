@@ -600,18 +600,22 @@ static bool load_race(const smk_rom *rom, int track, int theme, int character,
         return false;
     }
 
+    /* Who drives which kart, and where each kart lines up.  racers[] is
+     * indexed by the game's kart BLOCK, which is what smk_grid_order
+     * returns and what SMK_GRID_SLOT turns into a row: block 0 - the
+     * player - is at the BACK, block 7 on the pole. */
     smk_grid_order(rom, character, 0, false, grid);
     for (int i = 0; i < SMK_CHARACTERS; i++) {
-        smk_racer_start(&racers[i], &crs, i);
+        smk_racer_start(&racers[i], &crs, SMK_GRID_SLOT(i));
         racers[i].character = grid[i];
     }
     /* A time trial is ALONE on the track and the game starts it off the
-     * grid, at $818F7F's nudged front position; a race starts on the
-     * pole itself (src/course.c). */
+     * grid, at $818F7F's nudged front position; a race starts the player
+     * in his own grid slot, which is the last one (src/course.c). */
     float gx, gy;
     uint16_t gh;
     if (mode == SMK_MODE_TT) smk_course_start_solo(&crs, &gx, &gy, &gh);
-    else                     smk_course_start(&crs, 0, &gx, &gy, &gh);
+    else smk_course_start(&crs, SMK_GRID_SLOT(0), &gx, &gy, &gh);
     kart = (smk_kart){ .x = (int32_t)(gx * SMK_POS_ONE),
                        .y = (int32_t)(gy * SMK_POS_ONE), .angle = gh };
     smk_player_reset(&player, gh);
@@ -1588,7 +1592,7 @@ int main(int argc, char **argv)
             hud_lap = 1; hud_rank = 1;
             static smk_racer shot_racers[SMK_CHARACTERS];
             for (int i = 0; i < SMK_CHARACTERS; i++)
-                smk_racer_start(&shot_racers[i], &crs, i);
+                smk_racer_start(&shot_racers[i], &crs, SMK_GRID_SLOT(i));
             draw_scene(&rom, &trk, &karts, drv, &c, px, sw, sh,
                        show_grid, show_kart, frame_for(&none, &lz),
                        heading, shot_racers, &crs);
@@ -1653,7 +1657,7 @@ int main(int argc, char **argv)
     player.coins = 2;
     smk_grid_order(&rom, character, 0, false, grid);
     for (int i = 0; i < SMK_CHARACTERS; i++) {
-        smk_racer_start(&racers[i], &crs, i);
+        smk_racer_start(&racers[i], &crs, SMK_GRID_SLOT(i));
         racers[i].character = grid[i];
     }
     smk_racer *me = &racers[0];
@@ -1661,7 +1665,7 @@ int main(int argc, char **argv)
     float lean = 0.0f;
     float g0x, g0y;
     uint16_t g0h;
-    smk_course_start(&crs, 0, &g0x, &g0y, &g0h);
+    smk_course_start(&crs, SMK_GRID_SLOT(0), &g0x, &g0y, &g0h);
     kart = (smk_kart){
         .x = (int32_t)(g0x * SMK_POS_ONE),
         .y = (int32_t)(g0y * SMK_POS_ONE),
@@ -1743,8 +1747,11 @@ int main(int argc, char **argv)
                                      in.back || in.item };
                 if (ui.screen == SMK_UI_TITLE && in.back) in.quit = true;
                 if (smk_ui_step(&ui, &rom, &nav)) {
+                    /* a single race IS a Grand Prix course on its own */
+                    int m = (ui.mode_sel == SMK_UI_MODE_TT)
+                            ? SMK_MODE_TT : SMK_MODE_GP;
                     if (load_race(&rom, ui.track, -1, ui.player_sel,
-                                  ui.engine_class, SMK_MODE_TT)) {
+                                  ui.engine_class, m)) {
                         track = ui.track; theme = -1;
                         character = ui.player_sel;
                         engine_class = ui.engine_class;
@@ -1784,13 +1791,13 @@ int main(int argc, char **argv)
                     smk_objgfx_load(&rom, trk.theme, &obj_art);
                     smk_horizon_load(&rom, trk.theme, &horizon);
                     track = nt; theme = nth;
-                    smk_course_start(&crs, 0, &sx, &sy, &sh);
+                    smk_course_start(&crs, SMK_GRID_SLOT(0), &sx, &sy, &sh);
                     kart = (smk_kart){ .x = (int32_t)(sx * SMK_POS_ONE),
                                        .y = (int32_t)(sy * SMK_POS_ONE),
                                        .angle = sh };
                     smk_player_reset(&player, sh);
                     for (int i = 0; i < SMK_CHARACTERS; i++) {
-                        smk_racer_start(&racers[i], &crs, i);
+                        smk_racer_start(&racers[i], &crs, SMK_GRID_SLOT(i));
                         racers[i].character = grid[i];
                     }
                     camera_from_kart(&cam, &kart);
@@ -1957,9 +1964,17 @@ int main(int argc, char **argv)
             if (race_over && !race_reported) {
                 race_reported = true;
                 char tm[16];
-                printf("time trial: %s, %s, %s\n",
+                /* In a race the place is what you finished in, so it is
+                 * taken on the crossing rather than left to the HUD's
+                 * per-frame value, which keeps moving as the AI carry on. */
+                result.position = (race_mode == SMK_MODE_TT)
+                                  ? 0 : smk_race_rank(racers, 0, &crs);
+                printf("%s: %s, %s, %s\n",
+                       race_mode == SMK_MODE_TT ? "time trial" : "race",
                        smk_track_name(&rom, track), drv->name,
                        engine_class == 0 ? "50cc" : engine_class == 1 ? "100cc" : "150cc");
+                if (result.position)
+                    printf("  finished %d of %d\n", result.position, SMK_CHARACTERS);
                 for (int i = 0; i < SMK_RACE_LAPS; i++) {
                     smk_time_text(result.lap[i], tm, sizeof tm);
                     printf("  lap %d  %s%s\n", i + 1, tm,
@@ -1975,7 +1990,7 @@ int main(int argc, char **argv)
                                * 360.0 / 65536.0 : 0.0);
                 /* An autodriven run is the direction field's lap, not the
                  * player's, so it is reported but never banked. */
-                if (!autodrive) {
+                if (!autodrive && race_mode == SMK_MODE_TT) {
                     result.best_slot = smk_records_add(&records, track,
                                                        result.best_lap, character);
                     if (result.best_slot >= 0) smk_records_save(&records);

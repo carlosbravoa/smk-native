@@ -6464,3 +6464,40 @@ The turbo window is **two ticks, four frames**: press at f214..f217 of
 worth saying out loud - the green is not the cue for the rocket start,
 and with no engine sound the port still cannot give the player the cue
 that is. S18's sound half is what is left.
+
+---
+
+**164** — Single race, and the grid runs the other way round.
+
+The user wants races, not a cup: *"a new mode: single race only.  No items
+for the moment.  Just AI players and their initial fixed positions
+depending on the character chosen by the player.  Stage selector is the
+same as the one we already have for time trials."*
+
+Nearly all of it was already built and just never wired together - the AI
+step, the per-character grid order (NOTES 111), the rank, the eight kart
+sheets, the coin rule, the course-by-cup selector. What was wrong was
+WHERE the eight karts stood.
+
+*The grid is indexed backwards.* `smk_grid_order` returns characters by
+kart BLOCK - `out[0]` is P1's `$1000`, `out[1]` the rival's `$1100` - and
+the port had been reading that index as a grid row, so the player started
+on the pole and the field behind him. NOTES 161's own capture says
+otherwise, and it has been sitting in the data since:
+
+    block $1000 (P1)  ->  (952,756)  =  y0 + 24*7   the LAST row
+    block $1700       ->  (920,588)  =  y0          the pole
+
+So the block index counts backwards from the front, `slot = 7 - block`,
+and the player starts eighth. That is `SMK_GRID_SLOT`, and the self-test
+pins both ends of it against the measured positions.
+
+Everything else is a wire: the mode row hands `SMK_MODE_GP` to the same
+`load_race` the time trial uses, which already draws seven opponents,
+steps them, gives the ROM's two starting coins and withholds the time
+trial's mushroom. `smk_race_rank` is taken once at the finish - the HUD's
+per-frame value keeps moving while the AI carry on - and the results
+screen shows the place instead of the record line.
+
+Not built, deliberately, and the user said so: no items, no AI
+personality, no cup. A race is a thing to test against now.

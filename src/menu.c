@@ -115,7 +115,7 @@ void smk_ui_init(smk_ui *ui)
 {
     memset(ui, 0, sizeof *ui);
     ui->screen = SMK_UI_TITLE;
-    ui->mode_sel = 1;            /* Time Trial: the one that works */
+    ui->mode_sel = SMK_UI_MODE_RACE;
     ui->engine_class = 0;        /* 50cc */
     ui->track = -1;
 }
@@ -135,10 +135,11 @@ bool smk_ui_step(smk_ui *ui, const smk_rom *rom, const smk_ui_input *in)
         break;
 
     case SMK_UI_MODE:
-        if (in->up || in->down) ui->mode_sel ^= 1;
+        if (in->up)   ui->mode_sel = (ui->mode_sel + SMK_UI_MODES - 1) % SMK_UI_MODES;
+        if (in->down) ui->mode_sel = (ui->mode_sel + 1) % SMK_UI_MODES;
         if (in->back) ui->screen = SMK_UI_TITLE;
         if (in->confirm) {
-            if (ui->mode_sel == 0) {          /* Grand Prix: not built */
+            if (ui->mode_sel == SMK_UI_MODE_GP) {   /* the CUP is not built */
                 ui->denied = true; ui->denied_t = 45;
             } else {
                 ui->screen = SMK_UI_PLAYER;
@@ -229,18 +230,19 @@ static void draw_mode(const smk_ui *ui, const smk_font *f,
     ramp(f, TEXT_HI, sel, 0xFFFFFFFF, 0xFF7A5A18);
 
     text_c(f, fb, w, h, 40, "SELECT MODE", hi);
-    const char *row[2] = { "GRAND PRIX", "TIME TRIAL" };
-    for (int i = 0; i < 2; i++) {
-        int y = 90 + i * 26;
-        const uint32_t *c = (i == 0) ? off : (ui->mode_sel == i ? sel : lo);
+    const char *row[SMK_UI_MODES] = { "GRAND PRIX", "SINGLE RACE", "TIME TRIAL" };
+    for (int i = 0; i < SMK_UI_MODES; i++) {
+        int y = 80 + i * 24;
+        const uint32_t *c = (i == SMK_UI_MODE_GP) ? off
+                          : (ui->mode_sel == i ? sel : lo);
         int x = (VW - (int)strlen(row[i]) * 8) / 2;
         if (ui->mode_sel == i && ((ui->tick / 12) & 1) == 0)
             fill(fb, w, h, x - 12, y - 2, 8, 12, 0xFFFFC040);
         text(f, fb, w, h, x, y, row[i], c);
     }
-    text_c(f, fb, w, h, 150, "GRAND PRIX NOT BUILT YET", off);
+    text_c(f, fb, w, h, 158, "A CUP OF FIVE IS NOT BUILT YET", off);
     if (ui->denied_t > 0 && ((ui->denied_t / 6) & 1))
-        text_c(f, fb, w, h, 168, "TIME TRIAL ONLY", hi);
+        text_c(f, fb, w, h, 174, "ONE RACE AT A TIME", hi);
     text_c(f, fb, w, h, 200, "ENTER SELECT   ESC BACK", lo);
 }
 
@@ -373,24 +375,38 @@ void smk_ui_draw_result(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
     ramp(f, TEXT_HI, gold, 0xFFFFFFFF, 0xFF7A5A18);
     ramp(f, TEXT_PAL, off, 0xFFFFFFFF, 0xFF2A3E78); dim(off);
 
-    text_c(f, fb, w, h, 12, "TIME TRIAL", hi);
+    bool race = res->position > 0;
+    text_c(f, fb, w, h, 12, race ? "SINGLE RACE" : "TIME TRIAL", hi);
     text_c(f, fb, w, h, 28, smk_track_name(rom, ui->track), gold);
+    if (race) {
+        static const char *const ORD[SMK_CHARACTERS] = {
+            "1ST", "2ND", "3RD", "4TH", "5TH", "6TH", "7TH", "8TH" };
+        int p = res->position - 1;
+        if (p < 0) p = 0;
+        if (p >= SMK_CHARACTERS) p = SMK_CHARACTERS - 1;
+        char line[32];
+        snprintf(line, sizeof line, "%s OF %d", ORD[p], SMK_CHARACTERS);
+        text_c(f, fb, w, h, 44, line, p == 0 ? gold : hi);
+    }
+    int y0 = race ? 64 : 52;      /* the place line needs the room */
 
     for (int i = 0; i < SMK_RACE_LAPS; i++) {
         char line[40], tm[16];
         smk_time_text(res->lap[i], tm, sizeof tm);
         snprintf(line, sizeof line, "LAP %d   %s", i + 1, tm);
         bool best = res->lap[i] > 0 && res->lap[i] == res->best_lap;
-        text(f, fb, w, h, 60, 52 + i * 14, line,
+        text(f, fb, w, h, 60, y0 + i * 14, line,
              res->lap[i] > 0 ? (best ? gold : lo) : off);
     }
     {
         char line[40], tm[16];
         smk_time_text(res->total, tm, sizeof tm);
         snprintf(line, sizeof line, "TOTAL   %s", tm);
-        text(f, fb, w, h, 60, 52 + SMK_RACE_LAPS * 14 + 8, line, hi);
+        text(f, fb, w, h, 60, y0 + SMK_RACE_LAPS * 14 + 8, line, hi);
     }
-    if (res->best_slot >= 0) {
+    if (race) {
+        /* a race banks nothing: the lap table is the time trial's */
+    } else if (res->best_slot >= 0) {
         char line[40];
         snprintf(line, sizeof line, "NEW RECORD   NO %d", res->best_slot + 1);
         if ((ui->tick / 15) & 1) text_c(f, fb, w, h, 156, line, gold);

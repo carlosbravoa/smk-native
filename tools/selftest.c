@@ -268,6 +268,36 @@ int main(int argc, char **argv)
         check("track 7's grid matches the game's own", pinned == 3, det);
     }
 
+    printf("\nthe starting order\n");
+    {
+        /* racers[] is indexed by the game's kart BLOCK; SMK_GRID_SLOT
+         * turns that into a grid row, and the measurement says block 0 -
+         * the player - is at the BACK (NOTES 161's capture: $1000 took
+         * (952,756) on track 7, which is y0 + 24*7). */
+        static smk_course cg;
+        int ok8 = smk_course_load(&rom, 7, &cg);
+        float bx, by, px2, py2; uint16_t bh, ph2;
+        smk_course_start(&cg, SMK_GRID_SLOT(0), &px2, &py2, &ph2);
+        smk_course_start(&cg, SMK_GRID_SLOT(SMK_CHARACTERS - 1), &bx, &by, &bh);
+        snprintf(det, sizeof det, "block 0 at (%.0f,%.0f), block 7 at (%.0f,%.0f)",
+                 px2, py2, bx, by);
+        check("the player's block starts at the back, block 7 on the pole",
+              ok8 && px2 == 952.0f && py2 == 756.0f
+                  && bx == 920.0f && by == 588.0f, det);
+
+        /* every block gets its own row, and the eight fill the grid */
+        int seen = 0, dup = 0;
+        for (int i = 0; i < SMK_CHARACTERS; i++) {
+            int sl = SMK_GRID_SLOT(i);
+            if (sl < 0 || sl >= SMK_CHARACTERS) { dup++; continue; }
+            if (seen & (1 << sl)) dup++;
+            seen |= 1 << sl;
+        }
+        snprintf(det, sizeof det, "mask $%02X", seen);
+        check("the eight blocks fill the eight rows exactly once",
+              seen == 0xFF && !dup, det);
+    }
+
     printf("\nthe start: Lakitu and his light\n");
     {
         /* The measured script (NOTES 162), from the game's own OAM:

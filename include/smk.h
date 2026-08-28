@@ -1140,10 +1140,22 @@ typedef enum {
 } smk_ui_screen;
 #define SMK_MODE_GP    0
 #define SMK_MODE_TT    4
+
+/* Which grid slot a kart BLOCK starts in.
+ *
+ * MEASURED with NOTES 161's rig: block $1000 - P1 - takes the LAST row
+ * of the grid and $1700 the pole, so the block index counts backwards
+ * from the front.  The port's racers[] is indexed by block, exactly like
+ * smk_grid_order's output, so this is the bridge between the two. */
+#define SMK_GRID_SLOT(block)  (SMK_CHARACTERS - 1 - (block))
 typedef struct { bool up, down, left, right, confirm, back; } smk_ui_input;
+/* The mode rows on the select screen.  A single race is a Grand Prix
+ * course run on its own - same eight karts, same grid, same coins - so
+ * it hands the race SMK_MODE_GP; only the cup around it is missing. */
+enum { SMK_UI_MODE_GP, SMK_UI_MODE_RACE, SMK_UI_MODE_TT, SMK_UI_MODES };
 typedef struct {
     smk_ui_screen screen;
-    int  mode_sel;        /* 0 Grand Prix (disabled), 1 Time Trial */
+    int  mode_sel;        /* SMK_UI_MODE_*; Grand Prix is disabled */
     int  player_sel;      /* SMK_DRIVERS index                     */
     int  cup_sel, course_sel;
     int  engine_class;
@@ -1165,6 +1177,7 @@ typedef struct {
     int  laps_done;
     int  best_slot;       /* where the best lap landed in the table, or -1 */
     long best_lap;
+    int  position;        /* finishing place in a race, 0 in a time trial */
 } smk_ui_result;
 void smk_ui_draw_result(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
                         const smk_records *rec, const smk_ui_result *res,
