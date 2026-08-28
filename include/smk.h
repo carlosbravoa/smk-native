@@ -1102,6 +1102,44 @@ void smk_horizon_draw(const smk_horizon *hz, const uint32_t *palette,
 /* give the renderer the layer to draw above the horizon (NULL = flat sky) */
 void smk_render_set_horizon(const smk_horizon *hz, uint16_t heading);
 
+/* ---- Lakitu's lap sign (NOTES 168) ------------------------------------
+ *
+ * Crossing the line to START a lap brings him back with a sign.  Read
+ * out of the game's own OAM at a lap-completing crossing on track 7
+ * (tools/labs/lakitu_lap.py) - and note it has to be that crossing: the
+ * first one, $7F -> $80, is the grid leaving the line and shows nothing
+ * (NOTES 052), which cost one capture.
+ *
+ * Four sprites, all palette 5, moving as one group from (X, Y):
+ *
+ *     (X,     Y     )  16x16  tile $A0        the plate, "LAP" on it
+ *     (X + 8, Y     )  16x16  tile $A3 + n    n = lap - 2; the DIGIT is
+ *                                             this sprite's right half,
+ *                                             $A4/$A5/$A6 being 2/3/4
+ *     (X + 1, Y + 16)  16x16  tile $46 HFLIP  his cloud, left
+ *     (X + 17,Y + 16)  16x16  tile $44 HFLIP  his cloud, right
+ *
+ * He is on screen for about 162 frames, entering from the left and
+ * drifting right and down: (63,22) at frame 40, (91,44) at frame 80. */
+#define SMK_LAPSIGN_FRAMES  165
+#define SMK_LAPSIGN_PLATE   0xA0
+#define SMK_LAPSIGN_DIGIT   0xA3   /* + (lap - 2) */
+#define SMK_LAPSIGN_CLOUD_L 0x46
+#define SMK_LAPSIGN_CLOUD_R 0x44
+/* The last lap gets its own plate instead of plate+digit: a 32x16 block
+ * at $AC/$AE over $BC/$BE.  LABELLED: read off the sheet, not captured -
+ * reaching the fifth crossing costs five laps of interpreter time. */
+#define SMK_LAPSIGN_FINAL_L 0xAC
+#define SMK_LAPSIGN_FINAL_R 0xAE
+typedef struct {
+    bool on;
+    int  x, y;          /* the group's top-left, in SNES px */
+    int  plate, digit;  /* sprite tiles; digit < 0 on the final lap */
+    bool final_lap;
+} smk_lapsign;
+/* t counts frames from the crossing */
+void smk_lapsign_frame(int t, int lap, int laps, smk_lapsign *out);
+
 /* ---- Kart against kart (NOTES 166) ------------------------------------
  *
  * NOTES 112 concluded there was no kart-to-kart response, from a demo in

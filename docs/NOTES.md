@@ -6729,3 +6729,57 @@ meaning is still unknown, so the `$B099` correction is not ported and the
 Not verified in play from here: `--frames` runs in this shell block on
 SDL - 61s of wall clock for 0.49s of CPU - so how the field actually
 feels is the user's to judge.
+
+---
+
+**168** — Lakitu's lap sign, and the crossing that shows nothing.
+
+The user wants him for the other three jobs he does: the lap sign, the
+chequered flag, and fishing you out. This entry is the first.
+
+*Captured the same way as the start* (NOTES 162) - drive the game and
+read its own OAM - with `tools/labs/lakitu_lap.py`, which flow-steers P1
+until the lap word `$C0` rolls over and then records.
+
+**The first capture recorded nothing, and the reason is worth keeping.**
+`$7F -> $80` is the GRID crossing: the field starts behind the line, so
+that transition enters lap 1 without completing one (NOTES 052) and the
+game shows no sign for it. A hundred and fifty frames of standing HUD,
+with every Lakitu tile parked off-screen at x > 256. The sign belongs to
+the crossing AFTER that, which costs a full lap of interpreter time to
+reach.
+
+*The assembly*, from the OAM at that crossing - four sprites, palette 5,
+moving as one group from (X, Y):
+
+    (X,      Y     )  16x16  $A0        the plate, "LAP" in yellow
+    (X + 8,  Y     )  16x16  $A3 + n    n = lap - 2
+    (X + 1,  Y + 16)  16x16  $46 HFLIP  his cloud, left
+    (X + 17, Y + 16)  16x16  $44 HFLIP  his cloud, right
+
+The digit is the subtle part, and reading the tile row got it wrong
+twice. The digit sprite sits HALF over the plate: its left half is the
+plate's own edge bar (`$A3`) and only its right half is the numeral, so
+`$A4`/`$A5`/`$A6` - 2, 3, 4 - are what actually show. Rendering the two
+sprites exactly as the hardware assembles them settles it: "LAP 2", one
+digit, where the row reads "23".
+
+*The path*, unwrapped from the OAM's 8-bit y, frame by frame from the
+crossing: in from off the top-left at (5, -39), an arc down and right
+peaking at (93, 44) around frame 88, and back out the way he came, gone
+by 164. Generated into `src/lapsign_path.inc` by the lab, the same
+standing as the start's own trajectory - MEASURED, not derived.
+
+LABELLED: "FINAL LAP" is a 32x16 block at `$AC`/`$AE` over `$BC`/`$BE`,
+read off the sheet and NOT captured - reaching the fifth crossing costs
+five laps of interpreter time.
+
+*And a lab bug worth the note.* `tools/labs/track_force.py` ran its own
+demo at module level, so `from track_force import boot` booted a second
+ROM as a side effect and swallowed the caller's `argv`. The rescue
+capture spent twenty minutes forcing track 7 while asking for 16, and
+reported nothing. It is behind `if __name__ == "__main__"` now.
+
+Still to do: the chequered flag (its art is the checker across `$68`-`$9F`,
+several frames of a wave) and the rescue - whose state machine has been
+the ROM's since NOTES 113/124, so only the drawing is missing.

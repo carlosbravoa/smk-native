@@ -178,6 +178,7 @@ static int player_airborne;
 static int hud_lap, hud_rank;
 static long hud_race_frames;             /* frames since the lights */
 static int  hud_countdown;               /* Lakitu's frame, from the arm */
+static int  lap_sign_t = -1;             /* his lap sign, from the crossing */
 static int  hud_input;                   /* L/R/accel bits, for the HUD */
 /* The start sequence.  SMK holds the karts for a countdown, then runs;
  * our timing is the ROM's own 3-2-1-GO cadence in frames (60/step) -
@@ -260,6 +261,38 @@ static void draw_start_light(uint32_t *fb, int rw, int rh,
         spr_tile(fb, rw, rh, SMK_START_LAMP_X * sc,
                  (st.y + SMK_START_LAMP_DY + i * 8) * sc,
                  st.lamp[i], SMK_HUD_PAL, false, palette, sc);
+}
+
+/* Lakitu with the lap sign (NOTES 168).  Four sprites moving as a group;
+ * the cloud pair is H-flipped, like every other drawing of him. */
+static void draw_lap_sign(uint32_t *fb, int rw, int rh,
+                          const uint32_t *palette, int t, int lap, int laps)
+{
+    smk_lapsign sg;
+    smk_lapsign_frame(t, lap, laps, &sg);
+    if (!sg.on || !hud_art.ok) return;
+    int sc = rw >= 640 ? 3 : 2;
+    struct { int dx, dy, tile; bool flip; } part[4];
+    int n = 0;
+    if (sg.final_lap) {
+        part[n++] = (typeof(part[0])){ 0,  0, SMK_LAPSIGN_FINAL_L, false };
+        part[n++] = (typeof(part[0])){ 16, 0, SMK_LAPSIGN_FINAL_R, false };
+    } else {
+        part[n++] = (typeof(part[0])){ 0,  0, sg.plate, false };
+        part[n++] = (typeof(part[0])){ 8,  0, sg.digit, false };
+    }
+    part[n++] = (typeof(part[0])){ 1,  16, SMK_LAPSIGN_CLOUD_L, true };
+    part[n++] = (typeof(part[0])){ 17, 16, SMK_LAPSIGN_CLOUD_R, true };
+    for (int i = 0; i < n; i++) {
+        int qx = (sg.x + part[i].dx) * sc, qy = (sg.y + part[i].dy) * sc;
+        for (int sub = 0; sub < 4; sub++) {
+            int cx = sub & 1, cy = sub >> 1;
+            int tile = part[i].tile + cx + cy * 16;
+            int px = part[i].flip ? (1 - cx) * 8 * sc : cx * 8 * sc;
+            spr_tile(fb, rw, rh, qx + px, qy + cy * 8 * sc,
+                     tile, SMK_START_PAL, part[i].flip, palette, sc);
+        }
+    }
 }
 
 /* The race clock, in the game's own art: M ' SS " HH.
@@ -637,6 +670,7 @@ static bool load_race(const smk_rom *rom, int track, int theme, int character,
     crossings = 0;
     race_over = false;
     race_reported = false;
+    lap_sign_t = -1;
     smk_autopilot_init(&autopilot);
     /* one mushroom in a time trial, and nothing else (the user's rule for
      * this shell; the ROM's own grant is not decoded - ledger S19) */
@@ -1226,6 +1260,9 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
     }
     if (hud_countdown >= 0)               /* Lakitu, and his light */
         draw_start_light(fb, rw, rh, trk->palette, hud_countdown);
+    if (lap_sign_t >= 0)                  /* and again with the lap sign */
+        draw_lap_sign(fb, rw, rh, trk->palette, lap_sign_t,
+                      hud_lap, SMK_RACE_LAPS);
 }
 
 /* The player's own view angle.
@@ -1850,6 +1887,8 @@ int main(int argc, char **argv)
                 in.hop_held = false;
             }
             if (race_state == RACE_RUN) hud_race_frames++;
+            if (lap_sign_t >= 0 && ++lap_sign_t > SMK_LAPSIGN_FRAMES)
+                lap_sign_t = -1;
             if (replay_path) {
                 /* the recorded pad word replaces the player's input, and
                  * the game's own kart rides along as a ghost (slot 1) */
@@ -1981,6 +2020,10 @@ int main(int argc, char **argv)
                                 me->lap++;
                                 me->progress_max = prog;
                                 me->lap_cool = 90;
+                                /* he comes back with the sign (NOTES 168);
+                                 * the grid crossing enters lap 1 and shows
+                                 * nothing, so this starts at lap 2 */
+                                if (me->lap >= 2) lap_sign_t = 0;
                                 if (race_state == RACE_RUN && !race_over)
                                     race_over = smk_tt_crossing(
                                         &result, &crossings,

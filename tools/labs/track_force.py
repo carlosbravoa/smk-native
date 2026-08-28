@@ -42,7 +42,12 @@ def boot(track):
             break
     return r, b, c
 
-for track in (int(sys.argv[1]) if len(sys.argv) > 1 else 15,):
+# Importing this module must not boot a ROM: `from track_force import boot`
+# used to run the demo below as a side effect, which cost a second full
+# boot AND swallowed the caller's argv - the rescue lab spent twenty
+# minutes forcing track 7 while asking for 16.
+if __name__ == "__main__":
+  for track in (int(sys.argv[1]) if len(sys.argv) > 1 else 15,):
     r, b, c = boot(track)
     log("forced track: $0124 = $%02X" % b.wram[0x0124])
     for e in range(6):

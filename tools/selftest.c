@@ -269,6 +269,33 @@ int main(int argc, char **argv)
         check("track 7's grid matches the game's own", pinned == 3, det);
     }
 
+    printf("\nLakitu's lap sign\n");
+    {
+        /* The path and the assembly are the game's own OAM at a
+         * lap-completing crossing (NOTES 168). */
+        smk_lapsign a, b3, c3, d3;
+        smk_lapsign_frame(0, 2, 5, &a);
+        smk_lapsign_frame(2, 2, 5, &b3);
+        smk_lapsign_frame(40, 2, 5, &c3);
+        smk_lapsign_frame(80, 2, 5, &d3);
+        snprintf(det, sizeof det, "f2 (%d,%d), f40 (%d,%d), f80 (%d,%d)",
+                 b3.x, b3.y, c3.x, c3.y, d3.x, d3.y);
+        check("the sign flies the path the game's OAM shows",
+              !a.on && b3.on && b3.x == 5 && b3.y == -39
+              && c3.x == 63 && c3.y == 22 && d3.x == 91 && d3.y == 44, det);
+
+        smk_lapsign_frame(SMK_LAPSIGN_FRAMES, 2, 5, &a);
+        smk_lapsign_frame(40, 3, 5, &b3);
+        smk_lapsign_frame(40, 4, 5, &c3);
+        smk_lapsign_frame(40, 5, 5, &d3);
+        snprintf(det, sizeof det, "lap 3 $%02X, lap 4 $%02X, final %s, past the end %s",
+                 b3.digit, c3.digit, d3.final_lap ? "yes" : "NO",
+                 a.on ? "STILL ON" : "gone");
+        check("lap 2/3/4 pick $A4/$A5/$A6 and the last lap its own plate",
+              !a.on && b3.digit == 0xA4 && c3.digit == 0xA5
+              && d3.final_lap && d3.plate == SMK_LAPSIGN_FINAL_L, det);
+    }
+
     printf("\nthe rubber band\n");
     {
         /* The two tables are the ROM's; read them back out of it rather

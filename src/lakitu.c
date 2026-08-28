@@ -103,3 +103,45 @@ void smk_start_frame(int t, smk_start *out)
     out->quad[2].tile = (uint8_t)(out->cheer ? 0x4C : 0x46);
     out->quad[3].dx = 16; out->quad[3].dy = 16; out->quad[3].tile = 0x44;
 }
+
+
+/* ---- The lap sign (NOTES 168) -----------------------------------------
+ *
+ * Read out of the game's own OAM at a lap-COMPLETING crossing - the
+ * first crossing, $7F -> $80, is the grid leaving the line and shows
+ * nothing (NOTES 052), which cost one four-minute capture.
+ *
+ * The plate's path, frame by frame from the crossing: he arrives from
+ * off the top-left at (5, -39), arcs down and right to (93, 44) around
+ * frame 88, and leaves the way he came, gone by frame 164.  MEASURED,
+ * not derived - the same standing as the start sequence above. */
+static const struct { short x, y; } LAPSIGN[] = {
+#include "lapsign_path.inc"
+};
+#define LAPSIGN_N ((int)(sizeof LAPSIGN / sizeof LAPSIGN[0]))
+
+void smk_lapsign_frame(int t, int lap, int laps, smk_lapsign *out)
+{
+    out->on = false;
+    out->x = out->y = 0;
+    out->plate = SMK_LAPSIGN_PLATE;
+    out->digit = -1;
+    out->final_lap = false;
+    if (t < 2 || t >= LAPSIGN_N) return;
+
+    out->on = true;
+    out->x = LAPSIGN[t].x;
+    out->y = LAPSIGN[t].y;
+    /* The digit sprite sits HALF over the plate, so its right half is
+     * the numeral and its left half is the plate's own edge bar - which
+     * is why "LAP 2" shows one digit where the tile row reads "23". */
+    if (lap >= laps) {
+        out->final_lap = true;              /* its own 32x16 plate */
+        out->plate = SMK_LAPSIGN_FINAL_L;
+    } else {
+        int n = lap - 2;
+        if (n < 0) n = 0;
+        if (n > 2) n = 2;                   /* $A4/$A5/$A6 are 2/3/4 */
+        out->digit = SMK_LAPSIGN_DIGIT + n;
+    }
+}
