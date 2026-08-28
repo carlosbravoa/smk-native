@@ -1119,9 +1119,15 @@ void smk_render_set_horizon(const smk_horizon *hz, uint16_t heading);
  * Four sprites, all palette 5, moving as one group from (X, Y):
  *
  *     (X,     Y     )  16x16  tile $A0        the plate, "LAP" on it
- *     (X + 8, Y     )  16x16  tile $A3 + n    n = lap - 2; the DIGIT is
- *                                             this sprite's right half,
- *                                             $A4/$A5/$A6 being 2/3/4
+ *     (X + 8, Y     )   8x16  tile $A3        the plate's edge bar
+ *     (X + 16,Y     )   8x16  tile $A4 + n    the numeral, n = lap - 2
+ *
+ * The game places ONE 16x16 sprite at X+8 covering both, and for lap 2
+ * its halves happen to be the bar and "2".  Reading that as "the digit
+ * sprite is 16x16 at $A3 + n" is wrong and shipped a glitch: lap 4 drew
+ * $A5 and $A6 side by side, "34", with the bar gone.  The numeral is
+ * ONE tile column wide - $A4/$A5/$A6 are 2/3/4 - so the two columns are
+ * drawn separately and every lap comes out right (NOTES 168b).
  *     (X + 1, Y + 16)  16x16  tile $46 HFLIP  his cloud, left
  *     (X + 17,Y + 16)  16x16  tile $44 HFLIP  his cloud, right
  *
@@ -1129,7 +1135,8 @@ void smk_render_set_horizon(const smk_horizon *hz, uint16_t heading);
  * drifting right and down: (63,22) at frame 40, (91,44) at frame 80. */
 #define SMK_LAPSIGN_FRAMES  165
 #define SMK_LAPSIGN_PLATE   0xA0
-#define SMK_LAPSIGN_DIGIT   0xA3   /* + (lap - 2) */
+#define SMK_LAPSIGN_BAR     0xA3   /* the plate's edge bar, 8x16      */
+#define SMK_LAPSIGN_DIGIT   0xA4   /* + (lap - 2): $A4/$A5/$A6 = 2/3/4 */
 #define SMK_LAPSIGN_CLOUD_L 0x46
 #define SMK_LAPSIGN_CLOUD_R 0x44
 /* The last lap gets its own plate instead of plate+digit: a 32x16 block

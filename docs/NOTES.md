@@ -6882,3 +6882,64 @@ He swoops. That shape cannot come out of the kart's monotonic descent
 however it is scaled, so the path is now the measured one, generated into
 `src/rescue_path.inc` like the start's and the lap sign's, played off its
 own frame counter.
+
+**168b** — The lap sign drew two digits, because the numeral is a column.
+
+The user, with a photograph: *"the sign is glitched. It was lap 4 and the
+3 was stuck in the middle. Lap 2 had a glitch also because that middle
+part where the 3 is in the picture, had garbage only."*
+
+NOTES 168 read the sign's OAM as "one 16x16 sprite at `$A3 + n`", because
+that is literally what the capture holds - a 16x16 at X+8 whose halves,
+for lap 2, are the plate's edge bar and the numeral "2". Generalising
+that to `$A3 + n` puts two CONSECUTIVE tiles on the plate: lap 4 asks for
+`$A5` and gets `$A5` and `$A6` side by side, "34", with the bar gone.
+The photograph shows exactly that.
+
+The numeral is ONE tile column - `$A4`/`$A5`/`$A6` are 2/3/4, eight
+pixels wide and sixteen tall - so the sign is drawn as columns instead:
+the plate at X, the bar at X+8, the numeral at X+16. For lap 2 that is
+pixel-for-pixel the same sprite the game places, which the self-test now
+asserts against the captured frame: 0 px differ. Every other lap then
+follows by construction.
+
+The lesson is the one this log keeps relearning: a single captured frame
+shows what the game did ONCE, and the shape you infer from it is a
+hypothesis until a second case tests it. Lap 2 was the only lap captured,
+and it was the one lap where the wrong reading looks right.
+
+---
+
+**170** — A whole recorded race, and what it can answer.
+
+The user played a full five-lap race in MAME and recorded it:
+`tools/labs/mame/sessions/flag`, 7579 frames. Their words for why it is
+worth keeping: *"tons of data: how AI really works, my speeds, their
+speeds, how they attack, coins collection and losing on impact,
+animations."*
+
+Replayed under `tools/labs/mame/flaglog.lua` it yields, per frame, P1's
+position, speed, coins, rank, hazard state and rubber-band row, and the
+same for three AI karts:
+
+    tools/labs/mame/replay.sh flag tools/labs/mame/flaglog.lua 240
+
+What is already visible in it:
+
+* **A complete race**, lap words `$7F` through `$85` - the grid crossing
+  and all five laps - with the player coming from **rank 7 to rank 0**.
+* **The coin rules, both directions.** 14 gains and 4 losses. Two losses
+  are single coins at speed (526 and 653); one is **four coins at once**
+  at frame 5596 doing 862. So the loss is not a flat one-per-hit, and
+  what distinguishes them is decodable from this file alone.
+* **The rubber band, in the wild.** The player's `$C8` is 0 for the whole
+  race - the band never touches a human - while the AI karts move between
+  rows. That is the first independent confirmation of NOTES 167 outside
+  the oracle.
+* **Speeds to compare against.** P1 peaks at 1050 and averages 676; the
+  AI kart logged peaks at 657, averages 464.
+
+What it CANNOT answer: anything about sprites. MAME exposes no OAM to Lua
+(NOTES 145a), so the chequered flag's own art and assembly still need the
+Python oracle - but reaching a finish there can now be cheap, by forcing
+the lap word near the end rather than driving five laps.

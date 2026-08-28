@@ -348,8 +348,49 @@ int main(int argc, char **argv)
         snprintf(det, sizeof det, "lap 3 $%02X, lap 4 $%02X, final %s, past the end %s",
                  b3.digit, c3.digit, d3.final_lap ? "yes" : "NO",
                  a.on ? "STILL ON" : "gone");
+        /* Lap 2 must come out pixel-identical to the game's own
+         * assembly - plate 16x16 at X plus ONE 16x16 at X+8 - because
+         * that is the frame the capture holds.  Any other lap then
+         * follows by construction (NOTES 168b). */
+        {
+            static smk_hud h2;
+            smk_hud_load(&rom, &h2);
+            uint8_t game[16][32], mine[16][32];
+            memset(game, 0, sizeof game); memset(mine, 0, sizeof mine);
+            #define PUT(D, OX, OY, T) do {                                \
+                const uint8_t *q = smk_hud_tile_px(&h2, (T));             \
+                if (q) for (int yy = 0; yy < 8; yy++)                     \
+                    for (int xx = 0; xx < 8; xx++)                        \
+                        if (q[yy * 8 + xx]) (D)[(OY) + yy][(OX) + xx] = q[yy * 8 + xx]; \
+            } while (0)
+            PUT(game, 0, 0, 0xA0); PUT(game, 8, 0, 0xA1);
+            PUT(game, 0, 8, 0xB0); PUT(game, 8, 8, 0xB1);
+            PUT(game, 8, 0, 0xA3); PUT(game, 16, 0, 0xA4);
+            PUT(game, 8, 8, 0xB3); PUT(game, 16, 8, 0xB4);
+            smk_lapsign lp2; smk_lapsign_frame(40, 2, 5, &lp2);
+            for (int r = 0; r < 2; r++) {
+                PUT(mine, 0,  r * 8, lp2.plate + r * 16);
+                PUT(mine, 8,  r * 8, lp2.plate + 1 + r * 16);
+                PUT(mine, 8,  r * 8, SMK_LAPSIGN_BAR + r * 16);
+                PUT(mine, 16, r * 8, lp2.digit + r * 16);
+            }
+            #undef PUT
+            int bad = 0;
+            for (int yy = 0; yy < 16; yy++)
+                for (int xx = 0; xx < 32; xx++)
+                    if (game[yy][xx] != mine[yy][xx]) bad++;
+            snprintf(det, sizeof det, "%d px differ", bad);
+            check("lap 2's sign is pixel-identical to the captured frame",
+                  bad == 0, det);
+        }
+
+        smk_lapsign_frame(40, 2, 5, &a);
+        snprintf(det, sizeof det, "lap 2 $%02X, 3 $%02X, 4 $%02X, final %s",
+                 a.digit, b3.digit, c3.digit, d3.final_lap ? "yes" : "NO");
+        /* one column per lap: $A4/$A5/$A6 are 2/3/4.  Reading the numeral
+         * as half of a 16x16 drew "34" on lap 4 (NOTES 168b). */
         check("lap 2/3/4 pick $A4/$A5/$A6 and the last lap its own plate",
-              !a.on && b3.digit == 0xA4 && c3.digit == 0xA5
+              a.digit == 0xA4 && b3.digit == 0xA5 && c3.digit == 0xA6
               && d3.final_lap && d3.plate == SMK_LAPSIGN_FINAL_L, det);
     }
 

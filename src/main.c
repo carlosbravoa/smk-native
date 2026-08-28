@@ -273,27 +273,37 @@ static void draw_lap_sign(uint32_t *fb, int rw, int rh,
     smk_lapsign_frame(t, lap, laps, &sg);
     if (!sg.on || !hud_art.ok) return;
     int sc = rw >= 640 ? 3 : 2;
-    struct { int dx, dy, tile; bool flip; } part[4];
+    /* An 8x8 list, because the sign is not four 16x16 blocks: the
+     * numeral is ONE column wide and drawing it as half of a 16x16 put
+     * two digits on the plate (NOTES 168b). */
+    struct { int dx, dy, tile; bool flip; } part[10];
     int n = 0;
     if (sg.final_lap) {
-        part[n++] = (typeof(part[0])){ 0,  0, SMK_LAPSIGN_FINAL_L, false };
-        part[n++] = (typeof(part[0])){ 16, 0, SMK_LAPSIGN_FINAL_R, false };
+        for (int c = 0; c < 4; c++)
+            for (int r = 0; r < 2; r++)
+                part[n++] = (typeof(part[0])){ c * 8, r * 8,
+                    SMK_LAPSIGN_FINAL_L + c + r * 16, false };
     } else {
-        part[n++] = (typeof(part[0])){ 0,  0, sg.plate, false };
-        part[n++] = (typeof(part[0])){ 8,  0, sg.digit, false };
-    }
-    part[n++] = (typeof(part[0])){ 1,  16, SMK_LAPSIGN_CLOUD_L, true };
-    part[n++] = (typeof(part[0])){ 17, 16, SMK_LAPSIGN_CLOUD_R, true };
-    for (int i = 0; i < n; i++) {
-        int qx = (sg.x + part[i].dx) * sc, qy = (sg.y + part[i].dy) * sc;
-        for (int sub = 0; sub < 4; sub++) {
-            int cx = sub & 1, cy = sub >> 1;
-            int tile = part[i].tile + cx + cy * 16;
-            int px = part[i].flip ? (1 - cx) * 8 * sc : cx * 8 * sc;
-            spr_tile(fb, rw, rh, qx + px, qy + cy * 8 * sc,
-                     tile, SMK_START_PAL, part[i].flip, palette, sc);
+        for (int r = 0; r < 2; r++) {
+            part[n++] = (typeof(part[0])){ 0,  r * 8, sg.plate + r * 16, false };
+            part[n++] = (typeof(part[0])){ 8,  r * 8, sg.plate + 1 + r * 16, false };
+            part[n++] = (typeof(part[0])){ 8,  r * 8, SMK_LAPSIGN_BAR + r * 16, false };
+            part[n++] = (typeof(part[0])){ 16, r * 8, sg.digit + r * 16, false };
         }
     }
+    /* his cloud stays a pair of H-flipped 16x16s */
+    for (int q = 0; q < 2; q++)
+        for (int sub = 0; sub < 4; sub++) {
+            int cx = sub & 1, cy = sub >> 1;
+            int base = q ? SMK_LAPSIGN_CLOUD_R : SMK_LAPSIGN_CLOUD_L;
+            int qx = (sg.x + (q ? 17 : 1)) * sc, qy = (sg.y + 16) * sc;
+            spr_tile(fb, rw, rh, qx + (1 - cx) * 8 * sc, qy + cy * 8 * sc,
+                     base + cx + cy * 16, SMK_START_PAL, true, palette, sc);
+        }
+    for (int i = 0; i < n; i++)
+        spr_tile(fb, rw, rh, (sg.x + part[i].dx) * sc,
+                 (sg.y + part[i].dy) * sc, part[i].tile,
+                 SMK_START_PAL, false, palette, sc);
 }
 
 /* Lakitu lowering a fished-out kart back onto the road (NOTES 168a).

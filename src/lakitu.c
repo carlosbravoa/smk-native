@@ -132,9 +132,9 @@ void smk_lapsign_frame(int t, int lap, int laps, smk_lapsign *out)
     out->on = true;
     out->x = LAPSIGN[t].x;
     out->y = LAPSIGN[t].y;
-    /* The digit sprite sits HALF over the plate, so its right half is
-     * the numeral and its left half is the plate's own edge bar - which
-     * is why "LAP 2" shows one digit where the tile row reads "23". */
+    /* The numeral is ONE tile column.  The game draws it as the right
+     * half of a 16x16 whose left half is the plate's edge bar, which for
+     * lap 2 reads as "$A3 + n" and for lap 4 draws "34" (NOTES 168b). */
     if (lap >= laps) {
         out->final_lap = true;              /* its own 32x16 plate */
         out->plate = SMK_LAPSIGN_FINAL_L;
