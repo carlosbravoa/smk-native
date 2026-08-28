@@ -1445,7 +1445,7 @@ int main(int argc, char **argv)
      * player along the course's own direction field ($7F:4000, the same
      * field Lakitu's rescue and the AI use) so a whole five-lap run can be
      * played headlessly. */
-    int want_tt = 0, autodrive = 0;
+    int want_tt = 0, want_race = 0, autodrive = 0;
     /* --scaletest: a straight Mario Circuit road with a line of pipes down
      * the middle at known distances, so one screenshot shows how object
      * scaling compares with the ground's own perspective. */
@@ -1466,6 +1466,7 @@ int main(int argc, char **argv)
         if (!strcmp(a, "--track") && i + 1 < argc) { track = atoi(argv[++i]); explicit_start = 1; continue; }
         if (!strcmp(a, "--menu")) { force_menu = 1; continue; }
         if (!strcmp(a, "--timetrial")) { want_tt = 1; explicit_start = 1; continue; }
+        if (!strcmp(a, "--race")) { want_race = 1; explicit_start = 1; continue; }
         if (!strcmp(a, "--autodrive")) { autodrive = 1; continue; }
         if (!strcmp(a, "--fast")) { fast = 1; continue; }
         if (!strcmp(a, "--scaletest")) { scaletest = 1; explicit_start = 1; continue; }
@@ -1781,6 +1782,11 @@ int main(int argc, char **argv)
         if (want_tt && !replay_path) {
             load_race(&rom, track, theme, character, engine_class, SMK_MODE_TT);
             camera_from_kart(&cam, &kart);
+        } else if (want_race && !replay_path) {
+            /* A full eight-kart race with no shell, so --autodrive --fast
+             * makes the AI measurable headlessly (SMK_ROW_TRACE). */
+            load_race(&rom, track, theme, character, engine_class, SMK_MODE_GP);
+            camera_from_kart(&cam, &kart);
         }
     }
 
@@ -2009,6 +2015,17 @@ int main(int argc, char **argv)
                 && race_mode != SMK_MODE_TT) {
                 /* the rubber band, before anybody moves (NOTES 167) */
                 smk_ai_rubber(racers, SMK_CHARACTERS, &crs, engine_class);
+                /* SMK_ROW_TRACE: one line per frame of every AI's $C8 row
+                 * and speed, in the same shape flaglog.lua logs the real
+                 * game, so tools/labs/rowmix.py can put ours and the
+                 * ROM's row mixture side by side (NOTES 174). */
+                if (getenv("SMK_ROW_TRACE")) {
+                    printf("row %ld", total_frames);
+                    for (int q = 0; q < SMK_CHARACTERS; q++)
+                        printf(" %d,%d,%d", racers[q].row * 2,
+                               racers[q].k.speed, racers[q].rank);
+                    printf("\n");
+                }
                 for (int i = 1; i < SMK_CHARACTERS; i++)
                     smk_racer_step(&racers[i], &trk, &crs, &phys);
                 /* Kart against kart, once a frame over the whole field

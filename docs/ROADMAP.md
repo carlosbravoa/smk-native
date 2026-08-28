@@ -575,8 +575,16 @@ green.
 - ✅ The shell: title → mode → driver+class → course-by-cup → results, in
   the ROM's own font and palettes (NOTES 147/148).
 - Next: the CUP around a race — four of five, finishing order, points,
-  standings — then the real menu art (S20) and 2P split-screen (two Mode 7
-  views; the renderer is already resolution-independent, cheap for us).
+  standings — then the real menu art (S20) and 2P.
+- **2P is SIDE BY SIDE, not stacked.** DECIDED by the user: *"split screen
+  but side by side (left/right). Today we have widescreens!"* The original
+  stacks two Mode 7 views because it has 256x224 to divide; on a modern
+  panel the same division left/right gives each player a taller, wider
+  view than the original ever had. This is a deliberate deviation - the
+  first one in the presentation layer - and it is in the ledger. The
+  renderer is resolution-independent, so the cost is the second camera,
+  not the geometry.
+- Both 2P shapes are supported: two humans, or one human + one CPU.
 
 ---
 
