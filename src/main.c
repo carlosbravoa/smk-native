@@ -177,7 +177,7 @@ static int player_slip_units;   /* signed, $10000 = full turn */
 static int player_airborne;
 static int hud_lap, hud_rank;
 static long hud_race_frames;             /* frames since the lights */
-static int  hud_countdown;               /* 3,2,1 while the lights run  */
+static int  hud_countdown;               /* Lakitu's frame, from the arm */
 static int  hud_input;                   /* L/R/accel bits, for the HUD */
 /* The start sequence.  SMK holds the karts for a countdown, then runs;
  * our timing is the ROM's own 3-2-1-GO cadence in frames (60/step) -
@@ -192,7 +192,6 @@ static int race_count;                   /* frames spent counting down  */
  * invented here.  Confirmed in the user's four-start recording, where
  * $0146 runs -333 at frame 4 to 0 at frame 337 and the race clock $0100
  * starts ticking immediately after. */
-#define RACE_COUNT_FRAMES 336
 static smk_hud hud_art;
 static smk_objgfx obj_art;          /* pipes and other entities */
 static smk_shadow shadow_art;       /* the one oval every object shares */                  /* the game's own HUD sprites */
@@ -213,6 +212,54 @@ static void hud_tile(uint32_t *fb, int rw, int rh, int x, int y, int tile,
             if (v) fb[sy * rw + sx] = palette[(SMK_HUD_PAL + v) & 0xFF];
         }
     }
+}
+
+/* One sprite tile from the HUD stream by its VRAM number, optionally
+ * H-flipped, at any palette base.  hud_tile above is this for the $C0
+ * row without a flip; the start light needs both. */
+static void spr_tile(uint32_t *fb, int rw, int rh, int x, int y, int tile,
+                     int pal_base, bool hflip, const uint32_t *palette, int sc)
+{
+    const uint8_t *px = smk_hud_tile_px(&hud_art, tile);
+    if (!px) return;
+    for (int ty = 0; ty < 8 * sc; ty++) {
+        int sy = y + ty;
+        if (sy < 0 || sy >= rh) continue;
+        for (int tx = 0; tx < 8 * sc; tx++) {
+            int sx = x + tx;
+            if (sx < 0 || sx >= rw) continue;
+            int cx = tx / sc;
+            uint8_t v = px[(ty / sc) * 8 + (hflip ? 7 - cx : cx)];
+            if (v) fb[sy * rw + sx] = palette[(pal_base + v) & 0xFF];
+        }
+    }
+}
+
+/* Lakitu and his light (src/lakitu.c).  A 16x16 sprite is the VRAM tiles
+ * N, N+1, N+16, N+17 - the 16-tile row stride - and every one of his
+ * four quadrants is drawn H-flipped, so the flip is applied across the
+ * whole 16 and the two columns swap. */
+#define SMK_START_PAL   0xD0            /* sprite palette 5 */
+static void draw_start_light(uint32_t *fb, int rw, int rh,
+                             const uint32_t *palette, int t)
+{
+    smk_start st;
+    smk_start_frame(t, &st);
+    if (!st.on || !hud_art.ok) return;
+    int sc = rw >= 640 ? 3 : 2;
+    for (int q = 0; q < 4; q++) {
+        int qx = (st.x + st.quad[q].dx) * sc, qy = (st.y + st.quad[q].dy) * sc;
+        for (int sub = 0; sub < 4; sub++) {
+            int cx = sub & 1, cy = sub >> 1;
+            int tile = st.quad[q].tile + cx + cy * 16;
+            spr_tile(fb, rw, rh, qx + (1 - cx) * 8 * sc, qy + cy * 8 * sc,
+                     tile, SMK_START_PAL, true, palette, sc);
+        }
+    }
+    for (int i = 0; i < 3; i++)
+        spr_tile(fb, rw, rh, SMK_START_LAMP_X * sc,
+                 (st.y + SMK_START_LAMP_DY + i * 8) * sc,
+                 st.lamp[i], SMK_HUD_PAL, false, palette, sc);
 }
 
 /* The race clock, in the game's own art: M ' SS " HH.
@@ -1168,11 +1215,8 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
         hud_number(fb, rw, rh, bx + 20 * sc2, by,
                    pad_lx < 0 ? -pad_lx : pad_lx, 5, 0xFF909098, sc2);
     }
-    if (hud_countdown > 0) {              /* 3-2-1 in the game's digits */
-        int sc = rw >= 640 ? 6 : 4;
-        hud_tile(fb, rw, rh, rw / 2 - 4 * sc, rh / 3,
-                 smk_hud_digit(hud_countdown), trk->palette, sc);
-    }
+    if (hud_countdown >= 0)               /* Lakitu, and his light */
+        draw_start_light(fb, rw, rh, trk->palette, hud_countdown);
 }
 
 /* The player's own view angle.
@@ -1281,6 +1325,7 @@ static void usage(const char *argv0)
            "\n"
            "environment (debugging and tuning, all optional):\n"
            "  SMK_SHOT=frame:path        write one rendered race frame as a PPM\n"
+           "  SMK_START_SHOT=frame:path  the same, counted from the countdown's arm\n"
            "  SMK_AUTODRIVE_TRACE=1      one line per traced frame of --autodrive\n"
            "  SMK_TRACE_WINDOW=lo[:hi]   trace every frame in that range, not every 20th\n"
            "  SMK_AP_LEAD / SMK_AP_DEAD  the autopilot\'s steering damping and deadband\n"
@@ -1760,27 +1805,27 @@ int main(int argc, char **argv)
                 SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, filter ? "1" : "0");
                 if (tex) { SDL_DestroyTexture(tex); tex = NULL; rw = rh = 0; }
             }
+            /* One clock for the whole start.  race_count is the frame
+             * number $0146 counts, and it does NOT stop at the release:
+             * Lakitu holds the green, cheers, and climbs back out over
+             * the next hundred frames (src/lakitu.c), so it runs on to
+             * SMK_START_LAST and the drawing reads it the whole way. */
+            if (race_count < SMK_START_LAST) race_count++;
+            hud_countdown = race_count;
             if (race_state == RACE_COUNTDOWN) {
                 /* The lights.  The kart is held, but the throttle is NOT
                  * ignored - it builds the rev, and where the rev sits when
                  * the lights go out decides whether you get the turbo
                  * launch, nothing, or a wheelspin (NOTES 143). */
                 smk_player_rev(&player, in.up);
-                if (++race_count >= RACE_COUNT_FRAMES) {
+                if (race_count >= SMK_COUNT_FRAMES) {
                     race_state = RACE_RUN;
                     smk_player_launch(&player);   /* $80956A pays out here */
                 }
-                /* LABELLED: the 3-2-1 digits are split evenly across the
-                 * measured 336.  What the game actually shows is Lakitu
-                 * with a traffic light, on a timer of its own ($0142,
-                 * which runs 207 down by one every second frame) - and we
-                 * have neither his art nor that decode. */
-                hud_countdown = 3 - race_count / (RACE_COUNT_FRAMES / 3);
-                if (hud_countdown < 1) hud_countdown = 1;
                 in.up = in.down = in.left = in.right = false;
                 in.hop_held = false;
             }
-            if (race_state == RACE_RUN) { hud_race_frames++; hud_countdown = 0; }
+            if (race_state == RACE_RUN) hud_race_frames++;
             if (replay_path) {
                 /* the recorded pad word replaces the player's input, and
                  * the game's own kart rides along as a ghost (slot 1) */
@@ -1979,6 +2024,31 @@ int main(int argc, char **argv)
                 smk_ui_draw_splits(&menu_font, &result,
                                    hud_race_frames - lap_start_frames,
                                    result.laps_done, tt_mushroom, fb, rw, rh);
+            /* SMK_START_SHOT=frame:path - the same, counted from the
+             * countdown's arm instead, which is the only way to see a
+             * frame of the start sequence. */
+            if (getenv("SMK_START_SHOT")) {
+                static int swant = -2; static char spath[512];
+                if (swant == -2) {
+                    swant = -1;
+                    const char *e = getenv("SMK_START_SHOT");
+                    const char *c = strchr(e, ':');
+                    if (c) { swant = atoi(e); snprintf(spath, sizeof spath, "%s", c + 1); }
+                }
+                if (swant >= 0 && hud_countdown >= swant) {
+                    FILE *pf = fopen(spath, "wb");
+                    if (pf) {
+                        fprintf(pf, "P6\n%d %d\n255\n", rw, rh);
+                        for (int i = 0; i < rw * rh; i++) {
+                            uint32_t c = fb[i];
+                            fputc((c >> 16) & 255, pf); fputc((c >> 8) & 255, pf);
+                            fputc(c & 255, pf);
+                        }
+                        fclose(pf);
+                    }
+                    in.quit = true;
+                }
+            }
             /* SMK_SHOT=frame:path - save a rendered frame of a live race,
              * counted from the lights.  The replay path has its own below. */
             if (getenv("SMK_SHOT")) {

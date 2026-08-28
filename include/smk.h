@@ -670,11 +670,76 @@ void smk_draw_sprite(const smk_sprites *s, int frame, const uint32_t *palette,
 #define SMK_HUD_TILES   128
 #define SMK_HUD_TILE0   0x40
 #define SMK_HUD_PAL     0xC0
-typedef struct { uint8_t px[SMK_HUD_TILES][64]; bool ok; } smk_hud;
+/* The stream's FIRST $200 bytes are a second block, and they are not
+ * spare: the sixteen tiles before offset $200 are uploaded to sprite
+ * tiles $EF-$FE, and $FB-$FE are the start light's four lamps (NOTES
+ * 162).  Matched tile for tile against the oracle's VRAM. */
+#define SMK_HUD_LOW_TILES 16
+#define SMK_HUD_LOW_TILE0 0xEF
+typedef struct {
+    uint8_t px[SMK_HUD_TILES][64];              /* sprite tiles $40-$BF */
+    uint8_t low[SMK_HUD_LOW_TILES][64];         /* sprite tiles $EF-$FE */
+    bool ok;
+} smk_hud;
 bool smk_hud_load(const smk_rom *rom, smk_hud *out);
 /* tile index for one decimal digit */
 static inline int smk_hud_digit(int d)
 { return (d < 5 ? 0xA7 + d : 0xB7 + (d - 5)) - SMK_HUD_TILE0; }
+/* One 8x8 tile by its SPRITE-VRAM number, from either block; NULL if the
+ * number is in neither. */
+static inline const uint8_t *smk_hud_tile_px(const smk_hud *h, int vram_tile)
+{
+    if (!h->ok) return 0;
+    if (vram_tile >= SMK_HUD_TILE0 && vram_tile < SMK_HUD_TILE0 + SMK_HUD_TILES)
+        return h->px[vram_tile - SMK_HUD_TILE0];
+    if (vram_tile >= SMK_HUD_LOW_TILE0
+        && vram_tile < SMK_HUD_LOW_TILE0 + SMK_HUD_LOW_TILES)
+        return h->low[vram_tile - SMK_HUD_LOW_TILE0];
+    return 0;
+}
+
+/* ---- The start: Lakitu and his light (NOTES 162) ---------------------
+ *
+ * $809FE1 loads $0146 with -$150 and $80A1F8 counts it up one a frame,
+ * releasing the field on the frame it reaches 0 (NOTES 145).  Everything
+ * the player sees hangs off that frame number, and all of it was read
+ * out of the game's own OAM through the Python oracle
+ * (tools/labs/lakitu.py), because none of it is reachable from MAME.
+ *
+ * He is four 16x16 sprites in a 32x32 block at a FIXED screen position,
+ * every one of them H-flipped, over sprite palette 5 ($D0); the light is
+ * three 8x8 sprites hanging off his rod, palette 4 ($C0).  The art is
+ * the HUD stream's - see smk_hud above, including the block it used to
+ * skip, which is where the lamps live.
+ *
+ * MEASURED, NOT DERIVED: the drop and the fly-away are the trajectory
+ * the game produced, frame by frame, not a law.  The generator was
+ * looked for and not found - the only WRAM word that tracks his sprite
+ * turned out to be the OAM shadow at $0220 - so this is the same choice
+ * NOTES 152 made for the movers: port the cycle, not the machine that
+ * makes it.  tools/labs/lakitu_full.py re-derives the fixture. */
+#define SMK_COUNT_FRAMES  336      /* $809FE1: $0146 = -$150            */
+#define SMK_START_X        36      /* his block's left edge, SNES px    */
+#define SMK_START_LAMP_X   63      /* the light hangs here              */
+#define SMK_START_LAMP_DY  16      /* first lamp, below his block's top */
+typedef struct {
+    bool    on;                    /* is the sequence running him       */
+    int     x, y;                  /* top-left of the 32x32 block       */
+    bool    cheer;                 /* the pose the green light brings   */
+    uint8_t lamp[3];               /* sprite tile per lamp, top down    */
+    int     lit;                   /* lamps alight, 0..3                */
+    /* the four quadrants, each a 16x16 sprite drawn H-FLIPPED */
+    struct { int dx, dy; uint8_t tile; } quad[4];
+} smk_start;
+#define SMK_START_LAST    439      /* he is parked clear of the screen  */
+/* t counts frames from the arm; the field is released at t = 336, and he
+ * is still on screen for a hundred frames after it */
+void smk_start_frame(int t, smk_start *out);
+/* the lamps' own tiles, so a caller can name them */
+#define SMK_LAMP_GREEN_OFF 0xFB
+#define SMK_LAMP_GREEN_ON  0xFC
+#define SMK_LAMP_RED_OFF   0xFD
+#define SMK_LAMP_RED_ON    0xFE
 
 /* The object/entity sprite set (docs/NOTES.md 093).
  *

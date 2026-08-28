@@ -6319,3 +6319,68 @@ track 7's three known positions to the pixel.
 Deleted with it: `smk_track_start` and `smk_track_guess_start`, the
 fixed-coordinate grid and its road-finding fallback. There is nothing
 left for them to guess at.
+
+---
+
+**162** — Lakitu, his light, and the twenty-seven frames nobody expected.
+
+NOTES 145a left this as an instruction for whoever picked it up: *boot the
+Python oracle to a race and render the OBJ half of its VRAM, because MAME
+exposes neither OAM nor VRAM to Lua.* That is all it took.
+
+`tools/labs/lakitu.py` boots a race, waits for `$0146` to be armed with
+-336 and then records the whole 544-byte OAM every frame. The countdown
+stops being a question and becomes a reading:
+
+    OAM 11-14   Lakitu: four 16x16 sprites in a 32x32 block at a FIXED
+                screen x of 36, every one H-FLIPPED, palette 5 ($D0).
+                Tiles $42/$40 over $46/$44.
+    OAM  8-10   the light: three 8x8 sprites at x 63, hanging 16, 24 and
+                32 px below his block's top, palette 4 ($C0).
+
+*The art was already half-loaded.* The lamps are sprite tiles `$FB-$FE`,
+which are not in the object set (`$C0-$F8`) and not in the HUD set
+(`$40-$BF`) - they are in the HUD's own stream at `$C1:0000`, in the
+first `$200` bytes, the block `smk_hud_load` skipped to get to offset
+`$200`. Sixteen tiles, uploaded to `$EF-$FE`, matched one for one
+against the oracle's VRAM. `$FD`/`$FE` are a red lamp dark and lit,
+`$FB`/`$FC` a green one. Two reds over one green.
+
+*The script, in frames from the arm:*
+
+      1   he drops in from y = -48
+    113   settled at y = 5, having overshot to 7 and come back
+    179   the first red
+    244   the second red
+    309   the green - and he changes to the cheering pose with it
+    336   THE FIELD IS RELEASED
+    377   he starts climbing back out
+    439   parked at y = -40, clear of the screen
+
+*The twenty-seven frames.* The green is not the release. It lights on
+309 and the field goes on 336: the AI karts all begin to accelerate on
+that frame and `$3A` steps 4 -> 6 on it, and NOTES 145's human runs first
+move on 339. So the green is an anticipation cue, worth nearly half a
+second, and a player timing a launch is timing against it rather than on
+it. Checked three ways rather than assumed, because it reads wrong.
+
+*What is NOT decoded, and is labelled at the table.* The trajectory is
+the one the game produced, frame by frame, not a law. Its generator was
+hunted for: the only WRAM word that tracks his sprite y across the whole
+sequence turns out to be the OAM shadow buffer at `$0220`, which is the
+output, not the source. So `src/lakitu.c` carries the measured cycle -
+the same choice NOTES 152 made for the movers, and for the same reason -
+and `tools/labs/lakitu_full.py` regenerates `src/lakitu_track.inc` so the
+next reader can re-derive it instead of trusting it.
+
+Two smaller things fell out. `$0142` is not the animation driver NOTES
+145a guessed at: it is loaded with 208 at `$80A1C5`, decremented by
+`$8097A9` once every second frame (`$8094BB` returns early on odd frames,
+which is where the "every second frame" comes from), and it only fires a
+state change when it hits zero - a duration for the whole sequence, 416
+frames, not an index into anything. And the 3-2-1 digits are gone: the
+game never showed any.
+
+Still open, and the user's own framing of it: the light "with the sound"
+is how you time the launch. The port has no audio at all, so half the cue
+is still missing. S18 in the ledger.

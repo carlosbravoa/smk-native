@@ -26,6 +26,7 @@ add_library(smkcore STATIC
   src/ai.c
   src/sprite.c
   src/course.c
+  src/lakitu.c
   src/font.c
   src/cups.c
   src/records.c

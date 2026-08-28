@@ -237,11 +237,13 @@ bool smk_hud_load(const smk_rom *rom, smk_hud *out)
                                  smk_snes_to_pc(rom, 0xC10000u),
                                  buf, WRAM_SIZE, 0, NULL);
     if (n < 0x200 + SMK_HUD_TILES * 32) return false;
-    for (int t = 0; t < SMK_HUD_TILES; t++) {
-        const uint8_t *src = buf + 0x200 + (size_t)t * 32u;
+    /* 4bpp planar, the same layout as the kart sheets */
+    for (int t = 0; t < SMK_HUD_TILES + SMK_HUD_LOW_TILES; t++) {
+        bool low = t >= SMK_HUD_TILES;
+        const uint8_t *src = low ? buf + (size_t)(t - SMK_HUD_TILES) * 32u
+                                 : buf + 0x200 + (size_t)t * 32u;
         uint8_t tile[64];
         memset(tile, 0, sizeof tile);
-        /* 4bpp planar, the same layout as the kart sheets */
         for (int pair = 0; pair < 2; pair++) {
             const uint8_t *q = src + pair * 16;
             for (int y = 0; y < 8; y++) {
@@ -253,7 +255,7 @@ bool smk_hud_load(const smk_rom *rom, smk_hud *out)
                 }
             }
         }
-        memcpy(out->px[t], tile, 64);
+        memcpy(low ? out->low[t - SMK_HUD_TILES] : out->px[t], tile, 64);
     }
     out->ok = true;
     return true;

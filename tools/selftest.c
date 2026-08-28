@@ -268,6 +268,72 @@ int main(int argc, char **argv)
         check("track 7's grid matches the game's own", pinned == 3, det);
     }
 
+    printf("\nthe start: Lakitu and his light\n");
+    {
+        /* The measured script (NOTES 162), from the game's own OAM:
+         * tools/labs/lakitu.py + lakitu_full.py.  Every number here is a
+         * frame of $0146 counted from the arm. */
+        smk_start a, b2, c2, d2, e2;
+        smk_start_frame(0, &a);
+        smk_start_frame(1, &b2);
+        smk_start_frame(178, &c2);
+        smk_start_frame(179, &d2);
+        smk_start_frame(SMK_COUNT_FRAMES, &e2);
+        snprintf(det, sizeof det, "f0 %s, f1 %s at y=%d",
+                 a.on ? "on" : "off", b2.on ? "on" : "off", b2.y);
+        check("he drops in on frame 1, at y = -48",
+              !a.on && b2.on && b2.y == -48 && b2.x == SMK_START_X, det);
+
+        int lamps_ok = (c2.lamp[0] == SMK_LAMP_RED_OFF && c2.lit == 0)
+                    && (d2.lamp[0] == SMK_LAMP_RED_ON && d2.lit == 1);
+        smk_start_frame(244, &c2); lamps_ok &= c2.lamp[1] == SMK_LAMP_RED_ON
+                                            && c2.lit == 2;
+        smk_start_frame(243, &c2); lamps_ok &= c2.lamp[1] == SMK_LAMP_RED_OFF;
+        smk_start_frame(309, &c2); lamps_ok &= c2.lamp[2] == SMK_LAMP_GREEN_ON
+                                            && c2.lit == 3 && c2.cheer;
+        smk_start_frame(308, &c2); lamps_ok &= c2.lamp[2] == SMK_LAMP_GREEN_OFF
+                                            && !c2.cheer;
+        check("red 179, red 244, green 309 - and the green brings the pose",
+              lamps_ok, "each checked against the frame before it");
+
+        /* the drop, sampled off the same capture */
+        static const struct { int t, y; } WANT[] = {
+            {  1, -48}, { 40, -19}, { 66,   0}, { 88,   7},
+            {113,   5}, {336,   5}, {380,   3}, {439, -40},
+        };
+        int hits = 0;
+        for (unsigned i = 0; i < sizeof WANT / sizeof WANT[0]; i++) {
+            smk_start_frame(WANT[i].t, &c2);
+            if (c2.y == WANT[i].y) hits++;
+        }
+        snprintf(det, sizeof det, "%d/%d sampled rows",
+                 hits, (int)(sizeof WANT / sizeof WANT[0]));
+        check("the drop, the overshoot and the climb out match the capture",
+              hits == (int)(sizeof WANT / sizeof WANT[0]), det);
+
+        /* still down in front when the field is released, and clear of
+         * the top of the screen by the time the fixture parks him */
+        smk_start_frame(SMK_START_LAST, &c2);
+        snprintf(det, sizeof det, "y=%d at the release, y=%d parked", e2.y, c2.y);
+        check("green and down at the release, off the top when parked",
+              e2.on && e2.y == 5 && e2.lamp[2] == SMK_LAMP_GREEN_ON
+              && c2.y + SMK_START_LAMP_DY + 24 <= 0, det);
+
+        /* the lamps' art: the block smk_hud_load used to skip */
+        static smk_hud hh;
+        bool hok = smk_hud_load(&rom, &hh);
+        const uint8_t *goff = smk_hud_tile_px(&hh, SMK_LAMP_GREEN_OFF);
+        const uint8_t *gon  = smk_hud_tile_px(&hh, SMK_LAMP_GREEN_ON);
+        int ink = 0, diff = 0;
+        for (int i = 0; goff && gon && i < 64; i++) {
+            ink += goff[i] != 0;
+            diff += goff[i] != gon[i];
+        }
+        snprintf(det, sizeof det, "%d ink, %d px differ", ink, diff);
+        check("the four lamp tiles load, and lit is not the same art as dark",
+              hok && goff && gon && ink > 20 && diff > 10, det);
+    }
+
     printf("\nsprites\n");
     static smk_sprites spr;
     int sprok = smk_sprites_load(&rom, 0, &spr);
