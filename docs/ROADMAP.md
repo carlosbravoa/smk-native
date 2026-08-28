@@ -242,8 +242,13 @@ have nearly stopped.
   measurement, which is the one place the two disagree (S24).
 
 **3. The start rev, the wheelspin and the turbo launch (NOTES 163).**
-The mechanism has been in since NOTES 144 but had no feedback at all
-until now, so it has never actually been *seen* working.
+**CONFIRMED WORKING by the user** - "it also works in our
+implementation.  It is slightly harder to pull off given that there is no
+sound yet."  That last clause is the whole argument for sound being first
+on the build list below: the mechanic is right, and a player still cannot
+time it reliably.  Their own emulator recording (`sessions/flag`) holds
+the ORIGINAL's version of the same launch for comparison - +50 a frame
+off the grid, 186 over the class top (NOTES 171).  What is left to judge:
 
 * Hold accelerate from the moment Lakitu appears: the kart should sit
   there spinning its wheels with smoke, creeping forward at walking pace,
@@ -300,12 +305,13 @@ of them changes how every race feels.
 In rough order of value:
 
 1. **Sound (S8, P7).** It has moved from "polish" to "the missing half of
-   a mechanic". The turbo start's window is 95 frames before the green
+   a mechanic", and the user has now confirmed it from play: the turbo
+   launch works in the port and is "slightly harder to pull off given
+   that there is no sound yet". The window is 95 frames before the green
    lamp and lines up with no lamp at all - the cue a player times against
-   is the engine note, and the port is silent, so a decoded, correct
-   mechanic is unusable by a human. The user said as much: the light
-   "with the sound" is how you time the launch. `smk spc` already dumps
-   the driver; nothing renders it.
+   is the engine note. A decoded, correct mechanic that a human cannot
+   reliably use is the strongest case on this list. `smk spc` already
+   dumps the driver; nothing renders it.
 
 2. **Items (P5).** The largest gameplay gap and the one you notice in ten
    seconds of a real race. Boxes are stamped and even register a pickup;

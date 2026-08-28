@@ -6943,3 +6943,43 @@ What it CANNOT answer: anything about sprites. MAME exposes no OAM to Lua
 (NOTES 145a), so the chequered flag's own art and assembly still need the
 Python oracle - but reaching a finish there can now be cheap, by forcing
 the lap word near the end rather than driving five laps.
+
+---
+
+**171** — What the user's own race says about speed, and a peak mistaken
+for a top.
+
+Their recorded race (`sessions/flag`, NOTES 170) was played on the
+EMULATOR, so it is a reference for the original's behaviour, not a test
+of this port.
+
+*The class and the coin rule, confirmed from a human run.* Their speed
+sat at **864 for 2916 frames** - the 90th and 99th percentiles are both
+exactly 864 - which is `784 + 80`: Mario's 50cc top (`$B4`) plus the ten
+coin bonus (`$D6 = $B4 + 8 * min(coins, 10)`). Both tables verified
+against a person driving, not against the oracle.
+
+*And a peak is not a top speed.* Their run touched 1050, from which this
+log first concluded "so they were on 150cc". Wrong, and the same data
+said so: 1050 lasted FOUR frames out of six thousand. Where it happened
+settles what it was -
+
+    f1655  550  at (952,745)      x 952 with y walking down from 745
+    f1660  800  at (952,732)      is Mario Circuit 1's own grid slot
+    f1665 1050  at (952,715)
+    f1666  526  at (952,710)      and a coin lost the next frame
+
++50 every frame off the line is the boost drive state's signature
+(`$EE = 50`, NOTES 143). It is a TURBO START, in the original, caught
+naturally in a race rather than in a four-start test file - the first
+such sighting this project has. The user did not count it as "a speed
+boost" because they took no item, which is fair and is exactly how the
+mistake got made.
+
+*The port's own turbo launch is confirmed separately*, by the user
+playing it: "it also works in our implementation. It is slightly harder
+to pull off given that there is no sound yet."
+
+The lesson for this log: look at the distribution before the maximum. The
+sustained value was sitting in the same file saying 50cc while a
+four-frame transient was read as the answer.
