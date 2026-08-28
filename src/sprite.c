@@ -213,6 +213,44 @@ void smk_draw_sprite_mirror(const smk_sprites *s, int frame,
  * is in no ROM bank - a software minifier builds it in WRAM, NOTES 076).
  * Until that composer is decoded, sample the full frame 2:1 - a labelled
  * approximation of the real minifier, sizes and switch depth measured. */
+/* One 16x16 QUADRANT of a packed frame, at any scale.
+ *
+ * Frames 33-43 are not single drawings: each holds four 16x16 sprites in a
+ * 2x2 arrangement (the far-distance variants).  The victory pose lives in
+ * one of them - frame 40, upper right - and the game draws it at DOUBLE
+ * the normal art scale, which is why the pixels in it are visibly chunkier
+ * than a driving kart's (NOTES 180).  Nothing else could draw a quadrant,
+ * so nothing else could reach the pose.
+ */
+void smk_draw_sprite_quad(const smk_sprites *s, int frame, int quad,
+                          const uint32_t *palette, int pal_base,
+                          int cx, int cy, int scale, bool hflip,
+                          uint32_t *pixels, int w, int h, int pitch_px)
+{
+    if (frame < 0 || frame >= s->frames || scale < 1) return;
+    if (quad < 0 || quad > 3) return;
+    const int Q = SMK_SPR_PX / 2;                 /* 16 */
+    int qx = (quad & 1) * Q, qy = (quad >> 1) * Q;
+    const uint8_t *src = s->px[frame];
+    int size = Q * scale;
+    int x0 = cx - size / 2, y0 = cy - size;
+
+    for (int y = 0; y < size; y++) {
+        int sy = y0 + y;
+        if (sy < 0 || sy >= h) continue;
+        const uint8_t *row = src + (qy + y / scale) * SMK_SPR_PX + qx;
+        uint32_t *dst = pixels + (size_t)sy * (size_t)pitch_px;
+        for (int x = 0; x < size; x++) {
+            int sx = x0 + x;
+            if (sx < 0 || sx >= w) continue;
+            int col = x / scale;
+            uint8_t v = row[hflip ? Q - 1 - col : col];
+            if (v == 0) continue;
+            dst[sx] = palette[(pal_base + v) & 0xFF];
+        }
+    }
+}
+
 void smk_draw_sprite_mini(const smk_sprites *s, int frame,
                           const uint32_t *palette, int pal_base,
                           int cx, int cy, int scale, bool hflip,

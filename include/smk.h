@@ -400,15 +400,18 @@ static inline int smk_kart_height_px(const smk_kart *k)
 #define SMK_SPR_TIER2    22
 #define SMK_SPR_TIER_LEN 11
 #define SMK_SPR_REAR      1     /* measured: the straight-from-behind pose */
-/* The victory pose: both arms thrown up.  Identified by rendering all 48
- * frames of every driver's sheet and looking - it is the same slot for
- * all eight (Bowser's shell, Toad's mushroom, arms out on each).
+/* The victory pose, from the user's own screenshot of the original:
+ * face on, mouth open, both white gloves raised.
  *
- * It is a REAR view: you see the back of the head, no face.  That decides
- * the celebration camera, which cannot be a front view and show this pose
- * at the same time (NOTES 178).  A front-facing celebration would need
- * the podium art, which is a different sheet and is not decoded. */
-#define SMK_SPR_WIN      47
+ * It is a 16x16 sprite in the UPPER RIGHT quadrant of frame 40 - frames
+ * 33-43 each pack four 16x16 drawings - and the game draws it at double
+ * the normal art scale, which is why its pixels are visibly chunkier than
+ * a driving kart's.  Two earlier readings of this were wrong: frame 47 is
+ * arms-up but a REAR view with bare arms, and frame 32 is just the
+ * smallest tier of the ordinary front view (NOTES 180). */
+#define SMK_SPR_WIN_FRAME 40
+#define SMK_SPR_WIN_QUAD   1
+#define SMK_SPR_WIN       47    /* arms up, REAR view - not the finish pose */
 
 /* The measured rule: frame index and hflip for a heading relative to the
  * camera (angle units, 65536 = full turn; 0 = seen squarely from behind). */
@@ -709,6 +712,11 @@ void smk_draw_sprite_scaled(const smk_sprites *s, int frame,
 void smk_draw_sprite(const smk_sprites *s, int frame, const uint32_t *palette,
                      int pal_base, int cx, int cy, int scale, bool hflip,
                      uint32_t *pixels, int w, int h, int pitch_px);
+/* one 16x16 quadrant of a packed frame (33-43), at any scale */
+void smk_draw_sprite_quad(const smk_sprites *s, int frame, int quad,
+                          const uint32_t *palette, int pal_base,
+                          int cx, int cy, int scale, bool hflip,
+                          uint32_t *pixels, int w, int h, int pitch_px);
 
 /* The game's own HUD sprite set (docs/NOTES.md 085): $81:E856
  * decompresses $C1:0000 to $7F:C000 and DMAs offset $200 (4096 bytes =

@@ -7423,3 +7423,47 @@ Default is the measured camera with the normal front-facing sprite;
 `SMK_WIN_POSE=1` forces the arms-up frame. LABELLED and put to the user,
 who has seen the original: no rig here can tell which of the two the game
 actually shows, and guessing would be inventing a fact.
+
+---
+
+**180** — The winner's pose: found, photographed, and still not drawable.
+
+The user settled it with a screenshot of the original: face on, mouth
+open, **both white gloves raised**, kart-sized, with Lakitu waving the
+chequered flag alongside. (And a correction worth keeping: the oval under
+the kart is LAKITU's shadow - *"mario is not airbone!"* - so there is no
+hop to model.)
+
+That killed two earlier readings of mine, both of which had been stated
+too confidently:
+
+* **frame 47** is arms-up but a REAR view - and the arms are bare skin,
+  where the real pose has white gloves. The white-pixel scan is what
+  showed it: 47 has no white in either upper corner.
+* **frame 32** is not a pose at all, just the smallest rotation tier of
+  the ordinary front view. Hands on the wheel.
+
+The pose IS in the sheet. Frames 33-43 each hold four small sprites
+rather than one 32x32, and the white-glove scan puts the raised gloves in
+that group (38, 40 and 42 carry the most). But slicing those frames into
+16x16 quadrants gives **heads without bodies and arms without heads**:
+they do not use the tile arrangement `smk_sprites_load` assumes for a
+32x32 (N, N+1, N+16, N+17). The packed frames have their own tile order
+and it is not decoded.
+
+So this is a decode, not a crop, and it is ledgered as S28 rather than
+guessed at. `smk_draw_sprite_quad` is written and correct for a 2x2
+layout, and `SMK_WIN_POSE=1` draws through it - which is how the
+scrambling was established, and is the starting point for finishing it.
+
+Default is OFF: a garbled winner is worse than a plain one. The finish
+shows the ordinary front-facing driver, which is right in every respect
+except the arms - and the CAMERA that frames him is measured, not
+designed (NOTES 179).
+
+The cost of this one is worth recording. Three separate "found it"
+claims - frame 47, then frame 32, then frame 40's quadrant - each looked
+right in a montage and each was wrong. Two of them were wrong because of
+how I was DRAWING the sheet, not what was in it (the wheel anchor, then
+the tile order). When the thing under inspection is the renderer, a
+picture of the renderer's output is not evidence about the data.

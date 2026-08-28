@@ -1297,16 +1297,25 @@ static void draw_ai_kart(const smk_rom *rom, const smk_track *trk,
             int f2 = mirror ? KTIER[kt].base
                             : smk_sprite_for_heading(KTIER[kt].base,
                                                      r16, &hf2);
-            /* SMK_WIN_POSE=1 forces the arms-up pose (SMK_SPR_WIN).
-             * It is OFF by default and that is a measurement, not a
-             * preference: the recorded race says the camera swings to the
-             * FRONT of the kart, and this pose is frame 1 with the arms
-             * raised - a REAR view, cap dome, no face.  Shown from the
-             * front it puts the driver's back to the camera.  The two
-             * cannot both be right, and which the original does is the
-             * open question (NOTES 179). */
+            /* The winner's pose is NOT reachable yet, and this is the
+             * honest state of it (NOTES 180).  The user's screenshot of
+             * the original shows it exactly: face on, mouth open, both
+             * white gloves raised.  It lives in the packed frames 33-43,
+             * which hold four small sprites each - and those frames do
+             * NOT use the tile arrangement smk_sprites_load assumes for a
+             * 32x32 (N, N+1, N+16, N+17), so slicing them into quadrants
+             * yields heads without bodies and arms without heads.
+             * Extracting it is a decode, not a crop.
+             *
+             * SMK_WIN_POSE=1 draws the quadrant anyway, which is how that
+             * was established and is worth keeping for whoever finishes
+             * it.  Default OFF: a garbled winner is worse than a plain one. */
             if (celebrating && k == smk_ai_player_block && smk_win_pose) {
-                f2 = SMK_SPR_WIN; hf2 = false; mirror = false;
+                smk_draw_sprite_quad(&other[k], SMK_SPR_WIN_FRAME,
+                                     SMK_SPR_WIN_QUAD, trk->palette, d2->pal,
+                                     (int)px, (int)py, kscale * 2, false,
+                                     fb, rw, rh, rw);
+                return;
             }
             if (mirror)
                 smk_draw_sprite_mirror(&other[k], f2, trk->palette,

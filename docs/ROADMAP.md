@@ -54,6 +54,19 @@ re-investigating.
 
 ## Shortcut & assumption ledger (current)
 
+**S28 — The winner's celebration pose is not drawn.**
+The user's screenshot of the original settles what it looks like: face on,
+mouth open, both white gloves raised, kart-sized. It is in the sheet - the
+packed frames 33-43, which hold four small sprites each - but those frames
+do NOT use the tile arrangement `smk_sprites_load` assumes for a 32x32
+(N, N+1, N+16, N+17), so slicing them gives heads without bodies. What is
+needed is the packed frames' own tile order, then one draw call; the
+quadrant drawing (`smk_draw_sprite_quad`, `SMK_WIN_POSE=1`) is already
+there and correct for a 2x2 layout. Until then the finish shows the
+ordinary front-facing driver, which is right in every respect except the
+arms. The CAMERA is measured and not a shortcut (NOTES 179).
+
+
 **S27 — The finish sequence is OURS by design, not by default.**
 The celebration camera, its timing (50 frames to swing, 210 to hold), the
 38-unit framing distance and the whole results layout are designed rather
