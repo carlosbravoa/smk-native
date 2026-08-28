@@ -242,13 +242,15 @@ one that has dropped back should visibly wind up and reel you in.
   once it is near again? (chase row `$08` -> hold row `$10`)
 * Does the leader ease off when it gets clear air? That is the half that
   is easiest to get wrong, and the half that stops the leader vanishing.
-* 50cc against 150cc: the catch-up distances and the rows both scale, so
-  150cc should feel much stickier. If it does not, the class index is the
-  suspect - the port uses the engine class where the ROM uses `$C1,x & 7`
-  over FOUR rows, and that is labelled (S25).
-* Is the field now too fast? The AI were easy to beat before this landed
-  and row 0 was the reason; if they have gone from too slow to unfair,
-  the `$18` row we never select, or `$DA`, is where the missing brake is.
+* 50cc against 150cc: the target-speed rows scale with class, so 150cc
+  should feel much stickier. The catch-up DISTANCES do not scale with
+  class - they scale with the LAP (NOTES 174) - so the thing to watch is
+  lap 5 against lap 1 within one race.
+* Is the field now too fast, or too slow? Both brakes are in now: the
+  `$18` row (a kart in trouble) and `$DA`. But `trouble` is approximated
+  from our own crash states and currently never fires, where the real
+  game is on `$18` for 8% of kart-frames - so if the field feels
+  relentless, that missing 8% is the first suspect.
 
 **2. Kart-to-kart contact after the re-contact fix (NOTES 166/166a).**
 The user already reported the first version as too aggressive between AI
@@ -316,7 +318,7 @@ regression in them is noticed.
 | P3 physics | **done for the player, and now gated by human runs** — the control is transcribed from the ROM and replays the attract race's human inputs frame-exact: 99.8% / 100% of frames within 1 px (NOTES 106-108), with tyre smoke and dust from the game's own effect object (NOTES 109).  The demo replay is exact end to end for both karts (NOTES 112).  Residual: the other six characters unverified (S13), water/snow effects, pipe-crash spin, kart contact (none observed in the demo - NOTES 112) |
 | P4 sprites | **done** — the projection is derived once from the ROM's own DSP-1 geometry (NOTES 083/084): depth(L)=4972/(L-20.36), scale=depth/256 (ratio = Les, the cross-check), camera trails the kart 61 px.  Pose ladder measured pixel-exact (NOTES 080/081).  Residual: kart-sheet rows 1-2 purpose, sprite size quantisation (ours is continuous, labelled) |
 | P5 race furniture | **part** - the live phase — ground objects stamped with the ROM's own tiles (NOTES 074), sprite-obstacle entity list decoded and colliding (NOTES 078), HUD set + clock + lap counter on the game's own art, start countdown (NOTES 085).  hazard classes decoded and ported - water ($22) wade/skim, the fall ($24/$26/$20/$28) and Lakitu's rescue as the ROM's own three states with a latched target (NOTES 113, 124).  Breakable blocks done and gated for both themes (NOTES 123/123a).  The sector map now matches the game's own $7F:5000 on all painted cells.  Lakitu's own art is now decoded and drawn for the start (NOTES 162).  Residual: the horizon/backdrop (S5), entity MOTION (S12), item behaviour, the splash/sink effects |
-| P6 opponents | **driving and competitiveness in, personality not.**  Flow-field steering (95% byte-exact), ramp launches, wall escapes and a Lakitu rescue get the field round **20/20** GP courses.  Kart-to-kart contact is the ROM's, weight classes and all (NOTES 166).  The rubber band is the ROM's target-speed row (NOTES 167) - chase, hold, ease - which is what makes them keep up.  Residual: `$DA`, the `$18` row, per-kart driving personality, and items |
+| P6 opponents | **driving and competitiveness in, personality not.**  Flow-field steering (95% byte-exact), ramp launches, wall escapes and a Lakitu rescue get the field round **20/20** GP courses.  Kart-to-kart contact is the ROM's, weight classes and all (NOTES 166).  The rubber band is the ROM's own row chooser, `$80ADA0`, rebuilt in NOTES 174 and reproducing the game's choice on 94.2% of 39,074 recorded kart-frames - it turns on whether the neighbouring kart is the HUMAN, and its catch-up distances re-tune every lap.  Residual: the "in trouble" test (`$84`, `$10` bit 5) is approximated and never fires where the game is at 8%; the distance CACHE is not modelled; per-kart driving personality; items |
 | P7 audio | **decided** — pre-recorded; `smk spc` dumps the driver, rendering not wired up |
 | P8 modes / menus | **part** — a working shell: title → mode → driver+class → course-by-cup → race → results, in two modes.  SINGLE RACE is a Grand Prix course on its own: eight karts, the ROM's per-character grid order (`$81EE97`, NOTES 111) on the ROM's own grid rows with the player at the back (NOTES 164), starting coins, and a finishing place.  TIME TRIAL is alone with one mushroom and keeps the top five lap times per course on disk.  Font, palettes, cup order, course names, lap count and the time-trial rules are all ROM-derived (NOTES 147/148).  Residual: the CUP around a race (points and standings), items, the real menu art (S20), the mushroom grant rule (S19) |
 
@@ -374,12 +376,15 @@ In rough order of value:
    scoring and the between-race flow: four cups of five, finishing order,
    points, standings. A game-state problem rather than a decode one.
 
-5. **Finish the rubber band's two loose ends (S25).** `$DA` is a 0-60
-   counter (`$80A482`) that gates a second correction table (`$B099`) and
-   appears in the row branches; its meaning is unknown and everything
-   built on top of it is guesswork until it is measured. And the class
-   index: the ROM selects among FOUR rows with `$C1,x & 7` where the port
-   passes the engine class. Both are cheap oracle runs.
+5. **~~Finish the rubber band's two loose ends (S25)~~ — CLOSED by
+   NOTES 174.** Both were measured from the user's recorded race. `$DA`
+   is not a 0-60 counter: it is STATIC per kart block for a whole race
+   (`0,0,0,0,2,4,6,8`), and it is also the routine's own parameter
+   (`$80AD9F lda $DA,x`). And `$C1 & 7` is not a class index at all - it
+   is the **lap**, so `$80AF0F` is re-tuned every lap of every race. What
+   remains open is smaller: `$84` and `$10` bit 5 (the "in trouble" test,
+   8% of kart-frames in the real game and 0% in ours), the `$E2` bit 1
+   policy, and `$0E50` - none of which fired in a one-player race.
 
 6. **The graze exemption (S6).** The ROM exempts a slip under 45 degrees
    from the crash deceleration (`$80A0EB`), the recording shows the game
