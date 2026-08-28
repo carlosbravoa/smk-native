@@ -32,38 +32,49 @@ def hold(pad, n):
         L.frame(pad)
     return bytes(L.b.vram), L.w(P1 + 0xA4), L.w(P1 + 0x2A)
 
-log("phase 1: neutral")
-v0, h0, p0 = hold(0x00, PHASE)
-log("phase 2: LEFT held")
-vL, hL, pL = hold(0x02, PHASE)
-log("phase 3: RIGHT held")
-vR, hR, pR = hold(0x01, PHASE)
-log("phase 4: neutral again")
-v1, h1, p1 = hold(0x00, PHASE)
+# ALTERNATE the phases.  A single neutral/LEFT diff is not evidence: the
+# clock and the HUD churn VRAM every frame, and neutral-vs-neutral already
+# differed by 162 bytes against LEFT's 234.  Bytes that are the DRIVER
+# hold one value under neutral and another under LEFT, every time, so the
+# test is correlation with the input rather than a single difference.
+snaps = []
+for name, pad in (("neutral", 0x00), ("LEFT", 0x02),
+                  ("neutral", 0x00), ("LEFT", 0x02),
+                  ("neutral", 0x00), ("RIGHT", 0x01)):
+    log("phase: %s" % name)
+    snaps.append((name, hold(pad, PHASE)))
 
-log("\nheading $A4 and pose $2A through the phases:")
-log("  neutral $%04X/$%04X   LEFT $%04X/$%04X   RIGHT $%04X/$%04X   back $%04X/$%04X"
-    % (h0, p0, hL, pL, hR, pR, h1, p1))
+h = [v[1][1] for v in snaps]
+log("\nheading $A4 per phase: " + " ".join("$%04X" % x for x in h))
 log("  the kart TURNED at a standstill: %s"
-    % ("yes - that contradicts NOTES 175" if len({h0, hL, hR}) > 1 else "no"))
+    % ("yes - that contradicts NOTES 175" if len(set(h)) > 1 else "no"))
 
-def diff(a, b, name):
-    runs, start = [], None
-    for i in range(min(len(a), len(b))):
-        if a[i] != b[i]:
-            if start is None: start = i
-        elif start is not None:
-            runs.append((start, i)); start = None
-    if start is not None: runs.append((start, len(a)))
-    total = sum(e - s for s, e in runs)
-    log("  %-18s %5d bytes differ in %d run(s)" % (name, total, len(runs)))
-    for s, e in runs[:8]:
-        log("      VRAM $%04X..$%04X  (%d bytes)" % (s, e - 1, e - s))
-    return total
+N = [i for i, (n, _) in enumerate(snaps) if n == "neutral"]
+L = [i for i, (n, _) in enumerate(snaps) if n == "LEFT"]
+R = [i for i, (n, _) in enumerate(snaps) if n == "RIGHT"]
+V = [v[1][0] for v in snaps]
 
-log("\nVRAM differences between phases:")
-nL = diff(v0, vL, "neutral vs LEFT")
-nR = diff(v0, vR, "neutral vs RIGHT")
-nB = diff(v0, v1, "neutral vs neutral")
-log("\n  the driver's sprite CHANGES when steering at a standstill: %s"
-    % ("yes" if (nL or nR) and nL + nR > nB else "no - the game does not lean either"))
+def correlated(group):
+    """bytes constant within neutral, constant within `group`, different between"""
+    out = []
+    for a in range(min(len(x) for x in V)):
+        n0 = V[N[0]][a]
+        if any(V[i][a] != n0 for i in N): continue
+        g0 = V[group[0]][a]
+        if any(V[i][a] != g0 for i in group): continue
+        if g0 != n0: out.append(a)
+    return out
+
+for name, g in (("LEFT", L), ("RIGHT", R)):
+    b = correlated(g)
+    log("\n  VRAM bytes that track %s exactly: %d" % (name, len(b)))
+    if b:
+        runs, st = [], b[0]
+        for i in range(1, len(b)):
+            if b[i] != b[i-1] + 1:
+                runs.append((st, b[i-1])); st = b[i]
+        runs.append((st, b[-1]))
+        for s_, e_ in runs[:10]:
+            log("      $%04X..$%04X  (%d bytes)" % (s_, e_, e_ - s_ + 1))
+log("\n  the driver's sprite changes with steering at a standstill: %s"
+    % ("YES" if correlated(L) else "no - the game does not lean either"))

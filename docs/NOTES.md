@@ -7484,3 +7484,32 @@ an arbitrary race state - reach a finish, dump OAM, read the tiles off.
 Filed as S28 with that method written down, because the lesson is not
 "the packing is tricky" - it is that a static sheet was read when a
 running machine was there to be asked.
+
+---
+
+**181** — The standstill lean, verified on both sides.
+
+The user asked for it again after NOTES 175 fixed the countdown, so this
+time it was checked against the game rather than reasoned about.
+
+**The game leans.** `tools/labs/headlean.py` holds the kart at zero speed
+and runs alternating phases - neutral, LEFT, neutral, LEFT, neutral,
+RIGHT - then keeps only the VRAM bytes that hold one value under neutral
+and a different one under LEFT *every time*. **70 bytes** track LEFT
+exactly and the same 70 track RIGHT, all in `$B020-$B03F`, which is the
+kart's own sprite. The heading `$A4` reads `$0000` in all six phases, so
+the kart still does not turn - NOTES 175 confirmed from the other end.
+
+The alternation matters. The first version of this lab diffed one neutral
+snapshot against one LEFT snapshot and got 234 differing bytes - which
+looks conclusive until you also diff neutral against neutral and get
+**162**. The clock and the HUD churn VRAM every frame. A single diff
+could not have separated the driver from the timer; correlation with the
+input can.
+
+**And so do we.** `SMK_FORCE_STEER=-1|1` holds a direction with no hands,
+so the same three states can be shot from our own build: neutral is
+symmetric, LEFT and RIGHT are mirrored leans, in the countdown *and* in
+the race at zero speed. Nothing needed changing - the countdown fix of
+NOTES 175 was the whole of it - but "nothing needed changing" is only
+worth saying once it has been looked at.

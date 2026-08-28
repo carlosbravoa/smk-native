@@ -177,6 +177,7 @@ static int celebrating;
  * every kart was projected on the old basis - and the player's own kart
  * simply disappeared. */
 static uint16_t finish_yaw;
+static int force_steer;           /* SMK_FORCE_STEER: -1 left, +1 right */
 static int celebrating_pose;      /* SMK_WIN_POSE: force the arms-up frame */
 #define smk_win_pose celebrating_pose
 static int player_sector;               /* $C0: the last sector reached      */
@@ -1712,6 +1713,11 @@ int main(int argc, char **argv)
     /* $80AF0F, the catch-up distances the AI row chooser indexes. */
     { const char *e = getenv("SMK_AI_SKILL"); if (e) smk_ai_skill = atoi(e); }
     celebrating_pose = getenv("SMK_WIN_POSE") ? 1 : 0;
+    /* SMK_FORCE_STEER=-1|1 holds a steering direction with no hands, so
+     * the standstill LEAN can be shot and compared against the game's own
+     * (NOTES 181).  It is input, not physics: it goes in where the pad
+     * would, and below speed 16 the ROM's own table turns nothing. */
+    { const char *e = getenv("SMK_FORCE_STEER"); if (e) force_steer = atoi(e); }
     if (!smk_ai_catchup_load(&rom))
         fprintf(stderr, "warning: AI catch-up table not loaded\n");
     if (!smk_physics_load(&rom, engine_class, &phys)) {
@@ -2205,6 +2211,10 @@ int main(int argc, char **argv)
              * nothing at all - the "no jump" report, twice. */
             input_edges_clear(&in);
             camera_from_kart(&cam, &kart);
+            if (force_steer) {
+                in.left  = force_steer < 0;
+                in.right = force_steer > 0;
+            }
             celebrating = (race_state == RACE_FINISH);
             /* the winner coasts: hands off the controls once you cross.
              * The user, on what matters: "celebration is important,

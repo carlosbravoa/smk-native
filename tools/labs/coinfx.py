@@ -51,15 +51,36 @@ L.sw(P1 + 0x1C, L.w(vb + 0x1C))
 
 base = oam_set()
 log("\n f  coins  new sprites (slot: x,y tile attr size)")
+track, dumped = {}, False
 for f in range(FRAMES):
     L.frame(0x80)
     now = oam_set()
-    fresh = {k: v for k, v in now.items() if k not in base or base[k][2] != v[2]}
     c = L.w(0x0E00)
-    if fresh and f < 60:
-        items = " ".join("%d:(%d,%d t$%02X a$%02X %s)"
-                         % (k, v[0], v[1], v[2], v[3], "16" if v[4] else "8")
-                         for k, v in sorted(fresh.items())[:6])
-        log(" %2d %5d  %s" % (f, c, items))
+    fresh = {k: v for k, v in now.items() if k not in base}
+    for k in fresh:
+        if k not in track: track[k] = []
+    # follow every slot that appeared, FULLY, so the arc can be fitted
+    for k in list(track):
+        if k in now: track[k].append((f, now[k]))
+    if fresh:
+        log(" %2d %5d  %s" % (f, c, " ".join(
+            "%d:(%d,%d t$%02X a$%02X)" % (k, v[0], v[1], v[2], v[3])
+            for k, v in sorted(fresh.items())[:5])))
+    if c < COINS and not dumped:
+        dumped = True
+        open("tmp/coin_vram.bin", "wb").write(bytes(L.b.vram))
+        open("tmp/coin_cgram.bin", "wb").write(bytes(L.b.cgram))
+        log("  (VRAM and CGRAM dumped at the loss, frame %d)" % f)
     base = now
+
 log("\ncoins after: %d" % L.w(0x0E00))
+log("\nfull trajectories of the spawned sprites:")
+for k, rows in sorted(track.items()):
+    if len(rows) < 6: continue
+    log("  slot %d, %d frames:" % (k, len(rows)))
+    prev = None
+    for f, (x, y, t, a, big) in rows[:40]:
+        d = "" if prev is None else "  d(%+d,%+d)" % (x - prev[0], y - prev[1])
+        log("    f%-3d (%3d,%3d) tile $%02X attr $%02X %s%s"
+            % (f, x, y, t, a, "16x16" if big else "8x8", d))
+        prev = (x, y)
