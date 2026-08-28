@@ -1140,6 +1140,36 @@ typedef struct {
 /* t counts frames from the crossing */
 void smk_lapsign_frame(int t, int lap, int laps, smk_lapsign *out);
 
+/* ---- Lakitu fishing you out (NOTES 168a) ------------------------------
+ *
+ * The rescue's STATE MACHINE has been the ROM's since NOTES 113/124 -
+ * $A0 walks fall -> $0C -> $0E, the kart is lifted, carried x then y at
+ * 2 px a frame, and lowered $80 a frame.  What was missing is him.
+ *
+ * Captured on Ghost Valley (tools/labs/lakitu_rescue.py), walking the
+ * kart off the road and letting the GAME decide it had fallen:
+ *
+ *     f0    $A0 = fall   the drop, 60 frames
+ *     f60   $A0 = $0C    carried (1008,700) -> (968,600), x then y.
+ *                        Lakitu is NOT drawn: his sprites sit parked at
+ *                        x 292, off the right of a 256-wide screen.
+ *     f131  $A0 = $0E    the kart is lowered - and HE IS ON SCREEN,
+ *                        five 16x16 sprites at a fixed screen x of 97,
+ *                        descending with it from y -56 to y +38.
+ *     f229  $A0 = 0      released.
+ *
+ * The descent tracks the kart's own z: $3000 falling at $80 a frame is
+ * 96 frames, which is the 98 the phase lasts. */
+#define SMK_RESCUE_X       97      /* his block's screen x, fixed        */
+#define SMK_RESCUE_Y_TOP  (-56)    /* where he starts the drop           */
+#define SMK_RESCUE_Y_END    38     /* and where he ends it               */
+/* the assembly: $42/$40 over $46/$44, plus $48 beside the lower right */
+#define SMK_RESCUE_TL      0x42
+#define SMK_RESCUE_TR      0x40
+#define SMK_RESCUE_BL      0x46
+#define SMK_RESCUE_BR      0x44
+#define SMK_RESCUE_EXTRA   0x48
+
 /* ---- Kart against kart (NOTES 166) ------------------------------------
  *
  * NOTES 112 concluded there was no kart-to-kart response, from a demo in

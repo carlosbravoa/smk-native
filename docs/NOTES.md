@@ -6783,3 +6783,34 @@ reported nothing. It is behind `if __name__ == "__main__"` now.
 Still to do: the chequered flag (its art is the checker across `$68`-`$9F`,
 several frames of a wave) and the rescue - whose state machine has been
 the ROM's since NOTES 113/124, so only the drawing is missing.
+
+**168a** — And Lakitu fishing you out, which only shows on the way down.
+
+Captured on Ghost Valley with `tools/labs/lakitu_rescue.py`, which walks
+the kart off the road in four directions and lets the GAME decide it has
+fallen rather than reading the surface table:
+
+    f0    $A0 = fall   the drop
+    f60   $A0 = $0C    carried (1008,700) -> (968,600), x THEN y, which
+                       is exactly what src/player.c already does.  He is
+                       NOT drawn here: his sprites sit parked at x 292,
+                       off the right of a 256-wide screen.
+    f131  $A0 = $0E    the kart is lowered - and he IS drawn, five 16x16
+                       sprites at a FIXED screen x of 97, coming down
+                       with it from y -56 to y +38
+    f229  $A0 = 0      released
+
+The descent is the kart's own z: `$3000` falling at `$80` a frame is 96
+frames, and the phase lasts 98. So he is drawn against z rather than a
+frame counter, and the two cannot drift.
+
+*Two rig bugs cost this capture three attempts, and both were already
+documented in this repo.* `tools/labs/track_force.py` ran its demo at
+module level, so `from track_force import boot` booted a second ROM as a
+side effect and swallowed the caller's `argv` - twenty minutes forcing
+track 7 while asking for 16. And `track_force` forces `$0124` alone,
+which NOTES 118 calls the NOTES 059 trap: the track number without the
+theme, leaving the race half set up with the kart at x = 65520.
+`gridtable.py`, written earlier the same day, hooks `$0150`/`$0152` and
+reaches all twenty courses cleanly. The working method was in the same
+directory the whole time.

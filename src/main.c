@@ -295,6 +295,36 @@ static void draw_lap_sign(uint32_t *fb, int rw, int rh,
     }
 }
 
+/* Lakitu lowering a fished-out kart back onto the road (NOTES 168a).
+ * Only during the DROP phase - through the carry his sprites are parked
+ * off the side of the screen, which is the game not drawing him. */
+static void draw_rescue_lakitu(uint32_t *fb, int rw, int rh,
+                               const uint32_t *palette, int32_t z)
+{
+    if (!hud_art.ok) return;
+    int sc = rw >= 640 ? 3 : 2;
+    /* he comes down with the kart: z runs $3000 -> 0 at $80 a frame */
+    int32_t zt = (int32_t)0x3000 << 8;
+    if (z > zt) z = zt;
+    if (z < 0) z = 0;
+    int y = SMK_RESCUE_Y_END
+          - (int)(((int64_t)(SMK_RESCUE_Y_END - SMK_RESCUE_Y_TOP) * z) / zt);
+    static const struct { int dx, dy, tile; } PART[5] = {
+        {  0,  0, SMK_RESCUE_TL }, { 16,  0, SMK_RESCUE_TR },
+        {  0, 16, SMK_RESCUE_BL }, { 16, 16, SMK_RESCUE_BR },
+        { 16, 16, SMK_RESCUE_EXTRA },
+    };
+    for (int i = 0; i < 5; i++) {
+        int qx = (SMK_RESCUE_X + PART[i].dx) * sc, qy = (y + PART[i].dy) * sc;
+        for (int sub = 0; sub < 4; sub++) {
+            int cx = sub & 1, cy = sub >> 1;
+            spr_tile(fb, rw, rh, qx + (1 - cx) * 8 * sc, qy + cy * 8 * sc,
+                     PART[i].tile + cx + cy * 16, SMK_START_PAL, true,
+                     palette, sc);
+        }
+    }
+}
+
 /* The race clock, in the game's own art: M ' SS " HH.
  *
  * SMK counts FRAMES (the timer advances once per rendered frame, which
@@ -1263,6 +1293,8 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
     if (lap_sign_t >= 0)                  /* and again with the lap sign */
         draw_lap_sign(fb, rw, rh, trk->palette, lap_sign_t,
                       hud_lap, SMK_RACE_LAPS);
+    if (player.hazard == 0x0E)            /* and once more, on a rescue */
+        draw_rescue_lakitu(fb, rw, rh, trk->palette, kart.z);
 }
 
 /* The player's own view angle.

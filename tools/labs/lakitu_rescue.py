@@ -12,12 +12,40 @@ to the phase they belong to.
 """
 import sys, os, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__)))))
 from lab import log
-from track_force import boot
+from smktool.rom import Rom
+from smktool.cpu import CPU, Bus, M_, X_
 
-track = int(sys.argv[1]) if len(sys.argv) > 1 else 16
-r, b, c = boot(track)
-log("track $%02X" % b.wram[0x0124])
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+cup = int(sys.argv[1]) if len(sys.argv) > 2 else 0
+course = int(sys.argv[2]) if len(sys.argv) > 2 else 2   # cup 0 course 2 = GV1
+
+# Reaching another track the NOTES 118 way: hook $0150/$0152 so mode entry
+# computes $0124 AND the theme.  track_force's $0124 hook is the NOTES 059
+# trap and leaves the race half set up - the kart came out at x = 65520.
+r = Rom.load(os.path.join(ROOT, "rom", "smk_usa.sfc"))
+b = Bus(bytes(r.data)); c = CPU(b)
+c.PB, c.PC = 0x80, r.vectors()["emu.RESET"]; c.P = M_ | X_; c.S = 0x1FFF
+c.run_to(0x80805C, budget=8_000_000)
+_orig = b.read
+def _rd(bank, addr):
+    lo = bank & 0x7F
+    if lo <= 0x3F or bank == 0x7E:
+        if addr in (0x0E32, 0x0E33): return 0
+        if addr == 0x0150: return cup
+        if addr == 0x0152: return course
+    return _orig(bank, addr)
+b.read = _rd
+b.reg_reads[0x4218] = 0; b.reg_reads[0x4219] = 0
+_t0 = time.time()
+while time.time() - _t0 < 900:
+    c.run_frames_scanline(10)
+    if b.wram[0x36] // 2 in (1, 6) and (b.wram[0x1018] or b.wram[0x1019]):
+        if sum(1 for k in range(128)
+               if b.oam[k*4+1] not in (0, 0xF0, 0xE0)) >= 10: break
+log("track $%02X theme $%02X" % (b.wram[0x0124], b.wram[0x0126]))
 
 def w(a): return b.wram[a] | b.wram[a + 1] << 8
 def sw(a, v): b.wram[a] = v & 0xFF; b.wram[a + 1] = (v >> 8) & 0xFF
@@ -33,27 +61,27 @@ for _ in range(120):
     b.reg_reads[0x4219] = 0x80
     c.run_frames_scanline(1)
 
-# find a hole: a cell whose surface class is the FALL ($24/$26)
-surf = b.wram[0x0B00:0x0BC0]
-hole = None
-for cell in range(0x4000):
-    t = b.wram[0x10000 + cell] if False else None
-    break
-# the live tilemap is at $7F:0000 in this build's WRAM image; walk the
-# kart's own neighbourhood instead and look for the class the hard way
 log("kart at (%d,%d)" % (w(P1+0x18), w(P1+0x1C)))
 
-# Ghost Valley's void is off the edge of the road; step the kart sideways
-# until the game itself decides it has fallen.
-start = w(P1 + 0x18)
-for step in range(1, 60):
-    sw(P1 + 0x18, (start + step * 8) & 0xFFFF)
-    b.reg_reads[0x4219] = 0x80
-    c.run_frames_scanline(1)
-    if w(P1 + 0xA0):
-        log("fell at x offset %d, $A0 = $%02X" % (step * 8, w(P1 + 0xA0)))
-        break
-else:
+# Ghost Valley's void is off the edge of the road, so walk the kart out
+# of the road in both directions and let the GAME decide it has fallen -
+# no reading of the surface table, no guessing which cell is a hole.
+sx, sy = w(P1 + 0x18), w(P1 + 0x1C)
+fell = False
+for dx, dy in ((8, 0), (-8, 0), (0, 8), (0, -8)):
+    for step in range(1, 40):
+        sw(P1 + 0x18, (sx + dx * step) & 0xFFFF)
+        sw(P1 + 0x1C, (sy + dy * step) & 0xFFFF)
+        b.reg_reads[0x4219] = 0x80
+        c.run_frames_scanline(1)
+        if w(P1 + 0xA0):
+            log("fell %d px along (%d,%d): $A0 = $%02X"
+                % (step * 8, dx, dy, w(P1 + 0xA0)))
+            fell = True
+            break
+    if fell: break
+    sw(P1 + 0x18, sx); sw(P1 + 0x1C, sy)
+if not fell:
     log("never fell; $A0 = $%02X" % w(P1 + 0xA0))
 
 def sprites():
