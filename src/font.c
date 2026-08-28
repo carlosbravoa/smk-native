@@ -10,9 +10,19 @@
  *              decompresses it to WRAM $7F:4400, expands 2bpp -> 4bpp into
  *              $7F:A000 and DMAs 8192 bytes to VRAM word $4000.  Matched
  *              byte-for-byte against the running game's WRAM (4096/4096).
- *   $C7:1996   the menu screen, whose output's LAST 256 bytes ($4000..) are
- *              the eight background palettes, BGR555 - the same eight the
- *              oracle's CGRAM holds at the title screen.
+ *   $C7:1996   the menu screen, whose output's last 1024 bytes ($4000..)
+ *              are TWO complete CGRAM sets, BGR555: 16 background
+ *              palettes for a screen whose backdrop (colour 0) is the
+ *              cream $FFEE94, then 16 more whose backdrop is the navy
+ *              $000031.  The first set is the one the oracle's CGRAM
+ *              holds at the title screen.
+ *
+ * Which pen is which, read off the sheet: pen 3 draws the glyph's
+ * OUTLINE - both the outer edge and the ring around a counter, so an
+ * eight-pixel '0' is outline, body, outline, body, outline across - and
+ * pens 1 and 2 are the body, 1 over the top half and 2 over the bottom.
+ * An outline the same colour as the body therefore does not merely look
+ * flat: it floods the counters and the letters close up into blocks.
  *
  * Glyph order, read straight off the sheet:  0-9 at 0, A-Z at 10, then
  * ? . , ! ' " and a "cc" ligature (the game draws 50cc/100cc/150cc with
@@ -26,6 +36,7 @@
 #define FONT_STREAM  0xC70000u
 #define MENU_STREAM  0xC71996u
 #define MENU_PAL_OFF 0x4000      /* palettes at the end of the menu stream */
+#define MENU_PAL_LEN (SMK_FONT_PALS * 32)
 
 static uint32_t bgr555(uint16_t v)
 {
@@ -59,8 +70,8 @@ bool smk_font_load(const smk_rom *rom, smk_font *f)
     long m = smk_decompress_into(rom->data, rom->size,
                                  smk_snes_to_pc(rom, MENU_STREAM),
                                  buf, sizeof buf, 0, NULL);
-    if (m >= MENU_PAL_OFF + 8 * 32) {
-        for (int p = 0; p < 8; p++)
+    if (m >= MENU_PAL_OFF + MENU_PAL_LEN) {
+        for (int p = 0; p < SMK_FONT_PALS; p++)
             for (int c = 0; c < 16; c++) {
                 const uint8_t *q = buf + MENU_PAL_OFF + p * 32 + c * 2;
                 f->pal[p][c] = bgr555((uint16_t)(q[0] | (q[1] << 8)));

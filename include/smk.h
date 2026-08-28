@@ -996,9 +996,10 @@ void smk_effects_draw(const smk_effects *fx, const smk_effect_state *st, bool mi
  * the lap records are ours (src/records.c).  See those files for where
  * each number comes from. */
 #define SMK_FONT_TILES 256
+#define SMK_FONT_PALS  32              /* two CGRAM sets, 16 palettes each */
 typedef struct {
     uint8_t  px[SMK_FONT_TILES][64];   /* 2bpp values 0..3, from $C7:0000 */
-    uint32_t pal[8][16];               /* the menu's own BG palettes      */
+    uint32_t pal[SMK_FONT_PALS][16];   /* the menu's own BG palettes      */
     bool ok, has_pal;
 } smk_font;
 bool smk_font_load(const smk_rom *rom, smk_font *f);

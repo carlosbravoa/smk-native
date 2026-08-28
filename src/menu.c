@@ -19,16 +19,31 @@
 
 static int scale_for(int w) { int s = w / VW; return s < 1 ? 1 : s; }
 
-/* Colour ramps for the 2bpp font.  Index 1/2/3 are the glyph's own three
- * pen values; the ROM's menu palettes supply them when they loaded. */
+/* Colour ramps for the 2bpp font.  Index 1/2 are the glyph's body, index
+ * 3 its outline (src/font.c); the ROM's menu palettes supply all three.
+ *
+ * WHICH palette matters.  The stream carries two CGRAM sets: the first
+ * sixteen belong to a cream-backdrop screen and their text pens are all
+ * white or a hair off it - palette 0 is white body over a $F6F6FF
+ * outline - so drawing with those makes the outline as bright as the
+ * body, and because the outline is also the ring around every counter
+ * the letters flood solid and stop being letters.  The second sixteen
+ * are the navy-backdrop set, and there the outline is a real colour
+ * against a white body: TEXT_PAL 16 is white edged in blue, TEXT_HI 1 is
+ * the one light-set palette that does keep a distinct (gold) outline.
+ * Our backdrop below is that same navy, so this pairs the pens with the
+ * field they were drawn for. */
+#define TEXT_PAL 16              /* white body, $0073FF outline  */
+#define TEXT_HI   1              /* white body, $F6CD83 outline  */
+
 static void ramp(const smk_font *f, int pal, uint32_t out[4],
                  uint32_t fallback1, uint32_t fallback3)
 {
     out[0] = 0;
     if (f->has_pal) {
-        out[1] = f->pal[pal & 7][1];
-        out[2] = f->pal[pal & 7][2];
-        out[3] = f->pal[pal & 7][3];
+        out[1] = f->pal[pal & (SMK_FONT_PALS - 1)][1];
+        out[2] = f->pal[pal & (SMK_FONT_PALS - 1)][2];
+        out[3] = f->pal[pal & (SMK_FONT_PALS - 1)][3];
     } else {
         out[1] = fallback1; out[2] = fallback1; out[3] = fallback3;
     }
@@ -81,9 +96,9 @@ static void fill(uint32_t *fb, int w, int h, int vx, int vy, int vw, int vh,
     }
 }
 
-/* The field behind the text.  LABELLED: ours.  The ROM's menu palettes
- * are light-on-dark - every text pen in them is white or near-white - so
- * the screen behind must be dark for them to read at all; the actual
+/* The field behind the text.  LABELLED: ours.  It is the navy the second
+ * CGRAM set was drawn against (colour 0 there is $000031), which is what
+ * TEXT_PAL's white body and blue outline expect behind them; the actual
  * backdrop the game draws is a tilemap we have not decoded. */
 static void backdrop(uint32_t *fb, int w, int h, const smk_font *f)
 {
@@ -195,8 +210,8 @@ static void draw_title(const smk_ui *ui, const smk_font *f,
                        uint32_t *fb, int w, int h)
 {
     uint32_t hi[4], lo[4];
-    ramp(f, 1, hi, 0xFFFFFFFF, 0xFFE0C080);
-    ramp(f, 0, lo, 0xFFFFFFFF, 0xFFA0A0B0);
+    ramp(f, TEXT_HI, hi, 0xFFFFFFFF, 0xFF7A5A18);
+    ramp(f, TEXT_PAL, lo, 0xFFFFFFFF, 0xFF2A3E78);
     text_c(f, fb, w, h, 60, "SUPER MARIO KART", hi);
     text_c(f, fb, w, h, 76, "A NATIVE PORT", lo);
     if ((ui->tick / 30) & 1)
@@ -208,10 +223,10 @@ static void draw_mode(const smk_ui *ui, const smk_font *f,
                       uint32_t *fb, int w, int h)
 {
     uint32_t hi[4], lo[4], off[4], sel[4];
-    ramp(f, 1, hi, 0xFFFFFFFF, 0xFFE0C080);
-    ramp(f, 0, lo, 0xFFFFFFFF, 0xFFA0A0B0);
-    ramp(f, 0, off, 0xFFFFFFFF, 0xFFA0A0B0); dim(off);
-    ramp(f, 1, sel, 0xFFFFFFFF, 0xFFE0C080);
+    ramp(f, TEXT_HI, hi, 0xFFFFFFFF, 0xFF7A5A18);
+    ramp(f, TEXT_PAL, lo, 0xFFFFFFFF, 0xFF2A3E78);
+    ramp(f, TEXT_PAL, off, 0xFFFFFFFF, 0xFF2A3E78); dim(off);
+    ramp(f, TEXT_HI, sel, 0xFFFFFFFF, 0xFF7A5A18);
 
     text_c(f, fb, w, h, 40, "SELECT MODE", hi);
     const char *row[2] = { "GRAND PRIX", "TIME TRIAL" };
@@ -233,9 +248,9 @@ static void draw_player(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
                         const uint32_t *palette, uint32_t *fb, int w, int h)
 {
     uint32_t hi[4], lo[4], sel[4];
-    ramp(f, 1, hi, 0xFFFFFFFF, 0xFFE0C080);
-    ramp(f, 0, lo, 0xFFFFFFFF, 0xFFA0A0B0);
-    ramp(f, 1, sel, 0xFFFFFFFF, 0xFFE0C080);
+    ramp(f, TEXT_HI, hi, 0xFFFFFFFF, 0xFF7A5A18);
+    ramp(f, TEXT_PAL, lo, 0xFFFFFFFF, 0xFF2A3E78);
+    ramp(f, TEXT_HI, sel, 0xFFFFFFFF, 0xFF7A5A18);
     int sc = scale_for(w);
 
     text_c(f, fb, w, h, 16, "SELECT DRIVER", hi);
@@ -275,10 +290,10 @@ static void draw_course(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
                         const smk_records *rec, uint32_t *fb, int w, int h)
 {
     uint32_t hi[4], lo[4], sel[4], off[4];
-    ramp(f, 1, hi, 0xFFFFFFFF, 0xFFE0C080);
-    ramp(f, 0, lo, 0xFFFFFFFF, 0xFFA0A0B0);
-    ramp(f, 1, sel, 0xFFFFFFFF, 0xFFE0C080);
-    ramp(f, 0, off, 0xFFFFFFFF, 0xFFA0A0B0); dim(off);
+    ramp(f, TEXT_HI, hi, 0xFFFFFFFF, 0xFF7A5A18);
+    ramp(f, TEXT_PAL, lo, 0xFFFFFFFF, 0xFF2A3E78);
+    ramp(f, TEXT_HI, sel, 0xFFFFFFFF, 0xFF7A5A18);
+    ramp(f, TEXT_PAL, off, 0xFFFFFFFF, 0xFF2A3E78); dim(off);
 
     text_c(f, fb, w, h, 10, "COURSE SELECT", hi);
 
@@ -353,10 +368,10 @@ void smk_ui_draw_result(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
     if (!f->ok) return;
     backdrop(fb, w, h, f);
     uint32_t hi[4], lo[4], gold[4], off[4];
-    ramp(f, 1, hi, 0xFFFFFFFF, 0xFFE0C080);
-    ramp(f, 0, lo, 0xFFFFFFFF, 0xFFA0A0B0);
-    ramp(f, 1, gold, 0xFFFFFFFF, 0xFFE0C080);
-    ramp(f, 0, off, 0xFFFFFFFF, 0xFFA0A0B0); dim(off);
+    ramp(f, TEXT_HI, hi, 0xFFFFFFFF, 0xFF7A5A18);
+    ramp(f, TEXT_PAL, lo, 0xFFFFFFFF, 0xFF2A3E78);
+    ramp(f, TEXT_HI, gold, 0xFFFFFFFF, 0xFF7A5A18);
+    ramp(f, TEXT_PAL, off, 0xFFFFFFFF, 0xFF2A3E78); dim(off);
 
     text_c(f, fb, w, h, 12, "TIME TRIAL", hi);
     text_c(f, fb, w, h, 28, smk_track_name(rom, ui->track), gold);
@@ -412,9 +427,9 @@ void smk_ui_draw_splits(const smk_font *f, const smk_ui_result *res,
 {
     if (!f->ok) return;
     uint32_t hi[4], lo[4], gold[4];
-    ramp(f, 1, hi, 0xFFFFFFFF, 0xFFE0C080);
-    ramp(f, 0, lo, 0xFFFFFFFF, 0xFFA0A0B0);
-    ramp(f, 1, gold, 0xFFFFFFFF, 0xFFE0C080);
+    ramp(f, TEXT_HI, hi, 0xFFFFFFFF, 0xFF7A5A18);
+    ramp(f, TEXT_PAL, lo, 0xFFFFFFFF, 0xFF2A3E78);
+    ramp(f, TEXT_HI, gold, 0xFFFFFFFF, 0xFF7A5A18);
     char tm[16], line[40];
 
     /* the running lap, under the race clock the HUD already draws */
