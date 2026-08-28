@@ -170,6 +170,7 @@ static int racer_draw_mask = 0xFE;      /* which racer slots draw_scene draws */
  * right for normal play (your kart is always at the bottom of a SMK
  * screen) and wrong the moment the camera moves, which left the driver
  * jammed against the bottom edge of the first version of this. */
+#define SMK_POSE_LEAN 1001      /* the block unfolded; negative = hflipped */
 static int celebrating;
 /* How far the celebration camera has turned, in ROM angle units.  The
  * SPRITES are projected from a cam_heading passed separately to
@@ -1428,7 +1429,13 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
         if (lift > 0)
             draw_shadow(fb, rw, rh, (float)(rw / 2), (float)prow,
                         SMK_PROJ_LES * (float)rw / 256.0f / SMK_CAM_TRAIL);
-        if (frame == 1000)                    /* the mirrored straight pose */
+        if (frame == SMK_POSE_LEAN || frame == -SMK_POSE_LEAN)
+            /* the SAME block as the straight pose, drawn UNFOLDED so its
+             * own right half shows: that is the lean (NOTES 182) */
+            smk_draw_sprite(karts, SMK_SPR_LEAN, trk->palette, drv->pal,
+                            rw / 2, prow - lift, scale,
+                            frame < 0, fb, rw, rh, rw);
+        else if (frame == 1000)               /* the mirrored straight pose */
             smk_draw_sprite_mirror(karts, 0, trk->palette, drv->pal,
                                    rw / 2, prow - lift, scale,
                                    fb, rw, rh, rw);
@@ -1484,8 +1491,29 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
  * kart through a turn, and that lag is the relative heading the rule sees.
  * Our camera tracks the kart exactly, so we synthesise a small lag from the
  * steering input.  Encoded as negative-for-hflip in one int. */
+/* MEASURED (NOTES 182): the standstill LEAN, which is not a turn.
+ *
+ * The game draws the player's kart as four 16x16 sprites, and at rest it
+ * is SYMMETRIC - the right pair is the left pair with hflip set:
+ *
+ *   neutral   $180  $180F  $1A0  $1A0F
+ *   right     $180  $182   $1A0  $1A2      the halves stop matching
+ *   left      $180F $182F  $1A0F $1A2F     the same, whole sprite mirrored
+ *
+ * Those four tiles are one 32x32 block, so steering simply stops folding
+ * the block and draws its own right half instead.  Seventeen per cent of
+ * the pixels move: the cap and shoulders lean, the kart's bumper is
+ * pixel-identical.  The user: "the images you are providing are not
+ * leaning but turning.  different things."  They were - the port picked
+ * an adjacent ROTATION frame, which pivots the whole kart. */
+
 static int frame_for(const input_state *in, float *lean)
 {
+    /* Below speed 16 the ROM's own table turns nothing ($80A9B8[0] = 0,
+     * NOTES 175), so there is no rotation to show and the lean is the
+     * only thing that moves. */
+    if (kart.speed < 16 && (in->left || in->right))
+        return in->right ? SMK_POSE_LEAN : -SMK_POSE_LEAN;
     /* MEASURED pose rule (framelab6 + the NOTES 041 rotation bands -
      * which the lab's drift samples confirm for the player: slip $1640
      * shows frame 2, $21C0 frame 4, both in their ORIGINAL bands):

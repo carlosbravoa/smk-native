@@ -30,7 +30,9 @@ def hold(pad, n):
         L.sw(P1 + 0xEA, 0)                  # speed
         L.sw(P1 + 0x22, 0); L.sw(P1 + 0x24, 0)   # velocity
         L.frame(pad)
-    return bytes(L.b.vram), L.w(P1 + 0xA4), L.w(P1 + 0x2A)
+    # OAM too: the player's kart names its own tiles, so the sprite can be
+    # rebuilt from VRAM and LOOKED AT rather than inferred from byte counts.
+    return bytes(L.b.vram), L.w(P1 + 0xA4), L.w(P1 + 0x2A), bytes(L.b.oam), bytes(L.b.cgram)
 
 # ALTERNATE the phases.  A single neutral/LEFT diff is not evidence: the
 # clock and the HUD churn VRAM every frame, and neutral-vs-neutral already
@@ -78,3 +80,14 @@ for name, g in (("LEFT", L), ("RIGHT", R)):
             log("      $%04X..$%04X  (%d bytes)" % (s_, e_, e_ - s_ + 1))
 log("\n  the driver's sprite changes with steering at a standstill: %s"
     % ("YES" if correlated(L) else "no - the game does not lean either"))
+
+# dump the raw state of one neutral and one steering phase, so the kart's
+# own sprite can be rebuilt and compared as a PICTURE.  70 changed bytes
+# is about two tiles - the head - where a whole rotation frame is 512, and
+# that difference is the whole question the user is asking (lean vs turn).
+for name, idx in (("neutral", N[0]), ("left", L[0]), ("right", R[0])):
+    vr, _, _, oam, cg = snaps[idx][1]
+    open("tmp/lean_%s_vram.bin" % name, "wb").write(vr)
+    open("tmp/lean_%s_oam.bin" % name, "wb").write(oam)
+    open("tmp/lean_%s_cgram.bin" % name, "wb").write(cg)
+log("\ndumped VRAM/OAM/CGRAM for neutral, left and right")

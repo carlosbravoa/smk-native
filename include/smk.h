@@ -409,6 +409,11 @@ static inline int smk_kart_height_px(const smk_kart *k)
  * a driving kart's.  Two earlier readings of this were wrong: frame 47 is
  * arms-up but a REAR view with bare arms, and frame 32 is just the
  * smallest tier of the ordinary front view (NOTES 180). */
+/* The block the game keeps in VRAM for the player's kart at rest, matched
+ * by rendering VRAM tile $180 and comparing against every sheet frame
+ * (NOTES 182).  Folded it is the straight pose; UNFOLDED its own right
+ * half is the standstill lean. */
+#define SMK_SPR_LEAN      47
 #define SMK_SPR_WIN_FRAME 40
 #define SMK_SPR_WIN_QUAD   1
 #define SMK_SPR_WIN       47    /* arms up, REAR view - not the finish pose */

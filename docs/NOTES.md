@@ -7513,3 +7513,44 @@ symmetric, LEFT and RIGHT are mirrored leans, in the countdown *and* in
 the race at zero speed. Nothing needed changing - the countdown fix of
 NOTES 175 was the whole of it - but "nothing needed changing" is only
 worth saying once it has been looked at.
+
+---
+
+**182** — The standstill lean is not a turn, and the sprite says how.
+
+The user, on the pictures NOTES 181 was pleased with: *"the images you
+are providing are not leaning but turning. different things."* Correct.
+The port picked an adjacent ROTATION frame, so the whole kart pivoted.
+
+The byte count had already said so and this log read past it: NOTES 181
+found **70** VRAM bytes changing, and a whole rotation frame is 512.
+Seventy is about two tiles - a head. Counting bytes was the mistake;
+drawing the sprite is what settled it.
+
+**The mechanism.** The player's kart is FOUR 16x16 sprites, and at rest it
+is symmetric - the right pair is the left pair with hflip set:
+
+    neutral   $180  $180F  $1A0  $1A0F
+    right     $180  $182   $1A0  $1A2       the halves stop matching
+    left      $180F $182F  $1A0F $1A2F      the same, whole sprite mirrored
+
+Those four tiles are one 32x32 block, so steering simply STOPS FOLDING the
+block and draws its own right half instead. Left is exactly right's
+mirror. Seventeen per cent of the pixels move: the cap and shoulders
+lean, the kart's bumper is pixel-identical in all three.
+
+**Which block.** Rendering VRAM tile `$180` and comparing it against all
+48 sheet frames identifies it as **frame 47** - so the port already had
+the art. (And that kills a third reading of frame 47: it is not a victory
+pose, it is the ordinary rear view with the hands up on the wheel. NOTES
+178 and 180 both leant on it being something special.)
+
+Ported as `SMK_POSE_LEAN`: below speed 16 - where `$80A9B8[0] = 0` means
+the ROM turns nothing at all (NOTES 175) - a held direction draws frame
+47 UNFOLDED, hflipped for the other side, instead of a rotation frame.
+Above that the kart does turn and the rotation rule is right.
+
+One wrong turn on the way: the first attempt drew frame 0 unfolded,
+because the port's own comment calls its right half "the junk right half".
+It is junk - frame 0 is a half sprite and its right side is a different
+drawing entirely. The block that folds AND unfolds is 47.
