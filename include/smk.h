@@ -465,6 +465,33 @@ extern const smk_driver SMK_DRIVERS[SMK_CHARACTERS];
 #define SMK_MOVER_HOLD     135    /* frames on the floor                 */
 #define SMK_MOVER_CLIMB     64    /* rise per frame                      */
 #define SMK_MOVER_RISE     120    /* LABELLED: rise frames, see above    */
+/* How high a mover must be before a kart drives under it.
+ *
+ * OURS, and deliberately so - it is in the roadmap ledger.  Seven rigs
+ * failed to measure the game's own rule (NOTES 176) and the user called
+ * it: "Confirmed that it is one kart sprite in altitude, you can pass.  I
+ * would even say 80% of it.  This is one of the things we don't need to
+ * do super accurate and we can implement our own rule."
+ *
+ * One screen pixel is 25029 kart-z units, and a mover's +$1F word is the
+ * high 16 bits of that same 24-bit height, so one pixel is ~97.8 of these
+ * units.  A kart sprite reads about 16 px, and 80% of that is ~13 px:
+ *
+ *     0.8 * 16 px * 97.8 = 1252  ->  1280, which is also exactly 20
+ *     frames of the measured +64 climb
+ *
+ * The user's own recorded Bowser Castle run agrees with it on every
+ * sample: they CRASHED at heights 0, 0, 0, 0, 448 and 960, and PASSED
+ * within a kart's width at 2880, 3008, 3648 and 4096.  Every one of those
+ * falls on the correct side of 1280.  The run cannot pin the number - it
+ * has no samples between 960 and 2880 - but it can and does refute
+ * anything outside that band.
+ *
+ * The old value was SMK_MOVER_PARK / 2 = 2048, which is also consistent
+ * with the recording and is NOT consistent with the user's eye: at 1500 a
+ * Thwomp is drawn 15 px up, looks plainly lifted, and still hit you.
+ * That is the bug they reported. */
+#define SMK_MOVER_CLEAR   1280
 enum { SMK_MV_PARK, SMK_MV_FALL, SMK_MV_HOLD, SMK_MV_RISE };
 typedef struct { int32_t z; int16_t zv; uint8_t phase; int16_t t; } smk_mover;
 

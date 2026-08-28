@@ -7212,3 +7212,78 @@ the same input WITH the throttle does turn the kart, or the check would
 pass on a kart that never steers at all. One trap on the way: a kart
 `memset` to (0,0) is off the map, falls, and Lakitu resets its heading -
 which reads exactly like "it turned". The test starts it on the grid.
+
+---
+
+**176** — Seven rigs, one sentence from the user, and a ledgered constant.
+
+The user: *"when you drive under a thwomp and that thwomp has just lifted
+up, the system makes you crash/bounce against nothing (the thwomp is
+higher, track is free). This does not happen when the thwomp is super
+high, but happens while it is just going up, when the original game lets
+you pass."*
+
+`src/ai.c` passed a kart under a mover above HALF the parked height and
+said so in the comment: *"the height at which it stops touching is ours."*
+
+**The game's rule is not decodable statically.** `$80ADA0`-style reading
+found nothing: object blocks are reached only through an index register,
+so there is no `JSR` to the routine and no absolute address to search for.
+The six apparent hits for `$181F` and friends are inside compressed
+graphics.
+
+**Seven rigs, each measuring something other than the question:**
+
+    1-2  kart parked on the object's centre: no hit at ANY height,
+         including z=0 on the floor.  The PIPE CONTROL - same rig, an
+         object NOTES 072 measured a real crash against - also found
+         nothing.  The rig was broken, not the game.
+    3    approach geometry, but 8 frames at speed 480 covers 16 units
+         against a 26-unit gap.  The kart never arrived.
+    4    each trial broke on its first hit, so the game advanced ~1 frame
+         per trial and the ~270-frame cycle never turned.  The RISE - the
+         whole question - was never sampled.  The tell was in the data:
+         the z column stepped -256 -288 -320 -352 -384 -416 -448, NOTES
+         152's fall, one step per TRIAL.
+    5    the cycle ran, and every trial hit at every height to 9024.
+         That is what a WALL looks like: the object is at (388,68), so a
+         kart started 26 units due north begins at y=42, off the road by
+         the map edge, with an identical $10, $AC and speed loss.
+    6-7  approach along the flow field, each trial controlled by re-running
+         it with the object moved off the map: now NOTHING hits, at any
+         height, including z=0.  Also impossible.
+
+Every one of those teleports a kart at an object. **A person driving needs
+none of it**, which NOTES 152 had already taught this log once.
+
+**The recording answers it.** `thwomplog.lua` logs all four object blocks'
+height beside the kart's own impact state; `thwomppass.py` separates crash
+ONSETS from closest passes, per encounter rather than per frame - the
+~9-frame knockback keeps registering while the Thwomp rises, and driving
+BESIDE one is not driving under it. From the user's Bowser Castle run:
+
+    crashed, within 6 units:   0, 0, 0, 0, 448, 960
+    passed,  within 6 units:   2880, 3008, 3648, 4096
+
+(Three "crashes" 36-40 units away at z 3008-5120 are walls; distance
+excludes them.) So the true threshold is between **960 and 2880**, and the
+run has nothing inside that band.
+
+**Which is why the old 2048 could not be caught by the recording, but
+could be caught by an eye.** 2048 is consistent with every sample above.
+It is not consistent with the user, because at z=1500 a Thwomp is drawn 15
+px up, looks plainly lifted, and still hit you.
+
+The user then made the call this log should have offered sooner: *"This is
+one of the things we don't need to do super accurate and we can implement
+our own rule, put it in the ledger and move on. We have spent a lot of
+time trying to reproduce it with our own tools."*
+
+`SMK_MOVER_CLEAR = 1280`: 80% of a 16 px kart, at ~97.8 mover units per
+screen pixel, and exactly 20 frames of the measured +64 climb. Every
+sample in their run falls on the correct side of it. Ledgered as S26.
+
+The lasting lesson is the pipe control. Two runs reported "no collision at
+any height" and both were the rig; only an object with a KNOWN answer
+could say so. A negative result from a rig that has never produced a
+positive is not a result.

@@ -54,6 +54,22 @@ re-investigating.
 
 ## Shortcut & assumption ledger (current)
 
+**S26 — The height at which a raised mover stops touching you.**
+`SMK_MOVER_CLEAR = 1280` is OURS. The game's own rule is not decoded: the
+routine is reached only through an index register, so it has no caller and
+no absolute address to search for, and SEVEN measurement rigs each ended up
+measuring something else (NOTES 176). The user made the call - *"it is one
+kart sprite in altitude, you can pass. I would even say 80% of it. This is
+one of the things we don't need to do super accurate and we can implement
+our own rule, put it in the ledger and move on"* - and 80% of a 16 px kart
+is ~13 px, which is 1280 in mover units (also exactly 20 frames of the
+measured +64 climb). Their recorded Bowser Castle run agrees with it on
+every sample (crashes at 0-960, close passes at 2880-4096) and is the
+selftest gate, but it has no samples between 960 and 2880, so it constrains
+the number rather than fixing it. To close this properly: log the game's
+own collision against a mover height with a rig that has a positive control.
+
+
 | # | where | what we do | what the game does | phase |
 |---|---|---|---|---|
 | S1 | `src/player.c` | **RESOLVED** — the player's control is the ROM's own, transcribed and verified frame-exact against the demo race (NOTES 106-108): per-character top speed, acceleration table, surface caps, steering rows and drift row, the slide machine, spin-out, hop, coins on the target, the mushroom boost. Residual, labelled: coins are not collected yet (P5), the sprite's steering lean is synthesised, the DSP-1 sine is +-1 on 3% of frames, snow/splash effects | same | closed |

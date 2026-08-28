@@ -552,6 +552,48 @@ int main(int argc, char **argv)
                   SMK_AI_CATCHUP[5][0] == v5 && v5 != 0, det);
         }
 
+        /* The mover clear height, against the user's own recorded run.
+         *
+         * SMK_MOVER_CLEAR is OURS (ledgered): seven rigs failed to measure
+         * the game's rule, and the user set it - "one kart sprite in
+         * altitude, you can pass.  I would even say 80% of it".  What CAN
+         * be checked is their Bowser Castle recording, where every crash
+         * and every close pass was logged with the Thwomp's height
+         * (tools/labs/thwomppass.py).  Those samples cannot pin the number
+         * - there are none between 960 and 2880 - but they refute anything
+         * outside that band, and they are the gate. */
+        {
+            static const int CRASHED[] = { 0, 0, 0, 0, 448, 960 };
+            static const int PASSED[]  = { 2880, 3008, 3648, 4096 };
+            static smk_course cm;
+            int bad = 0, tested = 0;
+            if (smk_course_load(&rom, 17, &cm) && cm.nent > 0) {
+                for (int q = 0; q < 10; q++) {
+                    int z = q < 6 ? CRASHED[q] : PASSED[q - 6];
+                    int want_hit = q < 6;
+                    smk_course_movers_reset(&cm);
+                    for (int i = 0; i < 32; i++) cm.mv[i].z = (int16_t)z;
+                    smk_kart kt; memset(&kt, 0, sizeof kt);
+                    kt.x = (int32_t)(cm.ent[0].x - 20) << SMK_POS_SHIFT;
+                    kt.y = (int32_t)(cm.ent[0].y)      << SMK_POS_SHIFT;
+                    kt.speed = 480; kt.vx = 480; kt.vy = 0;
+                    int hit = 0;
+                    for (int f = 0; f < 12 && !hit; f++) {
+                        smk_collide_objects(&kt, &cm);
+                        if (kt.bounce_cool) hit = 1;
+                        kt.x += (int32_t)kt.vx << (SMK_POS_SHIFT - 8);
+                        kt.y += (int32_t)kt.vy << (SMK_POS_SHIFT - 8);
+                    }
+                    tested++;
+                    if (hit != want_hit) bad++;
+                }
+            }
+            snprintf(det, sizeof det, "clear at %d; %d/%d recorded samples agree",
+                     SMK_MOVER_CLEAR, tested - bad, tested);
+            check("a mover clears a kart at SMK_MOVER_CLEAR, and the user's "
+                  "recorded run agrees", tested == 10 && bad == 0, det);
+        }
+
         /* and the row really does move the target speed */
         static smk_physics ph2;
         smk_physics_load(&rom, 0, &ph2);
