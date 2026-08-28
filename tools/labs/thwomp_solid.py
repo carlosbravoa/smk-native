@@ -142,53 +142,105 @@ KNOCK   = 0x16
 # starts the kart BACK units short, pointed at the object and moving, and
 # runs a few frames: the same shape as tools/labs/objhit.py, which is the
 # rig that did produce a crash (NOTES 150).
+#
+# CHECK THE ARITHMETIC BEFORE THE RUN.  A kart covers roughly speed/280
+# world units a frame (measured: 3 units a frame at speed ~900), so the
+# trial must be long enough to CROSS the gap - the first attempt used 8
+# frames at speed 480, which travels 16 units at a gap of 26, and duly
+# reported "no hit at any height" because the kart never arrived.
+# 24 frames at 750 covers about 64 units, which crosses comfortably.
 BACK   = int(os.environ.get("BACK", "26"))
-SPEED  = int(os.environ.get("SPEED", "480"))
-TRIAL  = int(os.environ.get("TRIAL", "8"))     # frames per approach
+SPEED  = int(os.environ.get("SPEED", "750"))
+TRIAL  = int(os.environ.get("TRIAL", "24"))    # frames per approach
+IDLE   = int(os.environ.get("IDLE", "20"))     # frames between them,
+                                               # so the cycle advances
 HEAD_S = 0x8000                                # 0 = north, $8000 = south
 
-print("  trial   z at contact   hit?   speed in/out   $10    $AC", flush=True)
-trials = []
-for t in range(int(os.environ.get("SWEEP", "1400")) // TRIAL):
-    ox, oy = rw(BLK + 0x18), rw(BLK + 0x1C)
-    ww(0x1000 + 0x18, ox);      w[0x1000 + 0x16] = 0; w[0x1000 + 0x17] = 0
-    ww(0x1000 + 0x1C, oy - BACK); w[0x1000 + 0x1A] = 0; w[0x1000 + 0x1B] = 0
-    ww(0x1000 + 0xA4, HEAD_S); ww(0x1000 + 0xA2, HEAD_S); ww(0x1000 + 0x2A, HEAD_S)
+import math
+
+def flow_head(x, y):
+    """the heading the game's own flow field wants at (x,y) - $7F:4000"""
+    cell = ((y >> 4) & 63) * 64 + ((x >> 4) & 63)
+    return w[0x14000 + cell] << 8
+
+def approach(ox, oy, back):
+    """where to start, to meet (ox,oy) the way a driven kart would.
+
+    Coming from a fixed compass direction is how the last run went wrong:
+    the object sits at (388,68), so a kart placed 26 units NORTH of it
+    starts at y=42, off the road near the map edge, and hits the terrain.
+    That reads exactly like hitting the object - same $10, same $AC, same
+    halved speed - and it hit at EVERY height, which is what a wall does.
+    Approaching along the flow field puts the kart on the road, coming at
+    the object the way a real one does."""
+    h = flow_head(ox, oy)
+    a = h * math.pi / 32768.0
+    dx, dy = math.sin(a), -math.cos(a)
+    return int(ox - back * dx), int(oy - back * dy), h
+
+def run_approach(ox, oy, h, sx, sy):
+    ww(0x1000 + 0x18, sx); w[0x1000 + 0x16] = 0; w[0x1000 + 0x17] = 0
+    ww(0x1000 + 0x1C, sy); w[0x1000 + 0x1A] = 0; w[0x1000 + 0x1B] = 0
+    ww(0x1000 + 0xA4, h); ww(0x1000 + 0xA2, h); ww(0x1000 + 0x2A, h)
     ww(0x1000 + 0xA8, 0)
     ww(0x1000 + 0xEA, SPEED)
-    ww(0x1000 + 0x22, 0); ww(0x1000 + 0x24, SPEED)
-    z0 = s16(rw(BLK + 0x1F))
-    hit, zhit, out, f10, fac = 0, z0, SPEED, 0, 0
-    for f in range(TRIAL):
+    a = h * math.pi / 32768.0
+    ww(0x1000 + 0x22, int(SPEED * math.sin(a)) & 0xFFFF)
+    ww(0x1000 + 0x24, int(-SPEED * math.cos(a)) & 0xFFFF)
+    hit, zh = 0, s16(rw(BLK + 0x1F))
+    for _ in range(TRIAL):
         b.reg_reads[0x4219] = 0x80
         c.run_frames_scanline(1)
-        f10 = rw(0x1000 + 0x10); fac = w[0x1000 + 0xAC]
-        out = s16(rw(0x1000 + 0xEA))
-        if (f10 & HIT_BIT) or fac == KNOCK or out < SPEED // 2:
-            hit = 1; zhit = s16(rw(BLK + 0x1F)); break
-    trials.append((z0, zhit, hit, out, f10, fac))
-    if t % 10 == 0 or hit:
-        print("  %5d %8d %8s %6d/%-5d $%04X   $%02X"
-              % (t, zhit, "HIT" if hit else "-", SPEED, out, f10, fac), flush=True)
+        if not hit and ((rw(0x1000 + 0x10) & HIT_BIT)
+                        or w[0x1000 + 0xAC] == KNOCK
+                        or s16(rw(0x1000 + 0xEA)) < SPEED // 2):
+            hit = 1; zh = s16(rw(BLK + 0x1F))
+    return hit, zh
 
-hits = [x for x in trials if x[2]]
-miss = [x for x in trials if not x[2]]
-print("\n  %d trials: %d hit, %d passed through" % (len(trials), len(hits), len(miss)),
-      flush=True)
-if hits and miss:
-    hz = sorted(x[1] for x in hits); mz = sorted(x[1] for x in miss)
-    print("    hit  at z %d..%d (median %d)" % (hz[0], hz[-1], hz[len(hz)//2]), flush=True)
-    print("    pass at z %d..%d (median %d)" % (mz[0], mz[-1], mz[len(mz)//2]), flush=True)
-    best = None
-    for th in range(0, 13000, 32):
-        err = sum(1 for z in hz if z >= th) + sum(1 for z in mz if z < th)
-        if best is None or err < best[0]: best = (err, th)
-    print("    the height that best separates them: %d  (misses %d of %d)"
-          % (best[1], best[0], len(trials)), flush=True)
-    print("    our port currently uses %d" % (4096 // 2), flush=True)
-elif hits:
-    print("    EVERY trial hit - height does not gate this object at all", flush=True)
-else:
-    print("    NO trial hit.  Either this object is never solid, or the rig"
-          " cannot see a collision - run the pipe control before believing it",
-          flush=True)
+print("  Every trial is run TWICE from the same start: once with the object"
+      " where it is,", flush=True)
+print("  and once with it moved off the map.  Only a hit that disappears when"
+      " the object", flush=True)
+print("  does is a hit on the OBJECT; anything else is the track.", flush=True)
+print("\n  trial      z   object?  no-object?   verdict", flush=True)
+trials = []
+for t in range(int(os.environ.get("SWEEP", "5000")) // (2 * TRIAL + IDLE)):
+    ox, oy = rw(BLK + 0x18), rw(BLK + 0x1C)
+    sx, sy, h = approach(ox, oy, BACK)
+    z0 = s16(rw(BLK + 0x1F))
+    hit_a, zh = run_approach(ox, oy, h, sx, sy)
+    # the same approach with the object taken away
+    ww(BLK + 0x18, 4000); ww(BLK + 0x1C, 4000)
+    hit_b, _ = run_approach(ox, oy, h, sx, sy)
+    ww(BLK + 0x18, ox); ww(BLK + 0x1C, oy)
+    v = ("THE OBJECT" if hit_a and not hit_b else
+         "the track" if hit_a and hit_b else
+         "nothing" if not hit_a else "?")
+    trials.append((zh, hit_a, hit_b, v))
+    if t % 3 == 0 or v == "THE OBJECT":
+        print("  %5d %6d %8s %10s   %s"
+              % (t, zh, "HIT" if hit_a else "-", "HIT" if hit_b else "-", v),
+              flush=True)
+    for _ in range(IDLE):
+        b.reg_reads[0x4219] = 0x80
+        c.run_frames_scanline(1)
+
+obj = [x for x in trials if x[1] and not x[2]]
+trk = [x for x in trials if x[1] and x[2]]
+non = [x for x in trials if not x[1]]
+print("\n  %d trials: %d hit the OBJECT, %d hit the track, %d hit nothing"
+      % (len(trials), len(obj), len(trk), len(non)), flush=True)
+if obj:
+    zs = sorted(x[0] for x in obj)
+    print("    the object was hit at z %d..%d" % (zs[0], zs[-1]), flush=True)
+    passed = sorted(x[0] for x in non)
+    if passed:
+        print("    it was passed at z %d..%d" % (passed[0], passed[-1]), flush=True)
+        best = None
+        for th in range(0, 13000, 32):
+            err = sum(1 for z in zs if z >= th) + sum(1 for z in passed if z < th)
+            if best is None or err < best[0]: best = (err, th)
+        print("    best separating height: %d (misses %d)  - our port uses %d"
+              % (best[1], best[0], 4096 // 2), flush=True)
+    else:
+        print("    and never passed - height does not gate it", flush=True)
