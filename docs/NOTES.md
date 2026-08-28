@@ -7024,3 +7024,50 @@ from 10 coins all the way through 15 (NOTES 171). Two different numbers
 that both look like "the coin cap" from the driver's seat.
 
 Still not ported, and now labelled precisely: WHICH hits call `$85E4B2`.
+
+---
+
+**173** — The engine class, verified by a person driving it twice.
+
+The user raced the original again, this time on **100cc**
+(`sessions/cc100`), after the 50cc race of NOTES 171. *"Harder than
+expected. Emulator has so much input lag."*
+
+The prediction was fixed BEFORE the run was read, from the ROM alone:
+`$81:8000` holds the character's base and `$81:F026` adjusts it by
+`-$80 / +0 / +$A0` for 50/100/150cc, so Mario's 50cc top of 784 makes his
+100cc top **912**, and `$D6 = $B4 + 8*min(coins,10)` puts the ceiling at
+**992**.
+
+    run          plateau   ROM rows that allow it
+    flag  50cc      864     Mario 50cc, Luigi 50cc
+    cc100 100cc     992     Mario 100cc, Luigi 100cc
+
+Both unique to the row the user says they drove, and 992 - 864 = 128 =
+`$80`, the class adjustment measured from the driver's seat. The coin cap
+is confirmed a second time and harder: this run carried **up to 17
+coins**, and 11, 13, 14 and 15 all park at exactly 992.
+
+*The statistic is dwell, not a maximum.* A race contains speeds the rule
+does not govern, in both directions: this run touched **2009** (they took
+items, unlike the 50cc one), and at coin counts held briefly the driver
+never reached the cap at all. Neither a max nor a percentile survives
+that. What separates them is that a cap is a place the kart PARKS - one
+speed value collecting many frames - while a boost decays through each
+value in a frame or two. `tools/labs/coinspeed.py` scores the highest
+speed held for >= 8 frames, and on the 50cc run it recovers
+`784 + 8*min(coins,10)` exactly, boost and all.
+
+*And the tool identifies a row rather than fitting a curve.* Free-
+parameter fitting was written first and was worse: a driver spends most
+of a race away from the cap, and those undershoots drag base and cap off
+the real row (the 100cc run fitted to "887 + 8*min(coins,13)"). The ROM
+already fixes every legal answer - 24 of them - so the honest question is
+which one the data allows, not what curve is nearest.
+
+A caution for reading these plateaus: 864 identifies Mario/Luigi at 50cc
+only because the coin term is included. Koopa and Toad's 100cc BASE is
+also 864, so a plateau compared against the wrong column names the wrong
+kart.
+
+Still on ROM authority alone: 150cc, predicted 1072 + 80 = **1152**.

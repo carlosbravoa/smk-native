@@ -88,6 +88,20 @@ static void test_player_replay(const smk_rom *rom)
           p.base_top == 912 && p.accel[4] == 0x0C00 && p.cap[10] == 0x250
           && p.steer[0][0] == 0x995 && p.steer[0][1] == 0x98 && p.steer[0][2] == 0x68
           && p.steer[0][3] == 0x70 && p.drift[2][2] == 0x1800 && p.drift[7][7] == 0x2900, d);
+    /* The two human races pin the class row from the other end: their
+     * speed parked at 864 on 50cc and 992 on 100cc, and $D6 = $B4 +
+     * 8*min(coins,10) makes those 784+80 and 912+80 (NOTES 173). */
+    {
+        static smk_player p50, p150;
+        int ok = smk_player_setup(rom, 0, 0, &p50)
+              && smk_player_setup(rom, 0, 2, &p150);
+        snprintf(d, sizeof d, "50cc %d (race parked at %d), 100cc %d (%d), 150cc %d",
+                 p50.base_top, p50.base_top + 80, p.base_top, p.base_top + 80,
+                 p150.base_top);
+        check("$81F026 class row: Mario's two recorded races park at $B4+80",
+              ok && p50.base_top + 80 == 864 && p.base_top + 80 == 992
+                 && p150.base_top == p.base_top + 0xA0, d);
+    }
     p.coins = 10;                           /* $D6 was 992 in both captures */
     /* the slide capture's fraction steps $4000 per frame (accel $0040 << 8) */
     replay("player replay: hop-into-left power slide, release, plain slide",
