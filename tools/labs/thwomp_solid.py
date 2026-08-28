@@ -21,6 +21,16 @@ game calls that a touch is read off $10 and off the shove it applies.
 Built on movers.py, which is what got a capture this far (NOTES 152):
 reach the track, run the countdown out, and complete a LAP - Thwomps are
 inert on lap one, and every capture that skipped this found nothing.
+
+RUN THE CONTROL BEFORE BELIEVING A NEGATIVE.  The first two versions of
+this lab parked the kart on the object's centre every frame and reported
+no collision at any height, including z = 0 on the floor.  That reads
+like a finding.  It was not: the same rig against a PIPE - where NOTES
+072 measured a real crash - also reported nothing.  A rig that cannot
+reproduce a known collision cannot tell you about an unknown one.  So the
+pipe run is a positive control and it is not optional:
+
+    cp thwomp_solid.py /tmp/pipe.py && python3 /tmp/pipe.py 0 0 14
 """
 import sys, os, time
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
@@ -115,66 +125,70 @@ print("track $%02X  $0D2C=%d" % (w[0x0124], rw(0x0D2C)), flush=True)
 # here is a threshold, not a trajectory, so the sprite-rig warning of
 # NOTES 076 does not apply: there is nothing to associate or project.
 BLK = 0x1800
-prev10 = rw(0x1000 + 0x10)
-print("  f      z  obj(x,y)   $10   d$10   spd  kart(x,y)  hazard drive", flush=True)
-rows = []
-for f in range(int(os.environ.get("SWEEP", "1400"))):
-    ox, oy, oz = rw(BLK + 0x18), rw(BLK + 0x1C), s16(rw(BLK + 0x1F))
-    # Put the kart INSIDE the object, but leave it DRIVING.  The first
-    # attempt also forced speed and velocity to zero, and nothing ever
-    # fired - not even at z = 0, on the floor.  A response gated on
-    # CLOSING VELOCITY (which is what our own port does: `if (dot < 0)`)
-    # cannot fire for a kart that is not moving, so a still kart tests
-    # nothing.  Hold the throttle and let it keep its own velocity.
-    ww(0x1000 + 0x18, ox)
-    ww(0x1000 + 0x1C, oy)
-    b.reg_reads[0x4219] = 0x80     # B held
-    c.run_frames_scanline(1)
-    f10 = rw(0x1000 + 0x10)
-    spd = s16(rw(0x1000 + 0xEA))
-    kx, ky = rw(0x1000 + 0x18), rw(0x1000 + 0x1C)
-    haz, drv = rw(0x1000 + 0xA0), rw(0x1000 + 0xEE)
-    rows.append((f, oz, f10, spd, kx - ox, ky - oy, haz, drv))
-    if f % 1 == 0 and (f10 != prev10 or f < 5 or f % 50 == 0):
-        print("  %4d %6d (%4d,%4d) $%04X $%04X %5d (%+4d,%+4d) haz $%04X drv $%04X"
-              % (f, oz, ox, oy, f10, f10 ^ prev10, spd, kx - ox, ky - oy, haz, drv),
-              flush=True)
-    prev10 = f10
+# ---- how a hit is detected -------------------------------------------
+# NOTES 072 measured the pipe crash directly: contact sets $10 bit $0002,
+# the velocity reflects, the speed scales to ~53%, and a ~9-frame
+# knockback follows with $AC = $16.  The first version of this lab watched
+# $EE and called the kart's own travel a "shove", so it could not have
+# seen a collision even if one happened - both are fixed here.
+HIT_BIT = 0x0002
+KNOCK   = 0x16
 
-# which bit of $10, if any, tracks the height
-import collections
-print("\n  bit of $10 vs height - a bit that is the collision will be set at"
-      " low z and clear at high z:", flush=True)
-for bit in range(16):
-    on = [r[1] for r in rows if r[2] & (1 << bit)]
-    off = [r[1] for r in rows if not r[2] & (1 << bit)]
-    if not on or not off: continue
-    print("    bit %2d ($%04X): set for z %d..%d (%d frames), clear for z %d..%d (%d)"
-          % (bit, 1 << bit, min(on), max(on), len(on), min(off), max(off), len(off)),
-          flush=True)
-# and the shove
-push = [(r[1], r[4], r[5]) for r in rows if r[4] or r[5]]
-if push:
-    zs = sorted(z for z, _, _ in push)
-    print("\n  the kart was SHOVED on %d frames, at heights %d..%d"
-          % (len(push), zs[0], zs[-1]), flush=True)
-    print("  the highest z that still shoved: %d  (parked is 4096)" % zs[-1], flush=True)
+# ---- the geometry ----------------------------------------------------
+# APPROACH the object, do not sit in it.  Parking the kart at the object's
+# centre every frame found nothing at any height, including z = 0 on the
+# floor - which is either a real finding or a broken rig, and a rig that
+# never reproduces a known collision cannot tell you which.  So each trial
+# starts the kart BACK units short, pointed at the object and moving, and
+# runs a few frames: the same shape as tools/labs/objhit.py, which is the
+# rig that did produce a crash (NOTES 150).
+BACK   = int(os.environ.get("BACK", "26"))
+SPEED  = int(os.environ.get("SPEED", "480"))
+TRIAL  = int(os.environ.get("TRIAL", "8"))     # frames per approach
+HEAD_S = 0x8000                                # 0 = north, $8000 = south
+
+print("  trial   z at contact   hit?   speed in/out   $10    $AC", flush=True)
+trials = []
+for t in range(int(os.environ.get("SWEEP", "1400")) // TRIAL):
+    ox, oy = rw(BLK + 0x18), rw(BLK + 0x1C)
+    ww(0x1000 + 0x18, ox);      w[0x1000 + 0x16] = 0; w[0x1000 + 0x17] = 0
+    ww(0x1000 + 0x1C, oy - BACK); w[0x1000 + 0x1A] = 0; w[0x1000 + 0x1B] = 0
+    ww(0x1000 + 0xA4, HEAD_S); ww(0x1000 + 0xA2, HEAD_S); ww(0x1000 + 0x2A, HEAD_S)
+    ww(0x1000 + 0xA8, 0)
+    ww(0x1000 + 0xEA, SPEED)
+    ww(0x1000 + 0x22, 0); ww(0x1000 + 0x24, SPEED)
+    z0 = s16(rw(BLK + 0x1F))
+    hit, zhit, out, f10, fac = 0, z0, SPEED, 0, 0
+    for f in range(TRIAL):
+        b.reg_reads[0x4219] = 0x80
+        c.run_frames_scanline(1)
+        f10 = rw(0x1000 + 0x10); fac = w[0x1000 + 0xAC]
+        out = s16(rw(0x1000 + 0xEA))
+        if (f10 & HIT_BIT) or fac == KNOCK or out < SPEED // 2:
+            hit = 1; zhit = s16(rw(BLK + 0x1F)); break
+    trials.append((z0, zhit, hit, out, f10, fac))
+    if t % 10 == 0 or hit:
+        print("  %5d %8d %8s %6d/%-5d $%04X   $%02X"
+              % (t, zhit, "HIT" if hit else "-", SPEED, out, f10, fac), flush=True)
+
+hits = [x for x in trials if x[2]]
+miss = [x for x in trials if not x[2]]
+print("\n  %d trials: %d hit, %d passed through" % (len(trials), len(hits), len(miss)),
+      flush=True)
+if hits and miss:
+    hz = sorted(x[1] for x in hits); mz = sorted(x[1] for x in miss)
+    print("    hit  at z %d..%d (median %d)" % (hz[0], hz[-1], hz[len(hz)//2]), flush=True)
+    print("    pass at z %d..%d (median %d)" % (mz[0], mz[-1], mz[len(mz)//2]), flush=True)
+    best = None
+    for th in range(0, 13000, 32):
+        err = sum(1 for z in hz if z >= th) + sum(1 for z in mz if z < th)
+        if best is None or err < best[0]: best = (err, th)
+    print("    the height that best separates them: %d  (misses %d of %d)"
+          % (best[1], best[0], len(trials)), flush=True)
+    print("    our port currently uses %d" % (4096 // 2), flush=True)
+elif hits:
+    print("    EVERY trial hit - height does not gate this object at all", flush=True)
 else:
-    print("\n  the kart was never shoved - the detector is wrong, not the game",
+    print("    NO trial hit.  Either this object is never solid, or the rig"
+          " cannot see a collision - run the pipe control before believing it",
           flush=True)
-
-print("\n  speed, hazard and drive state by height band - the kart is driving"
-      " into the object at every one:", flush=True)
-bands = {}
-for r in rows:
-    b_ = (r[1] // 512) * 512
-    bands.setdefault(b_, []).append(r)
-for b_ in sorted(bands):
-    v = bands[b_]
-    sp = sorted(x[3] for x in v)
-    hz = sorted(set(x[6] for x in v))
-    dv = sorted(set(x[7] for x in v))
-    print("    z %5d..%5d  n=%4d  speed med %5d min %5d  hazard %s  drive %s"
-          % (b_, b_ + 511, len(v), sp[len(sp)//2], sp[0],
-             " ".join("$%04X" % h for h in hz[:4]),
-             " ".join("$%04X" % d for d in dv[:4])), flush=True)
