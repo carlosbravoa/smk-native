@@ -218,6 +218,8 @@ void smk_racer_start(smk_racer *r, const smk_course *crs, int slot)
     r->k.y = (int32_t)(y * SMK_POS_ONE);
     r->k.angle = heading;
     r->sector = crs->sectors - 1;         /* the grid sits in the last sector */
+    r->finish_frame = -1;                 /* has not finished */
+    r->place = 0;
 }
 
 static uint16_t heading_to(const smk_kart *k, int tx, int ty)
@@ -274,6 +276,9 @@ void smk_racer_step(smk_racer *r, const smk_track *trk,
                     r->lap++;
                     r->progress_max = prog;
                     r->lap_cool = 90;
+                    /* the last crossing is this kart's finish */
+                    if (r->lap >= SMK_RACE_CROSSINGS && r->finish_frame < 0)
+                        r->finish_frame = smk_race_frame;
                 }
             } else if (sec >= crs->sectors - 2 && r->sector <= 1) {
                 r->lap--;
@@ -593,6 +598,7 @@ static const int SMK_AI_DA[8] = { 0, 0, 0, 0, 2, 4, 6, 8 };
 /* Which racers[] slot is the human.  $10 bit 15 in the game; block 0
  * here, which is what main.c puts the player in. */
 int smk_ai_player_block = 0;
+long smk_race_frame = 0;
 
 /* Forces every AI onto one $80AF0F row.  -1, the default, uses the
  * decoded answer instead - the LAP.  Only useful for sweeping the

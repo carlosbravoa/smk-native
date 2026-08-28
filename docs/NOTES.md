@@ -7287,3 +7287,52 @@ The lasting lesson is the pipe control. Two runs reported "no collision at
 any height" and both were the rig; only an object with a KNOWN answer
 could say so. A negative result from a rig that has never produced a
 positive is not a result.
+
+---
+
+**177** — The finish sequence, and the first feature built to a different
+standard.
+
+The user picked it, and set the rule that shaped it: *"This one doesn't
+need to be faithful (faithful is for driving experience, not for hud,
+menus, and things that can be better without constraints)."* So the
+camera move, its timing and the results layout are DESIGNED. The art and
+the data stay the ROM's, and the times are real. Ledgered as S27.
+
+*The race no longer ends on the frame you cross.* `race_over` used to set
+`ui.screen = SMK_UI_RESULT` immediately; now it enters `RACE_FINISH`, and
+**the simulation keeps running through it** - which is the point, because
+the other seven karts have not finished when you do and their times are
+what the results are for. Anything still going when the celebration ends
+is run on headlessly by `settle_field` until it crosses, so every row of
+the table is a time that kart actually drove rather than an estimate.
+Capped at 90 s of race time; past that it is DNF.
+
+*Four things had to be found by looking at the picture*, and each one is
+the kind of thing no amount of reading the code would have shown:
+
+  1. **The camera has to move AHEAD of the kart, not orbit it.** The
+     chase camera sits AT the kart, which is why your kart draws at the
+     bottom of a SMK screen. Orbiting it merely pushed it sideways and
+     left the driver jammed against the bottom edge.
+  2. **`draw_scene` takes `cam_heading` separately from `cam.angle`.**
+     Rotating the camera alone turned the GROUND while every sprite was
+     still projected on the old basis - and the player's kart vanished
+     entirely. `finish_yaw` now carries the same rotation to both.
+  3. **The kart draw list starts at slot ONE.** `for (int k = 1; ...)`,
+     so slot 0 - the player - could never be in it, whatever
+     `racer_draw_mask` said. The mask already clears bit 0 for every
+     other caller, so the loop bound was doing the mask's job twice and
+     made the celebration's `0xFF` silently mean nothing.
+  4. **The furniture has to stand down.** A FINAL LAP sign over a race
+     that has just been won reads as a bug, and so does a speedometer.
+
+*And the results screen shows the field.* Place, name and total for all
+eight, the player in gold, the top four bright and the rest dimmed, with
+the player's own splits underneath. Two things it exposed: `ui.track` is
+only set by the shell, so a `--race` or `--timetrial` run had a blank
+track name; and the screen could not be looked at without playing through
+the menus, which `SMK_RESULT_SHOT` and `SMK_FINISH_SHOT` now fix.
+
+The time trial's own layout is untouched - `entries == 0` selects it, and
+`result` is memset per race so it cannot inherit a stale field.

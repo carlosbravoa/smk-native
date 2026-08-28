@@ -1021,6 +1021,12 @@ typedef struct {
     int      skill;         /* ($7F + lap) & 7: which $80AF0F row        */
     int      trouble;       /* $84 != 0 or $10 & $0020 -> the $18 row    */
     int      branch;        /* which $80ADA0 branch answered (diagnostic) */
+    /* When this kart crossed for the last time, in race frames, and where
+     * it came.  Nothing tracked either before: the race ended the instant
+     * the PLAYER finished and the other seven simply stopped existing, so
+     * a results table had nothing to show. -1 = still going. */
+    long     finish_frame;
+    int      place;
 } smk_racer;
 
 /* ---- The rubber band (NOTES 167) --------------------------------------
@@ -1082,6 +1088,12 @@ typedef struct {
 extern uint16_t SMK_AI_CATCHUP[SMK_AI_SKILLS][8];
 bool smk_ai_catchup_load(const smk_rom *rom);
 extern int smk_ai_player_block;   /* which racers[] slot is the human */
+/* The race clock, in frames since the lights, so smk_racer_step can stamp
+ * a finish.  main.c owns it; the labs and tools leave it at 0. */
+extern long smk_race_frame;
+/* Five laps from a grid BEHIND the line is SIX crossings (NOTES 052), so a
+ * kart has finished when its lap counter reaches this. */
+#define SMK_RACE_CROSSINGS (SMK_RACE_LAPS + 1)
 extern int smk_ai_branch;        /* which $80ADA0 branch last answered */
 extern int smk_ai_skill;          /* $C1 & 7 stand-in; -1 = engine class */
 /* $80AD96 -> $80ADA0 on one kart, exposed so tools/rowcheck.c can replay
@@ -1439,6 +1451,15 @@ typedef struct {
     int  best_slot;       /* where the best lap landed in the table, or -1 */
     long best_lap;
     int  position;        /* finishing place in a race, 0 in a time trial */
+    /* Every kart's race, not just the player's.  The user asked for it:
+     * "after that, you get times: your times, and the AI's total times
+     * and positions after the race". */
+    struct {
+        int  character;   /* SMK_DRIVERS index                            */
+        long total;       /* race frames at its last crossing, -1 if DNF  */
+        int  player;      /* the one the human drove                      */
+    } field[SMK_CHARACTERS];
+    int  entries;         /* how many of field[] are filled (0 = trial)   */
 } smk_ui_result;
 void smk_ui_draw_result(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
                         const smk_records *rec, const smk_ui_result *res,

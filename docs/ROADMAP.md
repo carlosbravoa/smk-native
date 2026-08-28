@@ -54,6 +54,18 @@ re-investigating.
 
 ## Shortcut & assumption ledger (current)
 
+**S27 — The finish sequence is OURS by design, not by default.**
+The celebration camera, its timing (50 frames to swing, 210 to hold), the
+38-unit framing distance and the whole results layout are designed rather
+than measured. That is deliberate and the user set the rule: *"faithful is
+for driving experience, not for hud, menus, and things that can be better
+without constraints."* The ART and the data stay the ROM's - its font, its
+palettes, its character sprites and names, its own time formatting - and
+the times shown are times karts actually drove, because the field keeps
+being simulated after the player crosses (`settle_field`). What is NOT
+ours: nothing in this touches how a kart moves.
+
+
 **S26 — The height at which a raised mover stops touching you.**
 `SMK_MOVER_CLEAR = 1280` is OURS. The game's own rule is not decoded: the
 routine is reached only through an index register, so it has no caller and
@@ -409,7 +421,7 @@ In rough order of value:
    work and which hits call it. Small, visible, and the counter it
    animates is already correct.
 
-10. **The finish sequence (user's list).** *"the race doesn't stop
+10. **~~The finish sequence~~ — DONE, needs playing.** *"the race doesn't stop
     abruptly. If you arrive top 4, camera shows you from the front while
     the character celebrates for a few seconds. Then after that, you get
     times: your times, and the AI's total times and positions."* Three

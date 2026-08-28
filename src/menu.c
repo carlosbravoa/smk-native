@@ -376,33 +376,76 @@ void smk_ui_draw_result(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
     ramp(f, TEXT_PAL, off, 0xFFFFFFFF, 0xFF2A3E78); dim(off);
 
     bool race = res->position > 0;
-    text_c(f, fb, w, h, 12, race ? "SINGLE RACE" : "TIME TRIAL", hi);
-    text_c(f, fb, w, h, 28, smk_track_name(rom, ui->track), gold);
-    if (race) {
+    text_c(f, fb, w, h, 10, race ? "SINGLE RACE" : "TIME TRIAL", hi);
+    text_c(f, fb, w, h, 24, smk_track_name(rom, ui->track), gold);
+
+    if (race && res->entries > 0) {
+        /* THE FIELD, which is what the user asked for: "you get times:
+         * your times, and the AI's total times and positions after the
+         * race".  Laid out for the room we have rather than for the
+         * original's - "faithful is for driving experience, not for hud,
+         * menus, and things that can be better without constraints".
+         * The ART is still the ROM's: its font, its palettes, its
+         * character names and its own time formatting. */
         static const char *const ORD[SMK_CHARACTERS] = {
             "1ST", "2ND", "3RD", "4TH", "5TH", "6TH", "7TH", "8TH" };
         int p = res->position - 1;
         if (p < 0) p = 0;
         if (p >= SMK_CHARACTERS) p = SMK_CHARACTERS - 1;
-        char line[32];
+        char line[40];
         snprintf(line, sizeof line, "%s OF %d", ORD[p], SMK_CHARACTERS);
-        text_c(f, fb, w, h, 44, line, p == 0 ? gold : hi);
-    }
-    int y0 = race ? 64 : 52;      /* the place line needs the room */
+        text_c(f, fb, w, h, 38, line, p == 0 ? gold : hi);
 
-    for (int i = 0; i < SMK_RACE_LAPS; i++) {
-        char line[40], tm[16];
-        smk_time_text(res->lap[i], tm, sizeof tm);
-        snprintf(line, sizeof line, "LAP %d   %s", i + 1, tm);
-        bool best = res->lap[i] > 0 && res->lap[i] == res->best_lap;
-        text(f, fb, w, h, 60, y0 + i * 14, line,
-             res->lap[i] > 0 ? (best ? gold : lo) : off);
-    }
-    {
-        char line[40], tm[16];
-        smk_time_text(res->total, tm, sizeof tm);
-        snprintf(line, sizeof line, "TOTAL   %s", tm);
-        text(f, fb, w, h, 60, y0 + SMK_RACE_LAPS * 14 + 8, line, hi);
+        for (int i = 0; i < res->entries && i < SMK_CHARACTERS; i++) {
+            int y = 58 + i * 12;
+            const uint32_t *col = res->field[i].player ? gold
+                                : i < 4 ? lo : off;
+            char nm[16], tm[16];
+            snprintf(nm, sizeof nm, "%s",
+                     SMK_DRIVERS[res->field[i].character % SMK_CHARACTERS].name);
+            for (char *q = nm; *q; q++)
+                if (*q >= 'a' && *q <= 'z') *q -= 32;
+            snprintf(line, sizeof line, "%d", i + 1);
+            text(f, fb, w, h, 36, y, line, col);
+            text(f, fb, w, h, 56, y, nm, col);
+            if (res->field[i].total >= 0) {
+                smk_time_text(res->field[i].total, tm, sizeof tm);
+                text(f, fb, w, h, 152, y, tm, col);
+            } else {
+                text(f, fb, w, h, 152, y, "DNF", off);
+            }
+        }
+
+        /* and the player's own laps underneath, in two columns */
+        for (int i = 0; i < SMK_RACE_LAPS + 1; i++) {
+            int col_ = i / 3, row = i % 3;
+            int x = 24 + col_ * 116, y = 160 + row * 12;
+            char tm[16];
+            long v = i < SMK_RACE_LAPS ? res->lap[i] : res->total;
+            smk_time_text(v, tm, sizeof tm);
+            if (i < SMK_RACE_LAPS) snprintf(line, sizeof line, "L%d %s", i + 1, tm);
+            else                   snprintf(line, sizeof line, "TOTAL %s", tm);
+            bool best = i < SMK_RACE_LAPS && res->lap[i] > 0
+                        && res->lap[i] == res->best_lap;
+            text(f, fb, w, h, x, y, line,
+                 i == SMK_RACE_LAPS ? hi : v > 0 ? (best ? gold : lo) : off);
+        }
+    } else {
+        int y0 = 52;
+        for (int i = 0; i < SMK_RACE_LAPS; i++) {
+            char line[40], tm[16];
+            smk_time_text(res->lap[i], tm, sizeof tm);
+            snprintf(line, sizeof line, "LAP %d   %s", i + 1, tm);
+            bool best = res->lap[i] > 0 && res->lap[i] == res->best_lap;
+            text(f, fb, w, h, 60, y0 + i * 14, line,
+                 res->lap[i] > 0 ? (best ? gold : lo) : off);
+        }
+        {
+            char line[40], tm[16];
+            smk_time_text(res->total, tm, sizeof tm);
+            snprintf(line, sizeof line, "TOTAL   %s", tm);
+            text(f, fb, w, h, 60, y0 + SMK_RACE_LAPS * 14 + 8, line, hi);
+        }
     }
     if (race) {
         /* a race banks nothing: the lap table is the time trial's */

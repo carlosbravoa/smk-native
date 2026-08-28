@@ -165,6 +165,18 @@ static void pump(input_state *in)
 }
 
 static int racer_draw_mask = 0xFE;      /* which racer slots draw_scene draws */
+/* During the celebration the player's kart is drawn like everybody else -
+ * PROJECTED - instead of pinned to SMK_PLAYER_LINE.  The fixed row is
+ * right for normal play (your kart is always at the bottom of a SMK
+ * screen) and wrong the moment the camera moves, which left the driver
+ * jammed against the bottom edge of the first version of this. */
+static int celebrating;
+/* How far the celebration camera has turned, in ROM angle units.  The
+ * SPRITES are projected from a cam_heading passed separately to
+ * draw_scene, so rotating cam.angle alone left the ground turning while
+ * every kart was projected on the old basis - and the player's own kart
+ * simply disappeared. */
+static uint16_t finish_yaw;
 static int player_sector;               /* $C0: the last sector reached      */
 static smk_horizon horizon;             /* the scenery above the track        */
 static smk_effects fx;                  /* tyre smoke / dust (NOTES 109)      */
@@ -185,7 +197,22 @@ static int  hud_input;                   /* L/R/accel bits, for the HUD */
  * our timing is the ROM's own 3-2-1-GO cadence in frames (60/step) -
  * LABELLED: the exact ROM start-frame count is not decoded yet, the
  * cadence is the observable one. */
-enum { RACE_COUNTDOWN, RACE_RUN };
+/* RACE_FINISH is OURS, and deliberately not the ROM's.  The user, asking
+ * for it: "the race doesn't stop abruptly.  If you arrive top 4, camera
+ * shows you from the front while the character celebrates for a few
+ * seconds.  Then after that, you get times."  And on how faithful to be:
+ * "faithful is for driving experience, not for hud, menus, and things
+ * that can be better without constraints."  So the timing and the camera
+ * move below are designed, not measured - the ART and the times are the
+ * ROM's.  Ledgered as S27.
+ *
+ * The simulation KEEPS RUNNING through it, which is the point: the other
+ * seven karts have not finished when you do, and their times are what the
+ * results screen is for. */
+enum { RACE_COUNTDOWN, RACE_RUN, RACE_FINISH };
+#define SMK_FINISH_TURN   50     /* frames to swing the camera round     */
+#define SMK_FINISH_HOLD  210     /* and how long the celebration lasts   */
+#define SMK_FINISH_DIST 38.0f    /* how far ahead of the kart it ends up */
 static int race_state = RACE_COUNTDOWN;
 static int race_count;                   /* frames spent counting down  */
 /* MEASURED (NOTES 145): $809FE1 loads $0146 with $FEB0 = -336 and
@@ -523,6 +550,7 @@ static int  race_mode = SMK_MODE_GP;   /* the game's own $2C           */
 static long lap_start_frames;       /* clock at the last line crossing */
 static bool tt_mushroom;            /* the one time-trial mushroom     */
 static bool race_over;
+static int  finish_t;                    /* frames into the celebration */
 static bool race_reported;
 static bool obj_marks;   /* --obj-marks: show each object's ground point */
 static smk_autopilot autopilot;
@@ -705,6 +733,11 @@ static bool load_race(const smk_rom *rom, int track, int theme, int character,
     lap_start_frames = 0;
     crossings = 0;
     race_over = false;
+    finish_t = 0;
+    /* the results screen names the track from the UI's own field, which
+     * only the shell sets - so a --race or --timetrial run showed a blank */
+    ui.track = track;
+    smk_race_frame = 0;
     race_reported = false;
     lap_sign_t = -1;
     smk_autopilot_init(&autopilot);
@@ -733,6 +766,105 @@ static void camera_from_kart(smk_camera *cam, const smk_kart *k)
                  - (float)M_PI / 2.0f;
 }
 
+
+/* A rendered frame to a PPM, for looking at something instead of
+ * reasoning about it.  The shot hooks all wrote this out longhand. */
+static void save_ppm(const char *path, const uint32_t *fb, int w, int h)
+{
+    FILE *pf = fopen(path, "wb");
+    if (!pf) return;
+    fprintf(pf, "P6\n%d %d\n255\n", w, h);
+    for (int i = 0; i < w * h; i++) {
+        uint32_t c = fb[i];
+        fputc((c >> 16) & 255, pf); fputc((c >> 8) & 255, pf); fputc(c & 255, pf);
+    }
+    fclose(pf);
+}
+
+/* Let the unfinished karts finish, so the table has real times.
+ *
+ * When the player crosses, most of the field has not.  The original waits
+ * for them; we run them on without drawing, which costs a few milliseconds
+ * and means every row of the results is a time that kart actually drove
+ * rather than an estimate.  Capped, because a kart that is genuinely stuck
+ * must not hang the results screen - those are shown as DNF.
+ */
+static void settle_field(smk_racer *rs, const smk_track *t,
+                         const smk_course *c, const smk_physics *ph, long now)
+{
+    const long CAP = 60 * 90;            /* 90 s of race time, then give up */
+    for (long f = 0; f < CAP; f++) {
+        int left = 0;
+        for (int i = 1; i < SMK_CHARACTERS; i++)
+            if (rs[i].finish_frame < 0) left++;
+        if (!left) break;
+        smk_race_frame = now + f;
+        smk_ai_rubber(rs, SMK_CHARACTERS, c, ph->engine_class);
+        for (int i = 1; i < SMK_CHARACTERS; i++)
+            if (rs[i].finish_frame < 0) smk_racer_step(&rs[i], t, c, ph);
+    }
+}
+
+/* The finishing order and everyone's total, for the results screen. */
+static void build_result_table(smk_ui_result *res, smk_racer *rs, long player_total)
+{
+    rs[0].finish_frame = player_total;         /* the clock the HUD showed */
+    int order[SMK_CHARACTERS];
+    for (int i = 0; i < SMK_CHARACTERS; i++) order[i] = i;
+    /* finished karts by time, then the DNFs; a plain insertion sort, which
+     * for eight entries is the clearest thing that can be written */
+    for (int i = 1; i < SMK_CHARACTERS; i++) {
+        int v = order[i], j = i - 1;
+        for (; j >= 0; j--) {
+            long a = rs[order[j]].finish_frame, b = rs[v].finish_frame;
+            int worse = (a < 0 && b >= 0) || (a >= 0 && b >= 0 && a > b);
+            if (!worse) break;
+            order[j + 1] = order[j];
+        }
+        order[j + 1] = v;
+    }
+    for (int p = 0; p < SMK_CHARACTERS; p++) {
+        int i = order[p];
+        rs[i].place = p + 1;
+        res->field[p].character = rs[i].character;
+        res->field[p].total     = rs[i].finish_frame;
+        res->field[p].player    = (i == 0);
+    }
+    res->entries  = SMK_CHARACTERS;
+    res->position = rs[0].place;
+}
+
+/* The celebration camera: swing round to look the kart in the face.
+ *
+ * OURS (S27).  The chase camera sits behind the kart at heading + $C0;
+ * this eases that round to heading + $C0 + half a turn over
+ * SMK_FINISH_TURN frames, so the view swings to the front and holds
+ * there while the driver celebrates.  Eased rather than linear (a
+ * smoothstep) so it settles instead of stopping dead, and it also drops
+ * closer to the ground, which is what makes it read as a camera move
+ * rather than the track spinning.
+ *
+ * The kart keeps being simulated underneath - the other seven have not
+ * finished yet, and their times are the whole point of what comes next. */
+static void finish_camera(smk_camera *cam, const smk_kart *k, int t)
+{
+    float u = (float)t / (float)SMK_FINISH_TURN;
+    if (u > 1.0f) u = 1.0f;
+    u = u * u * (3.0f - 2.0f * u);                 /* smoothstep */
+
+    /* The chase camera sits AT the kart looking forward, which is why the
+     * kart draws at the bottom of the screen in normal play.  To see the
+     * driver, the camera has to move AHEAD of the kart and look BACK: the
+     * first version merely orbited the camera, which pushed it sideways
+     * and left the kart jammed against the bottom edge. */
+    float h  = (float)k->angle * (2.0f * (float)M_PI / (float)SMK_ANGLE_TURN);
+    float fx = sinf(h), fy = -cosf(h);             /* the kart's forward */
+    float d  = SMK_FINISH_DIST * u;
+    cam->x = (float)k->x / (float)SMK_POS_ONE + fx * d;
+    cam->y = (float)k->y / (float)SMK_POS_ONE + fy * d;
+    cam->angle += u * (float)M_PI;                 /* turn to face it */
+    finish_yaw = (uint16_t)(u * 32768.0f);         /* the same, for the sprites */
+}
 
 /* One art pixel of an object's drawing.
  *
@@ -1213,7 +1345,13 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
             }
         }
         if (show_grid && karts->frames && racers) {
-            for (int k = 1; k < SMK_CHARACTERS && n < (int)(sizeof item / sizeof item[0]); k++) {
+            /* from ZERO, not one: slot 0 is the player, and the
+             * celebration draws him through this projection instead of
+             * pinned to SMK_PLAYER_LINE.  Every other caller's mask
+             * already clears bit 0 (0xFE racing, 0x00 trial, 0x02 ghost),
+             * so the loop bound was doing the mask's job twice and made
+             * the celebration's 0xFF silently mean nothing. */
+            for (int k = 0; k < SMK_CHARACTERS && n < (int)(sizeof item / sizeof item[0]); k++) {
                 if (!(racer_draw_mask & (1 << k))) continue;
                 float gx = (float)smk_kart_px(racers[k].k.x);
                 float gy = (float)smk_kart_px(racers[k].k.y);
@@ -1236,7 +1374,7 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
                              other, loaded, fb, rw, rh);
         }
     }
-    if (show_kart && karts->frames) {
+    if (show_kart && !celebrating && karts->frames) {
         int scale = rw / 256;                 /* the SNES 32px proportion */
         if (scale < 1) scale = 1;
         /* the hop lifts the sprite; the shadow stays on the ground */
@@ -1278,8 +1416,10 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
                          trk->palette, fb, rw, rh);
         smk_draw_set_clip_mask(NULL, 0);
     }
-    draw_hud(fb, rw, rh, trk->palette, hud_lap, player.coins, hud_rank);
-    draw_clock(fb, rw, rh, trk->palette, hud_race_frames);
+    if (!celebrating) {
+        draw_hud(fb, rw, rh, trk->palette, hud_lap, player.coins, hud_rank);
+        draw_clock(fb, rw, rh, trk->palette, hud_race_frames);
+    }
     /* live input state, so a stuck control is visible rather than
      * looking like a physics bug */
     if (hud_input) {
@@ -1294,13 +1434,18 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
         hud_number(fb, rw, rh, bx + 20 * sc2, by,
                    pad_lx < 0 ? -pad_lx : pad_lx, 5, 0xFF909098, sc2);
     }
-    if (hud_countdown >= 0)               /* Lakitu, and his light */
-        draw_start_light(fb, rw, rh, trk->palette, hud_countdown);
-    if (lap_sign_t >= 0)                  /* and again with the lap sign */
-        draw_lap_sign(fb, rw, rh, trk->palette, lap_sign_t,
-                      hud_lap, SMK_RACE_LAPS);
-    if (player.hazard == 0x0E)            /* and once more, on a rescue */
-        draw_rescue_lakitu(fb, rw, rh, trk->palette, rescue_t);
+    /* None of the furniture during the celebration: the point of it is a
+     * clean look at the driver, and a FINAL LAP sign over a race that has
+     * just been won reads as a bug. */
+    if (!celebrating) {
+        if (hud_countdown >= 0)           /* Lakitu, and his light */
+            draw_start_light(fb, rw, rh, trk->palette, hud_countdown);
+        if (lap_sign_t >= 0)              /* and again with the lap sign */
+            draw_lap_sign(fb, rw, rh, trk->palette, lap_sign_t,
+                          hud_lap, SMK_RACE_LAPS);
+        if (player.hazard == 0x0E)        /* and once more, on a rescue */
+            draw_rescue_lakitu(fb, rw, rh, trk->palette, rescue_t);
+    }
 }
 
 /* The player's own view angle.
@@ -1948,7 +2093,11 @@ int main(int argc, char **argv)
                 in.up = in.down = false;
                 in.hop_held = false;
             }
-            if (race_state == RACE_RUN) hud_race_frames++;
+            if (race_state == RACE_RUN || race_state == RACE_FINISH) {
+                hud_race_frames++;
+                smk_race_frame = hud_race_frames;   /* so a kart can stamp its own finish */
+            }
+            if (race_state == RACE_FINISH) finish_t++;
             if (lap_sign_t >= 0 && ++lap_sign_t > SMK_LAPSIGN_FRAMES)
                 lap_sign_t = -1;
             /* his own clock for the drop, so the path plays at the rate
@@ -2027,10 +2176,22 @@ int main(int argc, char **argv)
              * nothing at all - the "no jump" report, twice. */
             input_edges_clear(&in);
             camera_from_kart(&cam, &kart);
+            celebrating = (race_state == RACE_FINISH);
+            if (!celebrating) finish_yaw = 0;
+            racer_draw_mask = celebrating
+                ? (getenv("SMK_CEL_SOLO") ? 0x01 : 0xFF)
+                : (race_mode == SMK_MODE_TT ? 0x00 : 0xFE);
+            if (race_state == RACE_FINISH) {
+                finish_camera(&cam, &kart, finish_t);
+                if (getenv("SMK_FINISH_TRACE") && finish_t % 10 == 0)
+                    fprintf(stderr, "cel t=%3d kart(%d,%d) h=%04X cam(%.0f,%.0f) a=%.2f\n",
+                            finish_t, smk_kart_px(kart.x), smk_kart_px(kart.y),
+                            kart.angle, cam.x, cam.y, cam.angle);
+            }
             me->k = kart;
 
-            if (race_state == RACE_RUN && !replay_path
-                && race_mode != SMK_MODE_TT) {
+            if ((race_state == RACE_RUN || race_state == RACE_FINISH)
+                && !replay_path && race_mode != SMK_MODE_TT) {
                 /* the rubber band, before anybody moves (NOTES 167) */
                 smk_ai_rubber(racers, SMK_CHARACTERS, &crs, engine_class);
                 /* SMK_ROW_TRACE: one line per frame of every AI's $C8 row
@@ -2158,15 +2319,54 @@ int main(int argc, char **argv)
                                                        result.best_lap, character);
                     if (result.best_slot >= 0) smk_records_save(&records);
                 }
-                if (shell) ui.screen = SMK_UI_RESULT;
+                /* Not straight to the results screen any more.  The
+                 * user: "the race doesn't stop abruptly."  The field is
+                 * still racing and their times are what the results are
+                 * for, so hand over to the celebration and let it run. */
+                me->finish_frame = hud_race_frames;
+                if (race_mode == SMK_MODE_TT) {
+                    if (shell || getenv("SMK_RESULT_SHOT")) ui.screen = SMK_UI_RESULT;
+                } else {
+                    race_state = RACE_FINISH;
+                    finish_t = 0;
+                }
+            }
+
+            /* the celebration is over: settle the field and show the times */
+            if (race_state == RACE_FINISH
+                && finish_t >= SMK_FINISH_TURN + SMK_FINISH_HOLD) {
+                race_state = RACE_RUN;          /* nothing more to celebrate */
+                settle_field(racers, &trk, &crs, &phys, hud_race_frames);
+                build_result_table(&result, racers, result.total);
+                printf("  final order:\n");
+                for (int q = 0; q < result.entries; q++) {
+                    char tt[16];
+                    smk_time_text(result.field[q].total, tt, sizeof tt);
+                    printf("   %d  %-8s %s%s\n", q + 1,
+                           SMK_DRIVERS[result.field[q].character
+                                       % SMK_CHARACTERS].name,
+                           result.field[q].total >= 0 ? tt : "DNF",
+                           result.field[q].player ? "   <- you" : "");
+                }
+                if (shell || getenv("SMK_RESULT_SHOT")) ui.screen = SMK_UI_RESULT;
             }
         }
         (void)stepped;   /* edges deliberately survive a tickless iteration */
 
-        if (tex && fb && shell && ui.screen != SMK_UI_RACE) {
-            if (ui.screen == SMK_UI_RESULT)
+        /* SMK_RESULT_SHOT draws the results screen without the shell, which
+         * --race bypasses - otherwise the layout can only be seen by
+         * playing through the menus. */
+        if (tex && fb && (shell || getenv("SMK_RESULT_SHOT"))
+            && ui.screen != SMK_UI_RACE) {
+            if (ui.screen == SMK_UI_RESULT) {
                 smk_ui_draw_result(&ui, &rom, &menu_font, &records, &result,
                                    fb, rw, rh);
+                /* SMK_RESULT_SHOT=path - the finished results screen */
+                if (getenv("SMK_RESULT_SHOT")) {
+                    save_ppm(getenv("SMK_RESULT_SHOT"), fb, rw, rh);
+                    in.quit = true;
+                }
+            }
             else
                 smk_ui_draw(&ui, &rom, &menu_font, &records, trk.palette,
                             fb, rw, rh);
@@ -2205,15 +2405,32 @@ int main(int argc, char **argv)
             }
             draw_scene(&rom, &trk, &karts, drv, &cam, fb, rw, rh,
                        show_grid, show_kart, pframe,
-                       kart.angle, racers, &crs);
-            draw_speedo(fb, rw, rh, &kart,
-                        smk_track_surface(&trk, smk_kart_px(kart.x),
-                                          smk_kart_px(kart.y)),
-                        player.target);
+                       (uint16_t)(kart.angle + finish_yaw), racers, &crs);
+            if (!celebrating)
+                draw_speedo(fb, rw, rh, &kart,
+                            smk_track_surface(&trk, smk_kart_px(kart.x),
+                                              smk_kart_px(kart.y)),
+                            player.target);
             if (race_mode == SMK_MODE_TT)
                 smk_ui_draw_splits(&menu_font, &result,
                                    hud_race_frames - lap_start_frames,
                                    result.laps_done, tt_mushroom, fb, rw, rh);
+            /* SMK_FINISH_SHOT=t:path - a frame of the celebration, counted
+             * from the moment the player crosses, so the camera swing can
+             * be looked at rather than argued about. */
+            if (getenv("SMK_FINISH_SHOT") && race_state == RACE_FINISH) {
+                static int fwant = -2; static char fpath[512];
+                if (fwant == -2) {
+                    fwant = -1;
+                    const char *e = getenv("SMK_FINISH_SHOT");
+                    const char *c = strchr(e, ':');
+                    if (c) { fwant = atoi(e); snprintf(fpath, sizeof fpath, "%s", c + 1); }
+                }
+                if (fwant >= 0 && finish_t >= fwant) {
+                    save_ppm(fpath, fb, rw, rh);
+                    fwant = -1;
+                }
+            }
             /* SMK_START_SHOT=frame:path - the same, counted from the
              * countdown's arm instead, which is the only way to see a
              * frame of the start sequence. */
