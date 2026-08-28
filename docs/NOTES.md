@@ -7336,3 +7336,45 @@ the menus, which `SMK_RESULT_SHOT` and `SMK_FINISH_SHOT` now fix.
 
 The time trial's own layout is untouched - `entries == 0` selects it, and
 `result` is memset per race so it cannot inherit a stale field.
+
+---
+
+**178** — The winner celebrates, and the art decides where the camera goes.
+
+The user, on the first version: *"not bad, but in the real game, the
+player also celebrates and continues driving (celebration is important,
+continuing driving is not)."*
+
+**The pose exists: frame 47, both arms thrown up.** Found by rendering all
+48 frames of a driver's sheet and looking, which took three attempts
+because `smk_draw_sprite` anchors at the WHEELS - `x0 = cx - size/2,
+y0 = cy - size`, so `cy` is the sprite's BOTTOM. Drawing a contact sheet
+at `cy = row * cell` therefore shifts every row up by one cell, and
+drawing a single frame at `cy = 0` puts it entirely above the buffer and
+renders nothing at all. Two "this frame is blank" conclusions came from
+that before the anchor was read.
+
+It is the same slot for all eight drivers - Bowser's shell, Toad's
+mushroom, arms out on each - so it is the victory pose and not a
+character-specific accident.
+
+**And it is a REAR view**: the back of the head, no face. That settles a
+question the first version had already answered the other way. The user's
+own description was *"camera shows you from the front while the character
+celebrates"*, and the first version swung 180 degrees to do exactly that -
+but a front camera and this pose cannot both be had from this art. The
+user had already said which half matters ("celebration is important"), so
+the camera now draws BACK and up instead of round, keeping the driver's
+back to us so the raised arms read.
+
+A front-facing celebration would need the podium art, which is a different
+sheet and is not decoded. Labelled, not attempted.
+
+*The winner also stops driving.* Holding the throttle through a
+celebration looked wrong and the user said it did not matter, so the
+player's controls are simply dropped on the crossing and the kart coasts.
+The SIMULATION still runs - the other seven have not finished, and their
+times are the results screen (NOTES 177).
+
+The camera constants (16 units back, 5 of eye rise, 50 frames to move,
+210 to hold) are ours, under S27.

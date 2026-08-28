@@ -212,7 +212,8 @@ static int  hud_input;                   /* L/R/accel bits, for the HUD */
 enum { RACE_COUNTDOWN, RACE_RUN, RACE_FINISH };
 #define SMK_FINISH_TURN   50     /* frames to swing the camera round     */
 #define SMK_FINISH_HOLD  210     /* and how long the celebration lasts   */
-#define SMK_FINISH_DIST 38.0f    /* how far ahead of the kart it ends up */
+#define SMK_FINISH_DIST 16.0f    /* how far it draws back              */
+#define SMK_FINISH_RISE  5.0f    /* and how much the eye lifts         */
 static int race_state = RACE_COUNTDOWN;
 static int race_count;                   /* frames spent counting down  */
 /* MEASURED (NOTES 145): $809FE1 loads $0146 with $FEB0 = -336 and
@@ -852,18 +853,25 @@ static void finish_camera(smk_camera *cam, const smk_kart *k, int t)
     if (u > 1.0f) u = 1.0f;
     u = u * u * (3.0f - 2.0f * u);                 /* smoothstep */
 
-    /* The chase camera sits AT the kart looking forward, which is why the
-     * kart draws at the bottom of the screen in normal play.  To see the
-     * driver, the camera has to move AHEAD of the kart and look BACK: the
-     * first version merely orbited the camera, which pushed it sideways
-     * and left the kart jammed against the bottom edge. */
+    /* PULLS BACK, it does not swing round to the front.
+     *
+     * The first version turned 180 degrees to look the driver in the
+     * face, which is what the user asked for - but the kart sheet has no
+     * front-facing celebration.  SMK_SPR_WIN, the arms-up pose, is a REAR
+     * view: back of the head, no face, on all eight drivers.  A front
+     * camera and the celebration pose cannot both be had from this art
+     * (NOTES 178), and the pose is the half the user called important.
+     *
+     * So the camera keeps the driver's back to us and simply draws away
+     * and up, which frames the raised arms and still reads as a move
+     * rather than the chase view freezing. */
     float h  = (float)k->angle * (2.0f * (float)M_PI / (float)SMK_ANGLE_TURN);
     float fx = sinf(h), fy = -cosf(h);             /* the kart's forward */
     float d  = SMK_FINISH_DIST * u;
-    cam->x = (float)k->x / (float)SMK_POS_ONE + fx * d;
-    cam->y = (float)k->y / (float)SMK_POS_ONE + fy * d;
-    cam->angle += u * (float)M_PI;                 /* turn to face it */
-    finish_yaw = (uint16_t)(u * 32768.0f);         /* the same, for the sprites */
+    cam->x = (float)k->x / (float)SMK_POS_ONE - fx * d;
+    cam->y = (float)k->y / (float)SMK_POS_ONE - fy * d;
+    cam->height += SMK_FINISH_RISE * u;
+    finish_yaw = 0;                                /* no rotation to carry */
 }
 
 /* One art pixel of an object's drawing.
@@ -1289,6 +1297,13 @@ static void draw_ai_kart(const smk_rom *rom, const smk_track *trk,
             int f2 = mirror ? KTIER[kt].base
                             : smk_sprite_for_heading(KTIER[kt].base,
                                                      r16, &hf2);
+            /* The winner throws both arms up.  The user: "in the real
+             * game, the player also celebrates."  SMK_SPR_WIN is one
+             * fixed frame outside the rotation tiers, so it replaces the
+             * pick rather than indexing into it. */
+            if (celebrating && k == smk_ai_player_block) {
+                f2 = SMK_SPR_WIN; hf2 = false; mirror = false;
+            }
             if (mirror)
                 smk_draw_sprite_mirror(&other[k], f2, trk->palette,
                                        d2->pal, (int)px, (int)py,
@@ -2177,6 +2192,13 @@ int main(int argc, char **argv)
             input_edges_clear(&in);
             camera_from_kart(&cam, &kart);
             celebrating = (race_state == RACE_FINISH);
+            /* the winner coasts: hands off the controls once you cross.
+             * The user, on what matters: "celebration is important,
+             * continuing driving is not". */
+            if (celebrating) {
+                in.up = in.down = in.left = in.right = false;
+                in.hop_held = in.hop = in.item = false;
+            }
             if (!celebrating) finish_yaw = 0;
             racer_draw_mask = celebrating
                 ? (getenv("SMK_CEL_SOLO") ? 0x01 : 0xFF)

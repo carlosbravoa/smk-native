@@ -400,6 +400,15 @@ static inline int smk_kart_height_px(const smk_kart *k)
 #define SMK_SPR_TIER2    22
 #define SMK_SPR_TIER_LEN 11
 #define SMK_SPR_REAR      1     /* measured: the straight-from-behind pose */
+/* The victory pose: both arms thrown up.  Identified by rendering all 48
+ * frames of every driver's sheet and looking - it is the same slot for
+ * all eight (Bowser's shell, Toad's mushroom, arms out on each).
+ *
+ * It is a REAR view: you see the back of the head, no face.  That decides
+ * the celebration camera, which cannot be a front view and show this pose
+ * at the same time (NOTES 178).  A front-facing celebration would need
+ * the podium art, which is a different sheet and is not decoded. */
+#define SMK_SPR_WIN      47
 
 /* The measured rule: frame index and hflip for a heading relative to the
  * camera (angle units, 65536 = full turn; 0 = seen squarely from behind). */
