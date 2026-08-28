@@ -402,11 +402,62 @@ In rough order of value:
    character 1, so gating another character is mostly bookkeeping. Six of
    eight unverified.
 
-9. **Art detail.** The near-object source (S15) and the kart size ladder
-   (S10's other half). Both visible, neither affecting how it plays.
+9. **Coin animations (user's list).** Both ends: the pickup, and the
+   coins that spill when you are hit. The trigger for the second is now
+   decoded - `$85:E4B2` decrements `$0E00` by one per call, and the
+   pickup wraps at 100 (NOTES 172) - so what is missing is the sprite
+   work and which hits call it. Small, visible, and the counter it
+   animates is already correct.
+
+10. **The finish sequence (user's list).** *"the race doesn't stop
+    abruptly. If you arrive top 4, camera shows you from the front while
+    the character celebrates for a few seconds. Then after that, you get
+    times: your times, and the AI's total times and positions."* Three
+    pieces: a camera move, the celebration poses, and a results table.
+    The third is the chequered flag's neighbour - Lakitu's third job is
+    still unstarted, and the art is the checker across `$68`-`$9F`.
+
+11. **The dashboard (user's list).** Laps, position, coins, speed. The
+    first three are the ROM's own HUD and belong where the ROM puts them;
+    **the speedometer never existed** and is ours. DECIDED with the user:
+    faithful base, our extras clearly marked and toggleable, each one
+    ledgered.
+
+12. **The track map (user's list).** Everyone's position on a small map.
+    The original only has one because the screen is split; ours must not
+    cost the big view - *"I like that we have a bigger view of the game
+    now and it shouldn't be affected"*. So the art can be faithful and
+    the PLACEMENT is ours, ledgered with the speedometer.
+
+13. **Two-player (user's list).** Two humans, or one human and one CPU.
+    **SIDE BY SIDE, not stacked** - DECIDED by the user: *"split screen
+    but side by side (left/right). Today we have widescreens!"* The
+    original stacks because it has 224 lines to divide; on a modern panel
+    the same split left/right gives each player a bigger view than the
+    original ever had. A deliberate deviation, ledgered. The renderer is
+    resolution-independent, so the cost is the second camera and a second
+    HUD, not the geometry. Largest item on this list by some way.
+
+14. **Art detail.** The near-object source (S15) and the kart size ladder
+    (S10's other half). Both visible, neither affecting how it plays.
 
 Deliberately parked: the background's near plane and sky gradient (S5) —
 the user has said it matters less than feel.
+
+### Off this list, done
+
+Three items the user raised were fixed rather than queued, and are on the
+playtest list above instead:
+
+* **A standstill turns nothing, but the driver leans.** The kart never
+  turned at rest (`$80A9B8[0] = 0`); the countdown was throwing the
+  steering away, so the lean never happened (NOTES 175).
+* **The AI's speed logic.** Rebuilt from `$80ADA0`; it turns on whether
+  the neighbouring kart is the human, and its distances re-tune every lap
+  (NOTES 174).
+* **Crashing into a raised Thwomp.** `SMK_MOVER_CLEAR`, ours and ledgered
+  as S26, set from the user's own rule and gated on their recording
+  (NOTES 176).
 
 ## Phases
 
