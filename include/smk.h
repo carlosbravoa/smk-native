@@ -82,19 +82,10 @@ bool smk_track_load(const smk_rom *rom, int track, int theme,
  * stamped yet either. */
 void smk_track_place_objects(const smk_rom *rom, smk_track *t);
 
-/* The starting grid, read off the game itself (docs/NOTES.md 029): eight
- * karts in two staggered columns, x alternating 952/920, y stepping down by
- * 24 from 756, all facing angle 0 (-Y).  Confirmed against the demo race.
- * Falls back to a road-finding heuristic on the few courses where that grid
- * is not on drivable ground. */
-#define SMK_GRID_X_ODD   920
-#define SMK_GRID_X_EVEN  952
-#define SMK_GRID_Y0      756
-#define SMK_GRID_DY      24
-void smk_track_start(const smk_track *t, int kart, float *x, float *y, float *angle);
-
-/* The fallback: longest run of a non-solid tile. */
-void smk_track_guess_start(const smk_track *t, float *x, float *y, float *angle);
+/* The gap between grid rows: $81:904C loads $0C with #$0018 and adds it
+ * to y once per kart.  The columns are grid_step apart and both come
+ * from the course's own record - see smk_course_start. */
+#define SMK_GRID_ROW     24
 
 /* Colour of a world pixel, wrapping at the 1024x1024 edge. */
 uint32_t smk_track_texel(const smk_track *t, int wx, int wy);
@@ -485,8 +476,12 @@ typedef struct {
     int      nlive;            /* $819136: 2 slots one-player, 4 two      */
     int      live[4];          /* indices into ent[]                      */
     uint16_t lap_word;                 /* $80D4 param, meaning undecoded   */
-    /* finish-line rectangle, kept for grid placement */
+    /* finish-line rectangle */
     int      fin_cell, fin_w, fin_h;
+    /* The game's own starting grid, DECODED (NOTES 161).  Per-track
+     * record reached through $81:8A79; three words that $81:903C turns
+     * into eight karts.  See smk_course_start below. */
+    int16_t  grid_x, grid_y, grid_step;
     /* the AI direction field at $7F:4000 (NOTES 056): per on-course cell,
      * the high byte of the angle from the cell centre to the cell's own
      * sector's waypoint.  Verified 95% byte-exact vs the game, 100% within
@@ -613,12 +608,21 @@ typedef struct { uint8_t px[SMK_SHADOW_H][SMK_SHADOW_W]; bool ok; } smk_shadow;
 bool smk_shadow_load(const smk_rom *rom, smk_shadow *out);
 
 
-/* Starting-grid placement derived from decoded course data: two columns
- * behind the finish strip, facing along the racing line.  Replaces the
- * old fixed-coordinate grid, which held track 7's values and dropped
- * karts "in the middle of nowhere" elsewhere. */
+/* The starting grid, from the game's own per-track record (NOTES 161).
+ *
+ * $81:903C builds it: x starts at grid_x and alternates by grid_step, y
+ * starts at grid_y and steps by 24 a slot, heading is left at 0 - every
+ * course's grid faces -Y, which is why the record carries no angle.
+ * Slot 0 is the POLE, at the front; the slots run backwards from there.
+ *
+ * A kart ALONE on the track - a time trial - does not use a grid slot:
+ * $818F7F builds the grid and then nudges the front kart by
+ * (grid_step/4, -16), which is the start position both time-trial
+ * recordings show to the pixel.  That is smk_course_start_solo. */
 void smk_course_start(const smk_course *c, int slot,
                       float *x, float *y, uint16_t *heading);
+void smk_course_start_solo(const smk_course *c,
+                           float *x, float *y, uint16_t *heading);
 static inline uint8_t smk_course_cell(const smk_course *c, int wx, int wy)
 {
     return c->map[((wy >> 4) & 63) * SMK_SECT_W + ((wx >> 4) & 63)];

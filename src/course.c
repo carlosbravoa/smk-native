@@ -14,6 +14,7 @@
 #define TBL_RECORDS   0x81FF9Bu
 #define TBL_WAYPOINTS 0x81FFCBu
 #define TBL_PARAMS    0x8180D4u
+#define GRID_PTRS     0x818A79u
 #define DATA_BANK     0xC60000u
 
 static uint32_t stream_pc(const smk_rom *rom, uint32_t table, int track)
@@ -99,6 +100,23 @@ bool smk_course_load(const smk_rom *rom, int track, smk_course *out)
     out->fin_w = (int)w;
     out->fin_h = (int)h;
 
+    /* --- the starting grid (NOTES 161) ------------------------------
+     * $81:8A79 + track*2 points at the course's setup entry; the entry's
+     * first word points at the PLACEMENT RECORD, whose first word is the
+     * routine that places karts from it - $8F79 on all twenty GP
+     * courses, $9016 on the four battle arenas - followed by x0, y0 and
+     * the x step, the three words $81:903C consumes. */
+    {
+        uint32_t e = smk_snes_to_pc(rom, GRID_PTRS) + (uint32_t)track * 2u;
+        unsigned ent = rom->data[e] | (unsigned)rom->data[e + 1] << 8;
+        uint32_t p4 = smk_snes_to_pc(rom, 0x810000u | ent);
+        unsigned rec = rom->data[p4] | (unsigned)rom->data[p4 + 1] << 8;
+        uint32_t g = smk_snes_to_pc(rom, 0x810000u | rec);
+        out->grid_x    = (int16_t)(rom->data[g + 2] | rom->data[g + 3] << 8);
+        out->grid_y    = (int16_t)(rom->data[g + 4] | rom->data[g + 5] << 8);
+        out->grid_step = (int16_t)(rom->data[g + 6] | rom->data[g + 7] << 8);
+    }
+
     /* --- track objects ($84F15D: $85:D000 + track*128) --------------- */
     {
         uint32_t p2 = smk_snes_to_pc(rom, 0x85D000u) + (uint32_t)track * 128u;
@@ -178,25 +196,27 @@ bool smk_course_load(const smk_rom *rom, int track, smk_course *out)
 void smk_course_start(const smk_course *c, int slot,
                       float *x, float *y, uint16_t *heading)
 {
-    /* travel direction across the line: last waypoint toward the first */
-    float dx = (float)c->wx[0] - (float)c->wx[c->sectors - 1];
-    float dy = (float)c->wy[0] - (float)c->wy[c->sectors - 1];
-    float len = sqrtf(dx * dx + dy * dy);
-    if (len < 1.0f) { dx = 0.0f; dy = -1.0f; len = 1.0f; }
-    dx /= len; dy /= len;
-    float px = -dy, py = dx;                  /* perpendicular */
+    /* $81:903C, transcribed.  It walks the grid order at $010E and for
+     * each kart stores x from $06 and y from $0A, then advances
+     * $06 += step / step = -step (so x alternates between two columns)
+     * and $0A += $0C, where $0C is the constant #$0018.  It never
+     * touches $2A, which is why every grid faces -Y. */
+    if (slot < 0) slot = 0;
+    *x = (float)(c->grid_x + ((slot & 1) ? c->grid_step : 0));
+    *y = (float)(c->grid_y + SMK_GRID_ROW * slot);
+    *heading = 0;
+}
 
-    float cx = ((float)(c->fin_cell % SMK_SECT_W) + c->fin_w * 0.5f)
-               * SMK_SECT_CELL_PX;
-    float cy = ((float)(c->fin_cell / SMK_SECT_W) + c->fin_h * 0.5f)
-               * SMK_SECT_CELL_PX;
-
-    /* two columns, rows going backward from the strip, like the game */
-    float back = 24.0f + 24.0f * (float)(slot / 2);
-    float side = (slot & 1) ? 14.0f : -14.0f;
-    *x = cx - dx * back + px * side;
-    *y = cy - dy * back + py * side;
-    *heading = (uint16_t)(atan2f(dx, -dy) * 65536.0f / (2.0f * (float)M_PI));
+/* The one-kart start.  $818F7F builds the grid and then calls $819003
+ * on the FRONT kart alone with A = #$FFF0 and $10 = step >> 2:
+ * y += -16, x += step/4.  Both time-trial recordings land exactly here
+ * - track 19 (136,524) and track 16 (960,592). */
+void smk_course_start_solo(const smk_course *c,
+                           float *x, float *y, uint16_t *heading)
+{
+    smk_course_start(c, 0, x, y, heading);
+    *x += (float)(c->grid_step / 4);      /* $818F82: two rors, signed */
+    *y -= 16.0f;
 }
 
 

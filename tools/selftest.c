@@ -227,18 +227,45 @@ int main(int argc, char **argv)
 
     printf("\nstarting grid\n");
     {
-        int on_road = 0;
-        for (int tr = 0; tr < SMK_TRACK_COUNT; tr++) {
+        /* The grid is the game's own record now (NOTES 161), so this can
+         * ask the strong question: every one of the eight slots, and the
+         * time trial's own start, on drivable ground on all 20 courses. */
+        int slots = 0, want = 0, solo = 0;
+        for (int tr = 0; tr < 20; tr++) {
             static smk_track tt;
+            static smk_course cc;
             if (!smk_track_load(&rom, tr, -1, &tt, err, sizeof err)) continue;
-            float sx, sy, sa;
-            smk_track_start(&tt, 0, &sx, &sy, &sa);
-            if (!smk_surface_solid(smk_track_surface(&tt, (int)sx, (int)sy)))
-                on_road++;
+            if (!smk_course_load(&rom, tr, &cc)) continue;
+            for (int sl = 0; sl < 8; sl++, want++) {
+                float sx, sy; uint16_t sh;
+                smk_course_start(&cc, sl, &sx, &sy, &sh);
+                if (!smk_surface_solid(smk_track_surface(&tt, (int)sx, (int)sy)))
+                    slots++;
+            }
+            float tx, ty; uint16_t th;
+            smk_course_start_solo(&cc, &tx, &ty, &th);
+            if (!smk_surface_solid(smk_track_surface(&tt, (int)tx, (int)ty)))
+                solo++;
         }
-        snprintf(det, sizeof det, "%d/%d", on_road, SMK_TRACK_COUNT);
-        check("every course starts on drivable ground",
-              on_road == SMK_TRACK_COUNT, det);
+        snprintf(det, sizeof det, "%d/%d slots, %d/20 solo", slots, want, solo);
+        check("every grid slot is on drivable ground",
+              slots == want && solo == 20, det);
+
+        /* The three positions the game itself was measured at
+         * (tools/labs/gridtable.py, and the two time-trial recordings). */
+        static smk_course c7;
+        float px, py; uint16_t ph;
+        int pinned = 0;
+        if (smk_course_load(&rom, 7, &c7)) {
+            smk_course_start(&c7, 0, &px, &py, &ph);
+            pinned += (px == 920.0f && py == 588.0f && ph == 0);
+            smk_course_start(&c7, 7, &px, &py, &ph);
+            pinned += (px == 952.0f && py == 756.0f);
+            smk_course_start_solo(&c7, &px, &py, &ph);
+            pinned += (px == 928.0f && py == 572.0f);
+        }
+        snprintf(det, sizeof det, "%d/3", pinned);
+        check("track 7's grid matches the game's own", pinned == 3, det);
     }
 
     printf("\nsprites\n");

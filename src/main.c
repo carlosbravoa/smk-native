@@ -558,9 +558,13 @@ static bool load_race(const smk_rom *rom, int track, int theme, int character,
         smk_racer_start(&racers[i], &crs, i);
         racers[i].character = grid[i];
     }
+    /* A time trial is ALONE on the track and the game starts it off the
+     * grid, at $818F7F's nudged front position; a race starts on the
+     * pole itself (src/course.c). */
     float gx, gy;
     uint16_t gh;
-    smk_course_start(&crs, 0, &gx, &gy, &gh);
+    if (mode == SMK_MODE_TT) smk_course_start_solo(&crs, &gx, &gy, &gh);
+    else                     smk_course_start(&crs, 0, &gx, &gy, &gh);
     kart = (smk_kart){ .x = (int32_t)(gx * SMK_POS_ONE),
                        .y = (int32_t)(gy * SMK_POS_ONE), .angle = gh };
     smk_player_reset(&player, gh);
@@ -1424,7 +1428,11 @@ int main(int argc, char **argv)
         shot_x = 120.0f; shot_y = 512.0f; shot_a = 0.0f;
         have_at = 1;
     }
-    if (!have_at) smk_track_start(&trk, 0, &shot_x, &shot_y, &shot_a);
+    if (!have_at) {
+        uint16_t sh0;
+        smk_course_start_solo(&crs, &shot_x, &shot_y, &sh0);
+        shot_a = 0.0f;
+    }
     printf("loaded \"%s\"\n", rom.title);
     printf("track %d, theme %d (from the ROM's own table), class %d\n",
            track, trk.theme, engine_class);

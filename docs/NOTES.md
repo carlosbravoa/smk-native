@@ -6244,3 +6244,78 @@ Bowser Castle and Rainbow Road are bit-identical to before; for any other
 theme it returns 0. Pinned by a self-test that asserts the raw z is still
 parked while both readers see the pipe on the ground, AND that a parked
 Thwomp is still overhead to both.
+
+---
+
+**161** — The starting grid is a stored table after all, and NOTES 142b
+looked one indirection short.
+
+The user's report: on Mario Circuit 1 the time trial starts the kart off
+the road, pointing across it. True, and the worst case of a known
+shortcut — S2 synthesised the grid from the finish-line rectangle, and on
+track 7 that lands (897,604) where the game puts (952,756): 161 px out
+and 32 degrees rotated.
+
+*Watching it, instead of reading it.* NOTES 142b's next step was the
+right one and it was never taken. Hooking the oracle's bus and recording
+the PC of every write to `$1018`/`$101C`/`$102A` (`tools/labs/gridpc.py`)
+names the writer in one run — and it is not `$819212`:
+
+    $81:906A  sta $18,x     x
+    $81:907B  sta $1C,x     y
+
+`$81903C` is the grid builder, and it is trivial:
+
+    tax                       ; A = the course's placement record
+    ldy #$010E                ; the grid order - kart block per slot
+    inx : inx
+    lda $0000,x -> $06        ; x0
+    lda $0004,x -> $08, $10   ; x step
+    lda $0002,x -> $0A        ; y0
+    lda #$0018  -> $0C        ; y step, a constant
+  slot:
+    ldx $0000,y               ; kart block, 0 ends the list
+    lda $06 : sta $18,x  : $06 += $08 : $08 = -$08
+    lda $0A : sta $1C,x  : $0A += $0C
+
+So eight karts, one per row 24 px apart, x alternating between two
+columns `x step` apart, and `$2A` never written — which is why every
+course's grid faces -Y and why the record carries no angle.
+
+*The record, and the indirection that hid it.* NOTES 142b searched the
+ROM for the measured coordinates as word pairs and found nothing. They
+are there, and they are literal:
+
+    $81:8A79 + track*2   ->  setup entry
+    entry word 0         ->  placement record
+    record word 0        ->  the placement ROUTINE   ($8F79 GP, $9016 battle)
+           words 1,2,3   ->  x0, y0, x step
+
+Two levels of pointer, not one — and the coordinates sit at record+2,
+which is why `inx inx` is the first thing `$81903C` does. Track 7 is
+`(920, 588, +32)`; the 20 GP courses all carry `$8F79`, the four battle
+arenas `$9016`, which is a different builder reading corner pairs.
+
+`$819207` — NOTES 111's lead, and NOTES 142b's dead end — really was
+unrelated: it stores position into `$28`/`$2A`, which for a kart is the
+heading. It was the wrong structure all along.
+
+*The time trial is not a grid slot.* Both recordings sit a few pixels off
+every slot, which is what the user actually reported. `$818F7F` explains
+it: build the grid, then call `$819003` on the FRONT kart alone with
+`A = #$FFF0` and `$10 = step >> 2` — `y += -16`, `x += step/4`. That is
+exactly `demo_tt_track19.csv` frame 0 `(136,524)` against the record's
+`(144,540)`, and `gv1_run.csv` `(960,592)` against `(952,608)`.
+
+*Verification.* `tools/labs/gridtable.py` reaches an arbitrary course the
+NOTES 118 way (hook the reads of `$0150`/`$0152` so mode entry computes
+`$0124` AND the theme) and reads all eight karts while the countdown
+still holds them; `gridcheck.py` diffs that against the table walk. All
+twenty courses match the game position for position, all eight karts. The selftest now asserts
+the strong form — all 160 GP grid slots and all 20 solo starts on
+drivable ground, where the old synthesised grid missed on 5 of 24 — plus
+track 7's three known positions to the pixel.
+
+Deleted with it: `smk_track_start` and `smk_track_guess_start`, the
+fixed-coordinate grid and its road-finding fallback. There is nothing
+left for them to guess at.
