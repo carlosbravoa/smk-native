@@ -419,14 +419,13 @@ int main(int argc, char **argv)
          * line and their turbo one 11776 two frames out - both reproduced
          * to the unit by a flat 96-a-frame build. */
         struct { int press, rev, spin, window, drive; } W[] = {
-            { 999,   256, 0, 0, 0x00 },   /* never touched                */
-            {   0, 24575, 1, 0, 0x00 },   /* held throughout: over-revved */
-            { 210, 12352, 1, 0, 0x00 },   /* one frame too early          */
-            { 211, 12256, 0, 1, 0x10 },   /* the window opens             */
-            { 214, 11968, 0, 1, 0x10 },   /* four frames wide             */
-            { 215, 11872, 0, 0, 0x00 },   /* just missed                  */
-            { 216, 11776, 0, 0, 0x00 },   /* the user's turbo run, 2 out  */
-            { 224, 11008, 0, 0, 0x00 },   /* the user's normal run        */
+            { 999,   256, 0, 0, 0x00 },   /* never touched: the idle floor */
+            {   0, 18944, 1, 0, 0x00 },   /* held throughout: over-revved  */
+            { 212, 12352, 1, 0, 0x00 },   /* one tick too early            */
+            { 214, 12160, 0, 1, 0x10 },   /* the window opens              */
+            { 216, 11968, 0, 1, 0x10 },   /* the user's TURBO run          */
+            { 218, 11776, 0, 0, 0x00 },   /* just missed - their reading    */
+            { 226, 11008, 0, 0, 0x00 },   /* the user's normal run          */
         };
         int bad = 0;
         char d[160];
@@ -434,18 +433,60 @@ int main(int argc, char **argv)
         for (size_t i = 0; i < sizeof W / sizeof W[0]; i++) {
             static smk_player pr;
             smk_player_setup(&rom, 0, 1, &pr); smk_player_reset(&pr, 0);
-            for (int f = 0; f < 336; f++) smk_player_rev(&pr, f >= W[i].press);
-            int spin = pr.rev_spin, win = pr.rev_window, rev = pr.rev;
+            for (int f = 1; f <= SMK_COUNT_FRAMES; f++)
+                smk_player_rev(&pr, f >= W[i].press, (unsigned)f);
+            int spin = pr.rev_over, win = pr.rev_window, rev = pr.rev;
             smk_player_launch(&pr);
             if (rev != W[i].rev || spin != W[i].spin || win != W[i].window
                 || pr.drive != W[i].drive) {
                 bad++;
-                snprintf(d, sizeof d, "press f%d: rev %d (want %d) spin %d win %d drive $%02X",
+                snprintf(d, sizeof d, "press f%d: rev %d (want %d) over %d win %d drive $%02X",
                          W[i].press, rev, W[i].rev, spin, win, pr.drive);
             }
         }
-        if (!d[0]) snprintf(d, sizeof d, "window f211..f214 of 336; the user's 11008 and 11776 reproduce");
+        if (!d[0]) snprintf(d, sizeof d, "window f214..f217 of 336; the user's 11008, 11776 and 11968 reproduce");
         check("the start rev over-revs, hits the turbo band, or misses", !bad, d);
+
+        /* The penalty itself ($8095E0 -> $80B0EE, NOTES 163): the rev is
+         * snapped to $3000 at the line, then bleeds $70 a frame with $E2
+         * bit 5 up - the very bit the ground effect reads as smoke - and
+         * the kart is not stopped dead, it creeps. */
+        {
+            static smk_player pr; static smk_kart kk;
+            smk_player_setup(&rom, 0, 1, &pr); smk_player_reset(&pr, 0);
+            for (int f = 1; f <= SMK_COUNT_FRAMES; f++)
+                smk_player_rev(&pr, true, (unsigned)f);
+            smk_player_launch(&pr);
+            int snapped = pr.rev;
+            memset(&kk, 0, sizeof kk);
+            static smk_track tt2; static smk_course cc2;
+            smk_track_load(&rom, 7, -1, &tt2, err, sizeof err);
+            smk_course_load(&rom, 7, &cc2);
+            {   /* on the road, where the start actually happens */
+                float sx2, sy2; uint16_t sh2;
+                smk_course_start_solo(&cc2, &sx2, &sy2, &sh2);
+                kk.x = (int32_t)(sx2 * SMK_POS_ONE);
+                kk.y = (int32_t)(sy2 * SMK_POS_ONE);
+                kk.angle = sh2;
+                smk_player_reset(&pr, sh2);
+                pr.rev = 0x3000; pr.rev_spin = 1; pr.flags |= 0x0001;
+            }
+            int smoke = 0, frames = 0, moved = 0;
+            for (int f = 0; f < 200 && pr.rev_spin; f++) {
+                smk_player_step(&pr, &kk, &tt2, 0x8000, f ? 0 : 0x8000);
+                if (pr.flags & 0x0020) smoke++;
+                frames++;
+            }
+            moved = kk.speed;
+            snprintf(det, sizeof det,
+                     "snap %d, %d frames spinning, %d smoking, crept to %d",
+                     snapped, frames, smoke, moved);
+            check("over-revved: snapped to $3000, smoking, creeping, then let go",
+                  snapped == 0x3000 && frames >= 30 && frames <= 42
+                  && smoke == frames - 1 && moved > 0 && moved < 0x80
+                  && !pr.rev_spin,
+                  det);
+        }
     }
     {
         /* $80B5CD sets $1F = 1 and the game leaves it there for the whole

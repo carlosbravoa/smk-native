@@ -1817,7 +1817,19 @@ int main(int argc, char **argv)
                  * ignored - it builds the rev, and where the rev sits when
                  * the lights go out decides whether you get the turbo
                  * launch, nothing, or a wheelspin (NOTES 143). */
-                smk_player_rev(&player, in.up);
+                /* SMK_START_HOLD=t - hold the throttle from countdown
+                 * frame t, so the three launches (over-rev, turbo, plain)
+                 * can be shot without a pair of hands. */
+                bool thr = in.up;
+                {
+                    static int hold = -2;
+                    if (hold == -2) {
+                        const char *e = getenv("SMK_START_HOLD");
+                        hold = e ? atoi(e) : -1;
+                    }
+                    if (hold >= 0 && race_count >= hold) thr = true;
+                }
+                smk_player_rev(&player, thr, (unsigned)race_count);
                 if (race_count >= SMK_COUNT_FRAMES) {
                     race_state = RACE_RUN;
                     smk_player_launch(&player);   /* $80956A pays out here */

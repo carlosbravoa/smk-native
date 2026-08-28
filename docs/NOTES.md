@@ -6384,3 +6384,83 @@ game never showed any.
 Still open, and the user's own framing of it: the light "with the sound"
 is how you time the launch. The port has no audio at all, so half the cue
 is still missing. S18 in the ledger.
+
+---
+
+**163** — The countdown has its OWN rev routine, and three of NOTES 145's
+numbers were wrong.
+
+The user, after playing the port with Lakitu in it: *"I don't see that the
+game lets you accelerate during count down. As soon as lakitu appears, I
+should be able to rev up. If I rev'ed up too much before the green light,
+I can't move, but just slide on my spot as my wheels can't get grip
+(smoke coming, small animation). If I accelerate just in the right
+timeframe, I get launched with a turbo boost."*
+
+Every part of that is in the game and only part of it was in the port.
+
+*The measurement, which cost nothing.* The `starts` recording - their own
+four starts - has been in the repo since NOTES 143, and MAME replays it
+under any script we like. `tools/labs/mame/revlog.lua` logs `$C2`, `$E0`,
+`$E2`, `$EA`, `$EE` and `$AC` against `$0146` for all four, and the
+oracle reproduces it independently once the pad bit is right:
+**accelerate is B, bit 7 of the HIGH byte `$4219`**, not `$4218`, which
+is why two earlier attempts to drive P1 from the oracle looked like the
+kart ignored the throttle.
+
+*Correction 1 - the build rate.* NOTES 145 read "a flat 96 a frame". It
+is **+192 on every second frame**. The average is the same, which is why
+the check passed; the granularity is not, and the granularity is what
+decides which side of the turbo band a press lands on.
+
+*Correction 2 - the row was never in play.* NOTES 143 found `$0E22` =
+512 under `$2000` and `$0E24` = 64 over, and NOTES 145 logged that
+neither produces the measurement. They belong to `$80B121`, the IN-RACE
+builder. **While the lights run the game uses a different routine
+entirely**, `$80959F`-`$8095E0`, and its rates are immediates:
+
+    $02 negative (throttle held)
+      $8095D5  $C2 += $C0            and $4F00 SETS the wobble flag
+      $8095C4  flag set: $C2 -= $280 until under $3F00, which clears it
+    $02 positive (released)
+      $8095AC  $C2 -= $180, floored at $0100
+
+*Correction 3 - it does not peg, it oscillates.* NOTES 145 noticed the
+over-revved run "wobbling around 19-20k" and called it not modelled. It
+is that flag: +192 up to `$4F00` = 20224, then -640 down to `$3F00` =
+16128, and round again. Nothing else needed.
+
+*And the release snaps the rev.* On the frame the field goes, an
+over-revved `$C2` is set to exactly `$3000`: 19264 -> 12288 in the user's
+run, 19584 -> 12288 in the oracle's. So the wheelspin lasts the same ~37
+frames however badly you over-revved, instead of proportionally longer.
+The port had it bleeding from wherever the rev sat, which at the ceiling
+would have been four times too long.
+
+*The two effects that were missing, and why nothing was visible.*
+`$80B0EE` does three things and the port had one of them:
+
+    $80B0FD  $C2 -= $70                 the bleed - ported
+    $80B104  $E2 |= $20                 <- the SMOKE.  That is the very
+             bit smk_effects_pick reads as a deep drift, so the wheelspin
+             borrows the drift's own ground-effect object
+    $80B10C  and #$FFDE                 clears bits 0 AND 5 when it lets go
+
+and bit 0 is not bookkeeping either - `$80AB94`'s accel path reads it,
+`A = (flags & 1) ? $C0 : accel[..]`, so a penalised kart is **not stopped
+dead, it creeps**: sub-unit acceleration, "speed 0,1,2,3..." in NOTES
+143's log, which is the user's "slides on its own spot". The port zeroed
+the acceleration outright, so there was no creep, no smoke, and with no
+sound either, nothing whatsoever to see. The mechanism had been right
+since NOTES 144 and completely invisible.
+
+Ported and pinned: the self-test reproduces the user's own three readings
+(11008 normal, 11776 just-missed, 11968 turbo) from the press frame
+alone, and the penalty run snaps to `$3000`, smokes for 37 frames, creeps
+to speed 27 - the game's own 27 - and lets go.
+
+The turbo window is **two ticks, four frames**: press at f214..f217 of
+336. In the light's terms that is 95 frames before the green, which is
+worth saying out loud - the green is not the cue for the rocket start,
+and with no engine sound the port still cannot give the player the cue
+that is. S18's sound half is what is left.

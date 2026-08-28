@@ -282,6 +282,8 @@ typedef struct {
     uint16_t rev_ceiling;      /* the $81:EFF3 row, read at setup           */
     int16_t  rev_up_lo, rev_up_hi, rev_off;
     uint8_t  rev_window;       /* $E0 bit 0: inside the turbo band          */
+    uint8_t  rev_over;         /* past $3000 while the lights still run     */
+    uint8_t  rev_wobble;       /* $C4 in $8095BB: the $3F00/$4F00 oscillator */
     uint8_t  rev_spin;         /* $E2 bit 0: over-revved, wheels spinning   */
     uint16_t pad, pad_prev;    /* $C4 - the composed pad word, and last frame's */
     uint16_t flags;            /* $E2 - bit 15 airborne, 2/5 drift pose,
@@ -306,10 +308,10 @@ bool smk_player_setup(const smk_rom *rom, int character, int engine_class,
                       smk_player *p);
 /* use a mushroom ($80B47C): false if the kart is spinning */
 bool smk_player_boost(smk_player *p);
-/* The countdown's rev ($C2) and the launch test (NOTES 143): call
- * smk_player_rev once a frame while the lights run, then
- * smk_player_launch when they go out. */
-void smk_player_rev(smk_player *p, bool throttle);
+/* The countdown's rev ($C2) and the launch test (NOTES 143/163): call
+ * smk_player_rev once a frame while the lights run - it ticks on every
+ * second one, like the game - then smk_player_launch when they go out. */
+void smk_player_rev(smk_player *p, bool throttle, unsigned frame);
 void smk_player_launch(smk_player *p);
 /* place the kart: all three angles, machine at rest */
 void smk_player_reset(smk_player *p, uint16_t heading);

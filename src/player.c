@@ -78,7 +78,8 @@ bool smk_player_setup(const smk_rom *rom, int character, int engine_class,
     p->rev_up_lo   = (int16_t)rd16(rom, T_REV + 2u);
     p->rev_up_hi   = (int16_t)rd16(rom, T_REV + 4u);
     p->rev_off     = (int16_t)rd16(rom, T_REV + 6u);
-    p->rev = 0x0100; p->rev_window = 0; p->rev_spin = 0;
+    p->rev = 0; p->rev_window = 0; p->rev_spin = 0;
+    p->rev_over = 0; p->rev_wobble = 0;
 
     int top = (int16_t)rd16(rom, T_TOP + (uint32_t)character * 2u);
     if (engine_class == 0) top -= 0x80;
@@ -148,37 +149,79 @@ bool smk_player_setup(const smk_rom *rom, int character, int engine_class,
  * Measured against the user's four starts: idle 256, penalised 19264,
  * normal 11008, turbo 11776 two frames out and climbing $40 a frame -
  * which lands on $2E80 = 11904 exactly at the line (NOTES 143). */
-void smk_player_rev(smk_player *p, bool throttle)
+void smk_player_rev(smk_player *p, bool throttle, unsigned frame)
 {
-    /* The build rate is MEASURED, not read: $C2 climbs a flat 96 a frame
-     * in all three of the user's throttled starts, from 256 right through
-     * the window - no two-rate curve, no $2000 knee.  The row I found at
-     * $81:EFF3 ($0200 under $2000, $0040 over) does NOT produce that, so
-     * either it is not the row in play or it is scaled somewhere; the
-     * measurement wins and the discrepancy is logged (NOTES 145).
+    /* $80959F-$8095E0, transcribed (NOTES 163).
      *
-     * It also checks out against the user's two clean runs: run 4 began
-     * revving eight frames before run 3, and 8 * 96 = 768 is exactly the
-     * gap between their readings at the line, 11776 against 11008. */
-    int32_t v = (int32_t)p->rev + (throttle ? 96 : 0);
-    if (v < 0x0100) v = 0x0100;
-    if (v > (int32_t)p->rev_ceiling) v = p->rev_ceiling;
+     * The countdown has its own rev routine, and that is why NOTES 143's
+     * row never explained the numbers: $0E22/$0E24 (+$0200 under $2000,
+     * +$0040 over) belong to $80B121, the IN-RACE builder.  While the
+     * lights run it is this one instead, and its rates are immediates.
+     *
+     *   $02 negative (throttle held):
+     *     $8095BB  wobble flag clear -> $C2 += $C0, and reaching $4F00
+     *              SETS the flag ($8095DD dec $00C4,x)
+     *     $8095C0  flag set          -> $C2 -= $280 until it falls under
+     *              $3F00, which clears it ($8095CC)
+     *   $02 positive (released):
+     *     $8095A3  flag set -> the same $280 path
+     *     $8095AC  else     -> $C2 -= $180, floored at $0100
+     *
+     * So holding past $4F00 does not peg at a ceiling, it OSCILLATES
+     * between $3F00 and $4F00 - which is exactly the "wobbling around
+     * 19-20k" NOTES 145 saw in the user's over-revved run and could not
+     * model.  It is +192/-640 between 16128 and 20224.
+     *
+     * The cadence is measured, not read: $C2 moves on every SECOND frame,
+     * in the user's recording and in the oracle alike (tools/labs/rev.py,
+     * tools/labs/mame/revlog.lua). */
+    if (frame & 1u) return;
+    int32_t v = p->rev;
+    if (p->rev_wobble) {                       /* $8095A6 / $8095BE */
+        v -= 0x0280;
+        if (v < 0x3F00) p->rev_wobble = 0;     /* $8095CC */
+    } else if (throttle) {
+        v += 0x00C0;                           /* $8095D5 */
+        if (v >= 0x4F00) p->rev_wobble = 1;    /* $8095DD */
+    } else {
+        v -= 0x0180;                           /* $8095AC */
+        if (v < 0x0100) v = 0x0100;            /* $8095B6 */
+    }
     p->rev = (int16_t)v;
 
-    if (p->rev >= 0x3000) {                   /* $809591 */
-        p->rev_window = 0; p->rev_spin = 1;
-    } else if (p->rev >= 0x2E80) {            /* $809571: the window */
-        p->rev_window = 1;
+    /* $80956A, the band $C2 is in NOW.  The recording shows both flags
+     * live long before the line - the over-revved run lit $E2 bit 0 at
+     * $0146 = -204 - so this is a per-tick classification, not a test
+     * that only happens at the release. */
+    if (p->rev >= 0x3000) {                    /* $809591 */
+        p->rev_window = 0; p->rev_over = 1;
+    } else if (p->rev >= 0x2E80) {             /* $809571 */
+        p->rev_window = 1; p->rev_over = 0;
     } else {
-        p->rev_window = 0;
+        p->rev_window = 0; p->rev_over = 0;
     }
 }
 
-/* The lights go out: the window pays the mushroom's own boost. */
+/* The lights go out.
+ *
+ * The window pays the mushroom's own boost (NOTES 143).  An over-rev
+ * does something the port did not do at all: $C2 is snapped to exactly
+ * $3000 on the release frame - 19584 -> 12288 in one step in the oracle,
+ * 19264 -> 12288 in the user's own run - so the wheelspin lasts the same
+ * 36 frames however badly you over-revved, rather than proportionally
+ * longer.  Only then does the bleed start; through the countdown the rev
+ * climbs (and wobbles) untouched. */
 void smk_player_launch(smk_player *p)
 {
-    if (p->rev_window) smk_player_boost(p);
+    if (p->rev_window) {
+        smk_player_boost(p);
+    } else if (p->rev_over) {
+        p->rev = 0x3000;
+        p->rev_spin = 1;
+        p->flags |= 0x0001;      /* $E2 bit 0 - the accel path reads it */
+    }
     p->rev_window = 0;
+    p->rev_over = 0;
 }
 
 bool smk_player_boost(smk_player *p)
@@ -322,17 +365,32 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
      * 418 for all eight frames and only moved once control came back.
      * Accelerating through the window is what made bouncing free - you
      * came off the wall already back up to speed. */
-    /* Over-revved off the line: the wheels spin and the throttle does
-     * nothing until $C2 falls under $2000 (measured: $EE = 0 throughout,
-     * NOTES 143).  The rev keeps bleeding while it does. */
+    /* Over-revved off the line: the wheels spin, and $80B0EE, transcribed
+     * (NOTES 163).  Two of its three effects were missing here.
+     *
+     *   $80B0FD  $C2 -= $70                    the bleed, which was ported
+     *   $80B104  $E2 |= $20                    <- the SMOKE.  That is the
+     *            very bit smk_effects_pick reads as a deep drift, so the
+     *            game shows the ground effect for a spinning wheel out of
+     *            the same object the drift uses.
+     *   $80B10C  and #$FFDE                    clears bits 0 AND 5 when
+     *            the rev finally drops under $2000.
+     *
+     * And bit 0 is not bookkeeping either: $80B169's accel path reads it
+     * ($80AB94, `A = (flags & 1) ? $C0 : accel[..]`), so the penalised
+     * kart is not stopped dead - it CREEPS, sub-unit, which is the
+     * "speed 0,1,2,3..." NOTES 143 logged for the penalised run and the
+     * user's "slides on its own spot". */
     if (p->rev_spin) {
-        /* $80B0EE: the wheels spin, bleeding $70 a frame, and the
-         * throttle does nothing at all until the rev drops under $2000
-         * (measured: $EE = 0 for the whole penalty, NOTES 143). */
-        if (p->rev >= 0x2000) p->rev = (int16_t)(p->rev - 0x0070);
-        else p->rev_spin = 0;
-        p->accel32 = 0; k->accel = 0; k->accel_frac = 0;
-    } else if (k->bounce_cool == 0) {
+        if (p->rev >= 0x2000) {
+            p->rev = (int16_t)(p->rev - 0x0070);
+            p->flags |= 0x0021;            /* $80B104, and bit 0 held */
+        } else {
+            p->rev_spin = 0;
+            p->flags &= (uint16_t)~0x0021u;   /* $80B10C: and #$FFDE */
+        }
+    }
+    if (k->bounce_cool == 0) {
         /* $80A55B, drive state $16: once the window lets go, the kart is
          * still travelling sideways to where it points, and THAT costs
          * speed.  $EE comes from the table at $80A590 indexed by the
