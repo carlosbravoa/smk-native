@@ -254,14 +254,20 @@ void smk_racer_step(smk_racer *r, const smk_track *trk,
          * +1 then an unguarded -1 and left the counter locked (NOTES 055).
          * One lap event per transit. */
         if (r->lap_cool > 0) r->lap_cool--;
-        if ((cell & SMK_SECT_FINISH) && r->lap_cool == 0) {
-            if (r->sector != sec) r->esc_len = 0;
-        /* progress for the rescue timer = monotonic max only, or the two
-         * stuck loops that oscillate between adjacent sectors reset it */
+        /* Progress for the rescue timer: monotonic max, on EVERY on-course
+         * frame.  This block used to sit inside the finish-strip test
+         * below - the indentation shows it was never meant to - so
+         * no_prog was only cleared while a kart stood on the strip, once
+         * a lap.  A lap is far more than the 600 frames the rescue waits
+         * for, so every AI kart was fished up and set down at its own
+         * waypoint in the middle of every lap: the user's "they
+         * disappear and re-appear a few meters further" (NOTES 169). */
         {
             int prog2 = (r->lap << 8) | sec;
-            if (prog2 > r->rescue_max) { r->rescue_max = prog2; r->no_prog = 0; }
+            if (prog2 > r->rescue_max) r->rescue_max = prog2;
         }
+        if ((cell & SMK_SECT_FINISH) && r->lap_cool == 0) {
+            if (r->sector != sec) r->esc_len = 0;
             if (r->sector >= crs->sectors - 2 && sec <= 1) {
                 int prog = ((r->lap + 1) << 8) | sec;
                 if (prog > r->progress_max) {
@@ -302,18 +308,47 @@ void smk_racer_step(smk_racer *r, const smk_track *trk,
      * Ten seconds without sector progress -> set down at the sector's own
      * waypoint, facing the next one.  (The real trigger and animation are
      * not decoded; the rescue itself is the game's own behaviour.) */
-    if (++r->no_prog > 600) {
-        int nx2 = r->sector + 1;
-        if (nx2 >= crs->sectors) nx2 = 0;
-        r->k.x = (int32_t)crs->wx[r->sector] << 16;
-        r->k.y = (int32_t)crs->wy[r->sector] << 16;
-        r->k.angle = heading_to(&r->k, crs->wx[nx2], crs->wy[nx2]);
-        r->k.speed = 0;
-        r->k.vx = r->k.vy = 0;
-        r->k.airborne = false;
+    /* The rescue trigger, and it has to answer three cases at once
+     * (NOTES 169).  The old rule - ten seconds without beating your own
+     * best sector - fished up karts that were driving perfectly: one
+     * backward excursion, a spin or a corner cut into an earlier
+     * sector's paint, parks the watermark and a healthy kart is
+     * teleported.  Measured on track 4: rescued at frame 1308 doing 362
+     * in sector 14.  That is the user's "they disappear and re-appear a
+     * few meters further".
+     *
+     * But dropping the watermark for "did the sector change" reopens the
+     * hole NOTES 057 needed it for: two karts circling between adjacent
+     * sectors reset any such timer for ever.
+     *
+     * NET DISPLACEMENT over the window answers all three.  A kart going
+     * somewhere has moved; a wedged one has not; and a circling one
+     * comes back to where it started.  Ours, and labelled - the ROM's
+     * own trigger is still not decoded. */
+    if (++r->no_prog >= SMK_AI_RESCUE_FRAMES) {
+        int adx = smk_kart_px(r->k.x) - r->anchor_x;
+        int ady = smk_kart_px(r->k.y) - r->anchor_y;
+        if (adx >  512) adx -= 1024;
+        if (adx < -512) adx += 1024;
+        if (ady >  512) ady -= 1024;
+        if (ady < -512) ady += 1024;
+        if (adx * adx + ady * ady <= SMK_AI_STUCK_PX * SMK_AI_STUCK_PX) {
+            /* Lakitu: set it down at its sector's own waypoint, facing
+             * the next one.  The animation is still missing (S12). */
+            int nx2 = r->sector + 1;
+            if (nx2 >= crs->sectors) nx2 = 0;
+            r->k.x = (int32_t)crs->wx[r->sector] << 16;
+            r->k.y = (int32_t)crs->wy[r->sector] << 16;
+            r->k.angle = heading_to(&r->k, crs->wx[nx2], crs->wy[nx2]);
+            r->k.speed = 0;
+            r->k.vx = r->k.vy = 0;
+            r->k.airborne = false;
+            r->esc_len = 0;
+            r->escape = 0;
+        }
         r->no_prog = 0;
-        r->esc_len = 0;
-        r->escape = 0;
+        r->anchor_x = smk_kart_px(r->k.x);
+        r->anchor_y = smk_kart_px(r->k.y);
     }
     /* a kart pinned nearly square against a wall keeps its speed (the
      * proportional graze loss is ~0) while its position only crawls

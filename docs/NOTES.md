@@ -6814,3 +6814,71 @@ theme, leaving the race half set up with the kart at x = 65520.
 `gridtable.py`, written earlier the same day, hooks `$0150`/`$0152` and
 reaches all twenty courses cleanly. The working method was in the same
 directory the whole time.
+
+---
+
+**169** — The AI teleport: a brace, and a watermark that condemns healthy
+karts.
+
+The user: *"AI players tend to teleport to get their positions corrected:
+they often disappear and re-appear a few meters further."*
+
+Two causes, one on top of the other.
+
+*The brace.* `src/ai.c`'s rescue timer resets when a kart betters its own
+progress watermark - and that block sat INSIDE the finish-strip test:
+
+    if ((cell & SMK_SECT_FINISH) && r->lap_cool == 0) {
+        if (r->sector != sec) r->esc_len = 0;
+    {                                    <- indented as a sibling, nested
+        int prog2 = (r->lap << 8) | sec; <- as a child
+        if (prog2 > r->rescue_max) { ... r->no_prog = 0; }
+    }
+
+So `no_prog` was cleared only while a kart stood on the strip - once a
+lap. A lap is far more than the 600 frames the rescue waits for, so
+**every AI kart was fished up and set down at its own waypoint in the
+middle of every lap.** The indentation shows what was meant; the braces
+say otherwise, and the compiler had no opinion.
+
+*The watermark.* With that fixed a kart on track 4 was still rescued at
+frame 1308, doing 362 in sector 14. `rescue_max` is a MAXIMUM, so one
+backward excursion - a spin, a bump, a corner cut through an earlier
+sector's paint - parks the timer until the kart betters its old best, and
+a kart driving perfectly gets fished up while it tries.
+
+But simply resetting on any sector change reopens the hole NOTES 057
+needed the watermark for: two karts circling between adjacent sectors
+reset every sector-keyed timer for ever. Both were tried; 20/20 on
+`laptest` fell to 19/20 the moment the watermark stopped gating.
+
+*NET DISPLACEMENT over the window answers all three.* A kart going
+somewhere has moved; a wedged one has not; a circling one comes back to
+where it started. Every 600 frames, if the kart is within 128 px of where
+it was, it is fished up; otherwise the anchor moves on. Ours, and
+labelled - the ROM's own trigger is still not decoded.
+
+The self-test is the one that would have caught it: step a racer on every
+course for 2400 frames, and for every position jump, check the kart's own
+net displacement over the preceding window justified it. Three rescues
+across twenty courses now, none of them on a kart that was travelling.
+
+**169a** — And Lakitu's own row on the rescue was built on a misread.
+
+The user, from a savestate: *"our implementation is not bad at all. Just
+double check lakitu's position in the animation."*
+
+It was wrong, and the reason is a bad read rather than a bad guess. The
+first port drove his row from the kart's height, taken from `$1E` - which
+is the LOW word of a 24-bit value whose pixels live in the top byte, and
+which alternates 0 and -32768 frame to frame. The capture's own OAM says
+his row is not a ramp from the kart's height at all:
+
+    f0..f19   holds at -40
+    f49       RISES to -56
+    f95       and only then comes down, to +38
+
+He swoops. That shape cannot come out of the kart's monotonic descent
+however it is scaled, so the path is now the measured one, generated into
+`src/rescue_path.inc` like the start's and the lap sign's, played off its
+own frame counter.

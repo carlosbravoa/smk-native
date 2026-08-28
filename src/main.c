@@ -179,6 +179,7 @@ static int hud_lap, hud_rank;
 static long hud_race_frames;             /* frames since the lights */
 static int  hud_countdown;               /* Lakitu's frame, from the arm */
 static int  lap_sign_t = -1;             /* his lap sign, from the crossing */
+static int  rescue_t;                    /* frames into the $0E drop      */
 static int  hud_input;                   /* L/R/accel bits, for the HUD */
 /* The start sequence.  SMK holds the karts for a countdown, then runs;
  * our timing is the ROM's own 3-2-1-GO cadence in frames (60/step) -
@@ -299,16 +300,11 @@ static void draw_lap_sign(uint32_t *fb, int rw, int rh,
  * Only during the DROP phase - through the carry his sprites are parked
  * off the side of the screen, which is the game not drawing him. */
 static void draw_rescue_lakitu(uint32_t *fb, int rw, int rh,
-                               const uint32_t *palette, int32_t z)
+                               const uint32_t *palette, int t)
 {
     if (!hud_art.ok) return;
     int sc = rw >= 640 ? 3 : 2;
-    /* he comes down with the kart: z runs $3000 -> 0 at $80 a frame */
-    int32_t zt = (int32_t)0x3000 << 8;
-    if (z > zt) z = zt;
-    if (z < 0) z = 0;
-    int y = SMK_RESCUE_Y_END
-          - (int)(((int64_t)(SMK_RESCUE_Y_END - SMK_RESCUE_Y_TOP) * z) / zt);
+    int y = smk_rescue_y(t);
     static const struct { int dx, dy, tile; } PART[5] = {
         {  0,  0, SMK_RESCUE_TL }, { 16,  0, SMK_RESCUE_TR },
         {  0, 16, SMK_RESCUE_BL }, { 16, 16, SMK_RESCUE_BR },
@@ -1294,7 +1290,7 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
         draw_lap_sign(fb, rw, rh, trk->palette, lap_sign_t,
                       hud_lap, SMK_RACE_LAPS);
     if (player.hazard == 0x0E)            /* and once more, on a rescue */
-        draw_rescue_lakitu(fb, rw, rh, trk->palette, kart.z);
+        draw_rescue_lakitu(fb, rw, rh, trk->palette, rescue_t);
 }
 
 /* The player's own view angle.
@@ -1921,6 +1917,9 @@ int main(int argc, char **argv)
             if (race_state == RACE_RUN) hud_race_frames++;
             if (lap_sign_t >= 0 && ++lap_sign_t > SMK_LAPSIGN_FRAMES)
                 lap_sign_t = -1;
+            /* his own clock for the drop, so the path plays at the rate
+             * it was captured at rather than off the kart's height */
+            rescue_t = (player.hazard == 0x0E) ? rescue_t + 1 : 0;
             if (replay_path) {
                 /* the recorded pad word replaces the player's input, and
                  * the game's own kart rides along as a ghost (slot 1) */

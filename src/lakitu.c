@@ -145,3 +145,21 @@ void smk_lapsign_frame(int t, int lap, int laps, smk_lapsign *out)
         out->digit = SMK_LAPSIGN_DIGIT + n;
     }
 }
+
+
+/* ---- Lakitu lowering a rescued kart (NOTES 168a/169a) ------------------
+ *
+ * MEASURED, frame by frame, from the game's own OAM.  He does not simply
+ * track the kart down: he holds high, rises a little further, and then
+ * descends - which a ramp from the kart's height cannot produce. */
+static const short RESCUE_Y[] = {
+#include "rescue_path.inc"
+};
+#define RESCUE_N ((int)(sizeof RESCUE_Y / sizeof RESCUE_Y[0]))
+
+int smk_rescue_y(int t)
+{
+    if (t < 0) t = 0;
+    if (t >= RESCUE_N) t = RESCUE_N - 1;
+    return RESCUE_Y[t];
+}

@@ -951,6 +951,11 @@ bool smk_objgfx_load(const smk_rom *rom, int theme, smk_objgfx *out);
  * the steering law matches the decoded shape; the slew rate, the
  * target-speed entry per kart and rubber-banding are PLACEHOLDERS,
  * labelled in src/ai.c. */
+/* How far a kart must have travelled from where its rescue timer last
+ * reset to count as NOT stuck.  Ours, labelled: the ROM's own rescue
+ * trigger is not decoded (NOTES 057/169). */
+#define SMK_AI_STUCK_PX      128
+#define SMK_AI_RESCUE_FRAMES 600
 typedef struct {
     smk_kart k;
     int      character;     /* who drives this slot (SMK_DRIVERS index)  */
@@ -964,6 +969,7 @@ typedef struct {
     int      esc_len;       /* escalating escape duration               */
     int      no_prog;       /* frames since monotonic progress          */
     int      rescue_max;    /* rescue timer's own progress watermark    */
+    int      anchor_x, anchor_y;  /* where it was when no_prog last reset */
     int      lap_cool;      /* one lap event per strip transit          */
     int      rank;          /* $E6 >> 1: place, 0 = leading              */
     int      row;           /* $C8 >> 1: the rubber band's target row    */
@@ -1161,8 +1167,13 @@ void smk_lapsign_frame(int t, int lap, int laps, smk_lapsign *out);
  * The descent tracks the kart's own z: $3000 falling at $80 a frame is
  * 96 frames, which is the 98 the phase lasts. */
 #define SMK_RESCUE_X       97      /* his block's screen x, fixed        */
-#define SMK_RESCUE_Y_TOP  (-56)    /* where he starts the drop           */
-#define SMK_RESCUE_Y_END    38     /* and where he ends it               */
+#define SMK_RESCUE_FRAMES  96      /* the $0E phase, measured             */
+/* His row, frame by frame from the start of the phase.  It is NOT a ramp
+ * from the kart's height: he holds at -40, RISES to -56, and only then
+ * comes down to +38.  The first port drove it from the kart's z, read
+ * out of $1E - which is the LOW word of a 24-bit height and alternates
+ * 0/-32768, so the position was built on a misreading (NOTES 169a). */
+int smk_rescue_y(int t);
 /* the assembly: $42/$40 over $46/$44, plus $48 beside the lower right */
 #define SMK_RESCUE_TL      0x42
 #define SMK_RESCUE_TR      0x40

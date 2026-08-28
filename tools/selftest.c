@@ -269,6 +269,63 @@ int main(int argc, char **argv)
         check("track 7's grid matches the game's own", pinned == 3, det);
     }
 
+    printf("\nthe AI only teleports when it is stuck\n");
+    {
+        /* The user: "AI players tend to teleport to get their positions
+         * corrected: they often disappear and re-appear a few meters
+         * further."  A rescue IS a jump, and a genuinely stuck kart
+         * should get one - so the test is not "never", it is "only when
+         * it had gone nowhere".  Every jump must be justified by the
+         * kart's own net displacement over the preceding window
+         * (NOTES 169). */
+        static smk_track t9; static smk_course c9; static smk_physics p9;
+        static int hx[SMK_AI_RESCUE_FRAMES], hy[SMK_AI_RESCUE_FRAMES];
+        int jumps = 0, unjust = 0, worst_t = -1;
+        for (int tr = 0; tr < 20; tr++) {
+            if (!smk_track_load(&rom, tr, -1, &t9, err, sizeof err)) continue;
+            if (!smk_course_load(&rom, tr, &c9)) continue;
+            if (!smk_physics_load(&rom, 0, &p9)) continue;
+            static smk_racer r9;
+            smk_racer_start(&r9, &c9, 0);
+            r9.character = 0;
+            int px = smk_kart_px(r9.k.x), py = smk_kart_px(r9.k.y);
+            for (int i = 0; i < SMK_AI_RESCUE_FRAMES; i++) { hx[i] = px; hy[i] = py; }
+            for (int f = 0; f < 2400; f++) {
+                smk_racer_step(&r9, &t9, &c9, &p9);
+                int nx = smk_kart_px(r9.k.x), ny = smk_kart_px(r9.k.y);
+                int dx = nx - px, dy = ny - py;
+                if (dx >  512) dx -= 1024;
+                if (dx < -512) dx += 1024;
+                if (dy >  512) dy -= 1024;
+                if (dy < -512) dy += 1024;
+                if (dx * dx + dy * dy > 32 * 32) {
+                    /* it jumped: was it going nowhere beforehand? */
+                    int i = f % SMK_AI_RESCUE_FRAMES;
+                    int ax = px - hx[i], ay = py - hy[i];
+                    if (ax >  512) ax -= 1024;
+                    if (ax < -512) ax += 1024;
+                    if (ay >  512) ay -= 1024;
+                    if (ay < -512) ay += 1024;
+                    jumps++;
+                    if (ax * ax + ay * ay
+                        > SMK_AI_STUCK_PX * SMK_AI_STUCK_PX) {
+                        unjust++;
+                        worst_t = tr;
+                    }
+                }
+                hx[f % SMK_AI_RESCUE_FRAMES] = nx;
+                hy[f % SMK_AI_RESCUE_FRAMES] = ny;
+                px = nx; py = ny;
+            }
+        }
+        snprintf(det, sizeof det,
+                 "%d rescues over 20 courses, %d of them unjustified%s",
+                 jumps, unjust, unjust ? " (track shown)" : "");
+        if (unjust) snprintf(det + strlen(det), sizeof det - strlen(det),
+                             " %d", worst_t);
+        check("no kart that is travelling is ever fished up", !unjust, det);
+    }
+
     printf("\nLakitu's lap sign\n");
     {
         /* The path and the assembly are the game's own OAM at a
@@ -294,6 +351,32 @@ int main(int argc, char **argv)
         check("lap 2/3/4 pick $A4/$A5/$A6 and the last lap its own plate",
               !a.on && b3.digit == 0xA4 && c3.digit == 0xA5
               && d3.final_lap && d3.plate == SMK_LAPSIGN_FINAL_L, det);
+    }
+
+    printf("\nLakitu on a rescue\n");
+    {
+        /* His row is the game's own, frame by frame - and the shape is
+         * the point: he HOLDS, then RISES, then comes down.  A ramp from
+         * the kart's height cannot do that, and the first port drove it
+         * from $1E, the low word of a 24-bit height, which alternates
+         * 0/-32768 (NOTES 169a). */
+        int y0 = smk_rescue_y(0), y19 = smk_rescue_y(19);
+        int y49 = smk_rescue_y(49), yend = smk_rescue_y(95);
+        int rises = 0, falls = 0;
+        for (int t = 1; t < SMK_RESCUE_FRAMES; t++) {
+            int d = smk_rescue_y(t) - smk_rescue_y(t - 1);
+            if (d < 0) rises++;
+            if (d > 0) falls++;
+        }
+        snprintf(det, sizeof det, "f0 %d, f19 %d, f49 %d, end %d; %d up %d down",
+                 y0, y19, y49, yend, rises, falls);
+        check("he holds, rises to -56, then comes down to +38",
+              y0 == -40 && y19 == -40 && y49 == -56 && yend == 38
+              && rises > 0 && falls > rises, det);
+        /* past the end he stays put rather than running off the table */
+        check("the path is clamped at both ends",
+              smk_rescue_y(-5) == y0
+              && smk_rescue_y(SMK_RESCUE_FRAMES * 4) == yend, det);
     }
 
     printf("\nthe rubber band\n");
