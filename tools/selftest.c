@@ -102,6 +102,49 @@ static void test_player_replay(const smk_rom *rom)
               ok && p50.base_top + 80 == 864 && p.base_top + 80 == 992
                  && p150.base_top == p.base_top + 0xA0, d);
     }
+    /* A kart at a STANDSTILL does not turn.  The user: "When stopped
+     * (speed=0) and you press left or right, the cart doesn't turn, the
+     * player only leans their head left or right.  Nothing else.  This
+     * can be tested easily during count down."
+     *
+     * It holds because $80A9B8, the turn-per-frame table for speeds under
+     * $80, begins 0, 16, 32, 48 and the index is (speed>>4)&7 - so entry
+     * ZERO covers speeds 0..15.  The bug was never here: main.c threw the
+     * steering away during the countdown, so the driver could not even
+     * lean (NOTES 175).  This pins the half that must NOT move. */
+    {
+        static smk_track trk1; static smk_course crs1;
+        char terr1[128];
+        /* on the real grid: a kart memset to (0,0) is off the map, falls,
+         * and Lakitu resets its heading - which reads as "it turned" */
+        if (smk_track_load(rom, 0, -1, &trk1, terr1, sizeof terr1)
+            && smk_course_load(rom, 0, &crs1)) {
+            static smk_player pl; static smk_kart kk;
+            float gx, gy; uint16_t gh;
+            smk_course_start(&crs1, SMK_GRID_SLOT(0), &gx, &gy, &gh);
+            smk_player_setup(rom, 0, 0, &pl);
+            #define PUTKART() do {                                       \
+                memset(&kk, 0, sizeof kk);                               \
+                kk.x = (int32_t)(gx * SMK_POS_ONE);                      \
+                kk.y = (int32_t)(gy * SMK_POS_ONE);                      \
+                kk.angle = gh; smk_player_reset(&pl, gh);                \
+            } while (0)
+            PUTKART();
+            for (int f = 0; f < 90; f++)          /* LEFT only, no throttle */
+                smk_player_step(&pl, &kk, &trk1, 0x0200, f ? 0 : 0x0200);
+            int still = pl.heading, sspd = kk.speed;
+            /* the same input WITH throttle does turn it, or this check is
+             * passing on a kart that simply never steers at all */
+            PUTKART();
+            for (int f = 0; f < 90; f++)
+                smk_player_step(&pl, &kk, &trk1, 0x8200, f ? 0 : 0x8200);
+            #undef PUTKART
+            snprintf(d, sizeof d, "at rest $%04X (grid $%04X, speed %d), "
+                     "driving $%04X", still, gh, sspd, pl.heading);
+            check("$80A9B8[0] = 0: LEFT held at a standstill turns nothing",
+                  still == gh && sspd == 0 && pl.heading != gh, d);
+        }
+    }
     p.coins = 10;                           /* $D6 was 992 in both captures */
     /* the slide capture's fraction steps $4000 per frame (accel $0040 << 8) */
     replay("player replay: hop-into-left power slide, release, plain slide",

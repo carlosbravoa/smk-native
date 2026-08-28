@@ -7171,3 +7171,44 @@ LABELLED and not ported: the `$E2` bit 1 policy at `$80ADC0` (0 frames of
 5582 in a one-player race) and `$0E50` (never non-zero). `trouble` is
 approximated from the port's own crash states - `$84` and `$10` bit 5 are
 not decoded - and currently never fires, where the original is at 8%.
+
+---
+
+**175** — The countdown threw the steering away, so the driver never leaned.
+
+The user, listing what is missing: *"When stopped (speed=0) and you press
+left or right, the cart doesn't turn, the player only leans their head
+left or right. Nothing else. This can be tested easily during count
+down."*
+
+Half of this was already right, and that half is worth stating because it
+changed the whole size of the job. **The kart does not turn at a
+standstill, and never did.** `$80:A9B8` holds the turn per frame for
+speeds under `$80`, indexed by `(speed>>4)&7`:
+
+    0  16  32  48  56  60  62  64  128
+
+Entry ZERO covers speeds 0..15. Held LEFT for 90 frames at a standstill
+moves the heading by exactly `$0000`. So this was never a physics bug.
+
+What was missing was the LEAN, and the reason is one line in the
+countdown at `src/main.c`:
+
+    in.up = in.down = in.left = in.right = false;
+
+The throttle is consumed there deliberately - it feeds the rev, and where
+the rev sits when the lights go out decides the turbo launch (NOTES 143) -
+and the steering was swept up with it. So through the whole countdown, the
+exact place the user says to test, our driver sat rigid. Now only
+throttle and hop are taken.
+
+Keeping the steering cannot turn the kart, for the reason above; all it
+reaches is the sprite's lean, which `main.c` already ramps toward `$0A00`
+from held left/right regardless of speed (NOTES 080's pose ladder puts
+that in frame 1's band).
+
+The selftest pins the half that must NOT move, and pins it non-vacuously:
+the same input WITH the throttle does turn the kart, or the check would
+pass on a kart that never steers at all. One trap on the way: a kart
+`memset` to (0,0) is off the map, falls, and Lakitu resets its heading -
+which reads exactly like "it turned". The test starts it on the grid.

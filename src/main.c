@@ -1931,7 +1931,21 @@ int main(int argc, char **argv)
                     race_state = RACE_RUN;
                     smk_player_launch(&player);   /* $80956A pays out here */
                 }
-                in.up = in.down = in.left = in.right = false;
+                /* Throttle and hop are consumed here; STEERING IS NOT.
+                 * The user: "When stopped (speed=0) and you press left or
+                 * right, the cart doesn't turn, the player only leans
+                 * their head left or right.  Nothing else.  This can be
+                 * tested easily during count down."  Zeroing left/right
+                 * threw that away, so our driver sat rigid through the
+                 * whole countdown.
+                 *
+                 * Keeping them cannot turn the kart: below speed $80 the
+                 * heading moves by $80A9B8[(speed>>4)&7], and that table
+                 * begins 0, 16, 32, 48 - entry ZERO for speeds 0..15.
+                 * Verified by holding LEFT for 90 frames at a standstill:
+                 * the heading moves by exactly $0000.  All they reach is
+                 * the sprite's lean (NOTES 175). */
+                in.up = in.down = false;
                 in.hop_held = false;
             }
             if (race_state == RACE_RUN) hud_race_frames++;
