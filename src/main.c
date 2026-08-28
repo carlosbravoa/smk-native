@@ -1927,6 +1927,8 @@ int main(int argc, char **argv)
 
             if (race_state == RACE_RUN && !replay_path
                 && race_mode != SMK_MODE_TT) {
+                /* the rubber band, before anybody moves (NOTES 167) */
+                smk_ai_rubber(racers, SMK_CHARACTERS, &crs, engine_class);
                 for (int i = 1; i < SMK_CHARACTERS; i++)
                     smk_racer_step(&racers[i], &trk, &crs, &phys);
                 /* Kart against kart, once a frame over the whole field

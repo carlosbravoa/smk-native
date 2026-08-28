@@ -387,7 +387,16 @@ void smk_racer_step(smk_racer *r, const smk_track *trk,
      * player at every engine class (user report) - presumably the demo's
      * difficulty, with rubber-banding undecoded.  Race AI uses row +0, the
      * same rows the player's class selects, so 50/100/150cc scale both. */
-    int target = (int16_t)phys->w[SMK_PHYS_TARGET + (crs->wattr[r->sector] & 3)];
+    /* $80B074: the waypoint attribute picks the entry, the rubber band's
+     * row picks the group, and $80B086 adds the flat per-rank correction
+     * from $B0A1 (NOTES 167).  The port used to pass row 0 always, which
+     * is the leader's ease-off row - so every AI kart drove as if it were
+     * comfortably in front, and none of them ever chased. */
+    int row = r->row;
+    if (row < 0 || row > SMK_AI_ROW_SLOW) row = SMK_AI_ROW_HOLD;
+    int target = (int16_t)phys->w[SMK_PHYS_TARGET + (crs->wattr[r->sector] & 3)
+                                  + row];
+    target += SMK_AI_RANK_BONUS[r->rank & 7];
     /* DECODED ($80A701 structure): off-road surfaces cap the speed and the
      * over-cap decel row applies.  Cap values are measured (NOTES 053). */
     {
@@ -415,4 +424,57 @@ void smk_racer_step(smk_racer *r, const smk_track *trk,
     smk_kart_gravity(&r->k);
     smk_kart_move(&r->k, trk);
     smk_collide_objects(&r->k, crs);
+}
+
+/* ---- The rubber band (NOTES 167) -------------------------------------- */
+
+const uint16_t SMK_AI_CATCHUP[4][8] = {          /* $80AF0F */
+    { 0x0080, 0x0080, 0x0040, 0x0040, 0x0040, 0x0040, 0x0060, 0x0080 },
+    { 0x00A0, 0x00A0, 0x0050, 0x0050, 0x0080, 0x00A0, 0x00C0, 0x00C0 },
+    { 0x00C0, 0x00C0, 0x0060, 0x0070, 0x0080, 0x00C0, 0x00E0, 0x0500 },
+    { 0x00E0, 0x00E0, 0x0060, 0x0080, 0x00A0, 0x0120, 0x0500, 0x0500 },
+};
+const int16_t SMK_AI_RANK_BONUS[8] =             /* $80B0A1 */
+    { 0, -2, -4, -8, -12, -16, -20, -24 };
+
+void smk_ai_rubber(smk_racer *racers, int n, const smk_course *crs, int cls)
+{
+    if (cls < 0) cls = 0;
+    if (cls > 3) cls = 3;
+    /* $80A047's sort: rank by progress, and each kart learns its place */
+    for (int i = 0; i < n; i++) {
+        racers[i].rank = smk_race_rank(racers, i, crs) - 1;
+        if (racers[i].rank < 0) racers[i].rank = 0;
+        if (racers[i].rank > 7) racers[i].rank = 7;
+    }
+    for (int i = 0; i < n; i++) {
+        smk_racer *r = &racers[i];
+        /* the kart one place ahead - $010C indexed by this kart's rank */
+        const smk_racer *ahead = 0;
+        for (int j = 0; j < n; j++)
+            if (racers[j].rank == r->rank - 1) { ahead = &racers[j]; break; }
+
+        if (!ahead) {
+            /* $80ADE0, the leader.  Far enough clear of second and it
+             * EASES OFF; otherwise it holds station. */
+            const smk_racer *second = 0;
+            for (int j = 0; j < n; j++)
+                if (racers[j].rank == 1) { second = &racers[j]; break; }
+            r->row = SMK_AI_ROW_HOLD;
+            if (second) {
+                float dx = (float)(smk_kart_px(second->k.x) - smk_kart_px(r->k.x));
+                float dy = (float)(smk_kart_px(second->k.y) - smk_kart_px(r->k.y));
+                if (dx * dx + dy * dy >
+                    (float)SMK_AI_CATCHUP[cls][0] * SMK_AI_CATCHUP[cls][0])
+                    r->row = SMK_AI_ROW_EASE;
+            }
+            continue;
+        }
+        /* $80AE4C: past the catch-up distance for this rank, chase. */
+        float dx = (float)(smk_kart_px(ahead->k.x) - smk_kart_px(r->k.x));
+        float dy = (float)(smk_kart_px(ahead->k.y) - smk_kart_px(r->k.y));
+        float lim = (float)SMK_AI_CATCHUP[cls][r->rank & 7];
+        r->row = (dx * dx + dy * dy > lim * lim) ? SMK_AI_ROW_CHASE
+                                                 : SMK_AI_ROW_HOLD;
+    }
 }

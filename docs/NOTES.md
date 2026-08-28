@@ -6656,3 +6656,76 @@ because they run in a pack and stay in contact for whole corners.
 Ported with both halves of `$819C93` and pinned: a re-contact at speed
 leaves all four components untouched, and two stopped karts come apart at
 `$0180`.
+
+---
+
+**167** — The rubber band: it is a target-speed ROW, and the port was
+passing zero.
+
+The user, describing the original: *"no matter how fast you are they can
+keep up and stay behind you all the time... when one of them gets behind
+their original position, they start to go faster (sometimes cheating)
+until they catch up and get back to their place."*
+
+All of that is `$80AD5E`, the AI's per-frame driver, and it was hiding in
+plain sight - the routine at `$80ADE0` was looked at earlier in this same
+session while hunting kart collision and dismissed as sprite priority,
+because it returns `$0000`/`$0008`/`$0010`/`$0018`. Those are not
+priorities. They are byte offsets into the target-speed table.
+
+    $80AD8F  jsr $AD96            pick the row
+    $80AD93  sta $C8,x            store it
+    $80B074  target = $06B0[ (waypoint attr & 3) * 2 + $C8 ]
+
+`src/ai.c` had the second line right - its comment already said "offset
+by the kart's `$C8` row" - and then passed 0 for want of knowing where
+`$C8` came from.
+
+*How the row is chosen* (`$80AD96`). From the kart's RANK (`$E6`, from
+the sort at `$80A047`, which also builds rank-ordered kart lists at
+`$010C`/`$010E`/`$0110`), and the DSP-1 distance (`$80AF5F`) to the kart
+one place ahead, compared at `$80AEFC` against a per-(class, rank) table
+at `$80AF0F`:
+
+    class 0:  $0080 $0080 $0040 $0040 $0040 $0040 $0060 $0080
+    class 1:  $00A0 $00A0 $0050 $0050 $0080 $00A0 $00C0 $00C0
+    class 2:  $00C0 $00C0 $0060 $0070 $0080 $00C0 $00E0 $0500
+    class 3:  $00E0 $00E0 $0060 $0080 $00A0 $0120 $0500 $0500
+
+*What the rows are worth*, read out of the ROM rather than named from the
+branches, because naming them from the branches got it backwards:
+
+                  50cc   100cc  150cc      (plain waypoint)
+      CHASE $08    512     688     832     a kart that has lost touch
+      EASE  $00    448     560     608     the leader, with clear air
+      HOLD  $10    256     560     576     in the pack
+      SLOW  $18    256     352     352     $80ADB0's state, not modelled
+
+So the band pulls BOTH ways: drop back and you are handed the fast row
+until the gap closes; get clear at the front and you are handed a slower
+one. That is the user's "they keep up no matter how fast you are", from
+both ends at once, and the "sometimes cheating" is `CHASE` being flatly
+faster than anything the player's own class allows the field.
+
+*And a second, flat correction underneath* (`$80B086`): if the `$DA`
+timer is running the bonus comes from `$B099`, otherwise from `$B0A1`
+indexed by RANK - `0, -2, -4, -8, -12, -16, -20, -24`. Leading costs
+nothing; every place further back is a small penalty, which trims the
+row's coarse steps.
+
+*Measured through a race* with `tools/labs/rubber.py`, logging every
+kart's row, rank, speed and distance to the kart ahead: karts in the pack
+sit on `$10` at 548-784, a kart that has lost touch takes `$08` and runs
+758-1002, and the threshold matches - at rank 1, class 0, a gap of 126
+held station and 142 started the chase, either side of the table's
+`$0080`.
+
+*Ported*, with the two tables checked against the ROM in the self-test
+(40/40 entries) rather than trusted. LABELLED: the class index is the
+engine class, where the ROM uses `$C1,x & 7` and has four rows; `$DA`'s
+meaning is still unknown, so the `$B099` correction is not ported and the
+`$18` row is never selected.
+
+Not verified in play from here: `--frames` runs in this shell block on
+SDL - 61s of wall clock for 0.49s of CPU - so how the field actually
+feels is the user's to judge.

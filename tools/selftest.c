@@ -269,6 +269,68 @@ int main(int argc, char **argv)
         check("track 7's grid matches the game's own", pinned == 3, det);
     }
 
+    printf("\nthe rubber band\n");
+    {
+        /* The two tables are the ROM's; read them back out of it rather
+         * than trusting the copy (NOTES 167). */
+        int tbl = 0;
+        for (int cl = 0; cl < 4; cl++)
+            for (int rk = 0; rk < 8; rk++) {
+                uint32_t a = smk_snes_to_pc(&rom, 0x80AF0Fu + cl * 16u + rk * 2u);
+                unsigned v = rom.data[a] | rom.data[a + 1] << 8;
+                if (v == SMK_AI_CATCHUP[cl][rk]) tbl++;
+            }
+        for (int rk = 0; rk < 8; rk++) {
+            uint32_t a = smk_snes_to_pc(&rom, 0x80B0A1u + rk * 2u);
+            int v = (int16_t)(rom.data[a] | rom.data[a + 1] << 8);
+            if (v == SMK_AI_RANK_BONUS[rk]) tbl++;
+        }
+        snprintf(det, sizeof det, "%d/40 entries", tbl);
+        check("the catch-up distances and rank bonuses are the ROM's own",
+              tbl == 40, det);
+
+        /* the band itself: a kart far behind the one ahead chases, one in
+         * the pack holds, and a leader with clear air eases off */
+        static smk_course cr7;
+        static smk_racer field[SMK_CHARACTERS];
+        smk_course_load(&rom, 7, &cr7);
+        #define PUT(I, LAP, SEC, PX, PY) do {                        \
+            memset(&field[I], 0, sizeof field[I]);                   \
+            field[I].lap = (LAP); field[I].sector = (SEC);           \
+            field[I].k.x = (int32_t)(PX) << SMK_POS_SHIFT;           \
+            field[I].k.y = (int32_t)(PY) << SMK_POS_SHIFT;           \
+        } while (0)
+        /* two karts, the leader 400 px clear: it eases, the chaser chases */
+        for (int i = 0; i < SMK_CHARACTERS; i++) PUT(i, 0, 0, 500, 900);
+        PUT(0, 1, 5, 500, 500);            /* leading */
+        PUT(1, 1, 4, 500, 900);            /* 400 px back */
+        smk_ai_rubber(field, 2, &cr7, 0);
+        int lead_far = field[0].row, chase_far = field[1].row;
+        /* now bring them together */
+        PUT(0, 1, 5, 500, 500);
+        PUT(1, 1, 4, 500, 520);            /* 20 px back */
+        smk_ai_rubber(field, 2, &cr7, 0);
+        int lead_near = field[0].row, chase_near = field[1].row;
+        snprintf(det, sizeof det, "far %d/%d, near %d/%d",
+                 lead_far, chase_far, lead_near, chase_near);
+        check("clear air makes the leader ease and the chaser chase",
+              lead_far == SMK_AI_ROW_EASE && chase_far == SMK_AI_ROW_CHASE
+              && lead_near == SMK_AI_ROW_HOLD && chase_near == SMK_AI_ROW_HOLD,
+              det);
+
+        /* and the row really does move the target speed */
+        static smk_physics ph2;
+        smk_physics_load(&rom, 0, &ph2);
+        int t_ease  = ph2.w[SMK_PHYS_TARGET + 0 + SMK_AI_ROW_EASE];
+        int t_chase = ph2.w[SMK_PHYS_TARGET + 0 + SMK_AI_ROW_CHASE];
+        int t_hold  = ph2.w[SMK_PHYS_TARGET + 0 + SMK_AI_ROW_HOLD];
+        snprintf(det, sizeof det, "chase %d > ease %d > hold %d",
+                 t_chase, t_ease, t_hold);
+        check("chasing is the fastest row and holding station the slowest",
+              t_chase > t_ease && t_ease > t_hold, det);
+        #undef PUT
+    }
+
     printf("\nkart against kart\n");
     {
         /* Every number here was read out of the running game with

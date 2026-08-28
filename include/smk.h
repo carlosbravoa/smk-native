@@ -965,7 +965,58 @@ typedef struct {
     int      no_prog;       /* frames since monotonic progress          */
     int      rescue_max;    /* rescue timer's own progress watermark    */
     int      lap_cool;      /* one lap event per strip transit          */
+    int      rank;          /* $E6 >> 1: place, 0 = leading              */
+    int      row;           /* $C8 >> 1: the rubber band's target row    */
 } smk_racer;
+
+/* ---- The rubber band (NOTES 167) --------------------------------------
+ *
+ * The user: "no matter how fast you are they can keep up... when one of
+ * them gets behind their original position, they start to go faster
+ * (sometimes cheating) until they catch up and get back to their place."
+ * That is $80AD5E, and it has two halves.
+ *
+ * $80AD96 picks a ROW into the target-speed table and stores it at $C8,
+ * which $80B074 then adds to the waypoint attribute's own index:
+ *
+ *     target = $06B0[ (attr & 3) * 2 + $C8 ]
+ *
+ * The row comes from the kart's RANK ($E6, from the sort at $80A047,
+ * which also builds rank-ordered kart lists at $010C/$010E/$0110) and
+ * the DSP-1 distance ($80AF5F) to the kart one place ahead, compared at
+ * $80AEFC against a per-(class, rank) table.  Measured through a race:
+ * a kart far from the one ahead takes $08 and runs 758-1002, one in the
+ * pack takes $10 and runs 548-784, and a leader far enough clear takes
+ * $00 and eases off.
+ *
+ * Then $80B086 adds a second, flat correction - $B099 by the $DA timer
+ * if it is running, otherwise $B0A1 by RANK. */
+/* The four rows, and what they are worth - read out of the ROM's own
+ * table rather than named from the branches, because the naming was
+ * wrong first time.  At 50cc on a plain waypoint:
+ *
+ *     CHASE $08   512      the fastest.  A kart that has lost touch.
+ *     EASE  $00   448      the leader with clear air: it backs off.
+ *     HOLD  $10   256      in the pack, holding station.
+ *     SLOW  $18   256      slowest of all; $80ADB0 hands it out in a
+ *                          state this port does not model ($84,x set).
+ *
+ * So the band pulls both ways: drop back and you are given the fast row
+ * until the gap closes, get clear at the front and you are given a
+ * slower one.  That is the user's "no matter how fast you are they keep
+ * up", from both ends. */
+#define SMK_AI_ROW_EASE   0        /* $80ADF1: $C8 = $00, clear ahead   */
+#define SMK_AI_ROW_CHASE  4        /* $80ADDC: $C8 = $08, catching up   */
+#define SMK_AI_ROW_HOLD   8        /* $80AE1F: $C8 = $10, in the pack   */
+#define SMK_AI_ROW_SLOW  12        /* $80ADB0: $C8 = $18, not modelled  */
+/* $80AF0F, [class][rank]: how far the kart ahead may get before this one
+ * starts chasing.  Row 3 is the ROM's fourth class, which this port has
+ * no selector for; 50/100/150cc take 0..2. */
+extern const uint16_t SMK_AI_CATCHUP[4][8];
+/* $80B0A1 by rank: the flat correction under the row */
+extern const int16_t SMK_AI_RANK_BONUS[8];
+/* Fill every racer's rank and row, once a frame, before they step. */
+void smk_ai_rubber(smk_racer *racers, int n, const smk_course *crs, int cls);
 
 /* Sprite-obstacle collision, shared by the player and the AI. */
 void smk_collide_objects(smk_kart *k, const smk_course *crs);
