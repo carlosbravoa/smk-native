@@ -973,6 +973,27 @@ typedef struct {
     int      lap_cool;      /* one lap event per strip transit          */
     int      rank;          /* $E6 >> 1: place, 0 = leading              */
     int      row;           /* $C8 >> 1: the rubber band's target row    */
+    /* $80ADA0's own inputs, measured against a recorded race (NOTES 174).
+     * is_player is $10 bit 15 - the flag the whole rubber band turns on,
+     * because every branch asks it of the NEIGHBOURING kart.  da is $DA,
+     * static per slot (0,0,0,0,2,4,6,8 in the race that was logged), and
+     * is also the value the routine is entered with ($80AD9F lda $DA,x).
+     * skill is $C1 & 7, which picks the row of $80AF0F - NOT the engine
+     * class, which is what this port used to index it by. */
+    int      is_player;     /* $10 bit 15                                */
+    int      da;            /* $DA, and the routine's own parameter      */
+    /* Which $80AF0F row this kart uses = ($7F + lap) & 7.  $C1 is the
+     * HIGH byte of the word at $C0, and $80:89B6 increments it by $0100
+     * immediately before comparing against $F8, the progress watermark:
+     * it is the lap counter, based at $7F for the line not yet crossed.
+     * So the catch-up distances are re-tuned EVERY LAP, and lap one
+     * indexes row 7 - past the end of the table, into the code of
+     * $80AF5F - which is the original's own overrun (NOTES 174).
+     * No constant reproduces this: against a recorded race the live
+     * value scores 94.2% and the best constant 78.8%. */
+    int      skill;         /* ($7F + lap) & 7: which $80AF0F row        */
+    int      trouble;       /* $84 != 0 or $10 & $0020 -> the $18 row    */
+    int      branch;        /* which $80ADA0 branch answered (diagnostic) */
 } smk_racer;
 
 /* ---- The rubber band (NOTES 167) --------------------------------------
@@ -1011,14 +1032,36 @@ typedef struct {
  * until the gap closes, get clear at the front and you are given a
  * slower one.  That is the user's "no matter how fast you are they keep
  * up", from both ends. */
-#define SMK_AI_ROW_EASE   0        /* $80ADF1: $C8 = $00, clear ahead   */
+/* The four rows of $80ADA0.  NOT named for speed: the speed of a row is
+ * a property of the physics block, w[16 + (surface&3) + row], and there
+ * the measured order is $08 > $00 > $10 > $18 in every class.  $00 is a
+ * FAST cruising row - this port used to treat it as an ease-off and hand
+ * it only to the leader, which is why our field was 0.1% on $00 where
+ * the real game is 20% (NOTES 174). */
+#define SMK_AI_ROW_EASE   0        /* $80ADF1: $C8 = $00, the second fastest */
 #define SMK_AI_ROW_CHASE  4        /* $80ADDC: $C8 = $08, catching up   */
 #define SMK_AI_ROW_HOLD   8        /* $80AE1F: $C8 = $10, in the pack   */
-#define SMK_AI_ROW_SLOW  12        /* $80ADB0: $C8 = $18, not modelled  */
+#define SMK_AI_ROW_SLOW  12        /* $80ADB0: $C8 = $18, the slowest    */
 /* $80AF0F, [class][rank]: how far the kart ahead may get before this one
  * starts chasing.  Row 3 is the ROM's fourth class, which this port has
  * no selector for; 50/100/150cc take 0..2. */
-extern const uint16_t SMK_AI_CATCHUP[4][8];
+/* $80AF0F verbatim: 8 rows of 8 words, indexed by ($C1 & 7) then rank.
+ * Only rows 0-4 are data - row 5 onwards is the CODE of $80AF5F, and the
+ * original really does index into it, because $C1 & 7 reaches 5 for most
+ * of the field.  Those karts get an effectively infinite catch-up
+ * distance.  Reproduced rather than tidied: it is the game's behaviour,
+ * and a tidied table would chase where the original does not (NOTES 174). */
+#define SMK_AI_SKILLS 8
+extern uint16_t SMK_AI_CATCHUP[SMK_AI_SKILLS][8];
+bool smk_ai_catchup_load(const smk_rom *rom);
+extern int smk_ai_player_block;   /* which racers[] slot is the human */
+extern int smk_ai_branch;        /* which $80ADA0 branch last answered */
+extern int smk_ai_skill;          /* $C1 & 7 stand-in; -1 = engine class */
+/* $80AD96 -> $80ADA0 on one kart, exposed so tools/rowcheck.c can replay
+ * it against the real game's logged inputs rather than judge it by feel. */
+int smk_ai_row_for(const smk_racer *r, const smk_racer *ahead,
+                   const smk_racer *behind, const smk_racer *third,
+                   int *s04, int *s06);
 /* $80B0A1 by rank: the flat correction under the row */
 extern const int16_t SMK_AI_RANK_BONUS[8];
 /* Fill every racer's rank and row, once a frame, before they step. */

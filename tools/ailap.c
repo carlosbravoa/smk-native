@@ -23,6 +23,7 @@ int main(int argc, char **argv)
         printf("skipped: %s\n", err);
         return 77;
     }
+    smk_ai_catchup_load(&rom);
     int ok = 0;
     for (int t = 0; t < GP_TRACKS; t++) {
         smk_track trk;

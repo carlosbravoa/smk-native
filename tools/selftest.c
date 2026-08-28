@@ -122,6 +122,7 @@ int main(int argc, char **argv)
         printf("cannot load ROM: %s\n(skipping: supply one with argv[1])\n", err);
         return 77;                /* CTest "skipped" */
     }
+    smk_ai_catchup_load(&rom);
     printf("ROM\n");
     check("recognised as Super Mario Kart (USA)", rom.recognised, rom.title);
 
@@ -465,23 +466,48 @@ int main(int argc, char **argv)
             field[I].k.x = (int32_t)(PX) << SMK_POS_SHIFT;           \
             field[I].k.y = (int32_t)(PY) << SMK_POS_SHIFT;           \
         } while (0)
-        /* two karts, the leader 400 px clear: it eases, the chaser chases */
+        /* $80ADA0 turns on ONE thing above all: whether the neighbouring
+         * kart is the human player ($10 bit 15).  Same geometry, same
+         * ranks, only the player moved - the rows must differ, or the
+         * rubber band is not a rubber band (NOTES 174). */
+        smk_ai_player_block = 0;
         for (int i = 0; i < SMK_CHARACTERS; i++) PUT(i, 0, 0, 500, 900);
-        PUT(0, 1, 5, 500, 500);            /* leading */
-        PUT(1, 1, 4, 500, 900);            /* 400 px back */
+        PUT(0, 1, 4, 500, 560);            /* the player, 60 px behind */
+        PUT(1, 1, 5, 500, 500);            /* leading */
         smk_ai_rubber(field, 2, &cr7, 0);
-        int lead_far = field[0].row, chase_far = field[1].row;
-        /* now bring them together */
-        PUT(0, 1, 5, 500, 500);
-        PUT(1, 1, 4, 500, 520);            /* 20 px back */
+        int with_player = field[1].row;
+        smk_ai_player_block = 9;           /* nobody is the player now */
+        PUT(0, 1, 4, 500, 560);
+        PUT(1, 1, 5, 500, 500);
         smk_ai_rubber(field, 2, &cr7, 0);
-        int lead_near = field[0].row, chase_near = field[1].row;
-        snprintf(det, sizeof det, "far %d/%d, near %d/%d",
-                 lead_far, chase_far, lead_near, chase_near);
-        check("clear air makes the leader ease and the chaser chase",
-              lead_far == SMK_AI_ROW_EASE && chase_far == SMK_AI_ROW_CHASE
-              && lead_near == SMK_AI_ROW_HOLD && chase_near == SMK_AI_ROW_HOLD,
-              det);
+        int without = field[1].row;
+        smk_ai_player_block = 0;
+        snprintf(det, sizeof det, "player behind -> row %d, AI behind -> row %d",
+                 with_player, without);
+        check("the leader's row responds to the PLAYER being behind it",
+              with_player != without, det);
+
+        /* $80ADB0: a kart in trouble takes the slowest row, whatever the
+         * geometry says.  6% of kart-frames in the recorded race. */
+        PUT(0, 1, 4, 500, 560);
+        PUT(1, 1, 5, 500, 500);
+        field[1].k.crash_frames = 20;
+        smk_ai_rubber(field, 2, &cr7, 0);
+        snprintf(det, sizeof det, "row %d", field[1].row);
+        check("$80ADB0: a kart in trouble drops to the $18 row",
+              field[1].row == SMK_AI_ROW_SLOW, det);
+        field[1].k.crash_frames = 0;
+
+        /* $80AF0F is the ROM's own 8 rows, overrun and all: rows 5-7 are
+         * the CODE of $80AF5F, and the original indexes into them. */
+        {
+            uint32_t a5 = smk_snes_to_pc(&rom, 0x80AF0Fu + 5u * 16u);
+            unsigned v5 = rom.data[a5] | rom.data[a5 + 1] << 8;
+            snprintf(det, sizeof det, "row5[0] = $%04X (the bytes of $80AF5F)",
+                     SMK_AI_CATCHUP[5][0]);
+            check("the catch-up table keeps the original's overrun rows",
+                  SMK_AI_CATCHUP[5][0] == v5 && v5 != 0, det);
+        }
 
         /* and the row really does move the target speed */
         static smk_physics ph2;

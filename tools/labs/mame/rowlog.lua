@@ -11,9 +11,10 @@ local mem = manager.machine.devices[":maincpu"].spaces["program"]
 local function w(a) return mem:read_u16(0x7E0000 + a) end
 local n = 0
 local h = {"f"}
+for i = 0, 9 do h[#h+1] = string.format("t%03X", 0x010C + i * 2) end
 for k = 0, 7 do
   local p = "k" .. k
-  for _, f in ipairs({"C8","DA","E2","E6","10","84","90","92","94","96","spd","x","y"}) do
+  for _, f in ipairs({"C8","DA","E2","E6","10","84","90","92","94","96","C1","spd","x","y"}) do
     h[#h+1] = p .. f
   end
 end
@@ -23,9 +24,10 @@ emu.register_frame_done(function()
   local m = mem:read_u8(0x7E0036) // 2
   if m ~= 6 and m ~= 1 then return end
   local o = {n}
+  for i = 0, 9 do o[#o+1] = w(0x010C + i * 2) end
   for k = 0, 7 do
     local b = 0x1000 + k * 0x100
-    for _, a in ipairs({0xC8,0xDA,0xE2,0xE6,0x10,0x84,0x90,0x92,0x94,0x96}) do
+    for _, a in ipairs({0xC8,0xDA,0xE2,0xE6,0x10,0x84,0x90,0x92,0x94,0x96,0xC1}) do
       o[#o+1] = w(b + a)
     end
     local s = w(b + 0xEA); if s > 32767 then s = s - 65536 end

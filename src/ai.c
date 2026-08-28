@@ -463,53 +463,191 @@ void smk_racer_step(smk_racer *r, const smk_track *trk,
 
 /* ---- The rubber band (NOTES 167) -------------------------------------- */
 
-const uint16_t SMK_AI_CATCHUP[4][8] = {          /* $80AF0F */
-    { 0x0080, 0x0080, 0x0040, 0x0040, 0x0040, 0x0040, 0x0060, 0x0080 },
-    { 0x00A0, 0x00A0, 0x0050, 0x0050, 0x0080, 0x00A0, 0x00C0, 0x00C0 },
-    { 0x00C0, 0x00C0, 0x0060, 0x0070, 0x0080, 0x00C0, 0x00E0, 0x0500 },
-    { 0x00E0, 0x00E0, 0x0060, 0x0080, 0x00A0, 0x0120, 0x0500, 0x0500 },
-};
+/* $80AF0F, read from the ROM rather than transcribed, because five of
+ * its eight rows are data and the rest are the bytes of $80AF5F. */
+uint16_t SMK_AI_CATCHUP[SMK_AI_SKILLS][8];
+
+bool smk_ai_catchup_load(const smk_rom *rom)
+{
+    uint32_t a = smk_snes_to_pc(rom, 0x80AF0Fu);
+    if (a + SMK_AI_SKILLS * 16u > rom->size) return false;
+    for (int c = 0; c < SMK_AI_SKILLS; c++)
+        for (int i = 0; i < 8; i++) {
+            uint32_t o = a + (uint32_t)(c * 16 + i * 2);
+            SMK_AI_CATCHUP[c][i] =
+                (uint16_t)(rom->data[o] | rom->data[o + 1] << 8);
+        }
+    return true;
+}
+
 const int16_t SMK_AI_RANK_BONUS[8] =             /* $80B0A1 */
     { 0, -2, -4, -8, -12, -16, -20, -24 };
 
+/* $80AEFC: the catch-up distance for a kart, by ITS skill and a rank.
+ * The index is ($C1 & 7) * 16 + rank * 2 bytes into $80AF0F, and the
+ * original lets that run past the table - see SMK_AI_CATCHUP. */
+static uint16_t catchup_of(const smk_racer *of, int rank)
+{
+    int i = ((of->skill & 7) << 3) + rank;      /* in WORDS */
+    return SMK_AI_CATCHUP[i >> 3][i & 7];
+}
+
+/* $80AF5F: the DSP-1's vector length between two karts.  Straight-line
+ * distance in world units - $80AF5F feeds command $28 the coordinate
+ * differences and reads the length back, and a recorded race confirms it
+ * against the game's own cached $92 to a median of 3.4 units. */
+static float kart_dist(const smk_racer *a, const smk_racer *b)
+{
+    float dx = (float)(smk_kart_px(a->k.x) - smk_kart_px(b->k.x));
+    float dy = (float)(smk_kart_px(a->k.y) - smk_kart_px(b->k.y));
+    return sqrtf(dx * dx + dy * dy);
+}
+
+/* Which branch of $80ADA0 last answered, so a headless race can be
+ * attributed the same way the recorded one is (SMK_ROW_TRACE). */
+int smk_ai_branch = 0;
+#define BR(n, v) do { smk_ai_branch = (n); return (v); } while (0)
+
+/* $80AD96 -> $80ADA0: which speed row a kart drives on this frame.
+ *
+ * This is the rubber band, and the thing that makes it one is $10 bit 15:
+ * THE HUMAN PLAYER.  Every branch below asks whether the kart ahead or
+ * behind is the player, and picks the row from the answer - which is why
+ * "no matter how fast I go, I always have someone pretty close chasing"
+ * (the user) and why an AI field with no such test gets left behind.
+ *
+ * The rows are not named after speeds here, because their speeds are not
+ * a property of the row but of the physics block: $D6 comes from
+ * w[16 + (surface & 3) + row], and measured there the order is
+ * $08 > $00 > $10 > $18 in every class (NOTES 174).  $00 is a FAST
+ * cruising row, not the ease-off this port used to treat it as.
+ *
+ * MEASURED against a recorded race: this function reproduces the game's
+ * own $C8 on 94.7% of 39,074 kart-frames.  The residue is the distance
+ * CACHE - $80AEBC and $80AECF reuse $92/$90 when $96/$94 still names the
+ * same partner, so the original sometimes tests a distance a few frames
+ * old, and this always tests a fresh one.  LABELLED, not modelled.
+ *
+ * LABELLED and not ported: the $E2 bit 1 policy at $80ADC0, which never
+ * ran in a one-player race (0 frames of 5582), and $0E50, whose non-zero
+ * value forces row $00 on every kart and was likewise never seen.
+ */
+int smk_ai_row_for(const smk_racer *r, const smk_racer *ahead,
+                   const smk_racer *behind, const smk_racer *third,
+                   int *s04, int *s06)
+{
+    if (r->trouble) BR(1, SMK_AI_ROW_SLOW);                 /* $80ADB0 */
+    int p00 = r->da;                        /* $80AD9F: lda $DA,x */
+
+    if (r->rank == 0) {                                     /* $80ADE0 */
+        if (!behind) BR(2, SMK_AI_ROW_HOLD);
+        if (behind->is_player)
+            BR(3, kart_dist(r, behind) >= 0x140 ? SMK_AI_ROW_HOLD
+                                                : SMK_AI_ROW_EASE);
+        if (p00 < behind->da) BR(4, SMK_AI_ROW_HOLD);
+        if ((r->skill & 7) == 0) BR(5, SMK_AI_ROW_CHASE);
+        if (kart_dist(r, behind) >= catchup_of(r, 0)) BR(6, SMK_AI_ROW_EASE);
+        /* $80AE0F/$80AE16: the second test reads X but branches on the
+         * FIRST test's flags - the original's own dead code, kept. */
+        BR(7, (third && third->is_player) ? SMK_AI_ROW_CHASE
+                                         : SMK_AI_ROW_EASE);
+    }
+    if (r->rank == 7) {                                     /* $80AE23 */
+        if (!ahead) BR(8, SMK_AI_ROW_HOLD);
+        if (ahead->is_player)
+            BR(9, kart_dist(r, ahead) < 0x80 ? SMK_AI_ROW_EASE
+                                            : SMK_AI_ROW_CHASE);
+        if (ahead->da < p00) BR(10, SMK_AI_ROW_CHASE);
+        BR(11, kart_dist(r, ahead) < catchup_of(ahead, r->rank)
+                   ? SMK_AI_ROW_HOLD : SMK_AI_ROW_EASE);
+    }
+    if (behind && behind->is_player) {                      /* $80AE4C */
+        if (ahead) {
+            if (ahead->row == SMK_AI_ROW_HOLD) BR(12, SMK_AI_ROW_HOLD);
+            if (ahead->da >= p00) BR(13, SMK_AI_ROW_HOLD);
+        }
+        if (kart_dist(r, behind) < 0x140) BR(14, SMK_AI_ROW_EASE);
+        /* $80AE6A reads $04 without this call having written it - it is
+         * whatever the LAST kart's pass left there.  Kept deliberately. */
+        BR(15, *s04 >= p00 ? SMK_AI_ROW_EASE : SMK_AI_ROW_HOLD);
+    }
+    if (!behind || !ahead) BR(16, SMK_AI_ROW_HOLD);
+    *s06 = behind->da;                                      /* $80AE79 */
+    if (ahead->is_player) {
+        if (p00 < *s06) BR(17, SMK_AI_ROW_HOLD);
+        BR(18, kart_dist(r, ahead) >= 0x80 ? SMK_AI_ROW_CHASE
+                                          : SMK_AI_ROW_EASE);
+    }
+    *s04 = ahead->da;                                       /* $80AE97 */
+    if (p00 < *s06) BR(19, SMK_AI_ROW_HOLD);
+    if (*s04 < p00) BR(20, SMK_AI_ROW_CHASE);
+    if (kart_dist(r, ahead) < catchup_of(ahead, r->rank)) BR(21, SMK_AI_ROW_HOLD);
+    BR(22, ahead->row);      /* $80AEB9: adopt the row of the kart ahead */
+}
+
+/* $DA, static per kart block for the whole race.  MEASURED from a
+ * recorded race, where every kart held one value from the first frame to
+ * the last.  LABELLED: where the game writes them is not decoded. */
+static const int SMK_AI_DA[8] = { 0, 0, 0, 0, 2, 4, 6, 8 };
+
+/* Which racers[] slot is the human.  $10 bit 15 in the game; block 0
+ * here, which is what main.c puts the player in. */
+int smk_ai_player_block = 0;
+
+/* Forces every AI onto one $80AF0F row.  -1, the default, uses the
+ * decoded answer instead - the LAP.  Only useful for sweeping the
+ * alternatives with tools/rowcheck. */
+int smk_ai_skill = -1;
+
+
 void smk_ai_rubber(smk_racer *racers, int n, const smk_course *crs, int cls)
 {
-    if (cls < 0) cls = 0;
-    if (cls > 3) cls = 3;
+    /* $80AF0F is indexed by the kart's own LAP, not by the engine class.
+     * Indexing it by class is what this port did before, and it is
+     * wrong: it made the thresholds constant for a whole race. */
+    (void)cls;
+    for (int i = 0; i < n; i++) {
+        racers[i].is_player = (i == smk_ai_player_block);
+        racers[i].da        = SMK_AI_DA[i & 7];
+        /* $C1 is the LAP.  $80:89B6 adds $0100 to the word at $C0 and
+         * stores it immediately before `cmp $F8,x`, the progress
+         * watermark; in a recorded race every kart's high byte walks
+         * $7F -> $80 -> $81 ... one step at a time and never back.  $7F
+         * is the line not yet crossed, so the byte is $7F + laps, and
+         * `and #$0007` indexes $80AF0F BY THE LAP: the catch-up
+         * distances are re-tuned every lap, and lap one lands on row 7 -
+         * past the table, in the code of $80AF5F - so early chasing
+         * comes only from $DA and from adopting the row ahead. */
+        racers[i].skill     = smk_ai_skill >= 0 ? smk_ai_skill
+                                                : ((0x7F + racers[i].lap) & 7);
+        /* $84 != 0 or $10 & $0020.  APPROXIMATED by the states this port
+         * does have for "not driving normally"; the two ROM fields are
+         * not decoded, and in the recorded race this branch took 6% of
+         * kart-frames. */
+        racers[i].trouble   = (racers[i].k.crash_frames > 0
+                               || racers[i].k.bounce_cool > 0);
+    }
     /* $80A047's sort: rank by progress, and each kart learns its place */
     for (int i = 0; i < n; i++) {
         racers[i].rank = smk_race_rank(racers, i, crs) - 1;
         if (racers[i].rank < 0) racers[i].rank = 0;
         if (racers[i].rank > 7) racers[i].rank = 7;
     }
+    /* $010E: the rank table the routine indexes through $010C,y (ahead)
+     * and $0110,y (behind) - both are that one table, two entries apart. */
+    smk_racer *by_rank[8] = {0};
+    for (int i = 0; i < n; i++)
+        if (racers[i].rank >= 0 && racers[i].rank < 8)
+            by_rank[racers[i].rank] = &racers[i];
+
+    int s04 = 0, s06 = 0;       /* $04/$06 persist between calls */
     for (int i = 0; i < n; i++) {
         smk_racer *r = &racers[i];
-        /* the kart one place ahead - $010C indexed by this kart's rank */
-        const smk_racer *ahead = 0;
-        for (int j = 0; j < n; j++)
-            if (racers[j].rank == r->rank - 1) { ahead = &racers[j]; break; }
-
-        if (!ahead) {
-            /* $80ADE0, the leader.  Far enough clear of second and it
-             * EASES OFF; otherwise it holds station. */
-            const smk_racer *second = 0;
-            for (int j = 0; j < n; j++)
-                if (racers[j].rank == 1) { second = &racers[j]; break; }
-            r->row = SMK_AI_ROW_HOLD;
-            if (second) {
-                float dx = (float)(smk_kart_px(second->k.x) - smk_kart_px(r->k.x));
-                float dy = (float)(smk_kart_px(second->k.y) - smk_kart_px(r->k.y));
-                if (dx * dx + dy * dy >
-                    (float)SMK_AI_CATCHUP[cls][0] * SMK_AI_CATCHUP[cls][0])
-                    r->row = SMK_AI_ROW_EASE;
-            }
-            continue;
-        }
-        /* $80AE4C: past the catch-up distance for this rank, chase. */
-        float dx = (float)(smk_kart_px(ahead->k.x) - smk_kart_px(r->k.x));
-        float dy = (float)(smk_kart_px(ahead->k.y) - smk_kart_px(r->k.y));
-        float lim = (float)SMK_AI_CATCHUP[cls][r->rank & 7];
-        r->row = (dx * dx + dy * dy > lim * lim) ? SMK_AI_ROW_CHASE
-                                                 : SMK_AI_ROW_HOLD;
+        if (r->is_player) continue;             /* the player picks no row */
+        int rk = r->rank;
+        r->row = smk_ai_row_for(r, rk > 0 ? by_rank[rk - 1] : 0,
+                            rk < 7 ? by_rank[rk + 1] : 0,
+                            by_rank[2], &s04, &s06);
+        r->branch = smk_ai_branch;
     }
 }

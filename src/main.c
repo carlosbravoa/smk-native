@@ -1536,6 +1536,10 @@ int main(int argc, char **argv)
         fprintf(stderr, "error: cannot load the player physics tables\n");
         return 1;
     }
+    /* $80AF0F, the catch-up distances the AI row chooser indexes. */
+    { const char *e = getenv("SMK_AI_SKILL"); if (e) smk_ai_skill = atoi(e); }
+    if (!smk_ai_catchup_load(&rom))
+        fprintf(stderr, "warning: AI catch-up table not loaded\n");
     if (!smk_physics_load(&rom, engine_class, &phys)) {
         fprintf(stderr, "error: cannot load physics tables\n");
         return 1;
@@ -2022,8 +2026,11 @@ int main(int argc, char **argv)
                 if (getenv("SMK_ROW_TRACE")) {
                     printf("row %ld", total_frames);
                     for (int q = 0; q < SMK_CHARACTERS; q++)
-                        printf(" %d,%d,%d", racers[q].row * 2,
-                               racers[q].k.speed, racers[q].rank);
+                        printf(" %d,%d,%d,%d,%d,%d", racers[q].row * 2,
+                               racers[q].k.speed, racers[q].rank,
+                               racers[q].branch,
+                               smk_kart_px(racers[q].k.x),
+                               smk_kart_px(racers[q].k.y));
                     printf("\n");
                 }
                 for (int i = 1; i < SMK_CHARACTERS; i++)

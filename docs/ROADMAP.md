@@ -198,6 +198,16 @@ faster than every rig it replaced, every single time.
 
 ## What needs playing, and what to look for
 
+**The AI's speed rows are new and need a person (NOTES 174).** The rubber
+band was rebuilt from `$80ADA0` and now turns on the flag the original
+turns on: whether the kart ahead or behind is the HUMAN. It reproduces the
+game's own choice on 94.2% of 39,074 recorded kart-frames, but our own
+headless race cannot judge it - an autopilot does not pull away the way a
+person does, so the field stays bunched and chases less. What to look for
+is exactly the report that started it: run away down a straight and see
+whether someone comes back at you. Also worth watching: the catch-up
+distances are re-tuned EVERY LAP, so lap 5 should not feel like lap 1.
+
 Everything below is decoded, ported and gated by the headless tools, and
 none of it has been judged **in play** except where it says so. That is
 not laziness: `--frames` runs from an agent shell block on SDL - 61

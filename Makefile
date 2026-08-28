@@ -45,6 +45,10 @@ selftest: game $(BASE)
 ailap: game $(BASE)
 	@$(NATIVE)/smk_ailap $(BASE)
 
+## the AI row chooser replayed against the real game's own logged inputs
+rowcheck: game
+	@$(NATIVE)/smk_rowcheck
+
 ## verify the ported kinematics against the game running in the oracle (slow)
 verify-physics: $(BASE)
 	@$(PY) tools/verify_physics.py 120

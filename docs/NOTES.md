@@ -7071,3 +7071,103 @@ also 864, so a plateau compared against the wrong column names the wrong
 kart.
 
 Still on ROM authority alone: 150cc, predicted 1072 + 80 = **1152**.
+
+---
+
+**174** — The AI's speed row, and the flag that makes it a rubber band.
+
+The user: *"There is something missing in AI speed logic. In original
+game, no matter how fast I go, I always have someone pretty close
+chasing... In our implementation, it is quite easy to over run them and
+leave them behind."*
+
+The port had a `smk_ai_rubber` that compared each kart's distance to the
+kart ahead against `$80AF0F` and picked one of three rows. Almost every
+part of that was wrong, and the measurement that showed it was a row-mix
+comparison: our field spent **0.1%** of a race on `$00` where the real
+game spends **14%**, and never once used `$18`, which the real game uses
+8% of the time.
+
+*The routine.* `$80ADA0` is reached by falling out of `$80AD96`, which is
+why searching the whole ROM for a `JSR`/`JSL` to it finds **zero** call
+sites - it is entered through `jmp ($AD76,x)`. `$80AD96` also supplies
+the parameter, and settles what it is:
+
+    $80AD96  lda $0E50 ; beq +      ; non-zero: row $00 for EVERY kart
+    $80AD9B  lda #$0000 ; rts
+    $80AD9F  lda $DA,x              ; A = THIS kart's own $DA
+    $80ADA0  phx                    ; ...and falls through
+
+*What it keys on, none of which the port had:*
+
+  - **`$10` bit 15 is the human player.** Set on kart 0 for 100% of a
+    recorded race, never on an AI. Every branch asks it of the kart
+    AHEAD or BEHIND. That is the rubber band: the AI picks its speed from
+    where the player is. An AI field with no such test cannot help but be
+    left behind.
+  - **`$010E` is the rank table.** `$010C,y` and `$0110,y` (y = rank*2)
+    are that one table two entries apart - the kart ahead and the kart
+    behind.
+  - **`$C1` is the LAP.** `$80:89B6` adds `$0100` to the word at `$C0`
+    and stores it immediately before `cmp $F8,x`, the progress watermark;
+    in the recorded race every kart's high byte walks `$7F -> $80 -> $81`
+    one step at a time and never back. `$7F` is the line not yet
+    crossed. So `and #$0007` indexes `$80AF0F` **by the lap**: the
+    catch-up distances are re-tuned every lap of every race. The port
+    indexed that table by ENGINE CLASS, which held it constant.
+  - **`$80AEB9`: a midfield AI far behind ADOPTS THE ROW OF THE KART
+    AHEAD.** Rows propagate backwards through the pack. It is the single
+    most-used branch in our own race (40% of kart-frames).
+  - **`$DA`** is static per kart block - `0,0,0,0,2,4,6,8` for the whole
+    race - and is also the parameter, so most comparisons are "am I
+    carrying a bigger handicap than that kart".
+
+*And the rows are not what they were named.* Their speeds are not a
+property of the row but of the physics block, `w[16 + (surface&3) + row]`,
+and read there the order is `$08 > $00 > $10 > $18` in every class.
+`$00` is the second-FASTEST row; this port called it EASE and gave it
+only to a leader with clear air.
+
+*`$80AF0F` has five rows, not eight.* Row 5 onward is the code of
+`$80AF5F`. Lap one indexes row 7 - into that code - so the original
+gives a first-lap kart an effectively infinite catch-up distance, and
+early chasing comes only from `$DA` and from adoption. Reproduced by
+reading the bytes verbatim rather than tidying the table: a tidy table
+would chase where the original does not.
+
+*The gate.* `tools/labs/mame/rowlog.lua` logs every input the routine
+reads and the `$C8` it produced for all eight karts; `tools/rowcheck`
+feeds those to the SHIPPED routine. **94.2% of 39,074 kart-frames**, and
+on those inputs our row mixture is the game's to within a tenth of a
+point (14.2/46.1/31.9/7.8 against 14.2/46.1/32.1/7.7). The residue is
+the distance CACHE - `$80AEBC` and `$80AECF` reuse `$92`/`$90` while
+`$96`/`$94` still names the same partner, so the original sometimes tests
+a distance a few frames old. LABELLED, not modelled.
+
+*Three wrong turns worth keeping.*
+
+  - The first row-mix reference came from `flaglog.lua`, which logs three
+    of the seven AI karts. Comparing a 7-kart port against a 3-kart
+    sample made the port look worse than it is. Count what the instrument
+    actually sampled.
+  - `tools/rowcheck` scored 74% until it was noticed that it never called
+    `smk_ai_catchup_load`, so every threshold was zero and every distance
+    test passed. A broken HARNESS reads exactly like a broken port.
+  - Adding branch tags to the C, a mechanical edit replaced
+    `if (r->trouble) return SLOW;` with `BR(1, SLOW);` and dropped the
+    guard - every kart in trouble, 100%, which the branch histogram
+    caught immediately. Instrumentation that reports what it did is how
+    that was one minute rather than an afternoon.
+
+*What is NOT yet evidence.* In our own headless race the AI is slightly
+SLOWER than the ad-hoc code it replaced (mean 563 against 588). That
+comparison is confounded and should not be trusted either way: the
+autopilot does not pull away the way a person does, so our field is
+bunched (median rank-to-rank gap 158 against the human race's 219, p90
+311 against 671), and a bunched field correctly chases less. The
+frame-exact replay is the evidence; this needs a person to judge.
+
+LABELLED and not ported: the `$E2` bit 1 policy at `$80ADC0` (0 frames of
+5582 in a one-player race) and `$0E50` (never non-zero). `trouble` is
+approximated from the port's own crash states - `$84` and `$10` bit 5 are
+not decoded - and currently never fires, where the original is at 8%.
