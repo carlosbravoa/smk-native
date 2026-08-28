@@ -322,6 +322,33 @@ int main(int argc, char **argv)
         check("the pair is closed for the ROM's eight frames",
               !again && ka.bump_cool == SMK_BUMP_COOL, det);
 
+        /* a second contact inside the pair's own cooldown is nearly
+         * free ($819C93): at speed, nothing at all happens */
+        SET(ka, 500, 500, 0, -600);
+        SET(kb, 500, 500, 0, -400);
+        smk_kart_bump(&ka, 0x1A, &kb, 0x1A);       /* the hard one */
+        ka.bump_cool = 1; kb.bump_cool = 1;        /* the cooldown's tail */
+        int16_t ax = ka.vx, ay = ka.vy, bx = kb.vx, by = kb.vy;
+        bool soft = smk_kart_bump(&ka, 0x1A, &kb, 0x1A);
+        snprintf(det, sizeof det, "%s, a (%d,%d) b (%d,%d)",
+                 soft ? "ran" : "skipped", ka.vx, ka.vy, kb.vx, kb.vy);
+        check("a re-contact at speed costs nothing at all",
+              soft && ka.vx == ax && ka.vy == ay
+                   && kb.vx == bx && kb.vy == by, det);
+
+        /* ... but two karts that have STOPPED get nudged apart, which is
+         * what keeps a heap from setting */
+        SET(ka, 500, 500, 0, 0);
+        SET(kb, 500, 500, 0, 0);
+        ka.angle = 0; ka.bump_cool = 1;
+        smk_kart_bump(&ka, 0x1A, &kb, 0x1A);
+        snprintf(det, sizeof det, "a (%d,%d) speed %d", ka.vx, ka.vy, ka.speed);
+        /* the vector is the ROM's own DSP-1 arithmetic, which is a unit
+         * shy of a clean cos - $0180 along heading 0 comes out -383 */
+        check("two stopped karts are nudged apart at $0180",
+              ka.speed == 0x0180 && ka.vx == 0
+                  && ka.vy <= -0x017F && ka.vy >= -0x0180, det);
+
         /* heavier AND faster: it keeps its line at speed - half the
          * closing speed, the light one is flung at that speed + $20 */
         SET(ka, 500, 500, 0, -600);

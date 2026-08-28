@@ -406,7 +406,7 @@ static void bump_polar(smk_kart *k, uint16_t angle, int16_t radius)
     int16_t sx, cy;
     smk_dsp_sincos(angle, radius, &sx, &cy);
     k->vx = sx;
-    k->vy = cy;
+    k->vy = (int16_t)-cy;      /* $819C89's eor/inc: the ROM negates cos */
     /* the radius IS the speed; deriving it back out of the vector loses
      * a unit to rounding and the port's physics reads $EA, not $22/$24 */
     k->speed = radius;
@@ -422,13 +422,39 @@ bool smk_kart_bump(smk_kart *a, int wa, smk_kart *b, int wb)
     int dy = smk_kart_px(b->y) - smk_kart_px(a->y);
     if (dx + SMK_BUMP_BOX < 0 || dx + SMK_BUMP_BOX >= 2 * SMK_BUMP_BOX) return false;
     if (dy + SMK_BUMP_BOX < 0 || dy + SMK_BUMP_BOX >= 2 * SMK_BUMP_BOX) return false;
-    if (a->bump_cool > 1 || b->bump_cool > 1) return false;   /* $819848 */
+    int cool = a->bump_cool | b->bump_cool;
+    if (cool > 1) return false;                              /* $819848 */
     if (a->stuck || b->stuck) return false;                   /* $819853 */
     if (smk_kart_height_px(a) > SMK_BUMP_Z_MAX
         || smk_kart_height_px(b) > SMK_BUMP_Z_MAX) return false;   /* $81985A */
 
     /* $A2 is the direction of TRAVEL, which is what the velocity says. */
     uint16_t va = smk_angle_of(a->vx, a->vy);
+
+    /* $819B06's FIRST test, and the one this port was missing: $1C is
+     * the pair's cooldown ORed together, and a second contact while it
+     * is still running down does not get the full answer at all - it
+     * goes to $819C93, which
+     *
+     *   $819C9A  both karts stopped -> nudge the heavy one along its
+     *            HEADING at $0180, which is what unsticks a heap
+     *   $819CA6  else, faster of the two under $C0 -> the same $0180
+     *            nudge, along its velocity angle
+     *   $819CB7  else RTS - nothing whatsoever
+     *
+     * so once two karts have touched, the next eight frames of contact
+     * cost them nothing unless they have nearly stopped.  Without it
+     * every re-contact was another full exchange, which is the user's
+     * "between them bouncing is different, less aggressive". */
+    if (cool) {
+        int16_t fast = a->speed > b->speed ? a->speed : b->speed;
+        if (!a->speed && !b->speed) bump_polar(a, a->angle, 0x0180);
+        else if (fast < 0x00C0)      bump_polar(a, va, 0x0180);
+        a->bump_cool = SMK_BUMP_COOL;      /* $8198A8 re-marks the pair */
+        b->bump_cool = SMK_BUMP_COOL;
+        return true;
+    }
+
     int d = wa - wb;                     /* $819B1D, >= 0: a is the heavier */
 
     if (d == 0) {

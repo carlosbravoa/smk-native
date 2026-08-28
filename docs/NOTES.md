@@ -6616,3 +6616,43 @@ kart whose own frame ran too - and without a separation the field grinds
 into a heap within a lap. What ships is the READING, which does the job
 the routine exists for, with the disagreement in the source.
 
+
+**166a** — Why it felt too aggressive: the re-contact path was missing.
+
+The user, playing it: *"probably, between them bouncing is different,
+less aggressive."*
+
+Measured first, because `$819C28` really does branch on `cpx #$1000` -
+the response reads `$2C` for the player and `$32` for everyone else - so
+an asymmetry was plausible. `tools/labs/bump_ai.py` runs the same pair of
+velocities twice, once with P1 in the pair and once between two AI karts:
+the equal-weight case comes back **identical**, an exact exchange either
+way. So the response itself does not care who is in it, and the feel was
+coming from somewhere else.
+
+It was `$819B06`'s very first instruction, which this port skipped:
+
+    $819B06  lda $1C ; beq $819B0D ; jmp $9C93
+
+`$1C` is the pair's cooldown ORed together, set at `$819848`, and the
+gate above only lets a contact through while it is 0 or 1. So a SECOND
+contact, in the tail of the eight frames the first one armed, does not
+get the full answer at all - it goes to `$819C93`:
+
+    $819C9A  both karts stopped     -> nudge the heavy one along its
+                                       HEADING at $0180
+    $819CA6  faster of the two < $C0 -> the same $0180, along its
+                                       velocity angle
+    $819CB7  otherwise               -> rts.  Nothing whatsoever.
+
+At racing speed a re-contact therefore costs nothing, and the only time
+the game pushes is when two karts have nearly stopped on top of each
+other - which is exactly the case that needs unsticking. The port was
+running a full velocity exchange every time the cooldown allowed one,
+which is eight times a second for as long as two karts stay together.
+That is what the user felt, and it would show most between AI karts,
+because they run in a pack and stay in contact for whole corners.
+
+Ported with both halves of `$819C93` and pinned: a re-contact at speed
+leaves all four components untouched, and two stopped karts come apart at
+`$0180`.

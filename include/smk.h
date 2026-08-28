@@ -1067,7 +1067,11 @@ void smk_render_set_horizon(const smk_horizon *hz, uint16_t heading);
  *            entries are the drivers, and they are SMK's weight classes:
  *            Bowser and DK Jr $1B, Mario and Luigi $1A, the other four
  *            $19.
- *   $819B06  the answer.  For an equal-weight pair it EXCHANGES the two
+ *   $819B06  the answer - but only for a FIRST contact.  While the
+ *            pair's cooldown is still running down it goes to $819C93
+ *            instead, which does nothing at all unless the two have
+ *            nearly stopped, in which case it nudges them apart at
+ *            $0180.  For a first contact with equal weights it EXCHANGES the two
  *            velocity vectors ($819CB8) and then, if both components
  *            still share a sign - the exchange left them converging -
  *            shoves them apart ($819CD2) - that separation is measured
