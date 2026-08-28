@@ -177,6 +177,8 @@ static int celebrating;
  * every kart was projected on the old basis - and the player's own kart
  * simply disappeared. */
 static uint16_t finish_yaw;
+static int celebrating_pose;      /* SMK_WIN_POSE: force the arms-up frame */
+#define smk_win_pose celebrating_pose
 static int player_sector;               /* $C0: the last sector reached      */
 static smk_horizon horizon;             /* the scenery above the track        */
 static smk_effects fx;                  /* tyre smoke / dust (NOTES 109)      */
@@ -210,10 +212,9 @@ static int  hud_input;                   /* L/R/accel bits, for the HUD */
  * seven karts have not finished when you do, and their times are what the
  * results screen is for. */
 enum { RACE_COUNTDOWN, RACE_RUN, RACE_FINISH };
-#define SMK_FINISH_TURN   50     /* frames to swing the camera round     */
+#define SMK_FINISH_TURN   80     /* frames to swing the camera round     */
 #define SMK_FINISH_HOLD  210     /* and how long the celebration lasts   */
-#define SMK_FINISH_DIST 16.0f    /* how far it draws back              */
-#define SMK_FINISH_RISE  5.0f    /* and how much the eye lifts         */
+#define SMK_FINISH_DIST 34.0f    /* how far ahead of the kart it ends  */
 static int race_state = RACE_COUNTDOWN;
 static int race_count;                   /* frames spent counting down  */
 /* MEASURED (NOTES 145): $809FE1 loads $0146 with $FEB0 = -336 and
@@ -853,25 +854,24 @@ static void finish_camera(smk_camera *cam, const smk_kart *k, int t)
     if (u > 1.0f) u = 1.0f;
     u = u * u * (3.0f - 2.0f * u);                 /* smoothstep */
 
-    /* PULLS BACK, it does not swing round to the front.
+    /* MEASURED, from the user's own recorded race (NOTES 179).
      *
-     * The first version turned 180 degrees to look the driver in the
-     * face, which is what the user asked for - but the kart sheet has no
-     * front-facing celebration.  SMK_SPR_WIN, the arms-up pose, is a REAR
-     * view: back of the head, no face, on all eight drivers.  A front
-     * camera and the celebration pose cannot both be had from this art
-     * (NOTES 178), and the pose is the half the user called important.
+     * The camera azimuth $94 trails the kart's heading $A4 by exactly 192
+     * for the whole race - and after the last crossing that difference
+     * climbs 192 -> 9555 -> 19421 -> 29735 -> 32836 and settles around
+     * 32800, which is $8000: HALF A TURN.  The game really does swing
+     * round to look the driver in the face, over about 80 frames.
      *
-     * So the camera keeps the driver's back to us and simply draws away
-     * and up, which frames the raised arms and still reads as a move
-     * rather than the chase view freezing. */
+     * This log had already built it that way, then talked itself out of
+     * it because the arms-up sprite looked like a rear view.  The
+     * recording settles it: the camera goes to the front. */
     float h  = (float)k->angle * (2.0f * (float)M_PI / (float)SMK_ANGLE_TURN);
     float fx = sinf(h), fy = -cosf(h);             /* the kart's forward */
     float d  = SMK_FINISH_DIST * u;
-    cam->x = (float)k->x / (float)SMK_POS_ONE - fx * d;
-    cam->y = (float)k->y / (float)SMK_POS_ONE - fy * d;
-    cam->height += SMK_FINISH_RISE * u;
-    finish_yaw = 0;                                /* no rotation to carry */
+    cam->x = (float)k->x / (float)SMK_POS_ONE + fx * d;
+    cam->y = (float)k->y / (float)SMK_POS_ONE + fy * d;
+    cam->angle += u * (float)M_PI;
+    finish_yaw = (uint16_t)(u * 32768.0f);         /* the same, for the sprites */
 }
 
 /* One art pixel of an object's drawing.
@@ -1297,11 +1297,15 @@ static void draw_ai_kart(const smk_rom *rom, const smk_track *trk,
             int f2 = mirror ? KTIER[kt].base
                             : smk_sprite_for_heading(KTIER[kt].base,
                                                      r16, &hf2);
-            /* The winner throws both arms up.  The user: "in the real
-             * game, the player also celebrates."  SMK_SPR_WIN is one
-             * fixed frame outside the rotation tiers, so it replaces the
-             * pick rather than indexing into it. */
-            if (celebrating && k == smk_ai_player_block) {
+            /* SMK_WIN_POSE=1 forces the arms-up pose (SMK_SPR_WIN).
+             * It is OFF by default and that is a measurement, not a
+             * preference: the recorded race says the camera swings to the
+             * FRONT of the kart, and this pose is frame 1 with the arms
+             * raised - a REAR view, cap dome, no face.  Shown from the
+             * front it puts the driver's back to the camera.  The two
+             * cannot both be right, and which the original does is the
+             * open question (NOTES 179). */
+            if (celebrating && k == smk_ai_player_block && smk_win_pose) {
                 f2 = SMK_SPR_WIN; hf2 = false; mirror = false;
             }
             if (mirror)
@@ -1698,6 +1702,7 @@ int main(int argc, char **argv)
     }
     /* $80AF0F, the catch-up distances the AI row chooser indexes. */
     { const char *e = getenv("SMK_AI_SKILL"); if (e) smk_ai_skill = atoi(e); }
+    celebrating_pose = getenv("SMK_WIN_POSE") ? 1 : 0;
     if (!smk_ai_catchup_load(&rom))
         fprintf(stderr, "warning: AI catch-up table not loaded\n");
     if (!smk_physics_load(&rom, engine_class, &phys)) {

@@ -7378,3 +7378,48 @@ times are the results screen (NOTES 177).
 
 The camera constants (16 units back, 5 of eye rise, 50 frames to move,
 210 to hold) are ours, under S27.
+
+---
+
+**179** — The finish camera, measured: it really does swing to the front.
+
+The user: *"look at one of my previous full race. The celebration and
+camera is captured there."* It was - their `flag` recording runs past the
+flag, and no gate had ever looked.
+
+`finishlog.lua` dumps `$0080-$00FF` and the player's whole block every
+frame from the last crossing, so the answer comes out of a diff rather
+than a hypothesis. The camera azimuth `$94` trails the heading `$A4` by
+exactly **192** for the entire race (NOTES 083). After the crossing:
+
+    192  ->  9555  ->  19421  ->  29735  ->  32836  ->  settles ~32800
+
+`$8000` is half a turn. **The game swings the camera round to the front
+of the kart over about 80 frames**, which is exactly what the user
+described and what the first version of this did before this log talked
+itself out of it. Restored, with the measured timing.
+
+The speed goes `862 -> 710 -> 540` and then holds around **510** for the
+rest of the recording: the kart keeps rolling, it does not stop. Their
+words: *"continues driving"*.
+
+**What the recording does NOT settle is the sprite**, and this is worth
+stating plainly rather than papering over. Rendering all 48 frames of the
+sheet identifies exactly one celebration pose - `SMK_SPR_WIN` (47), both
+arms thrown up, the same slot on all eight drivers. Put beside frame 1
+(known rear) and frame 10 (known front) it is unambiguous: it is **frame
+1 with the arms raised** - cap dome, no face. A REAR view.
+
+So the two measurements pull apart: the camera goes to the front, and the
+only celebration pose faces backwards. Shown together, the winner
+celebrates with his back to a camera that has just moved to see his face.
+
+`$1042` is pinned to 0 from the crossing onward, having taken 0..10 all
+race, which looks like the frame index being forced - but 0 is the
+half-sprite the port folds for the straight-on pose, not 47, so it does
+not resolve it either.
+
+Default is the measured camera with the normal front-facing sprite;
+`SMK_WIN_POSE=1` forces the arms-up frame. LABELLED and put to the user,
+who has seen the original: no rig here can tell which of the two the game
+actually shows, and guessing would be inventing a fact.
