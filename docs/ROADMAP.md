@@ -54,7 +54,8 @@ re-investigating.
 
 ## Shortcut & assumption ledger (current)
 
-**S28 — STILL NOT DONE: the winner's celebration sprites and animation.**
+**S28 — STILL NOT DONE: the winner's celebration sprites and animation.
+USE OAM TO CHECK EXACTLY HOW IT IS IMPLEMENTED.**
 The user's screenshot of the original settles what it looks like: face on,
 mouth open, both white gloves raised, kart-sized. It is in the sheet - the
 packed frames 33-43, which hold four small sprites each - but those frames
