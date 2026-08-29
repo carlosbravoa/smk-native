@@ -7799,3 +7799,57 @@ version.
 LABELLED (ROADMAP S31): the AI's coin count only ever falls — the AI's
 coin pickups (`$80:E9DD`) are not modelled, so an AI kart spins on its
 third bump where the real one may have refilled.
+
+## 188. The AI's weapons: absent from every recording — a blocker, not a decode
+
+Asked to go on with items, the open piece was the AI's own weapons
+(ROADMAP S31, docs/ITEMS.md §8). Before reading bank `$85` for them, the
+recordings were searched for one happening.
+
+### What was looked for
+
+`tools/labs/mame/objspawn.lua` (a block in `$0800..$0FFF` / `$1800..$1FFF`
+going live at `+$12` bit 15 or from all-zero), then
+`tools/labs/mame/objdump.lua` / `objdump2.lua` (the whole `$1800..$1FFF`
+window every frame, with every kart's position, `$10`, `$E0`, `$E2`,
+`$14`), replayed over four sessions: `flag` (MC1 50cc), `cc100` (MC1
+100cc), `gv1` (Ghost Valley) and `thwomp` (Bowser Castle) — 5,831 +
+6,089 + 22,988 + 22,458 race frames. Post-processing counted every
+rising bit of `$E0` and `$E2` per kart, and every object block whose
+position jumped by more than 64 (a respawn or a drop), with the nearest
+kart at the landing point.
+
+### What is there
+
+- The object pool is FOUR `$80`-byte blocks, `$1800/$1880/$1900/$1980`,
+  chained through `+$00/+$02` from the head `$00C0`, and re-seeded per
+  lap segment (NOTES 078, `entspawn.py`). MC1 keeps all four busy with
+  pipes; Ghost Valley with Boos (`+$04 = $E6FE`), Bowser Castle with
+  Thwomps (`$E18B`). Every jump in every session lands at a track object
+  position, never at a kart.
+- The projectile list in 1P is exactly two blocks — `$80F174: 1A00 1A80
+  0000` — both the human's (`$0DFA` set at `$80F4E8`). The 2P and battle
+  lists (`$80F15E/$80F16C`) add `$1B00/$1B80` and kart-side blocks. An AI
+  kart in 1P has no projectile block to throw from.
+- `$E0` (the item-effect word) NEVER rises on karts 1–7 in any session;
+  `$E2` on them shows only the human's own hits (`$0200` twice in cc100,
+  once in flag) and one `$2000` per kart at the finish. No star, no
+  mushroom, no lightning, nothing.
+- `$1A00..$1BFF` outside the human's throws and `$1C00..$1FFF` are DMA
+  and scratch (`$1E00` fills and clears ~100 times a race).
+
+The oracle attract race (MC1, 2,400 and 6,000 frames, `tools/labs/
+aiweapon.py` / `aiweapon2.py`) shows the same: nothing.
+
+### What that means
+
+Either the CPU field does not use weapons in what has been recorded so
+far (all four sessions are Mushroom Cup courses; class 50cc and 100cc),
+or it uses them only under a condition none of these races met. A decode
+from the ROM alone would be unverifiable — no recording has an event to
+gate it on — so it stops here, per the standing rule of surfacing a blocker early: the
+user can say whether they have ever seen a CPU kart drop or throw
+anything in these runs, and if it exists a recording of it (a higher
+class, a later cup) is the gate. Until then the AI has no weapons in the
+port, and that is not a shortcut but the measured behaviour of every
+race we hold.
