@@ -70,10 +70,13 @@ and the icons are the ROM's; the projectile motion is MEASURED. OURS: the
 five random bits of the roll (`$1F26` is not reproduced); the thrown
 banana's flight (UP never registered through the oracle's pad); the speed
 of a shell thrown backward; a green shell's 8-bounce life; the 8 px contact
-box; the star's palette cycle; the shrunk kart's half size; the 2x
-factor a shell's 8x8 tile is drawn at; and the banana's SPRITE (a yellow
-disc - it drops behind the kart, off screen, so no OAM dump caught it
-live; the tiles the byte searches found are a post). The AI's own weapons: searched
+box; the shrunk kart's half size; the shell's spin rate (its two 16x16
+frames are the game's, NOTES 189; the star's palette sequence is now
+MEASURED); a dropped green shell being static and what it does when hit;
+a starred kart knocking obstacles out (the real pipe's flight is not
+measured); and the banana's road SPRITE (the roulette icon stands in -
+it is in no resident sprite tile and is not uploaded on the drop,
+NOTES 189). The AI's own weapons: searched
 for and NOT FOUND in any recording (NOTES 188) — no AI kart used an item
 and no object ever appeared beside one across four sessions; blocked on a
 recording that shows one. The coinless

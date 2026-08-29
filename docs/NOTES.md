@@ -7965,7 +7965,17 @@ pipe's flight is not measured).
 
 ### Still open from the same test
 
-The road sprites of the shell and banana: the shared-blob tile the port
-used for the green shell is Lakitu's green light (the user). Two OAM
-dumps after throws showed no shell at all, so the art is being looked
-for in OBJ VRAM instead (`tools/labs/vramdump.py` / `vramrender.py`).
+The road sprites. The shared-blob tile the port used for the green
+shell is Lakitu's green light (the user), and two OAM dumps after throws
+showed no shell at all, so OBJ VRAM was rendered whole instead
+(`tools/labs/vramdump.py` / `vramrender.py`, every sprite palette
+stacked). The shell is there: sprite tiles `$100-$103 / $110-$113`, two
+16x16 frames of a dome, green in sprite palette 0 and red in palette 1
+— the effects stream `$C4:9C1A` the port already decodes (which is why
+`$100`/`$110` never matched a puff: they are the shell's left column).
+Drawn as that now, at the entities' size law, the two frames alternating
+every four frames (OURS). The BANANA is not in any resident sprite tile
+(`$000-$1FF` in all eight palettes), and a VRAM dump after a banana drop
+differs from the shell's only in the kart's own animated quadrants — so
+it is neither resident nor uploaded on the drop. Still the icon on the
+road, still open.
