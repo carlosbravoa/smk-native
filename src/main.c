@@ -1536,6 +1536,22 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
         if (cs > scale) cs = scale;
         int lift = (int)(pr->z / 25029) * scale;
         int which = pr->kind == SMK_PROJ_RED ? 2 : pr->kind == SMK_PROJ_GREEN ? 1 : 0;
+        if (which == 0) {
+            /* THE BANANA IS A PLACEHOLDER DISC.  Its sprite was never caught
+             * live: a dropped banana lands behind the kart, off screen, and
+             * the $F8/$F9 tiles the searches turned up are a post, not a
+             * banana (docs/ITEMS.md §7, S31).  Yellow, the size of a shell. */
+            int r = 4 * cs; if (r < 2) r = 2;
+            int cx = (int)px, cy = (int)py - r - lift;
+            for (int yy = -r; yy <= r; yy++)
+                for (int xx = -r; xx <= r; xx++) {
+                    if (xx * xx + yy * yy > r * r) continue;
+                    int sx = cx + xx, sy = cy + yy;
+                    if (sx < 0 || sx >= rw || sy < 0 || sy >= rh) continue;
+                    fb[(size_t)sy * rw + sx] = (xx * xx + yy * yy > (r - 1) * (r - 1)) ? 0xFF303030 : 0xFFF0D030;
+                }
+            continue;
+        }
         /* an 8x8 sprite, drawn at twice the pixel scale: the game shows
          * it through the same size steps as everything else, and at the
          * kart's own depth an 8x8 object reads as 16 px on its 256-wide

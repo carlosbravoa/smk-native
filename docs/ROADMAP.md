@@ -71,9 +71,9 @@ five random bits of the roll (`$1F26` is not reproduced); the thrown
 banana's flight (UP never registered through the oracle's pad); the speed
 of a shell thrown backward; a green shell's 8-bounce life; the 8 px contact
 box; the star's palette cycle; the shrunk kart's half size; the 2x
-factor a shell's 8x8 tile is drawn at; and the banana's PALETTE (its tile
-is found, its colours are not - it is a bank-`$85` entity, and the object
-palette it uses is still to be read). The AI's own weapons (bank `$85`
+factor a shell's 8x8 tile is drawn at; and the banana's SPRITE (a yellow
+disc - it drops behind the kart, off screen, so no OAM dump caught it
+live; the tiles the byte searches found are a post). The AI's own weapons (bank `$85`
 entities) are a separate system and are not started.
 
 **S30 — Lakitu's chequered flag is drawn, but not pixel-right.**

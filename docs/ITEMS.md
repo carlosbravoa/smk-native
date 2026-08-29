@@ -228,10 +228,11 @@ found nothing - and they are the SMALL sprite size, which in this OBSEL is
 8x8 (the karts' "16x16" quadrants are the large size). One tile each:
 green `$FC`, red `$FE`, from the shared blob at `$C1:0000` (VRAM tile n =
 blob tile n − `$EF`), sprite palette 4, decoded pixel-exact. The dropped
-banana is `$F9`, whose bytes are in the blob at `$C1:4552` - most likely a
-theme object sheet, since a banana on the road is a bank-`$85` entity (it
-takes its four coins through `$85:E3E0`'s table) - and it renders dark
-with palette 4: its palette is OPEN.
+banana's sprite is OPEN: it lands behind the kart, off screen, so no dump
+caught it live, and the `$F8/$F9` tiles the byte searches turned up are a
+post, not a banana. It is a bank-`$85` entity on the road (its four coins
+go through `$85:E3E0`'s table), so its art is in an object sheet; the port
+draws a labelled yellow disc until it is caught.
 
 ## 8. Out of scope for this pass
 
