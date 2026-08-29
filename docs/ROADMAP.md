@@ -73,8 +73,10 @@ of a shell thrown backward; a green shell's 8-bounce life; the 8 px contact
 box; the star's palette cycle; the shrunk kart's half size; the 2x
 factor a shell's 8x8 tile is drawn at; and the banana's SPRITE (a yellow
 disc - it drops behind the kart, off screen, so no OAM dump caught it
-live; the tiles the byte searches found are a post). The AI's own weapons (bank `$85`
-entities) are a separate system and are not started. The coinless
+live; the tiles the byte searches found are a post). The AI's own weapons: searched
+for and NOT FOUND in any recording (NOTES 188) — no AI kart used an item
+and no object ever appeared beside one across four sessions; blocked on a
+recording that shows one. The coinless
 bump's spin (NOTES 187) is decoded and measured; OURS: an AI kart's coin
 count only falls (its pickups are not modelled), so the AI spins on its
 third bump where the real one may have refilled.
