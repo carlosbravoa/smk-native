@@ -44,6 +44,7 @@
  * so the next reader can check it rather than trust it.
  */
 #include "smk.h"
+#include <string.h>
 
 /* Frames at which he changes rows, as (frame, y).  y is the top of his
  * 32x32 block in SNES pixels; negative is above the screen.  Generated
@@ -162,4 +163,28 @@ int smk_rescue_y(int t)
     if (t < 0) t = 0;
     if (t >= RESCUE_N) t = RESCUE_N - 1;
     return RESCUE_Y[t];
+}
+
+/* ---- the chequered flag (NOTES 184) ---------------------------------- */
+
+/* The three wave poses, in the order the capture shows them cycling. */
+static const struct { int hi, lo; } FLAG_WAVE[3] = {
+    { 0x6E, 0x6C }, { 0x82, 0x80 }, { 0x8E, 0x8C },
+};
+
+static const struct { int16_t x, y; } FLAG_PATH[] =
+#include "flag_path.inc"
+;
+
+void smk_flag_frame(int t, smk_flag *out)
+{
+    memset(out, 0, sizeof *out);
+    int n = (int)(sizeof FLAG_PATH / sizeof FLAG_PATH[0]);
+    if (t < 0 || t >= n) return;
+    out->on = true;
+    out->x = FLAG_PATH[t].x;
+    out->y = FLAG_PATH[t].y;
+    int w = (t / SMK_FLAG_WAVE) % 3;
+    out->flag_hi = FLAG_WAVE[w].hi;
+    out->flag_lo = FLAG_WAVE[w].lo;
 }

@@ -340,6 +340,40 @@ static void draw_lap_sign(uint32_t *fb, int rw, int rh,
                  SMK_START_PAL, false, palette, sc);
 }
 
+/* Lakitu waving the chequered flag as you finish (NOTES 184).
+ *
+ * The same 8x8 tile list the lap sign uses, from the same shared blob and
+ * the same palette; only the group and the path differ.  The flag waves
+ * through three tile pairs, which is the whole animation. */
+static void draw_finish_flag(uint32_t *fb, int rw, int rh,
+                             const uint32_t *palette, int t)
+{
+    smk_flag fg;
+    smk_flag_frame(t, &fg);
+    if (!fg.on || !hud_art.ok) return;
+    int sc = rw >= 640 ? 3 : 2;
+    /* head, cloud pair, then the flag over the top - offsets measured
+     * from his head and steady through the whole pass */
+    static const struct { int dx, dy, base; } PART[5] = {
+        {  0,  0, SMK_FLAG_HEAD    },
+        {  0, 16, SMK_FLAG_CLOUD_L },
+        { 16, 16, SMK_FLAG_CLOUD_R },
+        { 16,  0, -1 },                 /* the flag's upper half */
+        { 24,  8, -2 },                 /* and its lower half    */
+    };
+    for (int p = 0; p < 5; p++) {
+        int base = PART[p].base == -1 ? fg.flag_hi
+                 : PART[p].base == -2 ? fg.flag_lo : PART[p].base;
+        for (int sub = 0; sub < 4; sub++) {
+            int cx = sub & 1, cy = sub >> 1;
+            spr_tile(fb, rw, rh,
+                     (fg.x + PART[p].dx + cx * 8) * sc,
+                     (fg.y + PART[p].dy + cy * 8) * sc,
+                     base + cx + cy * 16, SMK_START_PAL, false, palette, sc);
+        }
+    }
+}
+
 /* Lakitu lowering a fished-out kart back onto the road (NOTES 168a).
  * Only during the DROP phase - through the carry his sprites are parked
  * off the side of the screen, which is the game not drawing him. */
@@ -1514,6 +1548,9 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
     /* None of the furniture during the celebration: the point of it is a
      * clean look at the driver, and a FINAL LAP sign over a race that has
      * just been won reads as a bug. */
+    /* he waves you home; the rest of the furniture stands down */
+    if (celebrating)
+        draw_finish_flag(fb, rw, rh, trk->palette, finish_t);
     if (!celebrating) {
         if (hud_countdown >= 0)           /* Lakitu, and his light */
             draw_start_light(fb, rw, rh, trk->palette, hud_countdown);

@@ -1257,6 +1257,40 @@ typedef struct {
 /* t counts frames from the crossing */
 void smk_lapsign_frame(int t, int lap, int laps, smk_lapsign *out);
 
+/* ---- Lakitu waving you home (NOTES 184) --------------------------------
+ *
+ * The third of his jobs, and the last one missing.  CAPTURED, from a
+ * finish reached by forcing the lap word rather than driving five laps in
+ * the interpreter - which is what had made it unreachable ("needs OAM at
+ * a finish", and MAME gives no OAM).
+ *
+ * His group, from OAM and stable across the whole pass, as offsets from
+ * his head - all 16x16, palette 5, the same palette his other two jobs
+ * use:
+ *
+ *     ( 0,  0)  $4A   his head
+ *     ( 0, 16)  $4C   cloud, left
+ *     (16, 16)  $44   cloud, right
+ *     (16,  0)  the flag's upper half
+ *     (24,  8)  the flag's lower half
+ *
+ * The flag WAVES through three tile pairs, about 17 frames each, and the
+ * pairs are $6C/$6E, $80/$82 and $8C/$8E - the checker across $68-$9F the
+ * roadmap predicted.  He enters from above the screen (y is signed and
+ * starts at -48) at the left and sweeps right and down over 230 frames. */
+#define SMK_FLAG_FRAMES  230
+#define SMK_FLAG_WAVE     17    /* frames per wave pose, measured        */
+#define SMK_FLAG_HEAD   0x4A
+#define SMK_FLAG_CLOUD_L 0x4C
+#define SMK_FLAG_CLOUD_R 0x44
+typedef struct {
+    bool on;
+    int  x, y;          /* his head, in SNES px; y may be negative       */
+    int  flag_hi, flag_lo;
+} smk_flag;
+/* t counts frames from the final crossing */
+void smk_flag_frame(int t, smk_flag *out);
+
 /* ---- Lakitu fishing you out (NOTES 168a) ------------------------------
  *
  * The rescue's STATE MACHINE has been the ROM's since NOTES 113/124 -

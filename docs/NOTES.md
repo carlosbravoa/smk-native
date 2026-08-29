@@ -7588,3 +7588,48 @@ Guarded against the replay gates: coins set the top speed
 (`$D6 = $B4 + 8*min(coins,10)`), so dropping one mid-replay would make the
 ghost diverge from the recording it is measured against. `demoreplay` is
 still 100% within 1 px, coins wrong on 0 frames.
+
+---
+
+**184** — Lakitu's third job: the chequered flag, and the trick that
+reached it.
+
+The last of his four jobs, and the one the roadmap had parked as
+unreachable: *"needs OAM at a finish (MAME can't give OAM, so the oracle
+with a forced lap word)"*. It also stood in the user's own screenshot of a
+win, waving at the left.
+
+**The trick is the forced lap word.** Driving five laps in the interpreter
+costs the best part of an hour. `$C0`'s high byte is the lap counter based
+at `$7F` and `$F8` is the progress watermark it is checked against
+(NOTES 174), so setting BOTH to the last lap makes the very next crossing
+the finish. `tools/labs/lakitu_flag.py` gets moving, forces them, drives
+the flow field into the line, and records OAM through the pass. It reached
+the finish in 86 frames.
+
+**What OAM gives, which no sheet-reading would.** His group, steady across
+the whole pass, as offsets from his head - all 16x16, palette 5, the same
+palette his other two jobs use:
+
+    ( 0,  0)  $4A   his head
+    ( 0, 16)  $4C   cloud, left
+    (16, 16)  $44   cloud, right
+    (16,  0)  the flag, upper half
+    (24,  8)  the flag, lower half
+
+The flag WAVES through three tile pairs at about 17 frames each -
+`$6C/$6E`, `$80/$82`, `$8C/$8E` - which is the checker across `$68-$9F`
+the roadmap predicted. He enters from ABOVE the screen (y is signed and
+starts at -48) on the left and sweeps right and down over 230 frames,
+captured frame by frame into `src/flag_path.inc`.
+
+`tools/labs/oampix.py` came out of this and is the general form of the S28
+lesson: give it a VRAM/CGRAM/OAM dump and it draws every distinct sprite
+with its tile number. Compositing the whole dump is what identified the
+flag in one look.
+
+**And the same trick unlocks two things still labelled.** The FINAL LAP
+plate is "read off the sheet, not captured - reaching the fifth crossing
+costs five laps of interpreter time" (NOTES 168b); that reason is now
+gone. So is the excuse for S28: a forced finish puts the celebration on
+screen, and OAM will name its tiles.
