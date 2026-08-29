@@ -1232,6 +1232,9 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
         float depth = (SMK_PROJ_LES * (float)rw / 256.0f) / sc;
         int lift = (int)(smk_mover_world(course, i)
                          * (SMK_PROJ_LES / depth) * ((float)rh / 112.0f));
+        if (getenv("SMK_LIFT_TRACE") && smk_mover_z(course, i) > 0)
+            printf("lift f%u ent %d z %d world %.1f depth %.1f sc %.2f lift_px %d rh %d\n",
+                   fx_ticks, i, smk_mover_z(course, i), smk_mover_world(course, i), depth, sc, lift, rh);
         /* Anchor the INK, not the rect.
          *
          * The three drawings do not fill their 16x16 block the same way:

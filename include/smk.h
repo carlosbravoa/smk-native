@@ -524,7 +524,16 @@ extern const smk_driver SMK_DRIVERS[SMK_CHARACTERS];
  * with the recording and is NOT consistent with the user's eye: at 1500 a
  * Thwomp is drawn 15 px up, looks plainly lifted, and still hit you.
  * That is the bug they reported. */
-#define SMK_MOVER_CLEAR   1280
+/* SECOND CORRECTION (the user: "right now it has to go too high to let you
+ * pass, meaning you hit something that is not there because the thwomp
+ * is already high enough").  The 97.8-per-pixel ruler above is the KART's
+ * z; the mover is DRAWN at SMK_MOVER_UNIT = 274 per world px and lifted by
+ * 256/depth * rh/112 on screen - at the player's depth ~16.8 screen px
+ * per world px, so z = 1280 was drawn 78 px up, 1.2 kart heights, and
+ * still hit.  80% of a 64 px kart at the contact depth (61 + the object
+ * radius) is z ~ 900-1050; the recording crashed at 960 and passed at
+ * 2880, and 960 is the lowest value both agree on (`>` passes above it). */
+#define SMK_MOVER_CLEAR    960
 enum { SMK_MV_PARK, SMK_MV_FALL, SMK_MV_HOLD, SMK_MV_RISE };
 typedef struct { int32_t z; int16_t zv; uint8_t phase; int16_t t; } smk_mover;
 
