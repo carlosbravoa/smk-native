@@ -11,6 +11,6 @@ if ITEM:
     L.pace(600)
     L.sw(0x1000 + 0xE0, L.w(0x1000 + 0xE0) | int(ITEM, 16))
     for _ in range(int(os.environ.get("WAIT", "20"))): L.frame(0x80)
-    TAG = "_" + ITEM
+    TAG = "_" + ITEM + ("_w" + os.environ["WAIT"] if os.environ.get("WAIT") else "")
 open("tmp/vram%s.bin" % TAG,"wb").write(bytes(L.b.vram)); open("tmp/cgram%s.bin" % TAG,"wb").write(bytes(L.b.cgram)); open("tmp/oam%s.bin" % TAG,"wb").write(bytes(L.b.oam))
 log("saved vram %d cgram %d oam %d; OBSEL=%02X" % (len(L.b.vram), len(L.b.cgram), len(L.b.oam), L.b.regs.get(0x2101, 0)))

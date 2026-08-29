@@ -8089,3 +8089,30 @@ shell's speed it hid under the kart and landed under it, which the user
 saw as "does not work". The road objects now scale by the karts' own
 1/distance law, continuously; the two-step integer size before did not
 read as distance.
+
+### Addendum — the road items' art: a scaler, not a sheet (the user's rip)
+
+The user left a ripped sheet (`tmp/new/items-on-the-road.png`,
+QuadFactor's rip): every road item is a SIZE LADDER — green shell 16/14/
+13/11/8/6/4 with three spin frames per tier, banana 16..6 in 8 tiers,
+the blue/green/red domes, and the CPUs' mushroom, egg and fireball
+ladders — and the item-box icons are not among them.
+
+Where it is in the ROM: nowhere as tiles. An eroded-mask matcher that
+finds the shared blob's coin at once (the rip carries a one-pixel
+outline the tiles do not) finds NO tier of any item in resident OBJ VRAM
+(three dumps), in any pointer-table stream, in any decompressible
+stream at any 32-byte offset, or raw, in either 16x16 tile pairing.
+What the game does instead: the object's tiles are WRITTEN every frame
+into sprite tiles `$160/$170` — after a throw they hold a 2x3 sliver, after
+a banana drop the rip's 6x4 smallest banana exactly — and those bytes
+exist nowhere in the ROM. The road items are rendered by the game's own
+software scaler from a template, the way the tyre puffs are (effects.c:
+templates in the `$C5:EE00` stream at WRAM `$2000`, records at
+`$80:D1CE`). The ladder the rip shows is that scaler's output.
+
+Next: the templates. The effects records name a template offset per
+kind; the items are the kinds effects.c does not handle yet. Render every
+record's template and the shell, banana, mushroom, egg and fireball
+should be there at full size, with the scaler's law to port beside the
+pipes' tiers. Until then the icons stand in (LABELLED, S31).
