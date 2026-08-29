@@ -220,6 +220,7 @@ void smk_racer_start(smk_racer *r, const smk_course *crs, int slot)
     r->sector = crs->sectors - 1;         /* the grid sits in the last sector */
     r->finish_frame = -1;                 /* has not finished */
     r->place = 0;
+    r->coins = 2;                         /* $81E3DA: the race's starting coins */
 }
 
 static uint16_t heading_to(const smk_kart *k, int tx, int ty)
@@ -458,9 +459,11 @@ void smk_racer_step(smk_racer *r, const smk_track *trk,
         r->hit_t--;
         int rate = r->tumble > 0x1000 ? 0x1000 : r->tumble;
         r->spin_pose = (int16_t)(r->spin_pose + (r->hit_dir ? rate : -rate));
-        r->tumble = (int16_t)(r->tumble > 0x40 ? r->tumble - 0x40 : 0);
+        int off = 56;
+        if (r->hit_kind == 4) off = (r->hit_t & 1) ? 16 : 15;    /* 15.5 a frame, flat rate */
+        else r->tumble = (int16_t)(r->tumble > 0x40 ? r->tumble - 0x40 : 0);
         if (r->hit_t == 0) r->spin_pose = 0;
-        r->k.speed = (int16_t)(r->k.speed > 56 ? r->k.speed - 56 : 0);
+        r->k.speed = (int16_t)(r->k.speed > off ? r->k.speed - off : 0);
         r->k.accel = 0; r->k.accel_frac = 0;
         smk_kart_face(&r->k);
         smk_kart_gravity(&r->k);

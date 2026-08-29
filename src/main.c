@@ -2713,12 +2713,31 @@ int main(int argc, char **argv)
                  * ($D6 = $B4 + 8*min(coins,10)), so dropping one would
                  * make the ghost diverge from the recording it is being
                  * compared against. */
-                if (kart.bump_cool == SMK_BUMP_COOL && was_cool == 0
-                    && player.coins > 0 && !replay_path) {
-                    player.coins--;
-                    smk_coinfx_spawn(coins_fx, SMK_COINFX_MAX,
-                                     kart.x, kart.y, player.heading,
-                                     kart.vx, kart.vy, 1);
+                if (kart.bump_cool == SMK_BUMP_COOL && was_cool == 0 && !replay_path) {
+                    if (player.coins > 0) {
+                        player.coins--;
+                        smk_coinfx_spawn(coins_fx, SMK_COINFX_MAX,
+                                         kart.x, kart.y, player.heading,
+                                         kart.vx, kart.vy, 1);
+                    } else {
+                        /* no coin to lose: the bump spins you out instead.
+                         * The user: "bumping another kart with no coins in
+                         * the pocket, the kart spins and ends up with zero
+                         * speed" - the same reaction as a banana. */
+                        smk_player_hit_bump(&player, &kart);
+                    }
+                }
+                /* and the same for every AI kart it touched */
+                {
+                    static int8_t was_ai[SMK_CHARACTERS];
+                    for (int q = 1; q < SMK_CHARACTERS; q++) {
+                        int8_t bc = racers[q].k.bump_cool;
+                        if (bc == SMK_BUMP_COOL && was_ai[q] == 0 && !replay_path) {
+                            if (racers[q].coins > 0) racers[q].coins--;
+                            else smk_racer_hit(&racers[q], 4, (int)(fx_ticks & 1));
+                        }
+                        was_ai[q] = bc;
+                    }
                 }
             }
             /* SMK_COIN_TEST=frame - throw coins on that race frame with

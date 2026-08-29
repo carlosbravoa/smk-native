@@ -315,6 +315,7 @@ bool smk_player_setup(const smk_rom *rom, int character, int engine_class,
                       smk_player *p);
 /* hit by a banana ($81:9982 -> $80:B443): the 60-frame spin.  False if a
  * star makes the kart immune.  The caller takes the coins. */
+bool smk_player_hit_bump(smk_player *p, smk_kart *k);
 bool smk_player_hit_banana(smk_player *p, smk_kart *k);
 /* hit by a shell or lightning ($81:9ACE -> $80:B4D1 / $80:B709): the
  * tumble.  `dir` picks the spin direction ($38's parity in the game). */
@@ -1064,6 +1065,8 @@ typedef struct {
     int16_t  spin_pose;     /* added to the drawn angle while tumbling   */
     int      hit_dir;
     int      shrink_t;      /* $84                                       */
+    int      coins;         /* $0E00,y for this kart: a bump costs one   */
+    int      hit_kind;      /* what hit it: 1 banana 2 shell 3 lightning 4 coinless bump */
     /* When this kart crossed for the last time, in race frames, and where
      * it came.  Nothing tracked either before: the race ended the instant
      * the PLAYER finished and the other seven simply stopped existing, so

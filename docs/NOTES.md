@@ -7733,3 +7733,69 @@ LABELLED: the sideways drift is that one bump's geometry (the kart was
 turning), kept rather than guessed away; and the capture is the 2P
 top-half view, whose perspective is squashed, so the vertical extent may
 read slightly short in the full-height view.
+
+## 187. A bump with no coins is a spin-out — measured, and the port's third reaction
+
+The user: *"getting hit by an item produces the same reaction as bumping
+another kart with no coins in the pocket: the kart spins and ends up with
+zero speed. if the kart gets hit by an object, you also lose 4 coins."*
+The port took one coin on a bump and did nothing at all with none left.
+
+### The decode
+
+`$80:EAE3` mirrors the coin count into the kart: `$4E,x` bit 3 = "has
+coins" (`lda $0E00,y; bne → ora #8`). The kart-kart bump at `$81:9B4D..9B7C`
+tests that bit on each kart of the pair and, for the one without,
+`$81:9AF5/9AFC` sets **`$E2 |= $0800`** — a third reaction bit beside the
+shell's `$0200/$0300` and the banana's `$1000`. The dispatcher at
+`$80:B49D` orders them: bit 9 → the tumble (`$B4D1`), bit 11 → **`$B435`**,
+bit 12 → the banana (`$B443`). `$B435` does almost nothing: `$A6 = $0E`
+if the pose lag `$AA` is negative, else `$10`; `$A8 = 0`; clear bits 11
+and 12. No speed clamp, no `$FA` countdown, and the drive state `$AC` is
+left alone — unlike the banana, which clamps to `$300`, zeroes `$AC` and
+arms 60 frames. States `$0E/$10` (`$80:A904/A927`) are the ones the port
+already had for the slide spin-out: `$E2 |= 8`, a star goes straight to
+`$1C`, the pose turns `$480` a frame, and once the speed is under `$180`
+the first turn that wraps the pose through zero ends it in `$1C`. The
+decel is `$80:A64F`'s `$EE = -16` (the banana's sibling at `$A656` is
+−8); both read as −15.5 / −7.5 on the machine because the fraction byte
+`$ED` is left stale.
+
+The 1-coin routine's own no-coin branch (`$85:E4B6 → $E69F`) only silences
+the coin sound; the spin is the bump's, not the coin loss's. The 4-coin
+loss for objects (`$85:E4DA`) was already in.
+
+### The measurement (`tools/labs/bumpspin.py`)
+
+Attract race un-demoed, P1 at 835 with B held, `$0E00 = 0`, then
+`$E2 |= $0800` written by hand — the dispatcher's own path, without the
+bump's push:
+
+    f   spd  $A6  $AA      $E2
+    0   835  00      0    0800
+    1   835  10   1152    0008     +$480 a frame from here
+    8   727  10   9216    0008     −15/−16 alternating
+    32  355  10 −28672    0008
+    56    0  10  −1024    0008
+    57    0  1C    128    0008     the pose wrapped
+    58    2  00      0    0000     and it drives off again
+
+56 frames from 835 to nothing, B held throughout — "ends up with zero
+speed" is the decel, not a clamp. The banana under the same rig: 768 at
+once, then −7.5 a frame, 60 frames of `$FA`, stopped at frame 72.
+
+### The port
+
+`smk_player_hit_bump` enters `$0E/$10` exactly as `$B435` does; a fresh
+bump (`bump_cool` rising) with `coins == 0` calls it instead of taking a
+coin. AI karts now carry `coins` (start 2, `$81E3DA`), lose one per fresh
+bump, and with none spin as `smk_racer_hit` kind 4: `$480` a frame flat,
+15.5 a frame off the speed, `hit_t = speed·2/31 + 4`. Item hits keep the
+4-coin loss and their own reactions (banana `$1000`, shell `$0300`,
+lightning = shell + shrink), which the user's sentence groups with this
+one: all three spin and end at nothing; the coinless bump is the plain
+version.
+
+LABELLED (ROADMAP S31): the AI's coin count only ever falls — the AI's
+coin pickups (`$80:E9DD`) are not modelled, so an AI kart spins on its
+third bump where the real one may have refilled.

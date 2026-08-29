@@ -1027,6 +1027,22 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
 
 /* ---- hit by an item (docs/ITEMS.md §6) ---------------------------------- */
 
+/* $819AF5: a kart-kart bump with no coins to lose sets $E2 bit 11, and the
+ * dispatcher at $80B49D sends that straight to $80B435: state $0E or $10 by
+ * the sign of the pose lag, $A8 cleared, and NOTHING else - no speed clamp,
+ * no $FA countdown, the drive state left alone.  Measured with
+ * tools/labs/bumpspin.py: the pose turns $480 a frame, the speed falls
+ * 15.5 a frame to nothing (835 -> 0 in 56 frames), then $1C and off you go. */
+bool smk_player_hit_bump(smk_player *p, smk_kart *k)
+{
+    (void)k;
+    if (p->flags & 2) return false;               /* the star ($80B429 shape) */
+    if ((p->state >= 0x0A && p->state <= 0x10) || p->state == 0x1A) return false;
+    p->state = p->plag < 0 ? 0x0E : 0x10;
+    p->vlag  = 0;                                 /* stz $A8,x */
+    return true;
+}
+
 bool smk_player_hit_banana(smk_player *p, smk_kart *k)
 {
     if (p->flags & 2) return false;               /* $80A957: the star */
@@ -1081,10 +1097,19 @@ void smk_player_shrink(smk_player *p, smk_kart *k, int dir)
 void smk_racer_hit(smk_racer *r, int kind, int dir)
 {
     if (r->hit_t > 0) return;
-    r->hit_t   = kind == 1 ? 60 + 12 : 64 + 10;   /* the spin, then the settle */
-    r->tumble  = kind == 1 ? 0x0A00 : 0x2000;     /* $E4 = $2000 for an AI */
+    r->hit_kind = kind;
     r->hit_dir = dir;
     r->spin_pose = 0;
+    if (kind == 4) {
+        /* the coinless bump (states $0E/$10, tools/labs/bumpspin.py): the
+         * pose turns $480 a frame while the speed falls 15.5 a frame, and
+         * it is over once the speed is gone and the pose has wrapped */
+        r->tumble = 0x480;
+        r->hit_t  = (r->k.speed * 2) / 31 + 4;
+        return;
+    }
+    r->hit_t   = kind == 1 ? 60 + 12 : 64 + 10;   /* the spin, then the settle */
+    r->tumble  = kind == 1 ? 0x0A00 : 0x2000;     /* $E4 = $2000 for an AI */
     if (kind == 1) { if (r->k.speed > 0x300) r->k.speed = 0x300; }
     else           { if (r->k.speed > 0x180) r->k.speed = 0x180; }
     if (kind == 3) r->shrink_t = 0x440;

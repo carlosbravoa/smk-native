@@ -74,7 +74,10 @@ box; the star's palette cycle; the shrunk kart's half size; the 2x
 factor a shell's 8x8 tile is drawn at; and the banana's SPRITE (a yellow
 disc - it drops behind the kart, off screen, so no OAM dump caught it
 live; the tiles the byte searches found are a post). The AI's own weapons (bank `$85`
-entities) are a separate system and are not started.
+entities) are a separate system and are not started. The coinless
+bump's spin (NOTES 187) is decoded and measured; OURS: an AI kart's coin
+count only falls (its pickups are not modelled), so the AI spins on its
+third bump where the real one may have refilled.
 
 **S30 — Lakitu's chequered flag is drawn, but not pixel-right.**
 The DATA is measured and correct: his path (230 frames, captured), the

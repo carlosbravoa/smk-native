@@ -692,6 +692,19 @@ int main(int argc, char **argv)
                 smk_player_reset(&pb, 0); smk_player_star(&pb);
                 check("a star kart ignores a banana and a shell",
                       !smk_player_hit_banana(&pb, &kb) && !smk_player_hit_shell(&pb, &kb, 0), NULL);
+                /* the coinless bump: $80B435 sets the state and nothing else
+                 * (tools/labs/bumpspin.py: 835 -> 0 in 56 frames at $480 a frame) */
+                smk_player_reset(&pb, 0); kb.speed = 835; pb.drive = 0x10; pb.plag = 100;
+                bool ok3 = smk_player_hit_bump(&pb, &kb);
+                snprintf(det, sizeof det, "state $%02X drive $%02X speed %d vlag %d", pb.state, pb.drive, kb.speed, pb.vlag);
+                check("a bump with no coins: state $10 (pose lag +), drive and speed untouched",
+                      ok3 && pb.state == 0x10 && pb.drive == 0x10 && kb.speed == 835 && pb.vlag == 0
+                      && !smk_player_hit_bump(&pb, &kb), det);
+                smk_racer rb; memset(&rb, 0, sizeof rb); rb.k.speed = 835;
+                smk_racer_hit(&rb, 4, 1);
+                snprintf(det, sizeof det, "hit_t %d tumble $%04X", rb.hit_t, rb.tumble);
+                check("an AI kart bumped with no coins spins $480 a frame for ~57 frames",
+                      rb.hit_kind == 4 && rb.tumble == 0x480 && rb.hit_t >= 55 && rb.hit_t <= 59, det);
             }
         }
 

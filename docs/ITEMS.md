@@ -202,6 +202,14 @@ spin is about 2⅓ turns. The port's existing oil spin-out is the sibling
 states `$0E/$10` (`±$480`/frame, −16 speed/frame); the item spin is
 faster and timed.
 
+**The coinless bump (NOTES 187).** A kart-kart bump reads each kart's
+"has coins" bit (`$4E` bit 3, mirrored from `$0E00` at `$80:EAE3`); the
+kart without gets `$E2 |= $0800` (`$81:9AF5`), which `$80:B49D` routes to
+`$80:B435`: state `$0E/$10` by the sign of `$AA`, `$A8 = 0`, nothing
+else. The pose turns `$480` a frame and the speed falls 15.5 a frame to
+zero (835 → 0 in 56 frames, measured with `tools/labs/bumpspin.py`), then
+`$1C`. The port: `smk_player_hit_bump`, and `smk_racer_hit` kind 4.
+
 ## 7. HUD — DECODED and FOUND
 
 The slot is NOT sprites: `$81:B31C`'s `$0C26/$0C28/$0C66/$0C68` are
