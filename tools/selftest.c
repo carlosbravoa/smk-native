@@ -594,6 +594,107 @@ int main(int argc, char **argv)
                   "recorded run agrees", tested == 10 && bad == 0, det);
         }
 
+        /* THE ROULETTE, against the user's own race (NOTES 185).  Frame
+         * 2167 of `flag` hits a box on Mario Circuit 1 while leading on
+         * lap 2+; the game rolled red (5) from sequence 4.  The roll is the
+         * one thing not reproducible, so the outcome is forced and every
+         * frame after it must match: 193 frames of stepping every fourth
+         * frame, the stop on the target once the count is negative, 64
+         * frames of hold, then READY. */
+        {
+            static const struct { int f; unsigned w, t; } R[] = {
+#include "selftest_roulette.inc"
+            };
+            static smk_itemtab tab;
+            smk_item it;
+            int n = (int)(sizeof R / sizeof R[0]), ok = 0, first_bad = -1;
+            if (smk_items_load(&rom, &tab)) {
+                smk_item_tables = &tab;
+                smk_item_box(&it, &tab, 7, 2, 0, 0);
+                it.seq = 4; it.target = 5;              /* the game's roll */
+                for (int i = 0; i < n; i++) {
+                    if (R[i].f < 2167) { ok++; continue; }       /* before the box */
+                    if (R[i].f > 2167) smk_item_step(&it, false, true);
+                    bool same = it.word == R[i].w && (uint16_t)it.timer == R[i].t;
+                    if (same) ok++; else if (first_bad < 0) first_bad = i;
+                }
+            }
+            snprintf(det, sizeof det, "%d/%d frames exact%s", ok, n,
+                     first_bad < 0 ? "" : "");
+            if (first_bad >= 0)
+                snprintf(det + strlen(det), sizeof det - strlen(det),
+                         "; first miss f%d: ours $%04X/$%04X, game $%04X/$%04X",
+                         R[first_bad].f, it.word, (uint16_t)it.timer,
+                         R[first_bad].w, R[first_bad].t);
+            check("the item roulette replays the user's race frame-exact",
+                  n > 0 && ok == n, det);
+            /* and the outcome tables are the ROM's: MC1 leader lap 2 -> seq 4,
+             * and the recorded roll landed inside record 1's live set */
+            smk_item_box(&it, &tab, 7, 2, 0, 21);     /* roll 21 -> red */
+            snprintf(det, sizeof det, "MC1 lap2 P1: seq %d target %d (game: seq 4, red=5)",
+                     it.seq, it.target);
+            check("MC1's item block picks sequence 4 for the leader", it.seq == 4 && it.target == 5, det);
+        }
+
+        /* THE ITEMS' EFFECTS, each against its measurement (NOTES 185):
+         * a shell leaves at the kart's speed + $300; a red shell turns
+         * toward its target by at most $400 a frame; a banana hit spins
+         * for 60 frames from a speed clamped to $300; a shell hit tumbles
+         * with a rate that decays $40 a frame from $1000. */
+        {
+            static smk_track trk7; static smk_course cr7b;
+            char e7[128];
+            if (smk_track_load(&rom, 7, -1, &trk7, e7, sizeof e7) && smk_course_load(&rom, 7, &cr7b)) {
+                smk_proj pj[SMK_PROJ_MAX]; memset(pj, 0, sizeof pj);
+                smk_kart kk; memset(&kk, 0, sizeof kk);
+                /* on MC1's own grid, or the shell dies on the grass first frame */
+                float gx7, gy7; uint16_t gh7;
+                smk_course_start(&cr7b, SMK_GRID_SLOT(0), &gx7, &gy7, &gh7);
+                kk.x = (int32_t)(gx7 * SMK_POS_ONE); kk.y = (int32_t)(gy7 * SMK_POS_ONE);
+                kk.speed = 500; kk.angle = 0;
+                smk_proj_throw(pj, SMK_PROJ_MAX, SMK_PROJ_GREEN, &kk, 0, 0, -1, false, false);
+                snprintf(det, sizeof det, "speed %d (kart 500 + $300 = 1268), heading $%04X",
+                         pj[0].speed, pj[0].heading);
+                check("a green shell leaves at the kart's speed + $300", pj[0].speed == 1268, det);
+                /* red: a target due east; the shell heads north and must turn
+                 * no faster than $400 a frame after the delay */
+                memset(pj, 0, sizeof pj);
+                smk_kart tgt = kk; tgt.x += (int32_t)200 << SMK_POS_SHIFT;
+                smk_proj_throw(pj, SMK_PROJ_MAX, SMK_PROJ_RED, &kk, 0, 0, 1, false, false);
+                const smk_kart *fk[2] = { &kk, &tgt };
+                uint16_t h0 = pj[0].heading; int maxstep = 0;
+                for (int f = 0; f < 12; f++) {
+                    uint16_t before = pj[0].heading;
+                    smk_proj_step(pj, SMK_PROJ_MAX, &trk7, fk, 2);
+                    int st = (int16_t)(uint16_t)(pj[0].heading - before);
+                    if (st < 0) st = -st;
+                    if (st > maxstep) maxstep = st;
+                }
+                snprintf(det, sizeof det, "from $%04X to $%04X in 12 frames, largest step $%04X",
+                         h0, pj[0].heading, maxstep);
+                check("a red shell turns toward its target by at most $400 a frame",
+                      pj[0].heading != h0 && maxstep <= 0x400 && (int16_t)pj[0].heading > 0, det);
+                /* the banana hit */
+                static smk_player pb; smk_player_setup(&rom, 0, 0, &pb); smk_player_reset(&pb, 0);
+                smk_kart kb; memset(&kb, 0, sizeof kb); kb.speed = 900;
+                bool ok1 = smk_player_hit_banana(&pb, &kb);
+                snprintf(det, sizeof det, "state $%02X, speed %d, $FA %d", pb.state, kb.speed, pb.spin);
+                check("a banana hit: state $0A/$0C, speed to $300, 60 frames of spin",
+                      ok1 && (pb.state == 0x0A || pb.state == 0x0C) && kb.speed == 0x300 && pb.spin == 60, det);
+                /* the shell hit */
+                smk_player_reset(&pb, 0); kb.speed = 900;
+                bool ok2 = smk_player_hit_shell(&pb, &kb, 1);
+                snprintf(det, sizeof det, "state $%02X drive $%02X tumble $%04X speed %d",
+                         pb.state, pb.drive, pb.tumble, kb.speed);
+                check("a shell hit: state $1A, drive $14, tumble $1000, the knock's $180",
+                      ok2 && pb.state == 0x1A && pb.drive == 0x14 && pb.tumble == 0x1000 && kb.speed == 0x180, det);
+                /* and a star shrugs both off */
+                smk_player_reset(&pb, 0); smk_player_star(&pb);
+                check("a star kart ignores a banana and a shell",
+                      !smk_player_hit_banana(&pb, &kb) && !smk_player_hit_shell(&pb, &kb, 0), NULL);
+            }
+        }
+
         /* and the row really does move the target speed */
         static smk_physics ph2;
         smk_physics_load(&rom, 0, &ph2);

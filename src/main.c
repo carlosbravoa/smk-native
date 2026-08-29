@@ -173,6 +173,19 @@ static int racer_draw_mask = 0xFE;      /* which racer slots draw_scene draws */
 #define SMK_POSE_LEAN 1001      /* the block unfolded; negative = hflipped */
 /* Coins knocked out of the player, and the game's own art for them. */
 static smk_coinart coin_art;
+/* The item system (docs/ITEMS.md): the word, the tables, the projectiles. */
+static smk_itemtab itemtab;
+static smk_item    item;
+static smk_itemicons item_icons;
+static int         cur_track;        /* for the item block ($81:8B73[track]) */
+static smk_proj    projs[SMK_PROJ_MAX];
+static unsigned    item_rng = 0x2545F491u;
+static unsigned item_roll(void)
+{
+    /* OURS: five random bits.  The game's $1F26 is not reproduced. */
+    item_rng = item_rng * 1103515245u + 12345u;
+    return (item_rng >> 16) & 31u;
+}
 static smk_flagart flag_art;
 static smk_coin    coins_fx[SMK_COINFX_MAX];
 static int celebrating;
@@ -682,8 +695,15 @@ static void step_kart(smk_kart *k, smk_track *trk,
     {
         unsigned parity = replay_path ? (unsigned)replay_i : fx_ticks;
         unsigned mine = (replay_path && replay_kart == 1100) ? 0u : 1u;
-        if (rom_for_step && (parity & 1u) == mine)
+        if (rom_for_step && (parity & 1u) == mine) {
+            bool had = player.item_held;
             smk_pickup_step(rom_for_step, trk, &player, k, grounded);
+            /* a fresh box: choose the item and start the roulette ($81:B34A
+             * and the pick at $81:B6D1, docs/ITEMS.md §3).  The lap and
+             * rank are the HUD's, which are the race's own. */
+            if (player.item_held && !had && itemtab.ok && !replay_path)
+                smk_item_box(&item, &itemtab, cur_track, hud_lap, hud_rank - 1, item_roll());
+        }
     }
 
     /* the ground effect object ($80CF7B..$80D4A3): what the surface under
@@ -791,6 +811,9 @@ static bool load_race(const smk_rom *rom, int track, int theme, int character,
     crossings = 0;
     race_over = false;
     finish_t = 0;
+    memset(&item, 0, sizeof item);
+    memset(projs, 0, sizeof projs);
+    cur_track = track;
     /* the results screen names the track from the UI's own field, which
      * only the shell sets - so a --race or --timetrial run showed a blank */
     ui.track = track;
@@ -1280,7 +1303,7 @@ static void draw_ai_kart(const smk_rom *rom, const smk_track *trk,
         /* same measured pose ladder as the player (NOTES 080):
          * mirrored straight < $400, 47 half-lean < $1000, then the
          * rotation frames */
-        int rel = (int16_t)(uint16_t)(racers[k].k.angle - cam_heading);
+        int rel = (int16_t)(uint16_t)(racers[k].k.angle + racers[k].spin_pose - cam_heading);
         int ar = rel < 0 ? -rel : rel;
         bool hf = false, mirror = false;
         int f = 0;
@@ -1324,6 +1347,7 @@ static void draw_ai_kart(const smk_rom *rom, const smk_track *trk,
         float kd = sqrtf(kdx * kdx + kdy * kdy);
         if (kd < SMK_OBJ_NEAR) kd = SMK_OBJ_NEAR;
         float kwant = (float)KTIER[0].h * SMK_KART_SCALE_K / kd;
+        if (racers[k].shrink_t > 0) kwant *= 0.5f;      /* lightning: OURS, half size */
         if (kwant > (float)KTIER[0].h) kwant = (float)KTIER[0].h;
         int kt = 0;
         for (int t = 1; t < 4; t++)
@@ -1495,9 +1519,41 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
             }
         }
     }
-    if (show_kart && !celebrating && karts->frames) {
+    /* the bananas and shells: projected like the coins.  PLACEHOLDER
+     * discs until the game's own sprites are pulled from the dumps
+     * (docs/ITEMS.md §7) - a shell that cannot be seen cannot be judged. */
+    for (int i = 0; i < SMK_PROJ_MAX; i++) {
+        const smk_proj *pr = &projs[i];
+        if (pr->kind == SMK_PROJ_NONE) continue;
+        float px, py, sc;
+        if (!smk_project(cam, (float)smk_kart_px(pr->x), (float)smk_kart_px(pr->y),
+                         rw, rh, &px, &py, &sc)) continue;
+        int scale = rw / 256; if (scale < 1) scale = 1;
+        float kdx = (float)smk_kart_px(pr->x) - cam->x, kdy = (float)smk_kart_px(pr->y) - cam->y;
+        float kd = sqrtf(kdx * kdx + kdy * kdy); if (kd < SMK_OBJ_NEAR) kd = SMK_OBJ_NEAR;
+        int r = (int)((float)scale * 7.0f * SMK_KART_SCALE_K / kd / 8.0f + 0.5f);
+        if (r < 2) r = 2;
+        if (r > 10 * scale) r = 10 * scale;
+        int lift = (int)(pr->z / 25029) * scale;
+        uint32_t col = pr->kind == SMK_PROJ_RED ? 0xFFE03030
+                     : pr->kind == SMK_PROJ_GREEN ? 0xFF30C030 : 0xFFF0D030;
+        int cx = (int)px, cy = (int)py - r - lift;
+        for (int yy = -r; yy <= r; yy++)
+            for (int xx = -r; xx <= r; xx++) {
+                if (xx * xx + yy * yy > r * r) continue;
+                int sx = cx + xx, sy = cy + yy;
+                if (sx < 0 || sx >= rw || sy < 0 || sy >= rh) continue;
+                fb[(size_t)sy * rw + sx] = (xx * xx + yy * yy > (r - 1) * (r - 1)) ? 0xFF202020 : col;
+            }
+    }
+    if (show_kart && !celebrating && karts->frames
+        && !(player.boo_t > 0 && (fx_ticks & 1))) {   /* Boo: OURS, a flicker */
         int scale = rw / 256;                 /* the SNES 32px proportion */
         if (scale < 1) scale = 1;
+        /* small after lightning ($84): OURS, half the art scale; the star
+         * ($4E bit 15): OURS, the palette cycling through the drivers' */
+        if (player.shrink_t > 0 && scale > 1) scale /= 2;
+        int ppal = player.star_t > 0 ? 0x80 + (int)((fx_ticks >> 2) & 7) * 0x10 : drv->pal;
         /* the hop lifts the sprite; the shadow stays on the ground */
         int lift = player_height_px * scale;
         /* The fall is a RENDERING effect here and nowhere else (NOTES
@@ -1523,11 +1579,11 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
         if (frame == SMK_POSE_LEAN || frame == -SMK_POSE_LEAN)
             /* the SAME block as the straight pose, drawn UNFOLDED so its
              * own right half shows: that is the lean (NOTES 182) */
-            smk_draw_sprite(karts, SMK_SPR_LEAN, trk->palette, drv->pal,
+            smk_draw_sprite(karts, SMK_SPR_LEAN, trk->palette, ppal,
                             rw / 2, prow - lift, scale,
                             frame < 0, fb, rw, rh, rw);
         else if (frame == 1000)               /* the mirrored straight pose */
-            smk_draw_sprite_mirror(karts, 0, trk->palette, drv->pal,
+            smk_draw_sprite_mirror(karts, 0, trk->palette, ppal,
                                    rw / 2, prow - lift, scale,
                                    fb, rw, rh, rw);
         else {
@@ -1546,6 +1602,40 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
     if (!celebrating) {
         draw_hud(fb, rw, rh, trk->palette, hud_lap, player.coins, hud_rank);
         draw_clock(fb, rw, rh, trk->palette, hud_race_frames);
+        /* THE ITEM SLOT: the game's own BG3 icon, 2x2 tiles at the top left
+         * where the HUD tilemap puts it ($0C26 = row 0, column 19 of a
+         * 32-wide map -> x 152, y 0 on a 256-wide screen), drawn at the
+         * HUD's scale.  The empty box shows when nothing is held; the held
+         * icon blinks every eight frames, and stops blinking when READY. */
+        if (item_icons.ok) {
+            int sc = rw >= 640 ? 3 : 2;
+            int which = -1;                                  /* nothing held: nothing drawn */
+            if (smk_item_present(&item) && !(item.word & 0x1000)) {
+                int id = smk_item_shown(&item);
+                which = (id >= 0 && id < SMK_ITEMS) ? id : SMK_ITEMS + 1;
+                if (smk_item_blink(&item)) which = SMK_ITEMS;   /* the blank */
+            }
+            int t0 = which >= 0 ? item_icons.tile[which] - SMK_ICON_BASE : 0;
+            int pal = which >= 0 ? item_icons.pal[which] : 0;
+            if (which < 0) t0 = -1000;                         /* every tile out of range */
+            /* the empty box is $E9 $E9 over $E8 $E8, not t..t+3 */
+            static const int EMPTY[4] = { 0x69, 0x69, 0x68, 0x68 };
+            int ox = 152 * sc, oy = 0;
+            for (int q = 0; q < 4; q++) {
+                int tn = which == SMK_ITEMS + 1 ? EMPTY[q] : t0 + q;
+                if (tn < 0 || tn >= SMK_ICON_TILES) continue;
+                const uint8_t *px = item_icons.px[tn];
+                int bx = ox + (q & 1) * 8 * sc, by = oy + (q >> 1) * 8 * sc;
+                for (int yy = 0; yy < 8 * sc; yy++)
+                    for (int xx = 0; xx < 8 * sc; xx++) {
+                        uint8_t v = px[(yy / sc) * 8 + xx / sc];
+                        if (!v) continue;
+                        int sx = bx + xx, sy = by + yy;
+                        if (sx < 0 || sx >= rw || sy < 0 || sy >= rh) continue;
+                        fb[(size_t)sy * rw + sx] = trk->palette[(pal * 4 + v) & 0xFF];
+                    }
+            }
+        }
     }
     /* live input state, so a stuck control is visible rather than
      * looking like a physics bug */
@@ -1853,6 +1943,10 @@ int main(int argc, char **argv)
     smk_hud_load(&rom, &hud_art);
     if (!smk_coin_load(&rom, &coin_art))
         fprintf(stderr, "warning: coin sprite not loaded\n");
+    if (smk_items_load(&rom, &itemtab)) smk_item_tables = &itemtab;
+    if (!smk_itemicons_load(&rom, &item_icons))
+        fprintf(stderr, "warning: item icons not loaded\n");
+    else fprintf(stderr, "warning: item tables not loaded\n");
     if (!smk_flag_load(&rom, &flag_art))
         fprintf(stderr, "warning: chequered flag not loaded\n");
 
@@ -2364,6 +2458,109 @@ int main(int argc, char **argv)
 
             if ((race_state == RACE_RUN || race_state == RACE_FINISH)
                 && !replay_path && race_mode != SMK_MODE_TT) {
+                /* THE ITEMS (docs/ITEMS.md).  The word steps every frame;
+                 * the button is the LEVEL, as the game tests it. */
+                {
+                    bool can_use = !kart.airborne && !player.hazard
+                                   && player.state != 0x0A && player.state != 0x0C
+                                   && player.state != 0x1A;
+                    {   /* SMK_ITEM_TEST=id:frame - the item appears READY on that
+                         * frame and is fired the next, with no box, so every
+                         * effect can be shot headlessly */
+                        static int tid = -2, tframe = 0;
+                        if (tid == -2) {
+                            tid = -1;
+                            const char *e = getenv("SMK_ITEM_TEST");
+                            if (e && strchr(e, ':')) { tid = atoi(e); tframe = atoi(strchr(e, ':') + 1); }
+                        }
+                        if (tid >= 0 && hud_race_frames == tframe) {
+                            /* id 99: a BOX instead - the whole roulette, from the tables */
+                            if (tid == 99) smk_item_box(&item, &itemtab, cur_track, hud_lap, hud_rank - 1, item_roll());
+                            else item.word = (uint16_t)(0xC000 | tid);
+                        }
+                        if (tid >= 0 && tid != 99 && hud_race_frames == tframe + 1) in.item = true;
+                    }
+                    int used = smk_item_step(&item, in.item, can_use);
+                    player.item_held = smk_item_present(&item);
+                    if (used >= 0) {
+                        int ahead_idx = -1;                 /* the red shell's target */
+                        for (int q = 1; q < SMK_CHARACTERS; q++)
+                            if (racers[q].rank == racers[0].rank - 1) { ahead_idx = q; break; }
+                        if (ahead_idx < 0)
+                            for (int q = 1; q < SMK_CHARACTERS; q++)
+                                if (racers[q].rank == racers[0].rank + 1) { ahead_idx = q; break; }
+                        switch (used) {
+                        case SMK_ITEM_MUSHROOM:  smk_player_boost(&player); break;
+                        case SMK_ITEM_FEATHER:   smk_player_feather(&player, &kart); break;
+                        case SMK_ITEM_STAR:      smk_player_star(&player); break;
+                        case SMK_ITEM_BANANA:
+                            smk_proj_throw(projs, SMK_PROJ_MAX, SMK_PROJ_BANANA, &kart,
+                                           player.heading, 0, -1, false, in.up);
+                            break;
+                        case SMK_ITEM_GREEN:
+                            smk_proj_throw(projs, SMK_PROJ_MAX, SMK_PROJ_GREEN, &kart,
+                                           player.heading, 0, -1, in.down, false);
+                            break;
+                        case SMK_ITEM_RED:
+                            smk_proj_throw(projs, SMK_PROJ_MAX, SMK_PROJ_RED, &kart,
+                                           player.heading, 0, ahead_idx, false, false);
+                            break;
+                        case SMK_ITEM_BOO:       player.boo_t = 0x480; break;
+                        case SMK_ITEM_COIN:
+                            player.coins += 2; if (player.coins > 99) player.coins = 99;
+                            break;
+                        case SMK_ITEM_LIGHTNING:
+                            for (int q = 1; q < SMK_CHARACTERS; q++)
+                                smk_racer_hit(&racers[q], 3, (int)(fx_ticks & 1));
+                            break;
+                        default: break;
+                        }
+                    }
+                    if (getenv("SMK_ITEM_TRACE")) {
+                        printf("item f%ld word=$%04X t=%d used=%d | kart (%d,%d) spd %d st=%02X drv=%02X coins %d |",
+                               hud_race_frames, item.word, item.timer, used,
+                               smk_kart_px(kart.x), smk_kart_px(kart.y), kart.speed,
+                               player.state, player.drive, player.coins);
+                        for (int q = 0; q < SMK_PROJ_MAX; q++)
+                            if (projs[q].kind)
+                                printf(" P%d k%d (%d,%d,z%d) v(%d,%d) h%04X t%d%s", q, projs[q].kind,
+                                       smk_kart_px(projs[q].x), smk_kart_px(projs[q].y),
+                                       (int)(projs[q].z / 25029), projs[q].vx, projs[q].vy,
+                                       projs[q].heading, projs[q].t, projs[q].dying ? " dying" : "");
+                        printf("\n");
+                    }
+                    /* the projectiles fly, and anything they touch reacts */
+                    const smk_kart *field_k[SMK_CHARACTERS];
+                    for (int q = 0; q < SMK_CHARACTERS; q++) field_k[q] = &racers[q].k;
+                    field_k[0] = &kart;
+                    smk_proj_step(projs, SMK_PROJ_MAX, &trk, field_k, SMK_CHARACTERS);
+                    int hk = smk_proj_hit(projs, SMK_PROJ_MAX, &kart, 0);
+                    if (hk == SMK_PROJ_BANANA) {
+                        if (smk_player_hit_banana(&player, &kart)) {
+                            int lost = player.coins < 4 ? player.coins : 4;   /* $85:E4DA */
+                            player.coins -= lost;
+                            smk_coinfx_spawn(coins_fx, SMK_COINFX_MAX, kart.x, kart.y,
+                                             player.heading, kart.vx, kart.vy, lost);
+                        }
+                    } else if (hk == SMK_PROJ_GREEN || hk == SMK_PROJ_RED) {
+                        if (smk_player_hit_shell(&player, &kart, (int)(fx_ticks & 1))) {
+                            int lost = player.coins < 4 ? player.coins : 4;
+                            player.coins -= lost;
+                            smk_coinfx_spawn(coins_fx, SMK_COINFX_MAX, kart.x, kart.y,
+                                             player.heading, kart.vx, kart.vy, lost);
+                        }
+                    }
+                    for (int q = 1; q < SMK_CHARACTERS; q++) {
+                        int hq = smk_proj_hit(projs, SMK_PROJ_MAX, &racers[q].k, q);
+                        if (hq && getenv("SMK_ITEM_TRACE"))
+                            printf("item HIT kart %d (%s) at (%d,%d) rank %d by kind %d; player at (%d,%d) rank %d\n",
+                                   q, SMK_DRIVERS[racers[q].character % SMK_CHARACTERS].name,
+                                   smk_kart_px(racers[q].k.x), smk_kart_px(racers[q].k.y), racers[q].rank, hq,
+                                   smk_kart_px(kart.x), smk_kart_px(kart.y), racers[0].rank);
+                        if (hq == SMK_PROJ_BANANA) smk_racer_hit(&racers[q], 1, (int)(fx_ticks & 1));
+                        else if (hq != SMK_PROJ_NONE) smk_racer_hit(&racers[q], 2, (int)(fx_ticks & 1));
+                    }
+                }
                 /* the rubber band, before anybody moves (NOTES 167) */
                 smk_ai_rubber(racers, SMK_CHARACTERS, &crs, engine_class);
                 /* SMK_ROW_TRACE: one line per frame of every AI's $C8 row

@@ -7633,3 +7633,68 @@ plate is "read off the sheet, not captured - reaching the fifth crossing
 costs five laps of interpreter time" (NOTES 168b); that reason is now
 gone. So is the excuse for S28: a forced finish puts the celebration on
 screen, and OAM will name its tiles.
+
+
+---
+
+**185** — The item system, decoded, measured and in.
+
+The user: *"investigate the item system. find patterns, they are not so
+different. decode the whole system, draft a spec, and then implement. we
+may need to decode in parallel the 'getting hit' reaction."* `docs/ITEMS.md`
+is the spec and carries the addresses; this entry is what it cost and what
+turned.
+
+**One word.** `$0D70,y` is the whole player-side state: `$A000` starts a
+roulette, `$8000|id` holds, `$4000` is READY, and the button (`$81:B40A`,
+a LEVEL test) ORs `$81:B336[id]` into the kart's `$E0` - one bit per item,
+which `$80:E88B`'s handlers consume. The game's own debug cheat at
+`$80:E8B3` writes `$E0` straight from the pad, which is what made every
+item fireable in the oracle with no box.
+
+**The outcome is three tables deep**: the track's block (`$81:B471` by
+`$81:8B73[track]`), a record by lap and rank (`$81:B666`: lap 1 everyone,
+then leader / 2nd-4th / 5th-8th), and five random bits against eight
+thresholds whose ninth byte is both the catch-all and the roulette's
+sequence. The user's two Mario Circuit races used sequence 4 and landed on
+5, 0, 3, 7 - every one inside record 1's live set. Ported with the ROM's
+bytes; the roll is ours.
+
+**Two hit reactions, not one.** A banana (`$81:9982`) sets `$E2 |= $1000`
+and `$80:B443` clamps the speed to `$300`, counts `$FA` down from 60 and
+spins the pose `$0A00` a frame in states `$0A/$0C`. A shell or lightning
+(`$81:9ACE`) sets `$E2 |= $0300` and `$80:B4D1` puts the kart in state
+`$1A` with drive `$14`: speed falls 56 a frame to nothing while the pose
+spins at `$E4`, which starts `$1000` (`$2000` for an AI) and decays `$40`
+a frame - about 60 frames - then settles through zero at `$180`. The
+user's banana at frame 5596 of `flag` shows the first (`$E2 = $9004`,
+`$FA` 59, 56, 53...); the oracle's shell hits show the second (`$AC = $14`,
+`$EE = -56`, `$AA` +4096 a frame). Both take four coins (`$85:E4DA`).
+The port carries all three states on the player and a tumble on the AI.
+
+**The projectiles are measured, not read.** `$80:F243` is a chain of
+per-frame handlers run through `jmp ($0000,x)`, and reading it would have
+cost the day. The oracle gave the numbers instead (docs/ITEMS.md §5):
+kart speed + `$300`, a 7/8 wall bounce, `$0400`-a-frame homing after
+8 frames, and - the one that decided the port's rule - a red shell DIES on
+a wall where a green bounces.
+
+**The icons are BG3, and that is why no dump found them.** `$81:B31C`'s
+`$0C26` is a tilemap cell, not an OAM slot; three OAM dumps through a
+roulette showed nothing changing. Decoding VRAM as 2bpp at every base and
+looking found the mushroom at word `$7000`; decompressing every start in
+banks `$C0-$C7` and searching for those bytes found the blob at `$C1:12F0`.
+Side by side with the game's own render they are identical.
+
+*Three things that cost time.* The oracle's attract race sets `$0E50`,
+which disables the projectile spawner (`$80:F4D7`) AND forces the AI onto
+row `$00` - the un-demo hook did not cover it, so the first six item runs
+fired into nothing; `Lab(zero=(0x0E50,))` now clears it. `$0DFA` holds a
+ROM address: the block LIST lives in ROM and the blocks in WRAM, and a lab
+that walked the list out of WRAM printed garbage blocks for an hour. And
+`$81:9F02`'s turn table is `$0800, $F800, $0400, $FC00` read as words -
+read as bytes it said ±4, which is nothing.
+
+Gates: the roulette against the user's race 285/285 frames exact, plus a
+shell's launch speed, the red's turn cap, and both hit reactions
+(selftest 76 -> 83). Every earlier gate unchanged.

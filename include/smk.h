@@ -294,7 +294,12 @@ typedef struct {
     int16_t  target;           /* $D6 = base_top + 8 * min(coins, 10)       */
     int      coins;
     bool     item_held;        /* $0D70,y < 0: an item (or its roulette) - boxes are
-                                  not consumed while it is (LABELLED: no item system) */
+                                  not consumed while it is (src/item.c owns the word) */
+    /* items on the kart (docs/ITEMS.md §4, §6) */
+    int16_t  tumble;           /* $E4: the shell-hit spin rate, -$40 a frame */
+    int      star_t;           /* $86: 512 frames of star                   */
+    int      boo_t;            /* $82: 1152 frames invisible                */
+    int      shrink_t;         /* $84: 1088 frames small after lightning    */
     int      fc, ca;           /* $FC countdown, $CA hold counter           */
     /* hazards (NOTES 113): water = the $22 wade, fall = the $24/$26 drop
      * and Lakitu's rescue.  The caller supplies the rescue target - the
@@ -308,6 +313,15 @@ typedef struct {
 
 bool smk_player_setup(const smk_rom *rom, int character, int engine_class,
                       smk_player *p);
+/* hit by a banana ($81:9982 -> $80:B443): the 60-frame spin.  False if a
+ * star makes the kart immune.  The caller takes the coins. */
+bool smk_player_hit_banana(smk_player *p, smk_kart *k);
+/* hit by a shell or lightning ($81:9ACE -> $80:B4D1 / $80:B709): the
+ * tumble.  `dir` picks the spin direction ($38's parity in the game). */
+bool smk_player_hit_shell(smk_player *p, smk_kart *k, int dir);
+void smk_player_star(smk_player *p);              /* $80:E9F8 / $80:B4B2 */
+void smk_player_feather(smk_player *p, smk_kart *k); /* $80:B578 */
+void smk_player_shrink(smk_player *p, smk_kart *k, int dir); /* $80:EA3B victim */
 /* use a mushroom ($80B47C): false if the kart is spinning */
 bool smk_player_boost(smk_player *p);
 /* The countdown's rev ($C2) and the launch test (NOTES 143/163): call
@@ -1043,6 +1057,13 @@ typedef struct {
     int      skill;         /* ($7F + lap) & 7: which $80AF0F row        */
     int      trouble;       /* $84 != 0 or $10 & $0020 -> the $18 row    */
     int      branch;        /* which $80ADA0 branch answered (diagnostic) */
+    /* hit by an item (docs/ITEMS.md §6).  The AI has no $A6 machine here,
+     * so the tumble is carried on the racer: pose spin, speed to zero. */
+    int      hit_t;         /* frames left in the reaction              */
+    int16_t  tumble;        /* $E4, starts $2000 for an AI               */
+    int16_t  spin_pose;     /* added to the drawn angle while tumbling   */
+    int      hit_dir;
+    int      shrink_t;      /* $84                                       */
     /* When this kart crossed for the last time, in race frames, and where
      * it came.  Nothing tracked either before: the race ended the instant
      * the PLAYER finished and the other seven simply stopped existing, so
@@ -1050,6 +1071,9 @@ typedef struct {
     long     finish_frame;
     int      place;
 } smk_racer;
+/* hit by an item, on the AI's racer (docs/ITEMS.md §6): 1 banana, 2 shell,
+ * 3 lightning.  `dir` picks the spin direction. */
+void smk_racer_hit(smk_racer *r, int kind, int dir);
 
 /* ---- The rubber band (NOTES 167) --------------------------------------
  *
@@ -1596,3 +1620,129 @@ void smk_ui_draw_splits(const smk_font *f, const smk_ui_result *res,
                         uint32_t *fb, int w, int h);
 
 #endif /* SMK_H */
+
+/* ---- Items (src/item.c, docs/ITEMS.md) ---------------------------------
+ *
+ * The item word $0D70,y, DECODED from $81:B387 and MEASURED against the
+ * user's recorded races: a box starts a roulette that steps every four
+ * frames through a SEQUENCE for 193 frames, then keeps stepping until it
+ * shows the TARGET chosen when the box was hit; 64 frames of blinking
+ * hold; then READY until the button fires it.  Which target: the track's
+ * probability block ($81:B471 by $81:8B73[track]), a record by lap and
+ * rank ($81:B666), and five random bits against eight thresholds. */
+#define SMK_ITEM_MUSHROOM  0
+#define SMK_ITEM_FEATHER   1
+#define SMK_ITEM_STAR      2
+#define SMK_ITEM_BANANA    3
+#define SMK_ITEM_GREEN     4
+#define SMK_ITEM_RED       5
+#define SMK_ITEM_BOO       6
+#define SMK_ITEM_COIN      7
+#define SMK_ITEM_LIGHTNING 8
+#define SMK_ITEMS          9
+#define SMK_ITEM_SEQS      7
+#define SMK_ITEM_BLOCKS    8
+#define SMK_ITEM_ROULETTE  0xC1     /* MEASURED (both races): 193 frames of free
+                                       spinning.  $81:B362's $E1 is the BATTLE box */
+#define SMK_ITEM_HOLD      0x40     /* $81:B3E6: frames of blinking hold   */
+typedef struct {
+    bool    ok;
+    uint8_t seq[SMK_ITEM_SEQS][12];     /* ids, terminated by 0xFF          */
+    uint8_t seq_len[SMK_ITEM_SEQS];
+    uint8_t block[SMK_ITEM_BLOCKS][27]; /* 3 records x (8 thresholds + meta)*/
+    uint8_t rec_by_lap_rank[40];        /* $81:B666: 0 / 9 / 18             */
+    uint8_t block_of_track[20];         /* $81:8B73 >> 1                    */
+} smk_itemtab;
+bool smk_items_load(const smk_rom *rom, smk_itemtab *t);
+extern const smk_itemtab *smk_item_tables;   /* set once loaded; smk_item_step reads it */
+
+typedef struct {
+    uint16_t word;      /* $0D70: $8000 present, $2000 spinning, $4000 ready, $1000 empty-flash; low byte = id shown */
+    int16_t  timer;     /* $0D78 */
+    int      seq;       /* which sequence the roulette cycles             */
+    int      cursor;    /* index into it                                   */
+    int      target;    /* $0D7C: the id it will land on                   */
+} smk_item;
+/* The box was hit: choose the outcome and start the roulette.  `roll` is
+ * five random bits (OURS - the game's $1F26 is not reproduced). */
+void smk_item_box(smk_item *it, const smk_itemtab *t, int track, int lap,
+                  int rank, unsigned roll);
+/* One frame.  `button` is the item button HELD (the ROM tests the level,
+ * $81:B3C1 / $81:B40A); `can_use` is the $81:B3FB gate (grounded, free).
+ * Returns the id fired this frame, or -1. */
+int  smk_item_step(smk_item *it, bool button, bool can_use);
+static inline bool smk_item_present(const smk_item *it) { return (it->word & 0x8000) != 0; }
+static inline int  smk_item_shown(const smk_item *it)   { return it->word & 0xFF; }
+/* $0D78 & 8 while held: the icon blinks */
+static inline bool smk_item_blink(const smk_item *it)
+{ return (it->word & 0xE000) == 0x8000 && (it->timer & 8) != 0; }
+
+/* ---- The item icons (docs/ITEMS.md §7) ---------------------------------
+ *
+ * The slot is four BG3 tiles, not sprites - $81:B31C's $0C26/$0C28/$0C66/
+ * $0C68 are cells of the HUD tilemap, one row apart - which is why no OAM
+ * dump ever showed it.  The tiles are 2bpp at VRAM word $7000, and the
+ * mushroom decoded there in one look.  Their source is the compressed blob
+ * at $C1:12F0 (1792 bytes = 112 tiles), found by decompressing every start
+ * in banks $C0-$C7 and searching for the tile VRAM held: VRAM tile n is
+ * blob tile n - $80.  $81:B320 names the four tiles and the palette per
+ * item: (t, t+1) over (t+2, t+3), BG palette (attr >> 2) & 7. */
+#define SMK_ICON_SRC    0xC112F0u
+#define SMK_ICON_TILES  112
+#define SMK_ICON_BASE   0x80          /* VRAM tile - this = blob tile */
+typedef struct {
+    bool    ok;
+    uint8_t px[SMK_ICON_TILES][64];   /* 2bpp -> palette index 0..3   */
+    uint8_t tile[SMK_ITEMS + 2];      /* $81:B320: per id; then blank, then the empty box */
+    uint8_t pal[SMK_ITEMS + 2];
+} smk_itemicons;
+bool smk_itemicons_load(const smk_rom *rom, smk_itemicons *out);
+
+/* ---- Projectiles: bananas and shells (src/projectile.c, docs/ITEMS.md §5) --
+ *
+ * MEASURED in the oracle (tools/labs/itemfx.py): a shell leaves at the
+ * kart's heading with the kart's speed + $300, tracks the kart for three
+ * frames, then flies straight; a wall reflects the hit component at 7/8;
+ * a red shell steers toward its target at $0400 an angle-unit per frame,
+ * snapping inside $0800, after an 8-frame delay ($81:9EC2); a dropped
+ * banana sits eight pixels behind the kart until something hits it.  The
+ * game keeps two of them per player ($80:F174). */
+#define SMK_PROJ_MAX        4
+#define SMK_PROJ_NONE       0
+#define SMK_PROJ_BANANA     1     /* on the road                        */
+#define SMK_PROJ_BANANA_AIR 2     /* thrown ahead, in flight            */
+#define SMK_PROJ_GREEN      3
+#define SMK_PROJ_RED        4
+#define SMK_PROJ_SPEED_ADD  0x300 /* MEASURED: kart speed + $300         */
+#define SMK_PROJ_RED_DELAY  8     /* $40,x                              */
+#define SMK_PROJ_RED_TURN   0x0400
+#define SMK_PROJ_RED_BAND   0x0800
+#define SMK_PROJ_BOUNCE_NUM 7     /* MEASURED once: 1286 -> 1125 = 7/8   */
+#define SMK_PROJ_DIE_HOP    0x0100 /* $80:F85D: it hops as it dies       */
+#define SMK_PROJ_OWNER_SAFE 60    /* $66 = $3C: frames the owner is immune */
+#define SMK_PROJ_HIT_R      8     /* OURS, labelled: contact box in px    */
+#define SMK_PROJ_MAX_BOUNCE 8     /* OURS, labelled: a green gives up     */
+#define SMK_PROJ_BANANA_AIR_T 24  /* OURS until chain2 lands: flight frames */
+typedef struct {
+    int      kind;
+    int32_t  x, y;          /* kart units (px << SMK_POS_SHIFT)         */
+    int32_t  z;             /* kart z units                              */
+    int16_t  vx, vy, zv;
+    uint16_t heading;
+    int16_t  speed;
+    int      owner;         /* racers[] index that threw it              */
+    int      target;        /* red: racers[] index it homes on           */
+    int      t;             /* age in frames                             */
+    int      delay;         /* red: $40 countdown                        */
+    int      bounces;
+    bool     dying;         /* hopping out of existence                  */
+} smk_proj;
+void smk_proj_throw(smk_proj *list, int n, int kind, const smk_kart *k,
+                    uint16_t heading, int owner, int target, bool backward,
+                    bool ahead);
+/* one frame; `karts` indexed like racers[] for the red shell's target */
+void smk_proj_step(smk_proj *list, int n, const smk_track *trk,
+                   const smk_kart *const *karts, int nkarts);
+/* does any live projectile touch this kart?  Returns its kind (and
+ * starts it dying) or SMK_PROJ_NONE.  The owner is immune for a while. */
+int  smk_proj_hit(smk_proj *list, int n, const smk_kart *k, int kart_index);

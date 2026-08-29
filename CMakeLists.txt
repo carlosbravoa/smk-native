@@ -20,6 +20,8 @@ add_library(smkcore STATIC
   src/demolog.c
   src/effects.c
   src/coinfx.c
+  src/item.c
+  src/projectile.c
   src/pickup.c
   src/horizon.c
   src/blocks.c

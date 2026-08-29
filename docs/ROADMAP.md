@@ -64,6 +64,18 @@ and comes down toward the camera) and it inherits the kart's motion -
 thrown backwards it lands behind a forward-looking camera and is never
 drawn at all.
 
+**S31 — What the item system still guesses (docs/ITEMS.md).**
+The state machine, the outcome tables, the nine effects, the hit reactions
+and the icons are the ROM's; the projectile motion is MEASURED. OURS: the
+five random bits of the roll (`$1F26` is not reproduced); the thrown
+banana's flight (UP never registered through the oracle's pad); the speed
+of a shell thrown backward; a green shell's 8-bounce life; the 8 px contact
+box; the star's palette cycle; the shrunk kart's half size; and the
+projectiles are still drawn as PLACEHOLDER discs - no OAM dump caught a
+shell's tiles, three frames apart, so its art is not yet located. The AI's
+own weapons (bank `$85` entities) are a separate system and are not
+started.
+
 **S30 — Lakitu's chequered flag is drawn, but not pixel-right.**
 The DATA is measured and correct: his path (230 frames, captured), the
 group's offsets from his head, the three wave poses and their ~17-frame
@@ -396,11 +408,13 @@ In rough order of value:
    reliably use is the strongest case on this list. `smk spc` already
    dumps the driver; nothing renders it.
 
-2. **Items (P5).** The largest gameplay gap and the one you notice in ten
-   seconds of a real race. Boxes are stamped and even register a pickup;
-   the roulette, the item set and the award-by-rank rule are undecoded.
-   With the field now competitive this is what is left between us and a
-   race that plays like the game.
+2. **Items (P5) — IN, needs playing (docs/ITEMS.md, NOTES 185).** The
+   roulette replays the user's race 285/285 frames exact; the nine items
+   work from a box through the HUD's own icons to the road; shells and
+   bananas fly with measured speeds and hit karts, which tumble or spin
+   the way the recorded hits did. Still OURS or open: the projectiles'
+   sprites (discs for now), the thrown banana's arc, and the AI's own
+   weapons (S31).
 
 3. **Moving obstacles (S12's other half) — the MOTION is MEASURED and one
    number short of portable.**

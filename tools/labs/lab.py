@@ -25,7 +25,12 @@ def log(*a):
 
 
 class Lab:
-    def __init__(self, rom_path=None, settle=200):
+    def __init__(self, rom_path=None, settle=200, zero=()):
+        # `zero`: extra WRAM addresses whose READS return 0, installed
+        # BEFORE the race is reached - for flags the attract race sets
+        # that would otherwise disable what a lab wants to measure
+        # ($0E50 disables the item projectiles, NOTES 185).
+        zero = tuple(zero)
         rom_path = rom_path or os.path.join(ROOT, "rom", "smk_usa.sfc")
         self.r = Rom.load(rom_path)
         self.b = Bus(bytes(self.r.data))
@@ -39,7 +44,7 @@ class Lab:
         orig = self.b.read
         def rd(bank, addr):
             lo = bank & 0x7F
-            if (lo <= 0x3F or bank == 0x7E) and addr in (0x0E32, 0x0E33):
+            if (lo <= 0x3F or bank == 0x7E) and (addr in (0x0E32, 0x0E33) or addr in zero):
                 return 0
             return orig(bank, addr)
         self.b.read = rd

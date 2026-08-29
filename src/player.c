@@ -724,6 +724,18 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
     /* the same countdown for a kart-to-kart bump; this path never calls
      * smk_kart_face, which is where the AI karts' window is run down */
     if (k->bump_cool > 0) k->bump_cool--;
+    /* the item timers (docs/ITEMS.md §4) */
+    if (p->star_t > 0 && --p->star_t == 0) {           /* $80EA09 -> $80A631 */
+        p->flags &= ~0x0003u;
+        if (p->drive == 0x12) p->drive = 0;
+    }
+    if (p->boo_t > 0) p->boo_t--;
+    if (p->shrink_t > 0) p->shrink_t--;
+    /* the feather's barrel roll: MEASURED +$0800 of pose a frame in the air */
+    if (p->state == 0x18) {
+        if (k->airborne) p->plag = s16(p->plag - 0x0800);
+        else { p->plag = 0; p->state = 0x1C; }
+    }
 
     /* 3. $80A892 - heading, velocity angle, pose */
     {
@@ -844,6 +856,37 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
         }
         break;
     }
+    case 0x0A:                         /* $80A94F: hit by a banana, spinning right */
+    case 0x0C: {                       /* $80A97A: ... spinning left */
+        p->flags |= 0x0008;
+        if (p->flags & 2) { p->state = 0x1C; break; }     /* a star shrugs it off */
+        int step = p->state == 0x0A ? -0x0A00 : 0x0A00;
+        if (p->spin != 0) { p->spin--; p->plag = s16(p->plag + step); break; }
+        if (spd >= 0x100) { p->plag = s16(p->plag + step); break; }
+        /* $80A967 / $80A992: stopped - walk the pose back through zero
+         * at $480 a frame, and settle when it wraps */
+        k->speed = 0; spd = 0;
+        unsigned before = (uint16_t)p->plag;
+        int s2 = p->state == 0x0A ? -0x480 : 0x480;
+        p->plag = s16(p->plag + s2);
+        bool wrapped = p->state == 0x0A ? before < 0x480 : before + 0x480 >= 0x10000;
+        if (wrapped) { p->state = 0x1C; p->flags |= 0x0400; }
+        break;
+    }
+    case 0x1A: {                       /* $80B709: hit by a shell - the tumble */
+        int rate = p->tumble > 0x1000 ? 0x1000 : p->tumble;
+        p->plag = s16(p->plag + ((p->flags & 0x0100) ? rate : -rate));
+        if (p->tumble >= 0x100) { p->tumble = (int16_t)(p->tumble - 0x40); break; }
+        /* $80B73B: settle through zero at $180 a frame */
+        bool done;
+        if (p->plag >= 0) { done = p->plag < 0x180; if (!done) p->plag = s16(p->plag - 0x180); }
+        else              { done = p->plag > -0x180; if (!done) p->plag = s16(p->plag + 0x180); }
+        if (done) {                    /* $80B745 */
+            p->drive = 0; p->plag = 0; p->vlag = 0; p->state = 0;
+            p->flags = (uint16_t)((p->flags & 0x40FF) | 0x0400);
+        }
+        break;
+    }
     case 0x12: case 0x14:              /* $80AA4B: the reward holds unless row 7 */
         break;
     case 0x1C: {                       /* $80AA8D: settle with row 0's rates */
@@ -890,6 +933,18 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
             p->flags &= ~0x00C0u;
             p->drive = 0;
         }
+    }
+    else if (p->drive == 0x12) {           /* $80A606: the star */
+        int ee;
+        if (c4 & 0x4000)          ee = -32;              /* Y: brake */
+        else if (!(c4 & 0x8000))  ee = -8;               /* B released */
+        else if (spd >= 0x520)    ee = -32;              /* over the star's top */
+        else if (spd >= 0x300)    ee = 2;
+        else                      ee = 32;
+        p->accel32 = ((int32_t)ee << 16) | (p->accel32 & 0xFFFF);
+    }
+    else if (p->drive == 0x14) {           /* $80A5A1: hit - no throttle, -56 a frame */
+        p->accel32 = (int32_t)(-56 * 65536) | (p->accel32 & 0xFFFF);
     }
     else if (p->drive == 2) {              /* $80A647: airborne off a ramp - no thrust */
         p->accel32 = p->accel32 & 0xFFFF;
@@ -960,5 +1015,77 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
         }
     }
 
+    /* small after lightning: MEASURED, the kart accelerates at 2 a frame
+     * (466 -> 644 over a hundred frames).  Where the game does it is not
+     * decoded; the clamp is ours, labelled. */
+    if (p->shrink_t > 0 && (p->accel32 >> 16) > 2)
+        p->accel32 = ((int32_t)2 << 16) | (p->accel32 & 0xFFFF);
+
     k->angle = p->heading;   /* the camera follows the heading ($808632) */
+}
+
+
+/* ---- hit by an item (docs/ITEMS.md §6) ---------------------------------- */
+
+bool smk_player_hit_banana(smk_player *p, smk_kart *k)
+{
+    if (p->flags & 2) return false;               /* $80A957: the star */
+    if (p->state == 0x0A || p->state == 0x0C || p->state == 0x1A) return false;
+    /* $80B443 */
+    if (k->speed > 0x300) k->speed = 0x300;
+    p->drive = 0;
+    p->spin  = 60;                                /* $FA, here a countdown */
+    p->state = p->plag < 0 ? 0x0A : 0x0C;
+    return true;
+}
+
+bool smk_player_hit_shell(smk_player *p, smk_kart *k, int dir)
+{
+    if (p->flags & 2) return false;
+    if (p->state == 0x1A) return false;
+    /* $81:9ACE, then $80:B4D1 */
+    p->flags  = (uint16_t)((p->flags & ~0x0300u) | 0x0200 | (dir ? 0x0100 : 0));
+    p->tumble = 0x1000;                           /* $E4 for the player */
+    p->state  = 0x1A;
+    p->drive  = 0x14;
+    /* the knock: MEASURED, the speed sits at $180 through the bump window */
+    if (k->speed > 0x180) k->speed = 0x180;
+    k->bounce_cool = 10;
+    return true;
+}
+
+void smk_player_star(smk_player *p)
+{
+    p->star_t = 0x200;                            /* $86 */
+    p->flags |= 0x0002;                           /* $80B4B9 */
+    p->drive  = 0x12;                             /* $80B4C8 */
+}
+
+void smk_player_feather(smk_player *p, smk_kart *k)
+{
+    /* $80B578: $26 = $1E0, $1E = $100, state $18; MEASURED: the pose then
+     * rolls +$0800 a frame for the whole flight (the feather's barrel roll) */
+    smk_kart_launch(k, 0x01E0);
+    p->flags |= 0x8000;
+    p->jump_state = 2;
+    p->state = 0x18;
+}
+
+void smk_player_shrink(smk_player *p, smk_kart *k, int dir)
+{
+    /* $80EA3B: the tumble of a shell hit, plus $84 = $440 of being small */
+    smk_player_hit_shell(p, k, dir);
+    p->shrink_t = 0x440;
+}
+
+void smk_racer_hit(smk_racer *r, int kind, int dir)
+{
+    if (r->hit_t > 0) return;
+    r->hit_t   = kind == 1 ? 60 + 12 : 64 + 10;   /* the spin, then the settle */
+    r->tumble  = kind == 1 ? 0x0A00 : 0x2000;     /* $E4 = $2000 for an AI */
+    r->hit_dir = dir;
+    r->spin_pose = 0;
+    if (kind == 1) { if (r->k.speed > 0x300) r->k.speed = 0x300; }
+    else           { if (r->k.speed > 0x180) r->k.speed = 0x180; }
+    if (kind == 3) r->shrink_t = 0x440;
 }

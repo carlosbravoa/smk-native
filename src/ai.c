@@ -451,6 +451,24 @@ void smk_racer_step(smk_racer *r, const smk_track *trk,
             if (target > cap) target = cap;
         }
     }
+    /* hit by an item (docs/ITEMS.md §6): the tumble, on the racer.  The
+     * pose spins at the $E4 rate decaying $40 a frame, the speed falls 56
+     * a frame to nothing, and the AI does not drive until it is over. */
+    if (r->hit_t > 0) {
+        r->hit_t--;
+        int rate = r->tumble > 0x1000 ? 0x1000 : r->tumble;
+        r->spin_pose = (int16_t)(r->spin_pose + (r->hit_dir ? rate : -rate));
+        r->tumble = (int16_t)(r->tumble > 0x40 ? r->tumble - 0x40 : 0);
+        if (r->hit_t == 0) r->spin_pose = 0;
+        r->k.speed = (int16_t)(r->k.speed > 56 ? r->k.speed - 56 : 0);
+        r->k.accel = 0; r->k.accel_frac = 0;
+        smk_kart_face(&r->k);
+        smk_kart_gravity(&r->k);
+        smk_kart_move(&r->k, trk);
+        smk_collide_objects(&r->k, crs);
+        return;
+    }
+    if (r->shrink_t > 0) { r->shrink_t--; if (target > 0x200) target = 0x200; }   /* OURS: small is slow */
     int32_t accel;
     if (r->k.speed < target)
         accel = (int32_t)smk_physics_accel(phys, r->k.speed) << 8;
