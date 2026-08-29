@@ -15,6 +15,20 @@ const smk_coin_step SMK_COIN_PATH[] =
 #include "coin_path.inc"
 ;
 const int SMK_COIN_PATH_LEN = (int)(sizeof SMK_COIN_PATH / sizeof SMK_COIN_PATH[0]);
+const smk_coin_step SMK_COINUP_PATH[] =
+#include "coinup_path.inc"
+;
+const int SMK_COINUP_PATH_LEN = (int)(sizeof SMK_COINUP_PATH / sizeof SMK_COINUP_PATH[0]);
+
+/* the coin you just drove over hops straight up off the road (NOTES 189) */
+void smk_coinfx_pickup(smk_coin *c, int n)
+{
+    for (int s = 0; s < n; s++) if (!c[s].live) {
+        memset(&c[s], 0, sizeof c[s]);
+        c[s].live = 1; c[s].kind = 1; c[s].side = 1; c[s].t = 0;
+        return;
+    }
+}
 
 #define BLOB_FIRST_TILE 48
 static const int COIN_TILE[SMK_COIN_FRAMES] = { 0x86, 0xA2, 0x60 };
@@ -79,6 +93,8 @@ void smk_coinfx_step(smk_coin *c, int n)
         smk_coin *k = &c[i];
         if (!k->live) continue;
         k->t++;
-        if (k->t >= SMK_COIN_DELAY + SMK_COIN_PATH_LEN) k->live = 0;
+        int end = k->kind ? SMK_COINUP_DELAY + SMK_COINUP_PATH_LEN
+                          : SMK_COIN_DELAY + SMK_COIN_PATH_LEN;
+        if (k->t >= end) k->live = 0;
     }
 }

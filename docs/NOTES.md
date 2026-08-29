@@ -7887,3 +7887,85 @@ So in a full 100cc Mario Circuit 1 race the CPU field never armed a
 weapon. It is real and it was not there; the gate is a recording in
 which it happens (a higher class or a later cup is the guess, not a
 finding).
+
+## 189. The user's quick test: five fixes, four of them measured
+
+*"1. coin animation for losing one is great. But coin animation when
+picking up one from the floor is not existent. 2. lakitu's sign and the
+item box when emptied present graphical issues. 3. when using a star
+power up, in original game you can also 'kill' pipes. Here I just
+crashed and got blocked. Also, the star animation is correct, but it is
+constant. Here it is a small period with the colors, then nothing. 5. I
+couldn't see any item drop. [banana: button = thrown ahead in an arc,
+button + down = dropped behind; shell: button = ahead, fast, bouncing;
+button + down = static behind]."* And: *"the sprite used for the green
+shell is the green light for lakitu's semaphore."*
+
+### The picked-up coin (`tools/labs/coinpick.py`, `src/coinup_path.inc`)
+
+Same rig as the spilled coin (NOTES 186): flow-drive the attract race
+over its coin rows and log every coin-tile sprite from the frame `$0E00`
+goes up. The coin appears **2 frames** after the count moves, at the
+kart sprite's top (x = 119 for a kart at 112..144: centred), rises 45 px
+in 17 frames, comes back down past where it started and is gone at
+frame 36 — a straight vertical hop, x never moving, spinning
+`$A2 → $60 → $86` every four frames. Captured to `SMK_COINUP_PATH` (34
+steps) and replayed relative to the kart sprite exactly like the bump
+coin; `smk_coin.kind` picks the path. Spawned when `smk_pickup_step`
+moves the coin count.
+
+### The star is an OAM palette sequence (`tools/labs/starpal2.py`)
+
+First try read CGRAM every frame after `$E0 |= $2000` and found entries
+3 and 5 of four sprite palettes toggling `$2525`/`$35A9` on 4- and
+8-frame periods — and a control run WITHOUT the star showed the same
+toggles. That is the tyre animation, not the star. The star is in OAM:
+the kart's four 16x16 sprites change palette every frame, **5 4 7 6 1 0
+3 2**, one frame each, forever. The port held each palette four frames
+(and cycled 0-7 in order), which is what read as "colours, then nothing".
+Now `STAR_PAL[fx_ticks & 7]`.
+
+### The item slot is the game's own map (`tools/labs/hudslot.py`)
+
+The HUD map at `$0C00` (32 cells a row), columns 18-21, rows 0-3, through
+a roulette, a held mushroom and its use:
+
+    fresh   3CD2 3CCC 3CCD 7CD2 / 3CD3 3CEA 3CEB 7CD3 / 3CD2 3CEC 3CED 7CD2 / 3CD3 3CEE 3CEF 7CD3
+    held    3CD2 34D4 34D5 7CD2 / 3CD3 34D6 34D7 7CD3 / (rows 2-3 as above)
+    used    3CD2 3CE9 3CE9 7CD2 / 3CD3 3CE8 3CE8 7CD3 / (rows 2-3 as above)
+
+Four rows, sides `$D2/$D3` alternating and H-flipped on the right, the
+icon in rows 0-1 (palette 5), rows 2-3 holding the PLACE as a 16x16
+glyph the game DMAs into `$EC-$EF`. There is no `$D0/$D1` top row: that
+was a misread of the roulette VRAM dump (row -1 is `$1616` filler) and it
+drew the black bar the user saw. The port now draws this map; the place
+in rows 2-3 is set in the blob's own 8x16 digit font (`$80+d`/`$90+d`)
+on a black card, because the blob holds only the one glyph (LABELLED:
+ROM art, our composition).
+
+### The lap sign's stripe
+
+NOTES 168's OAM lists the plate first and the digit sprite (edge bar +
+numeral) second, at X+8, half over the plate. Lower OAM index paints on
+top, so the plate covers the bar's left half; the port painted the bar
+over the plate and put a stripe through "LAP". The self-test that
+"proved" the composition built its reference the same wrong way round
+— a reference derived from the model, the trap of NOTES 176 again. Both
+now paint bar, numeral, then plate.
+
+### Items: controls and the static shell
+
+Button = throw ahead (banana in its arc, shell fast), button + DOWN =
+leave it behind, static, for both — the user's description, replacing
+UP-to-throw. A green shell dropped behind is now a stationary object
+eight pixels back like the banana (OURS: what it does when hit is the
+shell reaction). A starred kart knocks obstacles out instead of crashing
+(`smk_course.dead[]`, cleared at every segment respawn - OURS; the real
+pipe's flight is not measured).
+
+### Still open from the same test
+
+The road sprites of the shell and banana: the shared-blob tile the port
+used for the green shell is Lakitu's green light (the user). Two OAM
+dumps after throws showed no shell at all, so the art is being looked
+for in OBJ VRAM instead (`tools/labs/vramdump.py` / `vramrender.py`).

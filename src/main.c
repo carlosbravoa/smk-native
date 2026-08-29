@@ -213,6 +213,7 @@ static int hud_lap, hud_rank;
 static long hud_race_frames;             /* frames since the lights */
 static int  hud_countdown;               /* Lakitu's frame, from the arm */
 static int  lap_sign_t = -1;             /* his lap sign, from the crossing */
+static bool item_used_once;              /* the slot shows the used look after it */
 static int  rescue_t;                    /* frames into the $0E drop      */
 static int  hud_input;                   /* L/R/accel bits, for the HUD */
 /* The start sequence.  SMK holds the karts for a countdown, then runs;
@@ -333,11 +334,16 @@ static void draw_lap_sign(uint32_t *fb, int rw, int rh,
                 part[n++] = (typeof(part[0])){ c * 8, r * 8,
                     SMK_LAPSIGN_FINAL_L + c + r * 16, false };
     } else {
+        /* Paint order = OAM priority: the plate is the lower entry (NOTES
+         * 168 lists it first), so it sits ON TOP of the digit sprite whose
+         * left half is the edge bar.  Bar first, plate last - drawing the
+         * bar over the plate put a stripe through "LAP" (the user's
+         * screenshot). */
         for (int r = 0; r < 2; r++) {
-            part[n++] = (typeof(part[0])){ 0,  r * 8, sg.plate + r * 16, false };
-            part[n++] = (typeof(part[0])){ 8,  r * 8, sg.plate + 1 + r * 16, false };
             part[n++] = (typeof(part[0])){ 8,  r * 8, SMK_LAPSIGN_BAR + r * 16, false };
             part[n++] = (typeof(part[0])){ 16, r * 8, sg.digit + r * 16, false };
+            part[n++] = (typeof(part[0])){ 0,  r * 8, sg.plate + r * 16, false };
+            part[n++] = (typeof(part[0])){ 8,  r * 8, sg.plate + 1 + r * 16, false };
         }
     }
     /* his cloud stays a pair of H-flipped 16x16s */
@@ -687,6 +693,7 @@ static void step_kart(smk_kart *k, smk_track *trk,
      * The wall path already respects height ($80FA5A, NOTES 136).  This
      * is the narrow version of the same rule: a kart in Lakitu's hands is
      * not on the track, so the track cannot touch it. */
+    k->star = (player.flags & 2) ? 1 : 0;
     if (course_for_step && !player.hazard) smk_collide_objects(k, course_for_step);
     /* the collector ($81B73B) serves ONE player per frame, alternating:
      * every P1 pickup in the demo lands on an odd frame, every P2 pickup
@@ -698,7 +705,11 @@ static void step_kart(smk_kart *k, smk_track *trk,
         unsigned mine = (replay_path && replay_kart == 1100) ? 0u : 1u;
         if (rom_for_step && (parity & 1u) == mine) {
             bool had = player.item_held;
-            smk_pickup_step(rom_for_step, trk, &player, k, grounded);
+            {   /* a coin taken: the count moved.  Its hop is NOTES 189 */
+                int before = player.coins;
+                smk_pickup_step(rom_for_step, trk, &player, k, grounded);
+                if (player.coins != before && !replay_path) smk_coinfx_pickup(coins_fx, SMK_COINFX_MAX);
+            }
             /* a fresh box: choose the item and start the roulette ($81:B34A
              * and the pick at $81:B6D1, docs/ITEMS.md §3).  The lap and
              * rank are the HUD's, which are the race's own. */
@@ -821,6 +832,7 @@ static bool load_race(const smk_rom *rom, int track, int theme, int character,
     smk_race_frame = 0;
     race_reported = false;
     lap_sign_t = -1;
+    item_used_once = false;
     smk_autopilot_init(&autopilot);
     /* one mushroom in a time trial, and nothing else (the user's rule for
      * this shell; the ROM's own grant is not decoded - ledger S19) */
@@ -1446,6 +1458,7 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
             for (int j = 0; j < nvis && n < (int)(sizeof item / sizeof item[0]); j++) {
                 int i = (smk_obj_show_all || !course->nlive)
                       ? j : course->live[j];
+                if (course->dead[i]) continue;
                 float dx = (float)course->ent[i].x - cam->x;
                 float dy = (float)course->ent[i].y - cam->y;
                 item[n].dep = dx * sinf(a2) + dy * -cosf(a2);
@@ -1495,9 +1508,10 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
         for (int i = 0; i < SMK_COINFX_MAX; i++) {
             const smk_coin *kc = &coins_fx[i];
             if (!kc->live) continue;
-            int step = kc->t - SMK_COIN_DELAY;
-            if (step < 0 || step >= SMK_COIN_PATH_LEN) continue;
-            const smk_coin_step *st = &SMK_COIN_PATH[step];
+            int step = kc->t - (kc->kind ? SMK_COINUP_DELAY : SMK_COIN_DELAY);
+            int len = kc->kind ? SMK_COINUP_PATH_LEN : SMK_COIN_PATH_LEN;
+            if (step < 0 || step >= len) continue;
+            const smk_coin_step *st = &(kc->kind ? SMK_COINUP_PATH : SMK_COIN_PATH)[step];
             int cx = kx + st->dx * kc->side * scale, cy = ky + st->dy * scale;
             if (getenv("SMK_COIN_TRACE"))
                 printf("coin t%d screen (%d,%d)\n", kc->t, cx * 256 / rw, cy * 224 / rh);
@@ -1590,7 +1604,12 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
         /* small after lightning ($84): OURS, half the art scale; the star
          * ($4E bit 15): OURS, the palette cycling through the drivers' */
         if (player.shrink_t > 0 && scale > 1) scale /= 2;
-        int ppal = player.star_t > 0 ? 0x80 + (int)((fx_ticks >> 2) & 7) * 0x10 : drv->pal;
+        /* MEASURED (tools/labs/starpal2.py, NOTES 189): the starred kart's
+         * OAM palette runs 5 4 7 6 1 0 3 2, ONE frame each, round and round
+         * - every sprite palette, at 60 Hz.  Holding each for four frames
+         * was what read as "colours, then nothing" (the user). */
+        static const int STAR_PAL[8] = { 5, 4, 7, 6, 1, 0, 3, 2 };
+        int ppal = player.star_t > 0 ? 0x80 + STAR_PAL[fx_ticks & 7] * 0x10 : drv->pal;
         /* the hop lifts the sprite; the shadow stays on the ground */
         int lift = player_height_px * scale;
         /* The fall is a RENDERING effect here and nowhere else (NOTES
@@ -1646,24 +1665,28 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
          * icon blinks every eight frames, and stops blinking when READY. */
         if (item_icons.ok) {
             int sc = rw >= 640 ? 3 : 2;
-            /* THE FRAME, from the HUD tilemap around the icon (the roulette
-             * VRAM dump, row -1 / 0 / +1 at columns 18-21):
-             *     $D0 $D1 $D1 $D0(h)        palette 7, attr $3C / $7C
-             *     $D2  icon  icon $D2(h)
-             *     $D3  icon  icon $D3(h)
-             * so the box is 32 x 24 with the icon in its lower two rows. */
+            /* THE BOX, from the game's own HUD map (tools/labs/hudslot.py,
+             * NOTES 189): columns 18-21, rows 0-3 of the $0C00 tilemap -
+             *     $D2  a    b    $D2(h)      rows 0-1: the icon, or the
+             *     $D3  c    d    $D3(h)      pristine $CC $CD / $EA $EB, or
+             *     $D2  $EC  $ED  $D2(h)      the used $E9 $E9 / $E8 $E8
+             *     $D3  $EE  $EF  $D3(h)      rows 2-3: always these
+             * all attr $3C (palette 7), the sides H-flipped on the right.
+             * There is no $D0/$D1 row: that was a misread of the roulette
+             * dump and drew a black bar over the box (the user). */
             {
                 static const struct { int col, row, tile; bool hf; } F[8] = {
-                    { 0, 0, 0xD0, false }, { 1, 0, 0xD1, false }, { 2, 0, 0xD1, false }, { 3, 0, 0xD0, true },
-                    { 0, 1, 0xD2, false }, { 3, 1, 0xD2, true },
-                    { 0, 2, 0xD3, false }, { 3, 2, 0xD3, true },
+                    { 0, 0, 0xD2, false }, { 3, 0, 0xD2, true },
+                    { 0, 1, 0xD3, false }, { 3, 1, 0xD3, true },
+                    { 0, 2, 0xD2, false }, { 3, 2, 0xD2, true },
+                    { 0, 3, 0xD3, false }, { 3, 3, 0xD3, true },
                 };
                 int fpal = 7;
                 for (int q = 0; q < 8; q++) {
                     int tn = F[q].tile - SMK_ICON_BASE;
                     if (tn < 0 || tn >= SMK_ICON_TILES) continue;
                     const uint8_t *px = item_icons.px[tn];
-                    int bx = (144 + F[q].col * 8) * sc, by = F[q].row * 8 * sc;   /* map row 0 = screen y 0 */
+                    int bx = (144 + F[q].col * 8) * sc, by = F[q].row * 8 * sc;
                     for (int yy = 0; yy < 8 * sc; yy++)
                         for (int xx = 0; xx < 8 * sc; xx++) {
                             int col = xx / sc; if (F[q].hf) col = 7 - col;
@@ -1682,13 +1705,39 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
                 if (smk_item_blink(&item)) which = SMK_ITEMS;   /* the blank */
             }
             int t0 = which >= 0 ? item_icons.tile[which] - SMK_ICON_BASE : 0;
-            int pal = which >= 0 ? item_icons.pal[which] : 0;
-            if (which < 0) t0 = -1000;                         /* every tile out of range */
-            /* the empty box is $E9 $E9 over $E8 $E8, not t..t+3 */
-            static const int EMPTY[4] = { 0x69, 0x69, 0x68, 0x68 };
-            int ox = 152 * sc, oy = 8 * sc;                   /* the icon is map rows 1-2 */
+            int pal = which >= 0 ? item_icons.pal[which] : 7;
+            /* nothing held: the pristine slot until the first use of the
+             * race, the used one after ($E9 $E9 / $E8 $E8 is also what
+             * the roulette's blank frame shows) */
+            static const int USED[4] = { 0x69, 0x69, 0x68, 0x68 };
+            static const int FRESH[4] = { 0x4C, 0x4D, 0x6A, 0x6B };
+            /* rows 2-3: the game keeps the place there, DMA'd into $EC-$EF
+             * as a 16x16 glyph the blob does not hold for every rank; the
+             * port sets the same place in the blob's own 8x16 digit font
+             * ($80+d over $90+d), centred - ROM art, our layout */
+            {
+                int r = hud_rank < 1 ? 1 : (hud_rank > 8 ? 8 : hud_rank);
+                for (int yy = 16 * sc; yy < 32 * sc; yy++)          /* the black card behind it */
+                    for (int xx = 152 * sc; xx < 168 * sc; xx++)
+                        if (xx < rw && yy < rh) fb[(size_t)yy * rw + xx] = 0xFF000000u;
+                for (int half = 0; half < 2; half++) {
+                    const uint8_t *px = item_icons.px[(half ? 0x10 : 0x00) + r];
+                    int bx = 156 * sc, by = (16 + half * 8) * sc;
+                    for (int yy = 0; yy < 8 * sc; yy++)
+                        for (int xx = 0; xx < 8 * sc; xx++) {
+                            uint8_t v = px[(yy / sc) * 8 + xx / sc];
+                            if (!v) continue;
+                            int sx = bx + xx, sy = by + yy;
+                            if (sx < 0 || sx >= rw || sy < 0 || sy >= rh) continue;
+                            fb[(size_t)sy * rw + sx] = trk->palette[(SMK_HUD_BG_PAL + 7 * 4 + v) & 0xFF];
+                        }
+                }
+            }
+            int ox = 152 * sc, oy = 0;                         /* the icon is map rows 0-1 */
             for (int q = 0; q < 4; q++) {
-                int tn = which == SMK_ITEMS + 1 ? EMPTY[q] : t0 + q;
+                int tn = (which == SMK_ITEMS + 1) ? USED[q]
+                       : (which < 0) ? (item_used_once ? USED[q] : FRESH[q])
+                       : t0 + q;
                 if (tn < 0 || tn >= SMK_ICON_TILES) continue;
                 const uint8_t *px = item_icons.px[tn];
                 int bx = ox + (q & 1) * 8 * sc, by = oy + (q >> 1) * 8 * sc;
@@ -2570,6 +2619,7 @@ int main(int argc, char **argv)
                     int used = smk_item_step(&item, item_btn, can_use);
                     player.item_held = smk_item_present(&item);
                     if (used >= 0) {
+                        item_used_once = true;
                         int ahead_idx = -1;                 /* the red shell's target */
                         for (int q = 1; q < SMK_CHARACTERS; q++)
                             if (racers[q].rank == racers[0].rank - 1) { ahead_idx = q; break; }
@@ -2580,14 +2630,18 @@ int main(int argc, char **argv)
                         case SMK_ITEM_MUSHROOM:  smk_player_boost(&player); break;
                         case SMK_ITEM_FEATHER:   smk_player_feather(&player, &kart); break;
                         case SMK_ITEM_STAR:      smk_player_star(&player); break;
+                        /* the user: the button alone THROWS (banana in an arc,
+                         * shell fast and bouncing); button + DOWN leaves it
+                         * behind you, static - the same for both */
                         case SMK_ITEM_BANANA:
                             smk_proj_throw(projs, SMK_PROJ_MAX, SMK_PROJ_BANANA, &kart,
                                            player.heading, 0, -1, false,
-                                           in.up || getenv("SMK_BANANA_UP"));
+                                           !in.down && !getenv("SMK_BANANA_DOWN"));
                             break;
                         case SMK_ITEM_GREEN:
                             smk_proj_throw(projs, SMK_PROJ_MAX, SMK_PROJ_GREEN, &kart,
-                                           player.heading, 0, -1, in.down, false);
+                                           player.heading, 0, -1,
+                                           in.down || getenv("SMK_SHELL_DOWN"), false);
                             break;
                         case SMK_ITEM_RED:
                             smk_proj_throw(projs, SMK_PROJ_MAX, SMK_PROJ_RED, &kart,

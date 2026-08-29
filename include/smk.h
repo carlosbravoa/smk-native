@@ -167,6 +167,7 @@ typedef struct {
     /* horizontal knockback while bouncing off a wall (NOTES 044/045)    */
     int16_t  bvx, bvy;
     int8_t   bounce_cool;   /* $5C: the 8-frame window with the velocity held */
+    uint8_t  star;          /* $E2 bit 1 mirrored: obstacles fly instead of you */
     uint8_t  bounce_dir;    /* $56: which way the wall pushed (0/2/4/6)       */
     uint8_t  bounce_pend;   /* $52's $C000 bits: damp on the NEXT frame       */
     uint8_t  bounce_hit;    /* $10 bit 12: hit a wall, $80A0C7 owes a cost   */
@@ -567,6 +568,7 @@ typedef struct {
      * spawner at $84DC20: per-track word list at $85:C800 + track*64,
      * [kind:2][y:7][x:7], coordinates cell*8+4, zero-terminated. */
     struct { uint8_t kind; uint16_t x, y; } ent[SMK_COURSE_ENTS];
+    uint8_t  dead[SMK_COURSE_ENTS];   /* knocked out by a star; back on respawn */
     int      nent;
     smk_mover mv[32];         /* one per ENTITY, NOTES 152/155 */
     int      theme;           /* for smk_theme_has_movers */
@@ -1445,6 +1447,7 @@ typedef struct {
     int16_t  vx, vy, vz;
     int      t;             /* frames since the loss                       */
     int      side;          /* which way this coin's path drifts           */
+    uint8_t  kind;          /* 0 spilled by a bump, 1 picked up from the road */
 } smk_coin;
 /* The path a spilled coin takes on screen, relative to the top centre of
  * the player's kart sprite - CAPTURED from a real bump (NOTES 186).  The
@@ -1455,6 +1458,11 @@ typedef struct {
 typedef struct { int16_t dx, dy; uint8_t frame; } smk_coin_step;
 extern const smk_coin_step SMK_COIN_PATH[];
 extern const int SMK_COIN_PATH_LEN;
+/* and the picked-up coin's hop (src/coinup_path.inc, NOTES 189) */
+extern const smk_coin_step SMK_COINUP_PATH[];
+extern const int SMK_COINUP_PATH_LEN;
+#define SMK_COINUP_DELAY 2
+void smk_coinfx_pickup(smk_coin *c, int n);
 /* `count` coins out of a kart at (x,y) travelling on `heading` */
 void smk_coinfx_spawn(smk_coin *c, int n, int32_t x, int32_t y,
                       uint16_t heading, int16_t kvx, int16_t kvy, int count);

@@ -127,6 +127,11 @@ void smk_collide_objects(smk_kart *k, const smk_course *crs)
          * It is validated against their recorded run rather than guessed:
          * every crash in it was below the line and every close pass above. */
         if (smk_mover_z(crs, i) > SMK_MOVER_CLEAR) continue;
+        if (crs->dead[i]) continue;
+        if (k->star) {                /* OURS: a starred kart knocks it out */
+            ((smk_course *)crs)->dead[i] = 1;
+            continue;
+        }
         float d = sqrtf((float)d2);
         float nx2 = (float)dx / d, ny2 = (float)dy / d;
         float dot = (float)k->vx * nx2 + (float)k->vy * ny2;

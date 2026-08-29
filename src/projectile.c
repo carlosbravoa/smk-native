@@ -55,8 +55,18 @@ void smk_proj_throw(smk_proj *list, int n, int kind, const smk_kart *k,
         break;
     case SMK_PROJ_GREEN:
     case SMK_PROJ_RED:
-        /* MEASURED: the kart's speed + $300, along its heading; a backward
-         * throw is OURS at the plain $300 */
+        /* MEASURED: the kart's speed + $300, along its heading.  A green
+         * shell dropped behind (button + DOWN) is STATIC, eight pixels back
+         * like the banana - the user: "I can leave it behind me, static,
+         * exactly same as banana" */
+        if (backward && kind == SMK_PROJ_GREEN) {
+            int16_t sx, cy;
+            smk_dsp_sincos(heading, 8 * 256, &sx, &cy);
+            p->x -= (int32_t)sx << (SMK_POS_SHIFT - 8);
+            p->y += (int32_t)cy << (SMK_POS_SHIFT - 8);
+            p->speed = 0;
+            break;
+        }
         p->speed = (int16_t)(backward ? SMK_PROJ_SPEED_ADD
                                       : k->speed + SMK_PROJ_SPEED_ADD);
         p->delay = SMK_PROJ_RED_DELAY;

@@ -421,16 +421,18 @@ int main(int argc, char **argv)
                     for (int xx = 0; xx < 8; xx++)                        \
                         if (q[yy * 8 + xx]) (D)[(OY) + yy][(OX) + xx] = q[yy * 8 + xx]; \
             } while (0)
-            PUT(game, 0, 0, 0xA0); PUT(game, 8, 0, 0xA1);
-            PUT(game, 0, 8, 0xB0); PUT(game, 8, 8, 0xB1);
+            /* the hardware order: the digit sprite (bar + numeral) is the
+             * higher OAM entry, so the plate paints over its left half */
             PUT(game, 8, 0, 0xA3); PUT(game, 16, 0, 0xA4);
             PUT(game, 8, 8, 0xB3); PUT(game, 16, 8, 0xB4);
+            PUT(game, 0, 0, 0xA0); PUT(game, 8, 0, 0xA1);
+            PUT(game, 0, 8, 0xB0); PUT(game, 8, 8, 0xB1);
             smk_lapsign lp2; smk_lapsign_frame(40, 2, 5, &lp2);
             for (int r = 0; r < 2; r++) {
-                PUT(mine, 0,  r * 8, lp2.plate + r * 16);
-                PUT(mine, 8,  r * 8, lp2.plate + 1 + r * 16);
                 PUT(mine, 8,  r * 8, SMK_LAPSIGN_BAR + r * 16);
                 PUT(mine, 16, r * 8, lp2.digit + r * 16);
+                PUT(mine, 0,  r * 8, lp2.plate + r * 16);
+                PUT(mine, 8,  r * 8, lp2.plate + 1 + r * 16);
             }
             #undef PUT
             int bad = 0;

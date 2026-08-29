@@ -242,6 +242,7 @@ void smk_course_spawn(smk_course *c, int waypoint, bool two_player)
     if (seg == c->seg && c->nlive == want) return;
     c->seg = seg;
     c->nlive = 0;
+    memset(c->dead, 0, sizeof c->dead);   /* a fresh segment brings them back */
     int first = seg * 4;                     /* offset seg*8 bytes = 4 words */
     if (first >= c->nent) first = 0;         /* $84DC35: fall back to the start */
     for (int i = 0; i < want && first + i < c->nent; i++)
