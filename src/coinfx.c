@@ -70,15 +70,24 @@ void smk_coinfx_spawn(smk_coin *c, int n, int32_t x, int32_t y,
          * drives past it.  Thrown backwards it lands behind a camera that
          * looks forward, and is never drawn at all, which is exactly what
          * the first version of this did (NOTES 183). */
-        uint16_t a = (uint16_t)(heading
-                                + (uint16_t)((i - count / 2) * 0x1000)
-                                + (uint16_t)((i & 1) ? 0x0800 : 0xF800));
+        /* UP and BACK, and it does NOT ride along with the kart.  The
+         * first version added the kart's own velocity, so a coin knocked
+         * out of a kart flew above it at the kart's speed for its whole
+         * arc - "a coin on its side on top of Mario's head" in every
+         * picture (the user).  A coin is left behind: it goes up, drifts
+         * back a little, and the kart drives on without it. */
+        /* WITH the kart, and up.  The recorded loss (NOTES 183) has the
+         * coin holding its place on screen through its arc - it rides
+         * along at the kart's speed and only rises and falls - which is
+         * also why one sits "on top of Mario's head" in a picture taken
+         * eight frames after a bump.  Two other launches were tried and
+         * were worse: backward is behind the camera and never drawn;
+         * slower-than-the-kart drops below the screen's bottom edge.  What
+         * made it look permanent was the BOUNCE, which is gone: a coin
+         * lands once and is done. */
+        uint16_t a = (uint16_t)(heading + (uint16_t)((i - count / 2) * 0x0C00));
         int16_t sx, cy;
-        smk_dsp_sincos(a, 190, &sx, &cy);
-        /* the coin INHERITS the kart's motion - it was travelling with it
-         * a moment ago - and the throw is added on top.  Without this the
-         * kart simply drives past a coin moving slower than itself and it
-         * is behind the camera within a few frames. */
+        smk_dsp_sincos(a, 60, &sx, &cy);
         k->vx = (int16_t)(kvx + sx);
         k->vy = (int16_t)(kvy - cy);
         k->vz = (int16_t)(SMK_COIN_RISE - (i & 1) * 40);
@@ -94,13 +103,7 @@ void smk_coinfx_step(smk_coin *c, int n)
         k->y += (int32_t)k->vy << (SMK_POS_SHIFT - 8);
         k->z += (int32_t)k->vz << 8;
         k->vz = (int16_t)(k->vz - SMK_COIN_GRAV);
-        if (k->z <= 0) {                          /* the bounce */
-            k->z = 0;
-            k->vz = (int16_t)(-k->vz / 2);
-            k->vx = (int16_t)(k->vx * 3 / 4);
-            k->vy = (int16_t)(k->vy * 3 / 4);
-            if (k->vz < SMK_COIN_GRAV * 2) { k->live = 0; continue; }
-        }
+        if (k->z <= 0 && k->t > 2) { k->live = 0; continue; }   /* landed: gone */
         if (++k->t > SMK_COIN_LIFE) k->live = 0;
     }
 }

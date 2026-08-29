@@ -26,6 +26,7 @@ TMP = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 arg = sys.argv[1] if len(sys.argv) > 1 else "1000"
 FRAMES = int(os.environ.get("FRAMES", "300"))
 PAD = int(os.environ.get("PAD", "0x80"), 0)          # B held; add 0x08 UP / 0x04 DOWN etc.
+BOTHPADS = bool(os.environ.get("BOTHPADS"))       # the attract race has two humans: drive P2's pad too
 
 L = Lab(settle=120, zero=(0x0E50, 0x0E51))
 w, sw, s16 = L.w, L.sw, L.s16
@@ -95,6 +96,7 @@ log("fired $E0 |= $%04X on $1000 AND $1100" % bit)
 log(" f  spd  $10  $AC  $E2   $EE   $FA   $AA   $A8  $A4  pose   z  $86  $84 $82 coins | objects (blk x,y,z v(vx,vy) o=owner #var h=$2A s=$72 t=$64 d=$40 T=$66 $14 $42)")
 seen = set()
 for f in range(FRAMES):
+    if BOTHPADS: L.b.reg_reads[0x421B] = PAD; L.b.reg_reads[0x421A] = 0
     L.frame(PAD)
     k = kart(); objs = objects()
     if f in (20, 21, 22):            # three consecutive frames: the object pipeline runs at 30 Hz
