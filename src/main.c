@@ -1577,23 +1577,30 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
             }
             continue;
         }
-        /* an 8x8 sprite, drawn at twice the pixel scale: the game shows
-         * it through the same size steps as everything else, and at the
-         * kart's own depth an 8x8 object reads as 16 px on its 256-wide
-         * screen (OURS, the factor; the art is the game's) */
-        cs *= 2;
-        int x0 = (int)px - 4 * cs, y0 = (int)py - 8 * cs - lift;
-        if (!proj_art.ok) continue;
-        const uint8_t *art = proj_art.px[which];
-        for (int yy = 0; yy < 8 * cs; yy++) {
-            int sy = y0 + yy;
-            if (sy < 0 || sy >= rh) continue;
-            for (int xx = 0; xx < 8 * cs; xx++) {
-                int sx = x0 + xx;
-                if (sx < 0 || sx >= rw) continue;
-                uint8_t v = art[(yy / cs) * 8 + xx / cs];
-                if (!v) continue;
-                fb[(size_t)sy * rw + sx] = trk->palette[(0x80 + SMK_PROJ_PAL * 16 + v) & 0xFF];
+        /* THE SHELL: a 16x16 sprite from the effects tiles (sprite tiles
+         * $100-$103 / $110-$113 in OBJ VRAM, tools/labs/vramdump.py, NOTES
+         * 189): two frames, A = $100 $101 / $110 $111 and B = $102 $103 /
+         * $112 $113, green in sprite palette 0 and red in palette 1.  The
+         * 8x8 tile drawn before was Lakitu's green light (the user).  The
+         * frame rate of its spin is OURS (four frames each). */
+        if (!fx.ok) continue;
+        int fr = (fx_ticks >> 2) & 1;
+        static const int Q[2][4] = { { 0, 1, 16, 17 }, { 2, 3, 18, 19 } };
+        int spal = which == 2 ? 1 : 0;
+        int x0 = (int)px - 8 * cs, y0 = (int)py - 16 * cs - lift;
+        for (int q = 0; q < 4; q++) {
+            const uint8_t *tp = fx.tiles[Q[fr][q]];
+            int bx = x0 + (q & 1) * 8 * cs, by = y0 + (q >> 1) * 8 * cs;
+            for (int yy = 0; yy < 8 * cs; yy++) {
+                int sy = by + yy;
+                if (sy < 0 || sy >= rh) continue;
+                for (int xx = 0; xx < 8 * cs; xx++) {
+                    int sx = bx + xx;
+                    if (sx < 0 || sx >= rw) continue;
+                    uint8_t v = tp[(yy / cs) * 8 + xx / cs];
+                    if (!v) continue;
+                    fb[(size_t)sy * rw + sx] = trk->palette[(0x80 + spal * 16 + v) & 0xFF];
+                }
             }
         }
     }
