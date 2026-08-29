@@ -1377,6 +1377,9 @@ static void draw_ai_kart(const smk_rom *rom, const smk_track *trk,
                 < fabsf((float)KTIER[kt].h - kwant)) kt = t;
         int kscale = rw / 256;
         if (kscale < 1) kscale = 1;
+        if (getenv("SMK_TIER_TRACE") && (fx_ticks % 10) == 0)
+            printf("tier f%u kart %d kd %.0f kwant %.1f tier %d (h %d) mirror %d\n",
+                   fx_ticks, k, kd, kwant, kt, KTIER[kt].h, (int)mirror);
         if (KTIER[kt].base < 0) {           /* the far, half-size draw */
             /* A MIRRORED pose is frame 0's left half FOLDED (NOTES 080),
              * and smk_draw_sprite_mini does not fold - it samples all 32
@@ -2759,6 +2762,19 @@ int main(int argc, char **argv)
                         else if (hq != SMK_PROJ_NONE) smk_racer_hit(&racers[q], 2, (int)(fx_ticks & 1));
                     }
                 }
+                /* SMK_TEST_PLACE=q:d - park racer q d px straight ahead of
+                 * the player every frame, to look at one kart at one distance */
+                { const char *e = getenv("SMK_TEST_PLACE");
+                  if (e && strchr(e, ':')) {
+                      int q = atoi(e), dd = atoi(strchr(e, ':') + 1);
+                      if (q >= 1 && q < SMK_CHARACTERS) {
+                          int16_t sx, cy; smk_dsp_sincos(player.heading, 256, &sx, &cy);
+                          racers[q].k.x = kart.x + (((int32_t)sx * dd) << (SMK_POS_SHIFT - 8));
+                          racers[q].k.y = kart.y - (((int32_t)cy * dd) << (SMK_POS_SHIFT - 8));
+                          racers[q].k.angle = player.heading; racers[q].k.speed = 0;
+                          racers[q].k.vx = racers[q].k.vy = 0;
+                      }
+                  } }
                 /* the rubber band, before anybody moves (NOTES 167) */
                 smk_ai_rubber(racers, SMK_CHARACTERS, &crs, engine_class);
                 /* SMK_ROW_TRACE: one line per frame of every AI's $C8 row
