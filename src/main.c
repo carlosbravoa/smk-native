@@ -173,6 +173,7 @@ static int racer_draw_mask = 0xFE;      /* which racer slots draw_scene draws */
 #define SMK_POSE_LEAN 1001      /* the block unfolded; negative = hflipped */
 /* Coins knocked out of the player, and the game's own art for them. */
 static smk_coinart coin_art;
+static smk_flagart flag_art;
 static smk_coin    coins_fx[SMK_COINFX_MAX];
 static int celebrating;
 /* How far the celebration camera has turned, in ROM angle units.  The
@@ -350,26 +351,41 @@ static void draw_finish_flag(uint32_t *fb, int rw, int rh,
 {
     smk_flag fg;
     smk_flag_frame(t, &fg);
-    if (!fg.on || !hud_art.ok) return;
+    if (!fg.on || !flag_art.ok) return;
     int sc = rw >= 640 ? 3 : 2;
-    /* head, cloud pair, then the flag over the top - offsets measured
-     * from his head and steady through the whole pass */
-    static const struct { int dx, dy, base; } PART[5] = {
-        {  0,  0, SMK_FLAG_HEAD    },
-        {  0, 16, SMK_FLAG_CLOUD_L },
-        { 16, 16, SMK_FLAG_CLOUD_R },
-        { 16,  0, -1 },                 /* the flag's upper half */
-        { 24,  8, -2 },                 /* and its lower half    */
+    /* The WHOLE group from one source (NOTES 184).  Offsets from his head,
+     * measured off OAM and steady through the pass:
+     *   ( 0, 0) head   ( 0,16) cloud L   (16,16) cloud R
+     *   (16, 0) flag upper       (24, 8) flag lower  */
+    /* BACK TO FRONT, which is the game's own OAM order reversed - lower
+     * slots paint on top there, and at the finish they run
+     *   8 $6C (flag lower)  9 $4A (head)  10 $6E (flag upper)
+     *   11 $4C (cloud L)   12 $44 (cloud R)
+     * so his HEAD covers part of the flag's upper half.  Painting the
+     * whole flag last instead, as the first version did, leaves the
+     * triangle complete and the group reads as a detached sprite. */
+    const uint8_t *art[5] = {
+        flag_art.cloud[1], flag_art.cloud[0],
+        flag_art.px[fg.pose][0],          /* $6E, upper - behind his head */
+        flag_art.head,
+        flag_art.px[fg.pose][1],          /* $6C, lower - in front        */
+    };
+    static const struct { int dx, dy; } AT[5] = {
+        { 16, 16 }, { 0, 16 }, { 16, 0 }, { 0, 0 }, { 24, 8 },
     };
     for (int p = 0; p < 5; p++) {
-        int base = PART[p].base == -1 ? fg.flag_hi
-                 : PART[p].base == -2 ? fg.flag_lo : PART[p].base;
-        for (int sub = 0; sub < 4; sub++) {
-            int cx = sub & 1, cy = sub >> 1;
-            spr_tile(fb, rw, rh,
-                     (fg.x + PART[p].dx + cx * 8) * sc,
-                     (fg.y + PART[p].dy + cy * 8) * sc,
-                     base + cx + cy * 16, SMK_START_PAL, false, palette, sc);
+        int x0 = (fg.x + AT[p].dx) * sc, y0 = (fg.y + AT[p].dy) * sc;
+        for (int yy = 0; yy < 16 * sc; yy++) {
+            int sy = y0 + yy;
+            if (sy < 0 || sy >= rh) continue;
+            const uint8_t *row = art[p] + (yy / sc) * 16;
+            for (int xx = 0; xx < 16 * sc; xx++) {
+                int sx = x0 + xx;
+                if (sx < 0 || sx >= rw) continue;
+                uint8_t v = row[xx / sc];
+                if (!v) continue;
+                fb[(size_t)sy * rw + sx] = palette[(SMK_START_PAL + v) & 0xFF];
+            }
         }
     }
 }
@@ -1837,6 +1853,8 @@ int main(int argc, char **argv)
     smk_hud_load(&rom, &hud_art);
     if (!smk_coin_load(&rom, &coin_art))
         fprintf(stderr, "warning: coin sprite not loaded\n");
+    if (!smk_flag_load(&rom, &flag_art))
+        fprintf(stderr, "warning: chequered flag not loaded\n");
 
     if (!smk_track_load(&rom, track, theme, &trk, err, sizeof err)) {
         fprintf(stderr, "error: %s\n", err);

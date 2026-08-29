@@ -184,7 +184,68 @@ void smk_flag_frame(int t, smk_flag *out)
     out->on = true;
     out->x = FLAG_PATH[t].x;
     out->y = FLAG_PATH[t].y;
-    int w = (t / SMK_FLAG_WAVE) % 3;
-    out->flag_hi = FLAG_WAVE[w].hi;
-    out->flag_lo = FLAG_WAVE[w].lo;
+    out->pose = (t / SMK_FLAG_WAVE) % 3;
+}
+
+/* The flag's six 16x16 drawings, from the shared blob rather than the HUD
+ * set - see smk_flagart.  A VRAM tile's bytes live at (tile - 48) * 32. */
+bool smk_flag_load(const smk_rom *rom, smk_flagart *out)
+{
+    static uint8_t buf[131072];
+    memset(out, 0, sizeof *out);
+    long n = smk_decompress_into(rom->data, rom->size,
+                                 smk_snes_to_pc(rom, SMK_SHADOW_SRC),
+                                 buf, sizeof buf, 0, NULL);
+    if (n <= 0) return false;
+    for (int w = 0; w < 3; w++) {
+        int half[2] = { FLAG_WAVE[w].hi, FLAG_WAVE[w].lo };
+        for (int h = 0; h < 2; h++) {
+            for (int q = 0; q < 4; q++) {
+                int tn = half[h] + (q >> 1) * 16 + (q & 1);
+                long off = (long)(tn - 48) * 32;
+                if (off < 0 || off + 32 > n) return false;
+                const uint8_t *src = buf + off;
+                for (int pair = 0; pair < 2; pair++) {
+                    const uint8_t *p = src + pair * 16;
+                    for (int y = 0; y < 8; y++) {
+                        uint8_t lo = p[y * 2], hi = p[y * 2 + 1];
+                        for (int x = 0; x < 8; x++) {
+                            int bit = 7 - x;
+                            int v = ((lo >> bit) & 1) | (((hi >> bit) & 1) << 1);
+                            int px = (q & 1) * 8 + x, py = (q >> 1) * 8 + y;
+                            out->px[w][h][py * 16 + px] |= (uint8_t)(v << (pair * 2));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    /* his head and cloud from the SAME source, so the whole group is
+     * consistent: taking them from the HUD set instead left the flag
+     * eight pixels adrift, because those indices are not VRAM tiles. */
+    {
+        const int extra[3] = { SMK_FLAG_HEAD, SMK_FLAG_CLOUD_L, SMK_FLAG_CLOUD_R };
+        uint8_t *dst[3] = { out->head, out->cloud[0], out->cloud[1] };
+        for (int e = 0; e < 3; e++)
+            for (int q = 0; q < 4; q++) {
+                int tn = extra[e] + (q >> 1) * 16 + (q & 1);
+                long off = (long)(tn - 48) * 32;
+                if (off < 0 || off + 32 > n) return false;
+                const uint8_t *src = buf + off;
+                for (int pair = 0; pair < 2; pair++) {
+                    const uint8_t *p = src + pair * 16;
+                    for (int y = 0; y < 8; y++) {
+                        uint8_t lo = p[y * 2], hi = p[y * 2 + 1];
+                        for (int x = 0; x < 8; x++) {
+                            int bit = 7 - x;
+                            int v = ((lo >> bit) & 1) | (((hi >> bit) & 1) << 1);
+                            int px = (q & 1) * 8 + x, py = (q >> 1) * 8 + y;
+                            dst[e][py * 16 + px] |= (uint8_t)(v << (pair * 2));
+                        }
+                    }
+                }
+            }
+    }
+    out->ok = true;
+    return true;
 }

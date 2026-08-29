@@ -1286,8 +1286,21 @@ void smk_lapsign_frame(int t, int lap, int laps, smk_lapsign *out);
 typedef struct {
     bool on;
     int  x, y;          /* his head, in SNES px; y may be negative       */
-    int  flag_hi, flag_lo;
+    int  pose;          /* 0..2, which wave pose                         */
 } smk_flag;
+/* The flag's own art, loaded straight from the shared blob.
+ *
+ * NOT through smk_hud: that set's indices are not VRAM tile numbers, and
+ * asking it for $6C returns the FINAL LAP plate - which is exactly what
+ * the first version of this drew (NOTES 184).  A VRAM tile's bytes are at
+ * (tile - 48) * 32 in the blob, the same rule the coin follows. */
+typedef struct {
+    bool ok;
+    uint8_t px[3][2][16 * 16];    /* the flag: 3 wave poses x 2 halves  */
+    uint8_t head[16 * 16];        /* $4A                                */
+    uint8_t cloud[2][16 * 16];    /* $4C left, $44 right                */
+} smk_flagart;
+bool smk_flag_load(const smk_rom *rom, smk_flagart *out);
 /* t counts frames from the final crossing */
 void smk_flag_frame(int t, smk_flag *out);
 
