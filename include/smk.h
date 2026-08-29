@@ -1792,6 +1792,8 @@ bool smk_projart_load(const smk_rom *rom, smk_projart *out);
 #define SMK_AI_CARRY        58    /* MEASURED: 58 frames at the kart's velocity, then still */
 #define SMK_AI_NEAR         160   /* px; MEASURED drops at 53..153 - OURS as a bound */
 #define SMK_AI_COOL         640   /* frames; MEASURED intervals 646/874/884 - OURS as a floor */
+#define SMK_FIRE_WEAVE_AMP  20    /* OURS (the user: "fireballs move sideways"): px either side */
+#define SMK_FIRE_WEAVE_T    40    /* OURS: frames per full weave                                  */
 #define SMK_AI_WEAPON_NONE  0
 #define SMK_AI_WEAPON_STAR  100   /* not a projectile kind */
 int  smk_ai_weapon_of(int character);    /* SMK_PROJ_* kind, or SMK_AI_WEAPON_STAR / NONE */

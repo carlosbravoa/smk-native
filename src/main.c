@@ -1581,7 +1581,10 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
             if (want > 16.0f) want = 16.0f;
             int ntier = nl / frames;
             int tier = smk_itemart_pick(lad, ntier, want);       /* frame 0 of each tier leads */
-            const smk_itemart_tier *t = &lad[tier * frames + (frames > 1 ? (int)((fx_ticks >> 2) % (unsigned)frames) : 0)];
+            /* the shell's three frames are its spin: only while it travels
+             * (a dropped one sits still) - the user */
+            bool moving = pr->speed != 0 || pr->vx || pr->vy;
+            const smk_itemart_tier *t = &lad[tier * frames + (frames > 1 && moving ? (int)((fx_ticks >> 2) % (unsigned)frames) : 0)];
             float s = (float)scale * (want / 16.0f) * (16.0f / (float)t->w);
             if (s < 0.5f) s = 0.5f;
             int dw = (int)((float)t->w * s + 0.5f), dh = (int)((float)t->h * s + 0.5f);

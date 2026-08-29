@@ -195,6 +195,18 @@ void smk_proj_step(smk_proj *list, int n, const smk_track *trk,
         /* $80:FE07: the integrator, then the wall */
         int32_t nx = p->x + ((int32_t)p->vx << (SMK_POS_SHIFT - 8));
         int32_t ny = p->y + ((int32_t)p->vy << (SMK_POS_SHIFT - 8));
+        if (p->kind == SMK_PROJ_FIREBALL) {
+            /* Bowser's fireball weaves across its path as it goes (the
+             * user); a sideways sine on top of the straight flight -
+             * OURS, amplitude and period unmeasured */
+            int16_t sx, cy;
+            smk_dsp_sincos((uint16_t)(p->heading + 0x4000), 256, &sx, &cy);
+            float ph = (float)(p->t % SMK_FIRE_WEAVE_T) / (float)SMK_FIRE_WEAVE_T * 6.2831853f;
+            float ph0 = (float)((p->t - 1) % SMK_FIRE_WEAVE_T) / (float)SMK_FIRE_WEAVE_T * 6.2831853f;
+            float d = (float)SMK_FIRE_WEAVE_AMP * (sinf(ph) - sinf(ph0));
+            nx += (int32_t)((float)sx * d) << (SMK_POS_SHIFT - 8);
+            ny -= (int32_t)((float)cy * d) << (SMK_POS_SHIFT - 8);
+        }
         int px = smk_kart_px(nx), py = smk_kart_px(ny);
         int cx = smk_kart_px(p->x), cy = smk_kart_px(p->y);
         uint8_t here = smk_track_surface(trk, px, py);
