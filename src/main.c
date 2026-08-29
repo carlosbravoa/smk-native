@@ -2486,6 +2486,25 @@ int main(int argc, char **argv)
             /* edges are cleared AFTER the tick that consumes them.  Clearing
              * first meant step_kart never saw in.hop, so a hop press did
              * nothing at all - the "no jump" report, twice. */
+            /* The item button is an EDGE, and the edges are cleared right
+             * here - before the item block runs - so a real press never
+             * reached the roulette; only the test hook did, because it set
+             * in.item after this line.  Capture it first.  One press stops
+             * the roulette early ($81:B3C1), the next fires the item
+             * ($81:B40A); the ROM tests the level, which would fire the
+             * item the frame it turned READY if the button were still
+             * down - the user asked for press, then press. */
+            bool item_btn = in.item;
+            {   /* SMK_ITEM_PRESS=f1,f2,... presses the button on those race
+                 * frames, at the same point the pad would */
+                static const char *ip = NULL; static bool ip_init = false;
+                if (!ip_init) { ip_init = true; ip = getenv("SMK_ITEM_PRESS"); }
+                if (ip) {
+                    char buf[64]; snprintf(buf, sizeof buf, "%s", ip);
+                    for (char *t = strtok(buf, ","); t; t = strtok(NULL, ","))
+                        if (atol(t) == hud_race_frames) item_btn = true;
+                }
+            }
             input_edges_clear(&in);
             camera_from_kart(&cam, &kart);
             if (force_steer) {
@@ -2535,9 +2554,9 @@ int main(int argc, char **argv)
                             if (tid == 99) smk_item_box(&item, &itemtab, cur_track, hud_lap, hud_rank - 1, item_roll());
                             else item.word = (uint16_t)(0xC000 | tid);
                         }
-                        if (tid >= 0 && tid != 99 && hud_race_frames == tframe + 1) in.item = true;
+                        if (tid >= 0 && tid != 99 && hud_race_frames == tframe + 1) item_btn = true;
                     }
-                    int used = smk_item_step(&item, in.item, can_use);
+                    int used = smk_item_step(&item, item_btn, can_use);
                     player.item_held = smk_item_present(&item);
                     if (used >= 0) {
                         int ahead_idx = -1;                 /* the red shell's target */
