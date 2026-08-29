@@ -8075,3 +8075,17 @@ by five events; the fireball's flight is a green shell's launch; the
 mushroom, egg and fireball on the road wear roulette icons in borrowed
 palettes (the roulette never shows them); the AI star's length is the
 player's `$200`.
+
+### Addendum — the user's own two objects in the same recording
+
+`$1A00` f2962: a dropped banana — born at the kart, slid 9 px in 3
+frames as the kart pulled away, then never moved (`+$70 = 0`, static).
+`$1A00` f4576: a thrown green shell — `(vx, vy) = (110, -1497)`, 1,500
+units = 5.9 px/frame, CONSTANT for 112 frames to a wall, where `vy`
+became +1290 (7/8, as NOTES 185 measured); `+$70 = 2`. No forward banana
+throw in the run, so its arc stays OURS — and it has been made fast and
+high enough to be seen leaving (kart speed + $600, `zv = $180`): at a
+shell's speed it hid under the kart and landed under it, which the user
+saw as "does not work". The road objects now scale by the karts' own
+1/distance law, continuously; the two-step integer size before did not
+read as distance.

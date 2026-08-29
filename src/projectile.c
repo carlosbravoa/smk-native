@@ -43,8 +43,12 @@ void smk_proj_throw(smk_proj *list, int n, int kind, const smk_kart *k,
             /* thrown: flies ahead and lands - flight time OURS until the
              * chain2 measurement lands */
             p->kind = SMK_PROJ_BANANA_AIR;
-            p->speed = (int16_t)(k->speed + SMK_PROJ_SPEED_ADD / 2);
-            p->zv = 0x00C0;
+            /* OURS until a forward throw is recorded: fast and high enough
+             * to be SEEN leaving - at the kart's speed plus a shell's it
+             * hid under the kart and landed under it (the user: "does not
+             * work") */
+            p->speed = (int16_t)(k->speed + SMK_PROJ_SPEED_ADD * 2);
+            p->zv = 0x0180;
             set_velocity(p);
         } else {
             /* MEASURED: eight pixels behind the kart, and it stays */

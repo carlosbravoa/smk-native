@@ -1581,24 +1581,29 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
             else if (pr->kind == SMK_PROJ_FIREBALL) { iid = SMK_ITEM_RED; bpal = item_icons.pal[SMK_ITEM_MUSHROOM]; }
             else bpal = item_icons.pal[iid];
             int t0 = item_icons.tile[iid] - SMK_ICON_BASE;
-            int x0 = (int)px - 8 * cs, y0 = (int)py - 16 * cs - lift;
-            for (int q = 0; q < 4; q++) {
-                int tn = t0 + q;
-                if (tn < 0 || tn >= SMK_ICON_TILES) continue;
-                const uint8_t *tp = item_icons.px[tn];
-                int bx = x0 + (q & 1) * 8 * cs, by = y0 + (q >> 1) * 8 * cs;
-                for (int yy = 0; yy < 8 * cs; yy++) {
-                    int sy = by + yy;
-                    if (sy < 0 || sy >= rh) continue;
-                    for (int xx = 0; xx < 8 * cs; xx++) {
-                        int sx = bx + xx;
-                        if (sx < 0 || sx >= rw) continue;
-                        uint8_t v = tp[(yy / cs) * 8 + xx / cs];
-                        /* colour 3 is the box's black interior on the HUD;
-                         * on the road it is the ground showing through */
-                        if (!v || v == 3) continue;
-                        fb[(size_t)sy * rw + sx] = trk->palette[(SMK_HUD_BG_PAL + bpal * 4 + v) & 0xFF];
-                    }
+            /* the size: the karts' own 1/distance law (SMK_KART_SCALE_K /
+             * distance, times the screen scale), continuous - the two-step
+             * integer scale before this "did not scale with distance"
+             * (the user) */
+            float s = SMK_KART_SCALE_K / kd * (float)scale;
+            if (s > 1.5f * (float)scale) s = 1.5f * (float)scale;
+            int wpx = (int)(16.0f * s + 0.5f); if (wpx < 2) wpx = 2;
+            int x0 = (int)px - wpx / 2, y0 = (int)py - wpx - lift;
+            for (int yy = 0; yy < wpx; yy++) {
+                int sy = y0 + yy;
+                if (sy < 0 || sy >= rh) continue;
+                int ty = yy * 16 / wpx;
+                for (int xx = 0; xx < wpx; xx++) {
+                    int sx = x0 + xx;
+                    if (sx < 0 || sx >= rw) continue;
+                    int tx = xx * 16 / wpx;
+                    int tn = t0 + (ty >> 3) * 2 + (tx >> 3);
+                    if (tn < 0 || tn >= SMK_ICON_TILES) continue;
+                    uint8_t v = item_icons.px[tn][(ty & 7) * 8 + (tx & 7)];
+                    /* colour 3 is the box's black interior on the HUD; on
+                     * the road it is the ground showing through */
+                    if (!v || v == 3) continue;
+                    fb[(size_t)sy * rw + sx] = trk->palette[(SMK_HUD_BG_PAL + bpal * 4 + v) & 0xFF];
                 }
             }
             continue;
