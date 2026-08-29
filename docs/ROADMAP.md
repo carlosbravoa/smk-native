@@ -70,11 +70,11 @@ and the icons are the ROM's; the projectile motion is MEASURED. OURS: the
 five random bits of the roll (`$1F26` is not reproduced); the thrown
 banana's flight (UP never registered through the oracle's pad); the speed
 of a shell thrown backward; a green shell's 8-bounce life; the 8 px contact
-box; the star's palette cycle; the shrunk kart's half size; and the
-projectiles are still drawn as PLACEHOLDER discs - no OAM dump caught a
-shell's tiles, three frames apart, so its art is not yet located. The AI's
-own weapons (bank `$85` entities) are a separate system and are not
-started.
+box; the star's palette cycle; the shrunk kart's half size; the 2x
+factor a shell's 8x8 tile is drawn at; and the banana's PALETTE (its tile
+is found, its colours are not - it is a bank-`$85` entity, and the object
+palette it uses is still to be read). The AI's own weapons (bank `$85`
+entities) are a separate system and are not started.
 
 **S30 — Lakitu's chequered flag is drawn, but not pixel-right.**
 The DATA is measured and correct: his path (230 frames, captured), the

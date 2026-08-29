@@ -222,6 +222,17 @@ One thing to look at in play: the green shell's palette 4 read as
 yellow / black / dark red in the attract race's CGRAM, and the port shows
 what the CGRAM holds. If the held green shell looks dark, that is where.
 
+**The projectiles' sprites** were in OAM all along - parked off screen at
+x = 319 when unused, which is why a set-difference against a no-item frame
+found nothing - and they are the SMALL sprite size, which in this OBSEL is
+8x8 (the karts' "16x16" quadrants are the large size). One tile each:
+green `$FC`, red `$FE`, from the shared blob at `$C1:0000` (VRAM tile n =
+blob tile n − `$EF`), sprite palette 4, decoded pixel-exact. The dropped
+banana is `$F9`, whose bytes are in the blob at `$C1:4552` - most likely a
+theme object sheet, since a banana on the road is a bank-`$85` entity (it
+takes its four coins through `$85:E3E0`'s table) - and it renders dark
+with palette 4: its palette is OPEN.
+
 ## 8. Out of scope for this pass
 
 - **AI weapons** — the characters' own attacks (bank `$85` entities:
