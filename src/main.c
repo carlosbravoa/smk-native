@@ -1635,6 +1635,35 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
          * icon blinks every eight frames, and stops blinking when READY. */
         if (item_icons.ok) {
             int sc = rw >= 640 ? 3 : 2;
+            /* THE FRAME, from the HUD tilemap around the icon (the roulette
+             * VRAM dump, row -1 / 0 / +1 at columns 18-21):
+             *     $D0 $D1 $D1 $D0(h)        palette 7, attr $3C / $7C
+             *     $D2  icon  icon $D2(h)
+             *     $D3  icon  icon $D3(h)
+             * so the box is 32 x 24 with the icon in its lower two rows. */
+            {
+                static const struct { int col, row, tile; bool hf; } F[8] = {
+                    { 0, 0, 0xD0, false }, { 1, 0, 0xD1, false }, { 2, 0, 0xD1, false }, { 3, 0, 0xD0, true },
+                    { 0, 1, 0xD2, false }, { 3, 1, 0xD2, true },
+                    { 0, 2, 0xD3, false }, { 3, 2, 0xD3, true },
+                };
+                int fpal = 7;
+                for (int q = 0; q < 8; q++) {
+                    int tn = F[q].tile - SMK_ICON_BASE;
+                    if (tn < 0 || tn >= SMK_ICON_TILES) continue;
+                    const uint8_t *px = item_icons.px[tn];
+                    int bx = (144 + F[q].col * 8) * sc, by = F[q].row * 8 * sc;   /* map row 0 = screen y 0 */
+                    for (int yy = 0; yy < 8 * sc; yy++)
+                        for (int xx = 0; xx < 8 * sc; xx++) {
+                            int col = xx / sc; if (F[q].hf) col = 7 - col;
+                            uint8_t v = px[(yy / sc) * 8 + col];
+                            if (!v) continue;
+                            int sx = bx + xx, sy = by + yy;
+                            if (sx < 0 || sx >= rw || sy < 0 || sy >= rh) continue;
+                            fb[(size_t)sy * rw + sx] = trk->palette[(SMK_HUD_BG_PAL + fpal * 4 + v) & 0xFF];
+                        }
+                }
+            }
             int which = -1;                                  /* nothing held: nothing drawn */
             if (smk_item_present(&item) && !(item.word & 0x1000)) {
                 int id = smk_item_shown(&item);
@@ -1646,7 +1675,7 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
             if (which < 0) t0 = -1000;                         /* every tile out of range */
             /* the empty box is $E9 $E9 over $E8 $E8, not t..t+3 */
             static const int EMPTY[4] = { 0x69, 0x69, 0x68, 0x68 };
-            int ox = 152 * sc, oy = 0;
+            int ox = 152 * sc, oy = 8 * sc;                   /* the icon is map rows 1-2 */
             for (int q = 0; q < 4; q++) {
                 int tn = which == SMK_ITEMS + 1 ? EMPTY[q] : t0 + q;
                 if (tn < 0 || tn >= SMK_ICON_TILES) continue;
@@ -1658,7 +1687,7 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
                         if (!v) continue;
                         int sx = bx + xx, sy = by + yy;
                         if (sx < 0 || sx >= rw || sy < 0 || sy >= rh) continue;
-                        fb[(size_t)sy * rw + sx] = trk->palette[(pal * 4 + v) & 0xFF];
+                        fb[(size_t)sy * rw + sx] = trk->palette[(SMK_HUD_BG_PAL + pal * 4 + v) & 0xFF];
                     }
             }
         }

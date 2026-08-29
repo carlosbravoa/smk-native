@@ -1679,9 +1679,9 @@ static inline bool smk_item_blink(const smk_item *it)
 
 /* ---- The item icons (docs/ITEMS.md §7) ---------------------------------
  *
- * The slot is four BG3 tiles, not sprites - $81:B31C's $0C26/$0C28/$0C66/
- * $0C68 are cells of the HUD tilemap, one row apart - which is why no OAM
- * dump ever showed it.  The tiles are 2bpp at VRAM word $7000, and the
+ * The slot is four 2bpp BG tiles, not sprites - $81:B31C's $0C26/$0C28/
+ * $0C66/$0C68 are cells of the HUD tilemap, one row apart - which is why
+ * no OAM dump ever showed it.  The tiles are at VRAM word $7000, and the
  * mushroom decoded there in one look.  Their source is the compressed blob
  * at $C1:12F0 (1792 bytes = 112 tiles), found by decompressing every start
  * in banks $C0-$C7 and searching for the tile VRAM held: VRAM tile n is
@@ -1690,6 +1690,14 @@ static inline bool smk_item_blink(const smk_item *it)
 #define SMK_ICON_SRC    0xC112F0u
 #define SMK_ICON_TILES  112
 #define SMK_ICON_BASE   0x80          /* VRAM tile - this = blob tile */
+/* The HUD strip is MODE 0, where each background owns a 32-colour block,
+ * and the item box is on BG2: its palettes are CGRAM 32 + pal*4.  Read
+ * off the block that makes the user's screenshot - pal 4 there is
+ * sky/white/GREEN/black (the green shell), 5 white/red/black (red shell,
+ * mushroom), 6 white/yellow/black (banana, coin, star, lightning), 7
+ * white/light-blue/black (the frame).  BG3's block at 64 gave a blue
+ * shell, and block 0 a dark red one. */
+#define SMK_HUD_BG_PAL  32
 typedef struct {
     bool    ok;
     uint8_t px[SMK_ICON_TILES][64];   /* 2bpp -> palette index 0..3   */

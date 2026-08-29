@@ -218,9 +218,14 @@ the game's pixel for pixel (`tmp/icons_cmp.png`). The blink blank is
 `$B0`; the empty box's `$E8/$E9` decoded as noise in that VRAM and the
 port draws nothing when nothing is held.
 
-One thing to look at in play: the green shell's palette 4 read as
-yellow / black / dark red in the attract race's CGRAM, and the port shows
-what the CGRAM holds. If the held green shell looks dark, that is where.
+The COLOURS took three tries, and the user's screenshot of a held green
+shell (green, white highlights, black inside a light-blue frame) was the
+judge: the HUD strip is mode 0, each background owns a 32-colour CGRAM
+block, and the item box is on **BG2, block 32** - palette 4 there is
+sky/white/green/black. Block 0 gave a dark red shell and BG3's block 64 a
+blue one. The frame around the icon is `$D0 $D1 $D1 $D0` over `$D2`/`$D3`
+down the sides, h-flipped on the right, palette 7 (light blue), from the
+same tilemap dump.
 
 **The projectiles' sprites** were in OAM all along - parked off screen at
 x = 319 when unused, which is why a set-difference against a no-item frame
