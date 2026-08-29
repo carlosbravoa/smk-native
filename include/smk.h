@@ -1438,10 +1438,20 @@ bool smk_coin_load(const smk_rom *rom, smk_coinart *out);
 #define SMK_COIN_LIFE   150     /* frames before it gives up               */
 typedef struct {
     int      live;
-    int32_t  x, y, z;
+    int32_t  x, y, z;       /* kept for the world-space fallback          */
     int16_t  vx, vy, vz;
-    int      t;
+    int      t;             /* frames since the loss                       */
+    int      side;          /* which way this coin's path drifts           */
 } smk_coin;
+/* The path a spilled coin takes on screen, relative to the top centre of
+ * the player's kart sprite - CAPTURED from a real bump (NOTES 186).  The
+ * game does not throw the coin off the kart: it appears four frames later
+ * far up the screen, rises, falls, bounces once and is gone after 44
+ * frames.  The port replays that, mirrored left/right per coin. */
+#define SMK_COIN_DELAY   4
+typedef struct { int16_t dx, dy; uint8_t frame; } smk_coin_step;
+extern const smk_coin_step SMK_COIN_PATH[];
+extern const int SMK_COIN_PATH_LEN;
 /* `count` coins out of a kart at (x,y) travelling on `heading` */
 void smk_coinfx_spawn(smk_coin *c, int n, int32_t x, int32_t y,
                       uint16_t heading, int16_t kvx, int16_t kvy, int count);

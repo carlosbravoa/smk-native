@@ -11,6 +11,11 @@
 /* The shared sprite blob is uploaded to VRAM from tile 48, so tile n's 32
  * bytes are at (n - 48) * 32 in it.  Established by dumping VRAM at a real
  * coin loss and finding those exact bytes in the blob (NOTES 183). */
+const smk_coin_step SMK_COIN_PATH[] =
+#include "coin_path.inc"
+;
+const int SMK_COIN_PATH_LEN = (int)(sizeof SMK_COIN_PATH / sizeof SMK_COIN_PATH[0]);
+
 #define BLOB_FIRST_TILE 48
 static const int COIN_TILE[SMK_COIN_FRAMES] = { 0x86, 0xA2, 0x60 };
 
@@ -54,43 +59,17 @@ bool smk_coin_load(const smk_rom *rom, smk_coinart *out)
 void smk_coinfx_spawn(smk_coin *c, int n, int32_t x, int32_t y,
                       uint16_t heading, int16_t kvx, int16_t kvy, int count)
 {
+    (void)heading; (void)kvx; (void)kvy;
     for (int i = 0; i < count; i++) {
         int slot = -1;
         for (int s = 0; s < n; s++) if (!c[s].live) { slot = s; break; }
-        if (slot < 0) return;                     /* all busy: drop it */
+        if (slot < 0) return;
         smk_coin *k = &c[slot];
         memset(k, 0, sizeof *k);
         k->live = 1;
-        k->x = x; k->y = y; k->z = 0;
-        /* FORWARD and fanned, not backwards.
-         *
-         * The recorded loss shows the coin appearing high on screen
-         * (y 67) and coming DOWN toward the camera (y 114) while sliding
-         * left - so it is thrown ahead of the kart and the kart then
-         * drives past it.  Thrown backwards it lands behind a camera that
-         * looks forward, and is never drawn at all, which is exactly what
-         * the first version of this did (NOTES 183). */
-        /* UP and BACK, and it does NOT ride along with the kart.  The
-         * first version added the kart's own velocity, so a coin knocked
-         * out of a kart flew above it at the kart's speed for its whole
-         * arc - "a coin on its side on top of Mario's head" in every
-         * picture (the user).  A coin is left behind: it goes up, drifts
-         * back a little, and the kart drives on without it. */
-        /* WITH the kart, and up.  The recorded loss (NOTES 183) has the
-         * coin holding its place on screen through its arc - it rides
-         * along at the kart's speed and only rises and falls - which is
-         * also why one sits "on top of Mario's head" in a picture taken
-         * eight frames after a bump.  Two other launches were tried and
-         * were worse: backward is behind the camera and never drawn;
-         * slower-than-the-kart drops below the screen's bottom edge.  What
-         * made it look permanent was the BOUNCE, which is gone: a coin
-         * lands once and is done. */
-        uint16_t a = (uint16_t)(heading + (uint16_t)((i - count / 2) * 0x0C00));
-        int16_t sx, cy;
-        smk_dsp_sincos(a, 60, &sx, &cy);
-        k->vx = (int16_t)(kvx + sx);
-        k->vy = (int16_t)(kvy - cy);
-        k->vz = (int16_t)(SMK_COIN_RISE - (i & 1) * 40);
+        k->x = x; k->y = y;
+        k->side = (i & 1) ? -1 : 1;                /* fan: alternate sides */
+        k->t = -i;                                 /* and stagger by a frame */
     }
 }
 
@@ -99,11 +78,7 @@ void smk_coinfx_step(smk_coin *c, int n)
     for (int i = 0; i < n; i++) {
         smk_coin *k = &c[i];
         if (!k->live) continue;
-        k->x += (int32_t)k->vx << (SMK_POS_SHIFT - 8);
-        k->y += (int32_t)k->vy << (SMK_POS_SHIFT - 8);
-        k->z += (int32_t)k->vz << 8;
-        k->vz = (int16_t)(k->vz - SMK_COIN_GRAV);
-        if (k->z <= 0 && k->t > 2) { k->live = 0; continue; }   /* landed: gone */
-        if (++k->t > SMK_COIN_LIFE) k->live = 0;
+        k->t++;
+        if (k->t >= SMK_COIN_DELAY + SMK_COIN_PATH_LEN) k->live = 0;
     }
 }

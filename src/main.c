@@ -1482,38 +1482,34 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
                              other, loaded, fb, rw, rh);
         }
     }
-    /* the spilled coins: projected like any world object, lifted by their
-     * own height, and spinning through the three measured frames */
-    if (coin_art.ok) {
+    /* the spilled coins: the CAPTURED screen path (SMK_COIN_PATH), relative
+     * to the top centre of the player's kart sprite, at the kart's scale,
+     * with the game's own spin frame per step.  Not projected: the game
+     * shows the coin appearing far up the screen four frames after the
+     * loss and coming down to the kart, which no throw from the kart
+     * reproduces (NOTES 186). */
+    if (coin_art.ok && !celebrating) {
+        int scale = rw / 256; if (scale < 1) scale = 1;
+        int prow = (int)(SMK_PLAYER_LINE * (float)rh / 112.0f);
+        int kx = rw / 2, ky = prow - player_height_px * scale - 32 * scale;
         for (int i = 0; i < SMK_COINFX_MAX; i++) {
             const smk_coin *kc = &coins_fx[i];
             if (!kc->live) continue;
-            float px, py, sc;
-            if (!smk_project(cam, (float)smk_kart_px(kc->x),
-                             (float)smk_kart_px(kc->y), rw, rh, &px, &py, &sc))
-                continue;
-            int scale = rw / 256; if (scale < 1) scale = 1;
-            float kdx = (float)smk_kart_px(kc->x) - cam->x;
-            float kdy = (float)smk_kart_px(kc->y) - cam->y;
-            float kd = sqrtf(kdx * kdx + kdy * kdy);
-            if (kd < SMK_OBJ_NEAR) kd = SMK_OBJ_NEAR;
-            /* the same 1/distance law the entities use, and never bigger
-             * than the kart it fell out of */
-            int cs = (int)((float)scale * SMK_KART_SCALE_K / kd * 0.5f + 0.5f);
-            if (cs < 1) cs = 1;
-            if (cs > scale) cs = scale;
-            int f = (kc->t / SMK_COIN_SPIN) % SMK_COIN_FRAMES;
-            int lift = (int)(kc->z / 25029) * scale;
-            int x0 = (int)px - SMK_COIN_PX * cs / 2;
-            int y0 = (int)py - SMK_COIN_PX * cs - lift;
-            for (int yy = 0; yy < SMK_COIN_PX * cs; yy++) {
-                int sy = y0 + yy;
+            int step = kc->t - SMK_COIN_DELAY;
+            if (step < 0 || step >= SMK_COIN_PATH_LEN) continue;
+            const smk_coin_step *st = &SMK_COIN_PATH[step];
+            int cx = kx + st->dx * kc->side * scale, cy = ky + st->dy * scale;
+            if (getenv("SMK_COIN_TRACE"))
+                printf("coin t%d screen (%d,%d)\n", kc->t, cx * 256 / rw, cy * 224 / rh);
+            const uint8_t *art = coin_art.px[st->frame];
+            for (int yy = 0; yy < SMK_COIN_PX * scale; yy++) {
+                int sy = cy + yy;
                 if (sy < 0 || sy >= rh) continue;
-                const uint8_t *row = coin_art.px[f] + (yy / cs) * SMK_COIN_PX;
-                for (int xx = 0; xx < SMK_COIN_PX * cs; xx++) {
-                    int sx = x0 + xx;
+                const uint8_t *row = art + (yy / scale) * SMK_COIN_PX;
+                for (int xx = 0; xx < SMK_COIN_PX * scale; xx++) {
+                    int sx = cx - SMK_COIN_PX * scale / 2 + xx;
                     if (sx < 0 || sx >= rw) continue;
-                    uint8_t v = row[xx / cs];
+                    uint8_t v = row[xx / scale];
                     if (!v) continue;
                     fb[(size_t)sy * rw + sx] = trk->palette[(0xE0 + v) & 0xFF];
                 }

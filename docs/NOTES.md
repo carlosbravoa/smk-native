@@ -7698,3 +7698,38 @@ read as bytes it said ±4, which is nothing.
 Gates: the roulette against the user's race 285/285 frames exact, plus a
 shell's launch speed, the red's turn cap, and both hit reactions
 (selftest 76 -> 83). Every earlier gate unchanged.
+
+---
+
+**186** — The spilled coin's path, captured from a bump the game made.
+
+The user, on the coin that sat over Mario's head in every picture, and on
+how to measure it: *"start any race. accelerate as soon as the countdown
+ends and drive straight: you will hit the kart in front of you."*
+
+`tools/labs/coinarc.py` does that in the oracle - P1 parked behind the
+kart ahead with B held - and logs every OAM sprite wearing a coin tile
+(`$86/$A2/$60`, palette 6) with its screen position, frame by frame.
+The game bumped at frame 7 and took a coin; the coin sprite appeared at
+frame **11** - four frames later - at (117, 67) in the top-half view whose
+kart sits at (112..144, 70..102): level with the kart's top and ahead.
+It rose to y 45 by frame 21, fell to 114 by frame 41, **bounced** once
+(114 → 110 → ... → 94), and was gone at frame 55: 44 frames on screen,
+drifting left two pixels a frame the whole way, spinning `$A2 → $60 →
+$86` every four.
+
+That is not a coin thrown off the kart. Three physical launches were
+tried before measuring (with the kart's velocity: it hovered over the
+driver; backward: behind the camera, never drawn; slower than the kart:
+below the bottom edge) and none could have produced a coin that appears
+four frames late, far up the screen. So the port REPLAYS the captured
+path relative to the kart sprite's top centre (`src/coin_path.inc`), at
+the kart's scale, with the game's own spin frame per step, mirrored
+left/right for successive coins. The world-space `smk_coin` fields stay
+for a future measured launch; the bounce and the lifetime are the
+capture's.
+
+LABELLED: the sideways drift is that one bump's geometry (the kart was
+turning), kept rather than guessed away; and the capture is the 2P
+top-half view, whose perspective is squashed, so the vertical extent may
+read slightly short in the full-height view.
