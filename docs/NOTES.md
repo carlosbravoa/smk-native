@@ -7853,3 +7853,37 @@ anything in these runs, and if it exists a recording of it (a higher
 class, a later cup) is the gate. Until then the AI has no weapons in the
 port, and that is not a shortcut but the measured behaviour of every
 race we hold.
+
+### Addendum — the user confirms they exist; where else was looked
+
+*"every cpu character has their own single power. while mario and Luigi
+become invisible, the rest of the players have one item that can drop
+behind, static, or throw ahead. shells for koopa troopa, banana for dk
+jr, a shrinking mushroom for toad and princess, an egg for yoshi and a
+fire ball for bowser, that is the only non static item."*
+
+One item per kart suggested it lives in the kart's own block, so
+`tools/labs/mame/kartdump.lua` dumped `$1000..$17FF` every frame of the
+100cc race and `lowdump.lua` the `$0C00..$0FFF` window. Every word that
+moves on an AI kart is accounted for: `+$10` bit 11 with `+$50` = the
+human's shell block while a red homes in (37 frames), `+$10 = $7000` for
+the 8 frames of a hit, `+$5E` the 7→0 bump countdown with `+$50` = the
+other kart, `+$AA/+$E4` the tumble of the two karts the human hit, `+$C8`
+the AI's `$10/$08/$00` driving flags, `+$3A/+$3C` its waypoint target,
+`+$1E/+$20/+$26` the ramp jumps. In the low window `$0D34` is the object
+segment, `$0D50/$0D52` the two coin-spill lists, `$0E12/$0E5E` lap
+countdowns; `$0DFA = $F174` throughout (the two-block human list) and
+`$0E50 = 0`.
+
+The ROM side: the track-object kinds are a script chain at
+`$81:8CB9..8D1B` (7-word records `[$9136, $0404, $91D0, handlerA,
+handlerB, $90F6, next]` — `$81:91D0` arms a block with `$12 = $C000`),
+one record per theme object (pipe, Thwomp, Boo, mole, …) and none for a
+weapon. The only other spawner that arms a block with the projectile
+handler `$F243` is `$80:F56D`, which reads records 16–23 of the track's
+own object list — moving track furniture, not a kart's throw.
+
+So in a full 100cc Mario Circuit 1 race the CPU field never armed a
+weapon. It is real and it was not there; the gate is a recording in
+which it happens (a higher class or a later cup is the guess, not a
+finding).
