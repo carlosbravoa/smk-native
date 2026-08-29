@@ -7979,3 +7979,34 @@ every four frames (OURS). The BANANA is not in any resident sprite tile
 differs from the shell's only in the kart's own animated quadrants — so
 it is neither resident nor uploaded on the drop. Still the icon on the
 road, still open.
+
+### Addendum — the second test
+
+*"2. The item box is still garbled. You added a second box below the
+item box assuming that it was for holding the position as it is wrong.
+There wasn't a second box and the number you see in screenshots is just
+a placeholder for Player 1 or two until you get your first item. 3.
+Lakitu's waving flag: the flag is still on the wrong hand. 5. the shell:
+throwing a green shell is still using the wrong sprite. The in game
+sprite is at least the same one in the item box if not more detailed.
+6. I cannot drop a shell behind me with down arrow plus item button. 7.
+dropping a banana just appears at the car's butt and left behind, no
+animation (right now it appears overhead first)."*
+
+- The box is two rows in a one-player race; the 2P attract race's map
+  carries two more rows with the "2" the user names. Rows 2-3 and the
+  place digit removed.
+- The flag: every flag tile in the finish capture carries attribute
+  `$6A` — bit 6, H-flip — and the port drew them straight. Flipped now.
+  The lap sign, the same measurement, was read right; the flag was
+  drawn from the tile list without its attribute.
+- The shell: the effects-tile dome is not it either. The user's word is
+  the reference: the road shell looks like the item box's shell, so it
+  is drawn from the icon tiles like the banana, until a replay with one
+  on screen says otherwise.
+- 6 and 7 are one bug: `in.down` is the BRAKE (SNES Y: X button, left
+  trigger, keyboard Down), not the d-pad, and a pad's d-pad DOWN only
+  fed menu navigation. A new `dpad_down` level (d-pad, left stick down,
+  keyboard Down/S) is what the item reads, so button + DOWN now drops
+  the banana or shell behind; the button alone throws, which is the
+  arc the user saw "appear overhead" when they meant to drop.

@@ -30,6 +30,7 @@ typedef struct {
     bool hop;
     /* the shell: menu navigation and the item button, all edge-triggered */
     bool nav_up, nav_down, nav_left, nav_right, confirm, back;
+    bool dpad_down;         /* the d-pad held DOWN (level): item + DOWN drops it behind */
     bool item;
 } input_state;
 
@@ -135,6 +136,7 @@ static void pump(input_state *in)
     const Uint8 *k = SDL_GetKeyboardState(NULL);
     in->up    = k[SDL_SCANCODE_UP]    || k[SDL_SCANCODE_W];
     in->down  = k[SDL_SCANCODE_DOWN]  || k[SDL_SCANCODE_S];
+    in->dpad_down = k[SDL_SCANCODE_DOWN] || k[SDL_SCANCODE_S];
     in->left  = k[SDL_SCANCODE_LEFT]  || k[SDL_SCANCODE_A];
     in->right = k[SDL_SCANCODE_RIGHT] || k[SDL_SCANCODE_D];
     in->shift = k[SDL_SCANCODE_LSHIFT] || k[SDL_SCANCODE_RSHIFT];
@@ -149,6 +151,8 @@ static void pump(input_state *in)
         #define BTN(b) SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_##b)
         in->up    |= BTN(A) || rt > TRIG;                 /* SNES B: accel */
         in->down  |= BTN(X) || lt > TRIG;                 /* SNES Y: brake */
+        in->dpad_down |= BTN(DPAD_DOWN)
+                      || SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_LEFTY) > DEAD;
         /* A stick is only believed once it has been seen at rest.  A
          * pad that reports a stuck or miscalibrated axis would otherwise
          * steer for ever with nothing touching it, and the player has no
@@ -393,6 +397,11 @@ static void draw_finish_flag(uint32_t *fb, int rw, int rh,
     static const struct { int dx, dy; } AT[5] = {
         { 16, 16 }, { 0, 16 }, { 16, 0 }, { 0, 0 }, { 24, 8 },
     };
+    /* the flag's OAM attribute is $6A through the whole pass (tmp/
+     * lakflag.log: tiles $6C/$6E/$80/$82/$8C/$8E) - bit 6 set, H-FLIPPED.
+     * Drawn straight it sat on the wrong hand and read as a broken
+     * sprite (the user, twice). */
+    static const bool HF[5] = { false, false, true, false, true };
     for (int p = 0; p < 5; p++) {
         int x0 = (fg.x + AT[p].dx) * sc, y0 = (fg.y + AT[p].dy) * sc;
         for (int yy = 0; yy < 16 * sc; yy++) {
@@ -402,7 +411,7 @@ static void draw_finish_flag(uint32_t *fb, int rw, int rh,
             for (int xx = 0; xx < 16 * sc; xx++) {
                 int sx = x0 + xx;
                 if (sx < 0 || sx >= rw) continue;
-                uint8_t v = row[xx / sc];
+                uint8_t v = row[HF[p] ? 15 - xx / sc : xx / sc];
                 if (!v) continue;
                 fb[(size_t)sy * rw + sx] = palette[(SMK_START_PAL + v) & 0xFF];
             }
@@ -1546,15 +1555,19 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
         if (cs > scale) cs = scale;
         int lift = (int)(pr->z / 25029) * scale;
         int which = pr->kind == SMK_PROJ_RED ? 2 : pr->kind == SMK_PROJ_GREEN ? 1 : 0;
-        if (which == 0) {
+        {
             /* THE BANANA: the same drawing as the roulette icon (the user:
              * "the banana sprite in game and on the floor is the same as the
              * sprite in the roulette"), so it comes from the HUD tile set -
              * 2x2 2bpp tiles at $E4 on BG2's palette 6 (white / yellow /
              * black) - drawn the size of a 16 px object. */
+            /* and the SHELLS the same way - the user: "the in game sprite
+             * is at least the same one in the item box if not more
+             * detailed"; the effects-tile dome was not it either */
             if (!item_icons.ok) continue;
-            int t0 = item_icons.tile[SMK_ITEM_BANANA] - SMK_ICON_BASE;
-            int bpal = item_icons.pal[SMK_ITEM_BANANA];
+            int iid = which == 2 ? SMK_ITEM_RED : which == 1 ? SMK_ITEM_GREEN : SMK_ITEM_BANANA;
+            int t0 = item_icons.tile[iid] - SMK_ICON_BASE;
+            int bpal = item_icons.pal[iid];
             int x0 = (int)px - 8 * cs, y0 = (int)py - 16 * cs - lift;
             for (int q = 0; q < 4; q++) {
                 int tn = t0 + q;
@@ -1682,14 +1695,18 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
              * There is no $D0/$D1 row: that was a misread of the roulette
              * dump and drew a black bar over the box (the user). */
             {
-                static const struct { int col, row, tile; bool hf; } F[8] = {
+                /* TWO rows in a one-player race.  The 2P attract race's
+                 * map has two more under it with a "2" in them; the user:
+                 * "There wasn't a second box and the number you see is
+                 * just a placeholder for Player 1 or two until you get
+                 * your first item.  The position in game is a different
+                 * rendering mechanism." */
+                static const struct { int col, row, tile; bool hf; } F[4] = {
                     { 0, 0, 0xD2, false }, { 3, 0, 0xD2, true },
                     { 0, 1, 0xD3, false }, { 3, 1, 0xD3, true },
-                    { 0, 2, 0xD2, false }, { 3, 2, 0xD2, true },
-                    { 0, 3, 0xD3, false }, { 3, 3, 0xD3, true },
                 };
                 int fpal = 7;
-                for (int q = 0; q < 8; q++) {
+                for (int q = 0; q < 4; q++) {
                     int tn = F[q].tile - SMK_ICON_BASE;
                     if (tn < 0 || tn >= SMK_ICON_TILES) continue;
                     const uint8_t *px = item_icons.px[tn];
@@ -1718,28 +1735,6 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
              * the roulette's blank frame shows) */
             static const int USED[4] = { 0x69, 0x69, 0x68, 0x68 };
             static const int FRESH[4] = { 0x4C, 0x4D, 0x6A, 0x6B };
-            /* rows 2-3: the game keeps the place there, DMA'd into $EC-$EF
-             * as a 16x16 glyph the blob does not hold for every rank; the
-             * port sets the same place in the blob's own 8x16 digit font
-             * ($80+d over $90+d), centred - ROM art, our layout */
-            {
-                int r = hud_rank < 1 ? 1 : (hud_rank > 8 ? 8 : hud_rank);
-                for (int yy = 16 * sc; yy < 32 * sc; yy++)          /* the black card behind it */
-                    for (int xx = 152 * sc; xx < 168 * sc; xx++)
-                        if (xx < rw && yy < rh) fb[(size_t)yy * rw + xx] = 0xFF000000u;
-                for (int half = 0; half < 2; half++) {
-                    const uint8_t *px = item_icons.px[(half ? 0x10 : 0x00) + r];
-                    int bx = 156 * sc, by = (16 + half * 8) * sc;
-                    for (int yy = 0; yy < 8 * sc; yy++)
-                        for (int xx = 0; xx < 8 * sc; xx++) {
-                            uint8_t v = px[(yy / sc) * 8 + xx / sc];
-                            if (!v) continue;
-                            int sx = bx + xx, sy = by + yy;
-                            if (sx < 0 || sx >= rw || sy < 0 || sy >= rh) continue;
-                            fb[(size_t)sy * rw + sx] = trk->palette[(SMK_HUD_BG_PAL + 7 * 4 + v) & 0xFF];
-                        }
-                }
-            }
             int ox = 152 * sc, oy = 0;                         /* the icon is map rows 0-1 */
             for (int q = 0; q < 4; q++) {
                 int tn = (which == SMK_ITEMS + 1) ? USED[q]
@@ -2643,12 +2638,12 @@ int main(int argc, char **argv)
                         case SMK_ITEM_BANANA:
                             smk_proj_throw(projs, SMK_PROJ_MAX, SMK_PROJ_BANANA, &kart,
                                            player.heading, 0, -1, false,
-                                           !in.down && !getenv("SMK_BANANA_DOWN"));
+                                           !in.dpad_down && !getenv("SMK_BANANA_DOWN"));
                             break;
                         case SMK_ITEM_GREEN:
                             smk_proj_throw(projs, SMK_PROJ_MAX, SMK_PROJ_GREEN, &kart,
                                            player.heading, 0, -1,
-                                           in.down || getenv("SMK_SHELL_DOWN"), false);
+                                           in.dpad_down || getenv("SMK_SHELL_DOWN"), false);
                             break;
                         case SMK_ITEM_RED:
                             smk_proj_throw(projs, SMK_PROJ_MAX, SMK_PROJ_RED, &kart,
