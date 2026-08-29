@@ -1,5 +1,6 @@
 /* SDL2 host for the Super Mario Kart reimplementation. */
 #include "smk.h"
+#include "itemart.inc"
 
 #ifndef SMK_BUILD
 #define SMK_BUILD "dev"
@@ -1558,80 +1559,48 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
         if (cs < 1) cs = 1;
         if (cs > scale) cs = scale;
         int lift = (int)(pr->z / 25029) * scale;
-        int which = pr->kind == SMK_PROJ_RED ? 2 : pr->kind == SMK_PROJ_GREEN ? 1 : 0;
+        /* THE ROAD ITEMS' ART (NOTES 192): the size ladders the game's own
+         * scaler produces, from the ripped sheet, drawn through the OBJ
+         * palettes they quantize to without error.  The tier is picked by
+         * the width the karts' 1/distance law asks for, then drawn at the
+         * screen scale; the shell spins through its three frames every
+         * four frames (OURS, the rate). */
         {
-            /* THE BANANA: the same drawing as the roulette icon (the user:
-             * "the banana sprite in game and on the floor is the same as the
-             * sprite in the roulette"), so it comes from the HUD tile set -
-             * 2x2 2bpp tiles at $E4 on BG2's palette 6 (white / yellow /
-             * black) - drawn the size of a 16 px object. */
-            /* and the SHELLS the same way - the user: "the in game sprite
-             * is at least the same one in the item box if not more
-             * detailed"; the effects-tile dome was not it either */
-            if (!item_icons.ok) continue;
-            int iid = which == 2 ? SMK_ITEM_RED : which == 1 ? SMK_ITEM_GREEN : SMK_ITEM_BANANA;
-            int bpal;
-            /* the AI's three (OURS, labelled S31): the poison mushroom is
-             * the mushroom icon in the lightning's palette, the egg the
-             * green shell in the Boo's, the fireball the red shell in the
-             * mushroom's - the roulette has no art for them */
-            if (pr->kind == SMK_PROJ_MUSHROOM) { iid = SMK_ITEM_MUSHROOM; bpal = item_icons.pal[SMK_ITEM_LIGHTNING]; }
-            else if (pr->kind == SMK_PROJ_EGG) { iid = SMK_ITEM_GREEN; bpal = item_icons.pal[SMK_ITEM_BOO]; }
-            else if (pr->kind == SMK_PROJ_FIREBALL) { iid = SMK_ITEM_RED; bpal = item_icons.pal[SMK_ITEM_MUSHROOM]; }
-            else bpal = item_icons.pal[iid];
-            int t0 = item_icons.tile[iid] - SMK_ICON_BASE;
-            /* the size: the karts' own 1/distance law (SMK_KART_SCALE_K /
-             * distance, times the screen scale), continuous - the two-step
-             * integer scale before this "did not scale with distance"
-             * (the user) */
-            float s = SMK_KART_SCALE_K / kd * (float)scale;
-            if (s > 1.5f * (float)scale) s = 1.5f * (float)scale;
-            int wpx = (int)(16.0f * s + 0.5f); if (wpx < 2) wpx = 2;
-            int x0 = (int)px - wpx / 2, y0 = (int)py - wpx - lift;
-            for (int yy = 0; yy < wpx; yy++) {
+            const smk_itemart_tier *lad; int nl, frames = 1, ipal;
+            switch (pr->kind) {
+            case SMK_PROJ_GREEN: case SMK_PROJ_RED:
+                lad = pr->kind == SMK_PROJ_RED ? SMK_ITEMART_SHELL_RED : SMK_ITEMART_SHELL;
+                nl = SMK_ITEMART_SHELL_N; frames = SMK_ITEMART_SHELL_FRAMES;
+                ipal = pr->kind == SMK_PROJ_RED ? SMK_ITEMART_SHELL_RED_PAL : SMK_ITEMART_SHELL_PAL; break;
+            case SMK_PROJ_MUSHROOM: lad = SMK_ITEMART_MUSHROOM; nl = SMK_ITEMART_MUSHROOM_N; ipal = SMK_ITEMART_MUSHROOM_PAL; break;
+            case SMK_PROJ_EGG:      lad = SMK_ITEMART_EGG;      nl = SMK_ITEMART_EGG_N;      ipal = SMK_ITEMART_EGG_PAL; break;
+            case SMK_PROJ_FIREBALL: lad = SMK_ITEMART_FIREBALL; nl = SMK_ITEMART_FIREBALL_N; ipal = SMK_ITEMART_FIREBALL_PAL; break;
+            default:                lad = SMK_ITEMART_BANANA;   nl = SMK_ITEMART_BANANA_N;   ipal = SMK_ITEMART_BANANA_PAL; break;
+            }
+            float want = 16.0f * SMK_KART_SCALE_K / kd;          /* native px */
+            if (want > 16.0f) want = 16.0f;
+            int ntier = nl / frames;
+            int tier = smk_itemart_pick(lad, ntier, want);       /* frame 0 of each tier leads */
+            const smk_itemart_tier *t = &lad[tier * frames + (frames > 1 ? (int)((fx_ticks >> 2) % (unsigned)frames) : 0)];
+            float s = (float)scale * (want / 16.0f) * (16.0f / (float)t->w);
+            if (s < 0.5f) s = 0.5f;
+            int dw = (int)((float)t->w * s + 0.5f), dh = (int)((float)t->h * s + 0.5f);
+            if (dw < 1 || dh < 1) continue;
+            int x0 = (int)px - dw / 2, y0 = (int)py - dh - lift;
+            for (int yy = 0; yy < dh; yy++) {
                 int sy = y0 + yy;
                 if (sy < 0 || sy >= rh) continue;
-                int ty = yy * 16 / wpx;
-                for (int xx = 0; xx < wpx; xx++) {
+                int ty = yy * t->h / dh;
+                for (int xx = 0; xx < dw; xx++) {
                     int sx = x0 + xx;
                     if (sx < 0 || sx >= rw) continue;
-                    int tx = xx * 16 / wpx;
-                    int tn = t0 + (ty >> 3) * 2 + (tx >> 3);
-                    if (tn < 0 || tn >= SMK_ICON_TILES) continue;
-                    uint8_t v = item_icons.px[tn][(ty & 7) * 8 + (tx & 7)];
-                    /* colour 3 is the box's black interior on the HUD; on
-                     * the road it is the ground showing through */
-                    if (!v || v == 3) continue;
-                    fb[(size_t)sy * rw + sx] = trk->palette[(SMK_HUD_BG_PAL + bpal * 4 + v) & 0xFF];
+                    int tx = xx * t->w / dw;
+                    uint8_t v = t->px[ty * t->w + tx];
+                    if (!v) continue;
+                    fb[(size_t)sy * rw + sx] = trk->palette[(0x80 + ipal * 16 + v) & 0xFF];
                 }
             }
             continue;
-        }
-        /* THE SHELL: a 16x16 sprite from the effects tiles (sprite tiles
-         * $100-$103 / $110-$113 in OBJ VRAM, tools/labs/vramdump.py, NOTES
-         * 189): two frames, A = $100 $101 / $110 $111 and B = $102 $103 /
-         * $112 $113, green in sprite palette 0 and red in palette 1.  The
-         * 8x8 tile drawn before was Lakitu's green light (the user).  The
-         * frame rate of its spin is OURS (four frames each). */
-        if (!fx.ok) continue;
-        int fr = (fx_ticks >> 2) & 1;
-        static const int Q[2][4] = { { 0, 1, 16, 17 }, { 2, 3, 18, 19 } };
-        int spal = which == 2 ? 1 : 0;
-        int x0 = (int)px - 8 * cs, y0 = (int)py - 16 * cs - lift;
-        for (int q = 0; q < 4; q++) {
-            const uint8_t *tp = fx.tiles[Q[fr][q]];
-            int bx = x0 + (q & 1) * 8 * cs, by = y0 + (q >> 1) * 8 * cs;
-            for (int yy = 0; yy < 8 * cs; yy++) {
-                int sy = by + yy;
-                if (sy < 0 || sy >= rh) continue;
-                for (int xx = 0; xx < 8 * cs; xx++) {
-                    int sx = bx + xx;
-                    if (sx < 0 || sx >= rw) continue;
-                    uint8_t v = tp[(yy / cs) * 8 + xx / cs];
-                    if (!v) continue;
-                    fb[(size_t)sy * rw + sx] = trk->palette[(0x80 + spal * 16 + v) & 0xFF];
-                }
-            }
         }
     }
     if (show_kart && !celebrating && karts->frames

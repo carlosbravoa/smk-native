@@ -1750,6 +1750,20 @@ bool smk_itemicons_load(const smk_rom *rom, smk_itemicons *out);
  * so a shell is ONE tile - $FC green, $FE red, $F9 the banana - and the
  * "16x16" karts are the four-quadrant 16x16s of NOTES 182. */
 typedef struct { bool ok; uint8_t px[3][8 * 8]; } smk_projart;     /* banana, green, red */
+/* The road items' art: size ladders as the game's own scaler draws them,
+ * imported from a rip of that output (src/itemart.inc, NOTES 192) since
+ * the ROM holds no tiles for them.  Palette-indexed against the OBJ
+ * palettes, 0 transparent. */
+typedef struct { uint8_t w, h; uint8_t px[16 * 16]; } smk_itemart_tier;
+/* which tier of a ladder for a wanted width in native px: nearest */
+static inline int smk_itemart_pick(const smk_itemart_tier *t, int n, float want)
+{
+    int best = 0;
+    for (int i = 1; i < n; i++)
+        if ((want - (float)t[i].w) * (want - (float)t[i].w)
+            < (want - (float)t[best].w) * (want - (float)t[best].w)) best = i;
+    return best;
+}
 bool smk_projart_load(const smk_rom *rom, smk_projart *out);
 #define SMK_PROJ_PAL 4
 

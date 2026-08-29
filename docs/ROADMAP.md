@@ -74,9 +74,10 @@ box; the shrunk kart's half size; the shell's spin rate (its two 16x16
 frames are the game's, NOTES 189; the star's palette sequence is now
 MEASURED); a dropped green shell being static and what it does when hit;
 a starred kart knocking obstacles out (the real pipe's flight is not
-measured); and the banana's road SPRITE (the roulette icon stands in -
-it is in no resident sprite tile and is not uploaded on the drop,
-NOTES 189). The AI's own weapons are IN
+measured); and the road items' spin rate. The road items' ART is the ripped
+sheet's ladders through the ROM's own palettes (NOTES 192: the game
+computes them, the ROM holds no tiles; the red shell's small tiers are a
+remap of the green's, labelled). The AI's own weapons are IN
 (NOTES 190, from the user's `attack` recording): the same two projectile
 slots as the human's, carried behind the kart 58 frames then let go —
 MEASURED; OURS: the 160 px trigger distance and the 640-frame cooldown

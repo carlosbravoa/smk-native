@@ -8143,3 +8143,35 @@ size is `rw/256 * 66 / distance`, capped at the player's own - the same
 law the road objects follow since NOTES 189 - through
 `smk_draw_sprite_scaled`, mirror pose included. LABELLED (S10): the
 continuous size is ours; the game steps.
+
+## 192. The road items' art: the sheet is the source, through the ROM's palettes
+
+The user: *"go and decode the real sprites. We have the reference (and we
+could even use the ones in the sheet, they have been extracted from the
+rom by someone else on the internet)."*
+
+The decode was tried to the end first. The per-kind pointers in the
+projectile block (`+$6E = $80:F6DB/F6E3/F6EB/...`) are script-entry
+pointers, not art; the effect "templates" (`effects.c`) are OAM
+assemblies of tiles, not pixels; and a scan of the whole ROM for a 32x32
+kart-layout frame whose 2:1 sample is any of the sheet's full-size items
+(the far-kart minifier's shape, NOTES 076) found nothing, raw or in any
+decompressible stream, on top of NOTES 190's 16x16 sweeps. The bytes the
+game writes into sprite tiles `$160/$170` for a live item exist nowhere
+in the ROM: the ladder is computed.
+
+So the sheet (`tmp/new/items-on-the-road.png`, QuadFactor's rip of the
+game's scaler output) is imported by `tools/labs/itemsheet.py` into
+`src/itemart.inc`: the green shell's 7 tiers x 3 spin frames, the
+banana's 8 tiers, the poison mushroom's 7, the egg's 8, the fireball's 8.
+Each item quantizes with ZERO error onto one of the game's own OBJ
+palettes (shell 6, banana / mushroom / egg 5, fireball 6, red shell 5),
+which is the proof the rip's colours are the ROM's - so they are stored
+as palette indices and drawn through `trk->palette` like everything
+else. The red shell has its own 16x16 on the sheet (its shading differs
+from the green's, not only its palette); its smaller tiers are the green
+ladder's indices remapped by the map the two full-size shells define,
+with a red-for-green colour swap for the indices they never vote on
+(LABELLED). The tier is picked by the width the karts' 1/distance law
+asks for and drawn at the screen scale; the shell's three frames turn
+every four frames (LABELLED: the rate).
