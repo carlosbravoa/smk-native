@@ -1383,27 +1383,25 @@ static void draw_ai_kart(const smk_rom *rom, const smk_track *trk,
         if (getenv("SMK_TIER_TRACE") && (fx_ticks % 10) == 0)
             printf("tier f%u kart %d kd %.0f kwant %.1f tier %d (h %d) mirror %d\n",
                    fx_ticks, k, kd, kwant, kt, KTIER[kt].h, (int)mirror);
-        if (KTIER[kt].base < 0) {           /* the far, half-size draw */
-            /* A MIRRORED pose is frame 0's left half FOLDED (NOTES 080),
-             * and smk_draw_sprite_mini does not fold - it samples all 32
-             * columns 2:1, so the junk right half came with it and the
-             * sprite garbled at exactly this tier and no other.  mirror2
-             * folds and minifies in one go (NOTES 138). */
-            if (mirror)
-                smk_draw_sprite_mirror2(&other[k], 0, trk->palette, d2->pal,
-                                        (int)px, (int)py, kscale, true,
-                                        fb, rw, rh, rw);
-            else
-                smk_draw_sprite_mini(&other[k], f, trk->palette, d2->pal,
-                                     (int)px, (int)py, kscale, hf,
-                                     fb, rw, rh, rw);
-        } else {
-            /* re-pick the rotation frame inside the chosen tier */
-            uint16_t r16 = (uint16_t)rel;
-            bool hf2 = false;
-            int f2 = mirror ? KTIER[kt].base
-                            : smk_sprite_for_heading(KTIER[kt].base,
-                                                     r16, &hf2);
+        /* THE SIZE IS CONTINUOUS (the user: "normal size when far, midget
+         * at mid distance, then magically grow back").  The tiers pick the
+         * ART, as the game does; the pixel size follows the karts' own
+         * 1/distance law - full at the player's depth, never larger - so
+         * a kart is smaller than the one in front of it at every window
+         * shape.  Drawing every tier at rw/256 and the mini at half was
+         * right only for the 256x224 view the tiers were made for: in a
+         * 16:9 window the road compresses vertically and a kart 100 px
+         * away sits at the horizon at 75 px tall (LABELLED: ours, S10). */
+        float ks = (float)kscale * (SMK_KART_SCALE_K / kd);
+        if (ks > (float)kscale) ks = (float)kscale;
+        if (racers[k].shrink_t > 0) ks *= 0.5f;
+        int fdraw;
+        bool hf2 = false;
+        if (KTIER[kt].base < 0 || mirror) fdraw = mirror ? 0 : f;
+        else fdraw = smk_sprite_for_heading(KTIER[kt].base, (uint16_t)rel, &hf2);
+        if (!mirror && KTIER[kt].base >= 0) { /* hf2 set above */ }
+        else hf2 = hf;
+        {
             /* The winner's pose is NOT reachable yet, and this is the
              * honest state of it (NOTES 180).  The user's screenshot of
              * the original shows it exactly: face on, mouth open, both
@@ -1429,14 +1427,9 @@ static void draw_ai_kart(const smk_rom *rom, const smk_track *trk,
             static const int AI_STAR_PAL[8] = { 5, 4, 7, 6, 1, 0, 3, 2 };
             int apal = (racers && racers[k].star_t > 0)
                      ? 0x80 + AI_STAR_PAL[fx_ticks & 7] * 0x10 : d2->pal;
-            if (mirror)
-                smk_draw_sprite_mirror(&other[k], f2, trk->palette,
-                                       apal, (int)px, (int)py,
-                                       kscale, fb, rw, rh, rw);
-            else
-                smk_draw_sprite(&other[k], f2, trk->palette, apal,
-                                (int)px, (int)py, kscale, hf2,
-                                fb, rw, rh, rw);
+            smk_draw_sprite_scaled(&other[k], fdraw, trk->palette, apal,
+                                   (int)px, (int)py, ks, hf2, mirror,
+                                   fb, rw, rh, rw);
         }
 }
 

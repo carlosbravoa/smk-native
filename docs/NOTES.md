@@ -8116,3 +8116,30 @@ kind; the items are the kinds effects.c does not handle yet. Render every
 record's template and the shell, banana, mushroom, egg and fireball
 should be there at full size, with the scaler's law to port beside the
 pipes' tiers. Until then the icons stand in (LABELLED, S31).
+
+## 191. The AI karts' size: continuous now, because the tiers were sized for 256x224
+
+The user, twice: *"They are normal size when far, get scaled until being
+midget in mid distance, and then magically grow back to their original
+size."* The tier trace (`SMK_TIER_TRACE`) was monotonic in distance every
+time, and a kart parked straight ahead (`SMK_TEST_PLACE=q:d`) shrank
+step by step at 512x448 - so the pick was right and the report still
+true. A contact sheet of an autodrive race at the 1920x1080 window
+(frame 960x540) showed it: a kart at the horizon drawn at full tier size
+beside pipes the size of a grain.
+
+The cause: tiers 0-2 were drawn at `rw/256` whatever the distance and
+the mini at half of it. That is the game's own scheme, and it is right
+only in the 256x224 view the tiers were made for. In a 16:9 window the
+road compresses vertically, so a kart 100 px away already sits at the
+horizon - at 75 px tall. What the eye then meets, driving up on a kart:
+the mini (48 px) far out, then tier 2 (75), tier 1 (84), tier 0 (93) -
+and with the horizon that close, "far" is the tier-2 kart looking normal
+at the skyline, "midget" the mini a little nearer, "full size" the tier
+0 a little nearer still.
+
+Now the tier still picks the ART (the game's own ladder) but the pixel
+size is `rw/256 * 66 / distance`, capped at the player's own - the same
+law the road objects follow since NOTES 189 - through
+`smk_draw_sprite_scaled`, mirror pose included. LABELLED (S10): the
+continuous size is ours; the game steps.
