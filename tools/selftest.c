@@ -702,6 +702,32 @@ int main(int argc, char **argv)
                 check("a bump with no coins: state $10 (pose lag +), drive and speed untouched",
                       ok3 && pb.state == 0x10 && pb.drive == 0x10 && kb.speed == 835 && pb.vlag == 0
                       && !smk_player_hit_bump(&pb, &kb), det);
+                /* the AI's drop (NOTES 190): rides behind its kart 58 frames, then stays */
+                {
+                    smk_proj pl[4]; memset(pl, 0, sizeof pl);
+                    smk_kart ok; memset(&ok, 0, sizeof ok);
+                    ok.x = 500 << SMK_POS_SHIFT; ok.y = 500 << SMK_POS_SHIFT; ok.angle = 0; ok.vy = -3 * 256;
+                    smk_proj_ai_drop(pl, 4, SMK_PROJ_BANANA, &ok, 3);
+                    const smk_kart *ks[8] = { 0 }; ks[3] = &ok;
+                    int follow = 0;
+                    for (int f = 0; f < 58; f++) {
+                        ok.y -= 3 << SMK_POS_SHIFT;                      /* the kart drives on */
+                        smk_proj_step(pl, 4, &trk7, ks, 8);
+                        int dyb = smk_kart_px(pl[0].y) - smk_kart_px(ok.y);
+                        if ((dyb == 8 || dyb == 7 || dyb == -8 || dyb == -7) && smk_proj_hit(pl, 4, &ok, 3) == SMK_PROJ_NONE) follow++;
+                        if (f == 0) snprintf(det, sizeof det, "first frame dy %d", dyb);
+                    }
+                    int32_t yy = pl[0].y;
+                    for (int f = 0; f < 30; f++) { ok.y -= 3 << SMK_POS_SHIFT; smk_proj_step(pl, 4, &trk7, ks, 8); }
+                    snprintf(det + strlen(det), sizeof det - strlen(det), "; followed %d/58 frames, then moved %d px; weapons %d %d %d %d %d %d %d %d",
+                             follow, smk_kart_px(pl[0].y) - smk_kart_px(yy),
+                             smk_ai_weapon_of(0), smk_ai_weapon_of(1), smk_ai_weapon_of(2), smk_ai_weapon_of(3),
+                             smk_ai_weapon_of(4), smk_ai_weapon_of(5), smk_ai_weapon_of(6), smk_ai_weapon_of(7));
+                    check("an AI drop rides 8 px behind its kart for 58 frames, immune to it, then stays put",
+                          follow == 58 && pl[0].kind == SMK_PROJ_BANANA && pl[0].y == yy
+                          && smk_ai_weapon_of(4) == SMK_PROJ_BANANA && smk_ai_weapon_of(0) == SMK_AI_WEAPON_STAR
+                          && smk_ai_weapon_of(2) == SMK_PROJ_FIREBALL, det);
+                }
                 smk_racer rb; memset(&rb, 0, sizeof rb); rb.k.speed = 835;
                 smk_racer_hit(&rb, 4, 1);
                 snprintf(det, sizeof det, "hit_t %d tumble $%04X", rb.hit_t, rb.tumble);

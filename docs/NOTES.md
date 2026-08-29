@@ -8010,3 +8010,68 @@ animation (right now it appears overhead first)."*
   keyboard Down/S) is what the item reads, so button + DOWN now drops
   the banana or shell behind; the button alone throws, which is the
   arc the user saw "appear overhead" when they meant to drop.
+
+## 190. The AI's weapons, from the user's `attack` recording
+
+NOTES 188 searched four sessions and found none; the user then gave the
+rule — *"they attack only when the player is near and it is enabled
+starting lap 2. during lap 1 they don't attack. they don't use items
+between them. it happens in any cup regardless of difficulty"* — and
+recorded a race built to provoke them (`sessions/attack`, MC1: *"I
+couldn't fall on the banana, but I think there is a lot of data about DK
+jr attacking. Peach also dropped a mushroom"*).
+
+### Where they live
+
+Not in the pipe pool, not in the kart block, not in `$E0`: the AI's
+objects are the SAME two projectile blocks the human's items use —
+`$1A00`/`$1A80`, the `$0DFA = $80F174` list. Five AI events in the race,
+every one going live (or re-armed while live) at an AI kart's exact
+position (d = 0), owner in `+$6A` (`$1600`/`$1700` = karts 6 and 7):
+
+    block  frame  owner  position     player d (euclid)  lap  since same kart
+    $1A80  3302   k6     (144,700)    141                $81  -
+    $1A00  3893   k7     (335,127)    127                $82  -
+    $1A80  4777   k7     (566,227)    153                $83  884
+    $1A00  5423   k7     (769,899)     53                $83  646
+    $1A80  6297   k7     (632,756)    151                $84  874
+
+Two of them replaced the human's own live object: two slots for the
+whole track, whoever needs one next. The four earlier sessions had none
+because the player was never close for long on lap 2+ — the rule, not a
+gate on class or cup.
+
+### What the object does
+
+For **58 frames** it moves at exactly its kart's velocity — 2.27 px/frame
+beside a kart at (520,261), 3.11 beside (-712,-358) — with its own
+`+$22/+$24` velocity words at zero, i.e. it is carried, not thrown; then
+it stops dead where it is and stays (the `$1A00` object of f3893 was
+still there 486 frames later, until a slot was needed). That is the
+"drop behind": ridden for a second, let go. Nothing in the run moved on
+its own afterwards (no fireball was provoked; the user names Bowser's
+as the only non-static one).
+
+### The port
+
+`smk_ai_weapon_of(character)`: Mario/Luigi the star, Bowser the
+fireball, Peach/Toad the poison mushroom, DK Jr the banana, Yoshi the
+egg, Koopa the green shell (the user's list, SMK_DRIVERS order).
+`smk_proj_ai_drop` arms a slot at the kart with `carry = 58`; `smk_proj_
+step` keeps it eight pixels behind the owner (the banana's own offset)
+until the carry runs out, then it is a static object; the owner cannot
+touch it while carried plus the usual 60. Trigger per AI kart per frame:
+weapon != none, lap >= 2, not finished, not tumbling, cooldown 0, the
+player within SMK_AI_NEAR = 160 px (drops measured at 53..153) →
+drop, cooldown SMK_AI_COOL = 640 (intervals measured 646/874/884).
+Mario/Luigi set `star_t` on themselves instead: hits on them are
+ignored and they flash the measured palette run. Reactions on the
+player: mushroom = the shell tumble + shrink, egg/fireball = the shell
+tumble, all with the 4-coin loss; on an AI the matching `smk_racer_hit`
+kinds.
+
+LABELLED (S31): the distance bound and the cooldown are ours, bracketed
+by five events; the fireball's flight is a green shell's launch; the
+mushroom, egg and fireball on the road wear roulette icons in borrowed
+palettes (the roulette never shows them); the AI star's length is the
+player's `$200`.

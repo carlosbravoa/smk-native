@@ -249,9 +249,10 @@ draws a labelled yellow disc until it is caught.
 
 ## 8. Out of scope for this pass
 
-- **AI weapons** — the characters' own attacks (bank `$85` entities:
-  bananas, eggs, fireballs, stars) are a different system from the
-  player's item word. Listed, not started.
+- **AI weapons** — DONE in NOTES 190: not bank `$85` entities at all but
+  the human's own two projectile slots, carried behind the AI kart for 58
+  frames and released; one weapon per character; only against the
+  player, from lap 2, when near.
 - **Boo's theft in 1P** (there is no second human) and the **battle
   items** (ids 9, 10).
 - **Sound** — every item names its sound above; nothing plays yet.

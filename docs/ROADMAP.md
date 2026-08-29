@@ -76,10 +76,13 @@ MEASURED); a dropped green shell being static and what it does when hit;
 a starred kart knocking obstacles out (the real pipe's flight is not
 measured); and the banana's road SPRITE (the roulette icon stands in -
 it is in no resident sprite tile and is not uploaded on the drop,
-NOTES 189). The AI's own weapons: searched
-for and NOT FOUND in any recording (NOTES 188) — no AI kart used an item
-and no object ever appeared beside one across four sessions; blocked on a
-recording that shows one. The coinless
+NOTES 189). The AI's own weapons are IN
+(NOTES 190, from the user's `attack` recording): the same two projectile
+slots as the human's, carried behind the kart 58 frames then let go —
+MEASURED; OURS: the 160 px trigger distance and the 640-frame cooldown
+(bracketed by five events), the fireball's flight, the road art of the
+mushroom / egg / fireball (roulette icons in borrowed palettes), the AI
+star's length. The coinless
 bump's spin (NOTES 187) is decoded and measured; OURS: an AI kart's coin
 count only falls (its pickups are not modelled), so the AI spins on its
 third bump where the real one may have refilled.

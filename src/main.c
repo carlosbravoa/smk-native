@@ -1418,12 +1418,17 @@ static void draw_ai_kart(const smk_rom *rom, const smk_track *trk,
                                      fb, rw, rh, rw);
                 return;
             }
+            /* Mario / Luigi under their own star: the player's measured
+             * palette run (NOTES 189) */
+            static const int AI_STAR_PAL[8] = { 5, 4, 7, 6, 1, 0, 3, 2 };
+            int apal = (racers && racers[k].star_t > 0)
+                     ? 0x80 + AI_STAR_PAL[fx_ticks & 7] * 0x10 : d2->pal;
             if (mirror)
                 smk_draw_sprite_mirror(&other[k], f2, trk->palette,
-                                       d2->pal, (int)px, (int)py,
+                                       apal, (int)px, (int)py,
                                        kscale, fb, rw, rh, rw);
             else
-                smk_draw_sprite(&other[k], f2, trk->palette, d2->pal,
+                smk_draw_sprite(&other[k], f2, trk->palette, apal,
                                 (int)px, (int)py, kscale, hf2,
                                 fb, rw, rh, rw);
         }
@@ -1566,8 +1571,16 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
              * detailed"; the effects-tile dome was not it either */
             if (!item_icons.ok) continue;
             int iid = which == 2 ? SMK_ITEM_RED : which == 1 ? SMK_ITEM_GREEN : SMK_ITEM_BANANA;
+            int bpal;
+            /* the AI's three (OURS, labelled S31): the poison mushroom is
+             * the mushroom icon in the lightning's palette, the egg the
+             * green shell in the Boo's, the fireball the red shell in the
+             * mushroom's - the roulette has no art for them */
+            if (pr->kind == SMK_PROJ_MUSHROOM) { iid = SMK_ITEM_MUSHROOM; bpal = item_icons.pal[SMK_ITEM_LIGHTNING]; }
+            else if (pr->kind == SMK_PROJ_EGG) { iid = SMK_ITEM_GREEN; bpal = item_icons.pal[SMK_ITEM_BOO]; }
+            else if (pr->kind == SMK_PROJ_FIREBALL) { iid = SMK_ITEM_RED; bpal = item_icons.pal[SMK_ITEM_MUSHROOM]; }
+            else bpal = item_icons.pal[iid];
             int t0 = item_icons.tile[iid] - SMK_ICON_BASE;
-            int bpal = item_icons.pal[iid];
             int x0 = (int)px - 8 * cs, y0 = (int)py - 16 * cs - lift;
             for (int q = 0; q < 4; q++) {
                 int tn = t0 + q;
@@ -2673,6 +2686,31 @@ int main(int argc, char **argv)
                                        projs[q].heading, projs[q].t, projs[q].dying ? " dying" : "");
                         printf("\n");
                     }
+                    /* THE AI'S WEAPONS (NOTES 190).  The user's rule, and the
+                     * `attack` recording: only against the player, only
+                     * from lap 2, only when the player is near; the object
+                     * rides behind the kart for 58 frames and is let go.
+                     * The cooldown and the distance are OURS, bounded by
+                     * the five drops measured (S31). */
+                    if (!replay_path)
+                        for (int q = 1; q < SMK_CHARACTERS; q++) {
+                            smk_racer *r = &racers[q];
+                            if (r->weapon_cool > 0) r->weapon_cool--;
+                            if (r->star_t > 0) r->star_t--;
+                            int wp = smk_ai_weapon_of(r->character % SMK_CHARACTERS);
+                            if (wp == SMK_AI_WEAPON_NONE || r->weapon_cool > 0 || r->hit_t > 0) continue;
+                            if (r->lap < 2 || r->finish_frame >= 0) continue;
+                            int ddx = smk_kart_px(r->k.x) - smk_kart_px(kart.x);
+                            int ddy = smk_kart_px(r->k.y) - smk_kart_px(kart.y);
+                            if (ddx * ddx + ddy * ddy > SMK_AI_NEAR * SMK_AI_NEAR) continue;
+                            if (wp == SMK_AI_WEAPON_STAR) r->star_t = 0x200;
+                            else smk_proj_ai_drop(projs, SMK_PROJ_MAX, wp, &r->k, q);
+                            r->weapon_cool = SMK_AI_COOL;
+                            if (getenv("SMK_ITEM_TRACE"))
+                                printf("AI %d (%s) uses weapon %d at (%d,%d), player %d px away, lap %d\n", q,
+                                       SMK_DRIVERS[r->character % SMK_CHARACTERS].name, wp,
+                                       smk_kart_px(r->k.x), smk_kart_px(r->k.y), (int)sqrt((double)(ddx * ddx + ddy * ddy)), r->lap);
+                        }
                     /* the projectiles fly, and anything they touch reacts */
                     const smk_kart *field_k[SMK_CHARACTERS];
                     for (int q = 0; q < SMK_CHARACTERS; q++) field_k[q] = &racers[q].k;
@@ -2686,7 +2724,17 @@ int main(int argc, char **argv)
                             smk_coinfx_spawn(coins_fx, SMK_COINFX_MAX, kart.x, kart.y,
                                              player.heading, kart.vx, kart.vy, lost);
                         }
-                    } else if (hk == SMK_PROJ_GREEN || hk == SMK_PROJ_RED) {
+                    } else if (hk == SMK_PROJ_MUSHROOM) {
+                        /* the poison mushroom: the shell's tumble and the shrink */
+                        if (!(player.flags & 2)) {
+                            smk_player_shrink(&player, &kart, (int)(fx_ticks & 1));
+                            int lost = player.coins < 4 ? player.coins : 4;
+                            player.coins -= lost;
+                            smk_coinfx_spawn(coins_fx, SMK_COINFX_MAX, kart.x, kart.y,
+                                             player.heading, kart.vx, kart.vy, lost);
+                        }
+                    } else if (hk == SMK_PROJ_GREEN || hk == SMK_PROJ_RED
+                               || hk == SMK_PROJ_EGG || hk == SMK_PROJ_FIREBALL) {
                         if (smk_player_hit_shell(&player, &kart, (int)(fx_ticks & 1))) {
                             int lost = player.coins < 4 ? player.coins : 4;
                             player.coins -= lost;
@@ -2702,6 +2750,7 @@ int main(int argc, char **argv)
                                    smk_kart_px(racers[q].k.x), smk_kart_px(racers[q].k.y), racers[q].rank, hq,
                                    smk_kart_px(kart.x), smk_kart_px(kart.y), racers[0].rank);
                         if (hq == SMK_PROJ_BANANA) smk_racer_hit(&racers[q], 1, (int)(fx_ticks & 1));
+                        else if (hq == SMK_PROJ_MUSHROOM) smk_racer_hit(&racers[q], 3, (int)(fx_ticks & 1));
                         else if (hq != SMK_PROJ_NONE) smk_racer_hit(&racers[q], 2, (int)(fx_ticks & 1));
                     }
                 }

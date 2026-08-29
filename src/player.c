@@ -1097,6 +1097,7 @@ void smk_player_shrink(smk_player *p, smk_kart *k, int dir)
 void smk_racer_hit(smk_racer *r, int kind, int dir)
 {
     if (r->hit_t > 0) return;
+    if (r->star_t > 0) return;                    /* Mario / Luigi under their star */
     r->hit_kind = kind;
     r->hit_dir = dir;
     r->spin_pose = 0;

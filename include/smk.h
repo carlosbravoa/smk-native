@@ -1069,6 +1069,8 @@ typedef struct {
     int      shrink_t;      /* $84                                       */
     int      coins;         /* $0E00,y for this kart: a bump costs one   */
     int      hit_kind;      /* what hit it: 1 banana 2 shell 3 lightning 4 coinless bump */
+    int      weapon_cool;   /* frames until this AI may use its weapon again (NOTES 190) */
+    int      star_t;        /* Mario / Luigi's star: frames left (OURS: the player's $200) */
     /* When this kart crossed for the last time, in race frames, and where
      * it came.  Nothing tracked either before: the race ended the instant
      * the PLAYER finished and the other seven simply stopped existing, so
@@ -1757,6 +1759,19 @@ bool smk_projart_load(const smk_rom *rom, smk_projart *out);
 #define SMK_PROJ_BANANA_AIR 2     /* thrown ahead, in flight            */
 #define SMK_PROJ_GREEN      3
 #define SMK_PROJ_RED        4
+#define SMK_PROJ_MUSHROOM   5     /* Peach / Toad: the poison mushroom  */
+#define SMK_PROJ_EGG        6     /* Yoshi                              */
+#define SMK_PROJ_FIREBALL   7     /* Bowser: the one that moves         */
+/* The AI's own weapons (NOTES 190, the user's `attack` recording): one per
+ * character, used only against the player, only from lap 2, only when the
+ * player is near.  The object rides behind the kart for SMK_AI_CARRY
+ * frames at exactly the kart's velocity, then is let go where it is. */
+#define SMK_AI_CARRY        58    /* MEASURED: 58 frames at the kart's velocity, then still */
+#define SMK_AI_NEAR         160   /* px; MEASURED drops at 53..153 - OURS as a bound */
+#define SMK_AI_COOL         640   /* frames; MEASURED intervals 646/874/884 - OURS as a floor */
+#define SMK_AI_WEAPON_NONE  0
+#define SMK_AI_WEAPON_STAR  100   /* not a projectile kind */
+int  smk_ai_weapon_of(int character);    /* SMK_PROJ_* kind, or SMK_AI_WEAPON_STAR / NONE */
 #define SMK_PROJ_SPEED_ADD  0x300 /* MEASURED: kart speed + $300         */
 #define SMK_PROJ_RED_DELAY  8     /* $40,x                              */
 #define SMK_PROJ_RED_TURN   0x0400
@@ -1780,7 +1795,10 @@ typedef struct {
     int      delay;         /* red: $40 countdown                        */
     int      bounces;
     bool     dying;         /* hopping out of existence                  */
+    int      carry;         /* AI drop: frames still riding behind its kart */
+    int      safe;          /* frames the owner cannot touch it          */
 } smk_proj;
+void smk_proj_ai_drop(smk_proj *list, int n, int kind, const smk_kart *k, int owner);
 void smk_proj_throw(smk_proj *list, int n, int kind, const smk_kart *k,
                     uint16_t heading, int owner, int target, bool backward,
                     bool ahead);

@@ -34,6 +34,7 @@ void smk_proj_throw(smk_proj *list, int n, int kind, const smk_kart *k,
     p->kind = kind;
     p->owner = owner;
     p->target = target;
+    p->safe = SMK_PROJ_OWNER_SAFE;
     p->heading = (uint16_t)(heading + (backward ? 0x8000 : 0));
     p->x = k->x; p->y = k->y; p->z = 0;
     switch (kind) {
@@ -96,6 +97,50 @@ static void home(smk_proj *p, uint16_t want)
                                                         :  SMK_PROJ_RED_TURN));
 }
 
+/* The characters' weapons (NOTES 190; the user: "every cpu character has
+ * their own single power. while mario and Luigi become invincible, the
+ * rest have one item that can drop behind, static, or throw ahead.
+ * shells for koopa troopa, banana for dk jr, a shrinking mushroom for
+ * toad and princess, an egg for yoshi and a fire ball for bowser, that is
+ * the only non static item").  SMK_DRIVERS order. */
+int smk_ai_weapon_of(int character)
+{
+    switch (character) {
+    case 0: case 1: return SMK_AI_WEAPON_STAR;      /* Mario, Luigi  */
+    case 2:         return SMK_PROJ_FIREBALL;       /* Bowser        */
+    case 3: case 7: return SMK_PROJ_MUSHROOM;       /* Peach, Toad   */
+    case 4:         return SMK_PROJ_BANANA;         /* DK Jr         */
+    case 5:         return SMK_PROJ_EGG;            /* Yoshi         */
+    case 6:         return SMK_PROJ_GREEN;          /* Koopa         */
+    default:        return SMK_AI_WEAPON_NONE;
+    }
+}
+
+/* MEASURED (tools/labs/mame/objdump.lua on the `attack` session, NOTES
+ * 190): the object goes live at the kart's own position and moves at the
+ * kart's exact velocity for 58 frames, then stops where it is.  The port
+ * keeps it eight pixels behind the kart for those frames (the banana's
+ * own offset) and lets go.  Bowser's fireball is thrown ahead instead
+ * (OURS: a green shell's launch, no bounce life measured). */
+void smk_proj_ai_drop(smk_proj *list, int n, int kind, const smk_kart *k, int owner)
+{
+    int i = free_slot(list, n);
+    if (i < 0) return;
+    smk_proj *p = &list[i];
+    memset(p, 0, sizeof *p);
+    p->kind = kind; p->owner = owner; p->target = -1;
+    p->heading = k->angle;
+    p->x = k->x; p->y = k->y;
+    if (kind == SMK_PROJ_FIREBALL) {
+        p->speed = (int16_t)(k->speed + SMK_PROJ_SPEED_ADD);
+        p->safe = SMK_PROJ_OWNER_SAFE;
+        set_velocity(p);
+        return;
+    }
+    p->carry = SMK_AI_CARRY;
+    p->safe = SMK_AI_CARRY + SMK_PROJ_OWNER_SAFE;
+}
+
 void smk_proj_step(smk_proj *list, int n, const smk_track *trk,
                    const smk_kart *const *karts, int nkarts)
 {
@@ -110,7 +155,20 @@ void smk_proj_step(smk_proj *list, int n, const smk_track *trk,
             if (p->z <= 0) p->kind = SMK_PROJ_NONE;
             continue;
         }
-        if (p->kind == SMK_PROJ_BANANA) continue;        /* $80:F745: sits */
+        if (p->carry > 0) {                              /* riding behind its kart */
+            p->carry--;
+            if (p->owner >= 0 && p->owner < nkarts && karts[p->owner]) {
+                const smk_kart *ok = karts[p->owner];
+                int16_t sx, cy;
+                smk_dsp_sincos(ok->angle, 8 * 256, &sx, &cy);
+                p->x = ok->x - ((int32_t)sx << (SMK_POS_SHIFT - 8));
+                p->y = ok->y + ((int32_t)cy << (SMK_POS_SHIFT - 8));
+            }
+            continue;
+        }
+        if (p->kind == SMK_PROJ_BANANA || p->kind == SMK_PROJ_MUSHROOM
+            || p->kind == SMK_PROJ_EGG) continue;         /* $80:F745: sits */
+        if (p->kind == SMK_PROJ_GREEN && p->speed == 0) continue;   /* dropped: static */
 
         if (p->kind == SMK_PROJ_RED) {
             if (p->delay > 0) p->delay--;
@@ -165,7 +223,7 @@ int smk_proj_hit(smk_proj *list, int n, const smk_kart *k, int kart_index)
         smk_proj *p = &list[i];
         if (p->kind == SMK_PROJ_NONE || p->dying) continue;
         if (p->kind == SMK_PROJ_BANANA_AIR) continue;      /* in the air */
-        if (p->owner == kart_index && p->t < SMK_PROJ_OWNER_SAFE) continue;
+        if (p->owner == kart_index && (p->carry > 0 || p->t < p->safe)) continue;
         int dx = smk_kart_px(p->x) - smk_kart_px(k->x);
         int dy = smk_kart_px(p->y) - smk_kart_px(k->y);
         if (dx < 0) dx = -dx;
@@ -173,7 +231,7 @@ int smk_proj_hit(smk_proj *list, int n, const smk_kart *k, int kart_index)
         if (dx >= SMK_PROJ_HIT_R || dy >= SMK_PROJ_HIT_R) continue;
         if (k->z > SMK_BUMP_Z_MAX * 25029) continue;       /* over it */
         int kind = p->kind;
-        if (kind == SMK_PROJ_BANANA) p->kind = SMK_PROJ_NONE;
+        if (kind == SMK_PROJ_BANANA || kind == SMK_PROJ_MUSHROOM || kind == SMK_PROJ_EGG) p->kind = SMK_PROJ_NONE;
         else { p->dying = true; p->zv = SMK_PROJ_DIE_HOP; p->vx = p->vy = 0; }
         return kind;
     }
