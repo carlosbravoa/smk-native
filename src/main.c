@@ -177,6 +177,7 @@ static smk_coinart coin_art;
 static smk_itemtab itemtab;
 static smk_item    item;
 static smk_itemicons item_icons;
+static smk_projart   proj_art;
 static int         cur_track;        /* for the item block ($81:8B73[track]) */
 static smk_proj    projs[SMK_PROJ_MAX];
 static unsigned    item_rng = 0x2545F491u;
@@ -1519,9 +1520,8 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
             }
         }
     }
-    /* the bananas and shells: projected like the coins.  PLACEHOLDER
-     * discs until the game's own sprites are pulled from the dumps
-     * (docs/ITEMS.md §7) - a shell that cannot be seen cannot be judged. */
+    /* the bananas and shells: projected like the coins, with the game's
+     * own sprites (smk_projart), sized by the entities' 1/distance law */
     for (int i = 0; i < SMK_PROJ_MAX; i++) {
         const smk_proj *pr = &projs[i];
         if (pr->kind == SMK_PROJ_NONE) continue;
@@ -1531,20 +1531,25 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
         int scale = rw / 256; if (scale < 1) scale = 1;
         float kdx = (float)smk_kart_px(pr->x) - cam->x, kdy = (float)smk_kart_px(pr->y) - cam->y;
         float kd = sqrtf(kdx * kdx + kdy * kdy); if (kd < SMK_OBJ_NEAR) kd = SMK_OBJ_NEAR;
-        int r = (int)((float)scale * 7.0f * SMK_KART_SCALE_K / kd / 8.0f + 0.5f);
-        if (r < 2) r = 2;
-        if (r > 10 * scale) r = 10 * scale;
+        int cs = (int)((float)scale * SMK_KART_SCALE_K / kd * 0.5f + 0.5f);
+        if (cs < 1) cs = 1;
+        if (cs > scale) cs = scale;
         int lift = (int)(pr->z / 25029) * scale;
-        uint32_t col = pr->kind == SMK_PROJ_RED ? 0xFFE03030
-                     : pr->kind == SMK_PROJ_GREEN ? 0xFF30C030 : 0xFFF0D030;
-        int cx = (int)px, cy = (int)py - r - lift;
-        for (int yy = -r; yy <= r; yy++)
-            for (int xx = -r; xx <= r; xx++) {
-                if (xx * xx + yy * yy > r * r) continue;
-                int sx = cx + xx, sy = cy + yy;
-                if (sx < 0 || sx >= rw || sy < 0 || sy >= rh) continue;
-                fb[(size_t)sy * rw + sx] = (xx * xx + yy * yy > (r - 1) * (r - 1)) ? 0xFF202020 : col;
+        int which = pr->kind == SMK_PROJ_RED ? 2 : pr->kind == SMK_PROJ_GREEN ? 1 : 0;
+        int x0 = (int)px - 8 * cs, y0 = (int)py - 16 * cs - lift;
+        if (!proj_art.ok) continue;
+        const uint8_t *art = proj_art.px[which];
+        for (int yy = 0; yy < 16 * cs; yy++) {
+            int sy = y0 + yy;
+            if (sy < 0 || sy >= rh) continue;
+            for (int xx = 0; xx < 16 * cs; xx++) {
+                int sx = x0 + xx;
+                if (sx < 0 || sx >= rw) continue;
+                uint8_t v = art[(yy / cs) * 16 + xx / cs];
+                if (!v) continue;
+                fb[(size_t)sy * rw + sx] = trk->palette[(0x80 + SMK_PROJ_PAL * 16 + v) & 0xFF];
             }
+        }
     }
     if (show_kart && !celebrating && karts->frames
         && !(player.boo_t > 0 && (fx_ticks & 1))) {   /* Boo: OURS, a flicker */
@@ -1944,6 +1949,8 @@ int main(int argc, char **argv)
     if (!smk_coin_load(&rom, &coin_art))
         fprintf(stderr, "warning: coin sprite not loaded\n");
     if (smk_items_load(&rom, &itemtab)) smk_item_tables = &itemtab;
+    if (!smk_projart_load(&rom, &proj_art))
+        fprintf(stderr, "warning: banana/shell sprites not loaded\n");
     if (!smk_itemicons_load(&rom, &item_icons))
         fprintf(stderr, "warning: item icons not loaded\n");
     else fprintf(stderr, "warning: item tables not loaded\n");

@@ -1698,6 +1698,19 @@ typedef struct {
 } smk_itemicons;
 bool smk_itemicons_load(const smk_rom *rom, smk_itemicons *out);
 
+/* ---- The projectiles' art (docs/ITEMS.md §7) ----------------------------
+ *
+ * Found through OAM after all: the shells are ALWAYS in OAM, parked off
+ * screen at x = 319 when unused - which is why a set-difference against a
+ * no-item frame showed nothing - and they are the SMALL sprite size, four
+ * 8x8 tiles at t, t+1, t+16, t+17.  Green is VRAM tile $FC, red $FE,
+ * both sprite palette 4; a dropped banana is $F8.  The shells' bytes are
+ * in the shared blob at $C1:0000 (tiles 13/14/29/30 and 15/16/31/32); the
+ * banana's in the blob at $C1:0F9B (tiles 56/57/72/73). */
+typedef struct { bool ok; uint8_t px[3][16 * 16]; } smk_projart;   /* banana, green, red */
+bool smk_projart_load(const smk_rom *rom, smk_projart *out);
+#define SMK_PROJ_PAL 4
+
 /* ---- Projectiles: bananas and shells (src/projectile.c, docs/ITEMS.md §5) --
  *
  * MEASURED in the oracle (tools/labs/itemfx.py): a shell leaves at the
