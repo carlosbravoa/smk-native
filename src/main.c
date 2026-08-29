@@ -1537,19 +1537,34 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
         int lift = (int)(pr->z / 25029) * scale;
         int which = pr->kind == SMK_PROJ_RED ? 2 : pr->kind == SMK_PROJ_GREEN ? 1 : 0;
         if (which == 0) {
-            /* THE BANANA IS A PLACEHOLDER DISC.  Its sprite was never caught
-             * live: a dropped banana lands behind the kart, off screen, and
-             * the $F8/$F9 tiles the searches turned up are a post, not a
-             * banana (docs/ITEMS.md §7, S31).  Yellow, the size of a shell. */
-            int r = 4 * cs; if (r < 2) r = 2;
-            int cx = (int)px, cy = (int)py - r - lift;
-            for (int yy = -r; yy <= r; yy++)
-                for (int xx = -r; xx <= r; xx++) {
-                    if (xx * xx + yy * yy > r * r) continue;
-                    int sx = cx + xx, sy = cy + yy;
-                    if (sx < 0 || sx >= rw || sy < 0 || sy >= rh) continue;
-                    fb[(size_t)sy * rw + sx] = (xx * xx + yy * yy > (r - 1) * (r - 1)) ? 0xFF303030 : 0xFFF0D030;
+            /* THE BANANA: the same drawing as the roulette icon (the user:
+             * "the banana sprite in game and on the floor is the same as the
+             * sprite in the roulette"), so it comes from the HUD tile set -
+             * 2x2 2bpp tiles at $E4 on BG2's palette 6 (white / yellow /
+             * black) - drawn the size of a 16 px object. */
+            if (!item_icons.ok) continue;
+            int t0 = item_icons.tile[SMK_ITEM_BANANA] - SMK_ICON_BASE;
+            int bpal = item_icons.pal[SMK_ITEM_BANANA];
+            int x0 = (int)px - 8 * cs, y0 = (int)py - 16 * cs - lift;
+            for (int q = 0; q < 4; q++) {
+                int tn = t0 + q;
+                if (tn < 0 || tn >= SMK_ICON_TILES) continue;
+                const uint8_t *tp = item_icons.px[tn];
+                int bx = x0 + (q & 1) * 8 * cs, by = y0 + (q >> 1) * 8 * cs;
+                for (int yy = 0; yy < 8 * cs; yy++) {
+                    int sy = by + yy;
+                    if (sy < 0 || sy >= rh) continue;
+                    for (int xx = 0; xx < 8 * cs; xx++) {
+                        int sx = bx + xx;
+                        if (sx < 0 || sx >= rw) continue;
+                        uint8_t v = tp[(yy / cs) * 8 + xx / cs];
+                        /* colour 3 is the box's black interior on the HUD;
+                         * on the road it is the ground showing through */
+                        if (!v || v == 3) continue;
+                        fb[(size_t)sy * rw + sx] = trk->palette[(SMK_HUD_BG_PAL + bpal * 4 + v) & 0xFF];
+                    }
                 }
+            }
             continue;
         }
         /* an 8x8 sprite, drawn at twice the pixel scale: the game shows
@@ -2571,7 +2586,8 @@ int main(int argc, char **argv)
                         case SMK_ITEM_STAR:      smk_player_star(&player); break;
                         case SMK_ITEM_BANANA:
                             smk_proj_throw(projs, SMK_PROJ_MAX, SMK_PROJ_BANANA, &kart,
-                                           player.heading, 0, -1, false, in.up);
+                                           player.heading, 0, -1, false,
+                                           in.up || getenv("SMK_BANANA_UP"));
                             break;
                         case SMK_ITEM_GREEN:
                             smk_proj_throw(projs, SMK_PROJ_MAX, SMK_PROJ_GREEN, &kart,
