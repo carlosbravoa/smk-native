@@ -1536,16 +1536,21 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
         if (cs > scale) cs = scale;
         int lift = (int)(pr->z / 25029) * scale;
         int which = pr->kind == SMK_PROJ_RED ? 2 : pr->kind == SMK_PROJ_GREEN ? 1 : 0;
-        int x0 = (int)px - 8 * cs, y0 = (int)py - 16 * cs - lift;
+        /* an 8x8 sprite, drawn at twice the pixel scale: the game shows
+         * it through the same size steps as everything else, and at the
+         * kart's own depth an 8x8 object reads as 16 px on its 256-wide
+         * screen (OURS, the factor; the art is the game's) */
+        cs *= 2;
+        int x0 = (int)px - 4 * cs, y0 = (int)py - 8 * cs - lift;
         if (!proj_art.ok) continue;
         const uint8_t *art = proj_art.px[which];
-        for (int yy = 0; yy < 16 * cs; yy++) {
+        for (int yy = 0; yy < 8 * cs; yy++) {
             int sy = y0 + yy;
             if (sy < 0 || sy >= rh) continue;
-            for (int xx = 0; xx < 16 * cs; xx++) {
+            for (int xx = 0; xx < 8 * cs; xx++) {
                 int sx = x0 + xx;
                 if (sx < 0 || sx >= rw) continue;
-                uint8_t v = art[(yy / cs) * 16 + xx / cs];
+                uint8_t v = art[(yy / cs) * 8 + xx / cs];
                 if (!v) continue;
                 fb[(size_t)sy * rw + sx] = trk->palette[(0x80 + SMK_PROJ_PAL * 16 + v) & 0xFF];
             }

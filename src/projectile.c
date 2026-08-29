@@ -172,8 +172,9 @@ int smk_proj_hit(smk_proj *list, int n, const smk_kart *k, int kart_index)
 
 
 /* ---- the art (smk.h) ---------------------------------------------------- */
-static void tile4(const uint8_t *src, uint8_t *dst16, int qx, int qy)
+static void tile8(const uint8_t *src, uint8_t *dst64)
 {
+    memset(dst64, 0, 64);
     for (int pair = 0; pair < 2; pair++) {
         const uint8_t *q = src + pair * 16;
         for (int y = 0; y < 8; y++) {
@@ -181,7 +182,7 @@ static void tile4(const uint8_t *src, uint8_t *dst16, int qx, int qy)
             for (int x = 0; x < 8; x++) {
                 int bit = 7 - x;
                 int v = ((lo >> bit) & 1) | (((hi >> bit) & 1) << 1);
-                dst16[(qy * 8 + y) * 16 + qx * 8 + x] |= (uint8_t)(v << (pair * 2));
+                dst64[y * 8 + x] |= (uint8_t)(v << (pair * 2));
             }
         }
     }
@@ -189,33 +190,17 @@ static void tile4(const uint8_t *src, uint8_t *dst16, int qx, int qy)
 
 bool smk_projart_load(const smk_rom *rom, smk_projart *out)
 {
-    /* Each 16x16 sprite is four 8x8 tiles from up to THREE blobs, each
-     * found by searching decompressed output for the bytes VRAM held:
-     *   top row, VRAM $FC-$FF (shells): the shared blob $C1:0000, tile n - $EF
-     *                                   ($FF is blank in VRAM: the red shell's
-     *                                    top-right is empty)
-     *   top row, VRAM $F8/$F9 (banana): $C1:0F9B tile 56 and $C1:4552 tile 68
-     *   bottom row, VRAM $108-$10F:     the effects blob $C4:9C19, tile n - $100
-     *                                   - the same 32 tiles the tyre smoke uses
-     * LABELLED: the banana's two top tiles came from two different blobs,
-     * which is odd enough that it may be two coincidences; the bytes match
-     * what the game had in VRAM, which is the test that matters. */
-    static uint8_t a[65536], b[65536], c[65536], d[65536];
+    /* One 8x8 tile each, found by searching decompressed blobs for the
+     * bytes VRAM held: the shells in the shared blob at $C1:0000 (VRAM
+     * tile n = blob tile n - $EF), the banana in the blob at $C1:4552. */
+    static uint8_t a[65536], d[65536];
     memset(out, 0, sizeof *out);
     long na = smk_decompress_into(rom->data, rom->size, smk_snes_to_pc(rom, 0xC10000u), a, sizeof a, 0, NULL);
-    long nb = smk_decompress_into(rom->data, rom->size, smk_snes_to_pc(rom, 0xC49C19u), b, sizeof b, 0, NULL);
-    long nc = smk_decompress_into(rom->data, rom->size, smk_snes_to_pc(rom, 0xC10F9Bu), c, sizeof c, 0, NULL);
     long nd = smk_decompress_into(rom->data, rom->size, smk_snes_to_pc(rom, 0xC14552u), d, sizeof d, 0, NULL);
-    if (na < 16 * 32 || nb < 16 * 32) return false;
-    /* green: $FC $FD / $10C $10D;  red: $FE (blank) / $10E $10F */
-    tile4(a + 13 * 32, out->px[1], 0, 0); tile4(a + 14 * 32, out->px[1], 1, 0);
-    tile4(b + 12 * 32, out->px[1], 0, 1); tile4(b + 13 * 32, out->px[1], 1, 1);
-    tile4(a + 15 * 32, out->px[2], 0, 0);
-    tile4(b + 14 * 32, out->px[2], 0, 1); tile4(b + 15 * 32, out->px[2], 1, 1);
-    /* banana: $F8 $F9 / $108 $109 */
-    if (nc >= 57 * 32) tile4(c + 56 * 32, out->px[0], 0, 0);
-    if (nd >= 69 * 32) tile4(d + 68 * 32, out->px[0], 1, 0);
-    tile4(b + 8 * 32, out->px[0], 0, 1); tile4(b + 9 * 32, out->px[0], 1, 1);
+    if (na < 16 * 32) return false;
+    tile8(a + 13 * 32, out->px[1]);                     /* $FC green */
+    tile8(a + 15 * 32, out->px[2]);                     /* $FE red   */
+    if (nd >= 69 * 32) tile8(d + 68 * 32, out->px[0]);  /* $F9 banana */
     out->ok = true;
     return true;
 }

@@ -1702,12 +1702,14 @@ bool smk_itemicons_load(const smk_rom *rom, smk_itemicons *out);
  *
  * Found through OAM after all: the shells are ALWAYS in OAM, parked off
  * screen at x = 319 when unused - which is why a set-difference against a
- * no-item frame showed nothing - and they are the SMALL sprite size, four
- * 8x8 tiles at t, t+1, t+16, t+17.  Green is VRAM tile $FC, red $FE,
- * both sprite palette 4; a dropped banana is $F8.  The shells' bytes are
- * in the shared blob at $C1:0000 (tiles 13/14/29/30 and 15/16/31/32); the
- * banana's in the blob at $C1:0F9B (tiles 56/57/72/73). */
-typedef struct { bool ok; uint8_t px[3][16 * 16]; } smk_projart;   /* banana, green, red */
+ * no-item frame showed nothing - and they are the SMALL sprite size.
+ * Green is VRAM tile $FC, red $FE, the banana $F9, sprite palette 4.  The
+ * shells' bytes are in the shared blob at $C1:0000 (tile n - $EF); the
+ * banana's in the blob at $C1:4552 (tile 68). */
+/* CORRECTED: in this OBSEL the small sprite is 8x8 and the large 16x16,
+ * so a shell is ONE tile - $FC green, $FE red, $F9 the banana - and the
+ * "16x16" karts are the four-quadrant 16x16s of NOTES 182. */
+typedef struct { bool ok; uint8_t px[3][8 * 8]; } smk_projart;     /* banana, green, red */
 bool smk_projart_load(const smk_rom *rom, smk_projart *out);
 #define SMK_PROJ_PAL 4
 
