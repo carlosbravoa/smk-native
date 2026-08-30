@@ -64,6 +64,14 @@ and comes down toward the camera) and it inherits the kart's motion -
 thrown backwards it lands behind a forward-looking camera and is never
 drawn at all.
 
+**S32 — Surfaces, the picture (NOTES 197).** The shake per class is MEASURED
+for the nineteen classes swept on Mario Circuit; classes outside the sweep
+take the road's bob, and the AI karts shake by the same table (OURS: only
+P1's sprite was logged). The spray / splash / dust kinds and their art are
+the ROM's; the theme-specific puff tiles ($100-$11F) are Mario Circuit's on
+every theme until the other themes' streams are found; the water classes'
+drawings ($20-$24) are not ported; every surface's SOUND is P7.
+
 **S31 — What the item system still guesses (docs/ITEMS.md).**
 The state machine, the outcome tables, the nine effects, the hit reactions
 and the icons are the ROM's; the projectile motion is MEASURED. OURS: the

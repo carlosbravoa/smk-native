@@ -1352,6 +1352,11 @@ static void draw_ai_kart(const smk_rom *rom, const smk_track *trk,
         }
         /* height lifts the sprite on screen, scaled like everything else */
         py -= (float)smk_kart_height_px(&racers[k].k) * sc;
+        /* the surface's shake, as the player's (NOTES 197; LABELLED: the
+         * sweep measured P1's sprite, the AI's is assumed the same) */
+        if (!racers[k].k.airborne && racers[k].k.speed != 0)
+            py -= (float)smk_shake_of(smk_track_surface(trk, smk_kart_px(racers[k].k.x),
+                                                        smk_kart_px(racers[k].k.y)))[(fx_ticks + (unsigned)k * 3) & 7] * sc * (float)(rw / 256);
         /* Size follows the SAME projection as everything else,
          * anchored on the ONE unambiguous measurement: the player's
          * kart is 32 SNES px at the trail distance (NOTES 084).  So
