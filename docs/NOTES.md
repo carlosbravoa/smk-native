@@ -8175,3 +8175,36 @@ with a red-for-green colour swap for the indices they never vote on
 (LABELLED). The tier is picked by the width the karts' 1/distance law
 asks for and drawn at the screen scale; the shell's three frames turn
 every four frames (LABELLED: the rate).
+
+## 193. One size law for everything on the road: the pipes' (from the eye)
+
+The user, after the tiers went continuous: *"They look small, start
+linearly to scale up, but there is a specific point where they grow
+faster than how they get closer... This also happened previously with
+the pipes (now the way they scale is perfect)."* And for the items: *"use
+our scaling formula from the higher res shell, because switching to the
+low res sprites makes them look awful too soon."*
+
+NOTES 154b had already found this for the pipes: `$4200 / zf` and the
+karts' `66 / distance` are measured from the KART, while every scale in
+the renderer is measured from the EYE, 61 px further back - so over
+40..400 world px the sprite shrank 10x where the ground shrank 4.6x,
+and swelled as you closed in. The pipes were fixed to smk_project's own
+scale (screen px per world px at the object's depth); the karts and the
+items had kept the kart-measured law. Now all three use the pipes':
+`ks = sc * SMK_CAM_TRAIL / SMK_PROJ_LES`, which is the player's own
+scale at the player's depth and the projection's everywhere else.
+
+With size continuous there is no reason left to change drawings: the
+tier ladders were the SNES's substitute for scaling, and swapping to a
+coarser drawing while the size is still large is the step the eye sees.
+The karts draw their highest-resolution frame (tier 0, or the mirror
+pose) at every distance; the items their largest tier. The smaller tiers
+stay in the data.
+
+Also from the same test: Bowser's fireball is not a shell - *"they don't
+have speed therefore there is no bounce. Bowser puts or throws them but
+they stay in place and then have a zigzag but only to the left and
+right."* It is now carried and let go like every other drop, then weaves
+left and right of the spot (OURS: 20 px, 40-frame period), through the
+weave offset `wx/wy` the hit test and the drawing both read.

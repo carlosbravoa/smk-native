@@ -1821,6 +1821,7 @@ typedef struct {
     int      bounces;
     bool     dying;         /* hopping out of existence                  */
     int      carry;         /* AI drop: frames still riding behind its kart */
+    int32_t  wx, wy;        /* the fireball's weave offset, kart units       */
     int      safe;          /* frames the owner cannot touch it          */
 } smk_proj;
 void smk_proj_ai_drop(smk_proj *list, int n, int kind, const smk_kart *k, int owner);

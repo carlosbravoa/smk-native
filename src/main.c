@@ -1393,15 +1393,22 @@ static void draw_ai_kart(const smk_rom *rom, const smk_track *trk,
          * right only for the 256x224 view the tiers were made for: in a
          * 16:9 window the road compresses vertically and a kart 100 px
          * away sits at the horizon at 75 px tall (LABELLED: ours, S10). */
-        float ks = (float)kscale * (SMK_KART_SCALE_K / kd);
+        /* THE PIPE LAW (the user: "there is a specific point where they grow
+         * faster than how they get closer... This also happened previously
+         * with the pipes (now the way they scale is perfect)").  Size =
+         * smk_project's own scale, measured from the EYE; the earlier
+         * 66/distance was measured from the KART, 61 px nearer, which is
+         * NOTES 154b's swell all over again.  At the player's depth the
+         * scale is the player's own (kscale), so ks = sc * TRAIL / LES.
+         * And the highest-resolution drawing always: the tier ladder is
+         * the SNES's substitute for scaling, and switching to a coarser
+         * drawing while the size is still large is the step the eye sees. */
+        float ks = sc * SMK_CAM_TRAIL / SMK_PROJ_LES;
         if (ks > (float)kscale) ks = (float)kscale;
         if (racers[k].shrink_t > 0) ks *= 0.5f;
-        int fdraw;
-        bool hf2 = false;
-        if (KTIER[kt].base < 0 || mirror) fdraw = mirror ? 0 : f;
-        else fdraw = smk_sprite_for_heading(KTIER[kt].base, (uint16_t)rel, &hf2);
-        if (!mirror && KTIER[kt].base >= 0) { /* hf2 set above */ }
-        else hf2 = hf;
+        int fdraw = mirror ? 0 : f;
+        bool hf2 = hf;
+        (void)kt;
         {
             /* The winner's pose is NOT reachable yet, and this is the
              * honest state of it (NOTES 180).  The user's screenshot of
@@ -1550,7 +1557,7 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
         const smk_proj *pr = &projs[i];
         if (pr->kind == SMK_PROJ_NONE) continue;
         float px, py, sc;
-        if (!smk_project(cam, (float)smk_kart_px(pr->x), (float)smk_kart_px(pr->y),
+        if (!smk_project(cam, (float)smk_kart_px(pr->x + pr->wx), (float)smk_kart_px(pr->y + pr->wy),
                          rw, rh, &px, &py, &sc)) continue;
         int scale = rw / 256; if (scale < 1) scale = 1;
         float kdx = (float)smk_kart_px(pr->x) - cam->x, kdy = (float)smk_kart_px(pr->y) - cam->y;
@@ -1577,16 +1584,20 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
             case SMK_PROJ_FIREBALL: lad = SMK_ITEMART_FIREBALL; nl = SMK_ITEMART_FIREBALL_N; ipal = SMK_ITEMART_FIREBALL_PAL; break;
             default:                lad = SMK_ITEMART_BANANA;   nl = SMK_ITEMART_BANANA_N;   ipal = SMK_ITEMART_BANANA_PAL; break;
             }
-            float want = 16.0f * SMK_KART_SCALE_K / kd;          /* native px */
-            if (want > 16.0f) want = 16.0f;
-            int ntier = nl / frames;
-            int tier = smk_itemart_pick(lad, ntier, want);       /* frame 0 of each tier leads */
+            /* the LARGEST tier, scaled by the pipe law (the user: "use our
+             * scaling formula from the higher res shell, switching to the
+             * low res sprites makes them look awful too soon") */
+            float ks2 = sc * SMK_CAM_TRAIL / SMK_PROJ_LES;
+            if (ks2 > (float)scale) ks2 = (float)scale;
+            float want = 16.0f * ks2 / (float)scale;             /* native px, for the record */
+            int ntier = nl / frames; (void)ntier;
+            int tier = 0;
             /* the shell's three frames are its spin: only while it travels
              * (a dropped one sits still) - the user */
             bool moving = pr->speed != 0 || pr->vx || pr->vy;
             const smk_itemart_tier *t = &lad[tier * frames + (frames > 1 && moving ? (int)((fx_ticks >> 2) % (unsigned)frames) : 0)];
-            float s = (float)scale * (want / 16.0f) * (16.0f / (float)t->w);
-            if (s < 0.5f) s = 0.5f;
+            float s = ks2 * (16.0f / (float)t->w); (void)want;
+            if (s < 0.1f) s = 0.1f;
             int dw = (int)((float)t->w * s + 0.5f), dh = (int)((float)t->h * s + 0.5f);
             if (dw < 1 || dh < 1) continue;
             int x0 = (int)px - dw / 2, y0 = (int)py - dh - lift;

@@ -135,12 +135,9 @@ void smk_proj_ai_drop(smk_proj *list, int n, int kind, const smk_kart *k, int ow
     p->kind = kind; p->owner = owner; p->target = -1;
     p->heading = k->angle;
     p->x = k->x; p->y = k->y;
-    if (kind == SMK_PROJ_FIREBALL) {
-        p->speed = (int16_t)(k->speed + SMK_PROJ_SPEED_ADD);
-        p->safe = SMK_PROJ_OWNER_SAFE;
-        set_velocity(p);
-        return;
-    }
+    /* the fireball too: Bowser "puts or throws them but they stay in
+     * place and then have a zigzag but only to the left and right" (the
+     * user) - carried and let go like the rest, no speed */
     p->carry = SMK_AI_CARRY;
     p->safe = SMK_AI_CARRY + SMK_PROJ_OWNER_SAFE;
 }
@@ -170,6 +167,16 @@ void smk_proj_step(smk_proj *list, int n, const smk_track *trk,
             }
             continue;
         }
+        if (p->kind == SMK_PROJ_FIREBALL) {
+            /* in place, weaving left and right of where it was put:
+             * OURS, the width and the period unmeasured */
+            int16_t sx, cy;
+            smk_dsp_sincos((uint16_t)(p->heading + 0x4000), 256, &sx, &cy);
+            float d = (float)SMK_FIRE_WEAVE_AMP * sinf((float)(p->t % SMK_FIRE_WEAVE_T) / (float)SMK_FIRE_WEAVE_T * 6.2831853f);
+            p->wx = (int32_t)((float)sx * d) << (SMK_POS_SHIFT - 8);
+            p->wy = -((int32_t)((float)cy * d) << (SMK_POS_SHIFT - 8));
+            continue;
+        }
         if (p->kind == SMK_PROJ_BANANA || p->kind == SMK_PROJ_MUSHROOM
             || p->kind == SMK_PROJ_EGG) continue;         /* $80:F745: sits */
         if (p->kind == SMK_PROJ_GREEN && p->speed == 0) continue;   /* dropped: static */
@@ -195,18 +202,6 @@ void smk_proj_step(smk_proj *list, int n, const smk_track *trk,
         /* $80:FE07: the integrator, then the wall */
         int32_t nx = p->x + ((int32_t)p->vx << (SMK_POS_SHIFT - 8));
         int32_t ny = p->y + ((int32_t)p->vy << (SMK_POS_SHIFT - 8));
-        if (p->kind == SMK_PROJ_FIREBALL) {
-            /* Bowser's fireball weaves across its path as it goes (the
-             * user); a sideways sine on top of the straight flight -
-             * OURS, amplitude and period unmeasured */
-            int16_t sx, cy;
-            smk_dsp_sincos((uint16_t)(p->heading + 0x4000), 256, &sx, &cy);
-            float ph = (float)(p->t % SMK_FIRE_WEAVE_T) / (float)SMK_FIRE_WEAVE_T * 6.2831853f;
-            float ph0 = (float)((p->t - 1) % SMK_FIRE_WEAVE_T) / (float)SMK_FIRE_WEAVE_T * 6.2831853f;
-            float d = (float)SMK_FIRE_WEAVE_AMP * (sinf(ph) - sinf(ph0));
-            nx += (int32_t)((float)sx * d) << (SMK_POS_SHIFT - 8);
-            ny -= (int32_t)((float)cy * d) << (SMK_POS_SHIFT - 8);
-        }
         int px = smk_kart_px(nx), py = smk_kart_px(ny);
         int cx = smk_kart_px(p->x), cy = smk_kart_px(p->y);
         uint8_t here = smk_track_surface(trk, px, py);
@@ -240,8 +235,8 @@ int smk_proj_hit(smk_proj *list, int n, const smk_kart *k, int kart_index)
         if (p->kind == SMK_PROJ_NONE || p->dying) continue;
         if (p->kind == SMK_PROJ_BANANA_AIR) continue;      /* in the air */
         if (p->owner == kart_index && (p->carry > 0 || p->t < p->safe)) continue;
-        int dx = smk_kart_px(p->x) - smk_kart_px(k->x);
-        int dy = smk_kart_px(p->y) - smk_kart_px(k->y);
+        int dx = smk_kart_px(p->x + p->wx) - smk_kart_px(k->x);
+        int dy = smk_kart_px(p->y + p->wy) - smk_kart_px(k->y);
         if (dx < 0) dx = -dx;
         if (dy < 0) dy = -dy;
         if (dx >= SMK_PROJ_HIT_R || dy >= SMK_PROJ_HIT_R) continue;
