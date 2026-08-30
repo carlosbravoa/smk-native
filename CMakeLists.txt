@@ -41,7 +41,8 @@ target_compile_options(smkcore PRIVATE -Wall -Wextra -O2)
 target_link_libraries(smkcore PUBLIC m)
 
 add_executable(smk src/main.c src/audio.c)
-target_link_libraries(smk PRIVATE smkcore PkgConfig::SDL2)
+pkg_check_modules(SDL2MIXER REQUIRED IMPORTED_TARGET SDL2_mixer)
+target_link_libraries(smk PRIVATE smkcore PkgConfig::SDL2 PkgConfig::SDL2MIXER)
 target_compile_options(smk PRIVATE -Wall -Wextra -O2)
 
 # Headless check that the asset pipeline agrees with the Python toolkit.
