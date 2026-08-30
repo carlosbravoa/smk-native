@@ -2455,6 +2455,21 @@ int main(int argc, char **argv)
 
     while (!in.quit) {
         pump(&in);
+        /* the music follows the state; the mapping is the user's
+         * music/map.txt (NOTES 202) */
+        {
+            char mkey[16];
+            if (!shell || ui.screen == SMK_UI_RACE)
+                snprintf(mkey, sizeof mkey, "theme%d", trk.theme % SMK_THEME_COUNT);
+            else if (ui.screen == SMK_UI_RESULT || ui.screen == SMK_UI_STANDINGS)
+                snprintf(mkey, sizeof mkey, "results");
+            else if (ui.screen == SMK_UI_TITLE)
+                snprintf(mkey, sizeof mkey, "title");
+            else
+                snprintf(mkey, sizeof mkey, "menu");
+            smk_music_set(mkey);
+            smk_audio_pump();
+        }
 
         /* (re)create the framebuffer when the window size changes */
         int ww, wh;
@@ -2548,21 +2563,6 @@ int main(int argc, char **argv)
                     smk_track_load(&rom, track, theme, &trk, err, sizeof err);
                     smk_track_place_objects(&rom, &trk);
                 }
-            }
-            /* the music follows the state; the mapping is the user's
-             * music/map.txt (NOTES 202) */
-            {
-                char mkey[16];
-                if (!shell || ui.screen == SMK_UI_RACE)
-                    snprintf(mkey, sizeof mkey, "theme%d", trk.theme % SMK_THEME_COUNT);
-                else if (ui.screen == SMK_UI_RESULT || ui.screen == SMK_UI_STANDINGS)
-                    snprintf(mkey, sizeof mkey, "results");
-                else if (ui.screen == SMK_UI_TITLE)
-                    snprintf(mkey, sizeof mkey, "title");
-                else
-                    snprintf(mkey, sizeof mkey, "menu");
-                smk_music_set(mkey);
-                smk_audio_pump();
             }
             if (in.toggle_map) { show_map = !show_map; in.toggle_map = false; }
             if (in.toggle_filter) {

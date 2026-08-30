@@ -391,7 +391,11 @@ static inline int smk_kart_height_px(const smk_kart *k)
  * px DOWN and buzzes.  Classes not measured take the road's. */
 static inline const signed char *smk_shake_of(uint8_t cls)
 {
-    static const signed char P0[8] = {  0, -1,  0, -1,  0, -1,  0, -1 };   /* the bob */
+    /* The game's road rows alternate 69/70 - a 1 px engine bob - but at
+     * the port's 2-3x scales that reads as jitter on every kart (the
+     * user), so the road is STILL here and only the off-road shakes
+     * remain.  LABELLED (S32). */
+    static const signed char P0[8] = {  0,  0,  0,  0,  0,  0,  0,  0 };
     static const signed char P1[8] = { -1, -1, -3, -1, -1,  0,  0,  0 };   /* hard   */
     static const signed char P2[8] = { -1,  0, -1,  0,  0, -1, -2, -2 };   /* soft   */
     static const signed char P3[8] = {  3,  2,  3,  2,  3,  2,  3,  2 };   /* sunk   */
