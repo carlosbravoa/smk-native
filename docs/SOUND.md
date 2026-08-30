@@ -29,9 +29,20 @@ snapshotted mid-song and rendered offline. No SPC700 runs in the port.
    dumper reads the DSP through $F2/$F3 and forces the write-only timer
    control $F1 to 1 - see NOTES 201.)
 
-3. Render with ffmpeg (libgme):
+3. Render LONG with ffmpeg (libgme) and cut one clean loop:
 
-       ffmpeg -i tmp/<name>_3000.spc -t 180 rom/music/<song>.wav
+       ffmpeg -i tmp/<name>_3000.spc -t 480 tmp/<song>_long.wav
+       tools/labs/songcut.py tmp/<song>_long.wav rom/music/<song>.wav
+
+   songcut finds the loop on the loudness envelope, starts the file at a
+   phrase boundary and crossfades the seam, so the whole-file loop is
+   clean.  A RACE-start snapshot cannot render past ~10 s (the game
+   streams data to the driver through the first seconds of a race and
+   the .spc has nobody to send it), so race songs are cut from a
+   mid-race snapshot and begin at a phrase boundary rather than the
+   song's first note; menu-type songs snapshot near their start and loop
+   whole.  `key intro.wav loop.wav` in map.txt plays an intro once, then
+   loops the second file, when a true intro is wanted.
 
 ## Mapping songs to states
 
