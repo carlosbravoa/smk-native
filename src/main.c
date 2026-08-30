@@ -3027,7 +3027,7 @@ int main(int argc, char **argv)
                  * for, so hand over to the celebration and let it run. */
                 me->finish_frame = hud_race_frames;
                 if (race_mode == SMK_MODE_TT) {
-                    if (shell || getenv("SMK_RESULT_SHOT")) ui.screen = SMK_UI_RESULT;
+                    if (shell || getenv("SMK_RESULT_SHOT")) { smk_ui_gp_award(&ui, &result); ui.screen = SMK_UI_RESULT; }
                 } else {
                     race_state = RACE_FINISH;
                     finish_t = 0;
@@ -3050,7 +3050,7 @@ int main(int argc, char **argv)
                            result.field[q].total >= 0 ? tt : "DNF",
                            result.field[q].player ? "   <- you" : "");
                 }
-                if (shell || getenv("SMK_RESULT_SHOT")) ui.screen = SMK_UI_RESULT;
+                if (shell || getenv("SMK_RESULT_SHOT")) { smk_ui_gp_award(&ui, &result); ui.screen = SMK_UI_RESULT; }
             }
         }
         (void)stepped;   /* edges deliberately survive a tickless iteration */
@@ -3060,6 +3060,8 @@ int main(int argc, char **argv)
          * playing through the menus. */
         if (tex && fb && (shell || getenv("SMK_RESULT_SHOT"))
             && ui.screen != SMK_UI_RACE) {
+            if (ui.screen == SMK_UI_STANDINGS)
+                smk_ui_draw_standings(&ui, &rom, &menu_font, fb, rw, rh);
             if (ui.screen == SMK_UI_RESULT) {
                 smk_ui_draw_result(&ui, &rom, &menu_font, &records, &result,
                                    fb, rw, rh);

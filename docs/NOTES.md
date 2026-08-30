@@ -8378,3 +8378,19 @@ global streams, and the themes differ only in which kind and palette a
 class asks for. Kind `$0C` is now picked on the shallow water ($22/$24,
 `$80:D437`) while moving; `$20`'s handler (`$80:D40B`) is the deep
 water's and stays out.
+
+## 198. The cup around the race
+
+Grand Prix is no longer refused at the mode screen. A cup runs its five
+courses in the ROM's order (`$81:EC1B`, NOTES 147), and after each result
+a STANDINGS screen: every driver by points, this race's place beside.
+Points are the ROM's own words at `$85:BEB4` - 9, 6, 3, 1 - which the
+results code at `$85:C0C6` reads for a kart whose index in the order
+table `$010E` is under 4 and for nobody else; the port awards them from
+the finishing table it already builds (NOTES 179) to the top four
+drivers, the AI included. A player who finishes fifth or worse is
+RANKED OUT: no points that race, and ENTER runs the same course again
+(the retry is the game's rule as played; its exact text and the AI's
+points on a retried race are not measured - LABELLED). After the fifth
+course the standings are final and ENTER returns to the course screen.
+Self-tested through the shell's own state machine.

@@ -407,7 +407,7 @@ regression in them is noticed.
 | P5 race furniture | **part** - the live phase — ground objects stamped with the ROM's own tiles (NOTES 074), sprite-obstacle entity list decoded and colliding (NOTES 078), HUD set + clock + lap counter on the game's own art, start countdown (NOTES 085).  hazard classes decoded and ported - water ($22) wade/skim, the fall ($24/$26/$20/$28) and Lakitu's rescue as the ROM's own three states with a latched target (NOTES 113, 124).  Breakable blocks done and gated for both themes (NOTES 123/123a).  The sector map now matches the game's own $7F:5000 on all painted cells.  Lakitu's own art is now decoded and drawn for the start (NOTES 162).  Residual: the horizon/backdrop (S5), entity MOTION (S12), item behaviour, the splash/sink effects |
 | P6 opponents | **driving and competitiveness in, personality not.**  Flow-field steering (95% byte-exact), ramp launches, wall escapes and a Lakitu rescue get the field round **20/20** GP courses.  Kart-to-kart contact is the ROM's, weight classes and all (NOTES 166).  The rubber band is the ROM's own row chooser, `$80ADA0`, rebuilt in NOTES 174 and reproducing the game's choice on 94.2% of 39,074 recorded kart-frames - it turns on whether the neighbouring kart is the HUMAN, and its catch-up distances re-tune every lap.  Residual: the "in trouble" test (`$84`, `$10` bit 5) is approximated and never fires where the game is at 8%; the distance CACHE is not modelled; per-kart driving personality; items |
 | P7 audio | **decided** — pre-recorded; `smk spc` dumps the driver, rendering not wired up |
-| P8 modes / menus | **part** — a working shell: title → mode → driver+class → course-by-cup → race → results, in two modes.  SINGLE RACE is a Grand Prix course on its own: eight karts, the ROM's per-character grid order (`$81EE97`, NOTES 111) on the ROM's own grid rows with the player at the back (NOTES 164), starting coins, and a finishing place.  TIME TRIAL is alone with one mushroom and keeps the top five lap times per course on disk.  Font, palettes, cup order, course names, lap count and the time-trial rules are all ROM-derived (NOTES 147/148).  Residual: the CUP around a race (points and standings), items, the real menu art (S20), the mushroom grant rule (S19) |
+| P8 modes / menus | **part** — a working shell: title → mode → driver+class → course-by-cup → race → results, in two modes.  SINGLE RACE is a Grand Prix course on its own: eight karts, the ROM's per-character grid order (`$81EE97`, NOTES 111) on the ROM's own grid rows with the player at the back (NOTES 164), starting coins, and a finishing place.  TIME TRIAL is alone with one mushroom and keeps the top five lap times per course on disk.  Font, palettes, cup order, course names, lap count and the time-trial rules are all ROM-derived (NOTES 147/148).  Residual: the real menu art (S20), the mushroom grant rule (S19); the cup is in (NOTES 198) |
 
 ## Where to pick up next
 
@@ -460,10 +460,11 @@ In rough order of value:
    **Gate it on a Bowser Castle recording** - no existing gate sees a
    Thwomp - with `--autodrive` on tracks 3/9/17 as the cheap check.
 
-4. **Grand Prix (P8).** The shell, the grid, the field, the lap rule, the
-   finish and now the rubber band are all in place, so what is missing is
-   scoring and the between-race flow: four cups of five, finishing order,
-   points, standings. A game-state problem rather than a decode one.
+4. **~~Grand Prix (P8)~~ — IN (NOTES 198).** Four cups of five in the
+   ROM's order, 9/6/3/1 from `$85:BEB4` to the top four, standings between
+   races, a retry when ranked out, final standings after the fifth.
+   LABELLED: the retry's exact rule and text, and whether the AI scores on
+   a retried race.
 
 5. **~~Finish the rubber band's two loose ends (S25)~~ — CLOSED by
    NOTES 174.** Both were measured from the user's recorded race. `$DA`

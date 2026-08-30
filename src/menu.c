@@ -139,11 +139,8 @@ bool smk_ui_step(smk_ui *ui, const smk_rom *rom, const smk_ui_input *in)
         if (in->down) ui->mode_sel = (ui->mode_sel + 1) % SMK_UI_MODES;
         if (in->back) ui->screen = SMK_UI_TITLE;
         if (in->confirm) {
-            if (ui->mode_sel == SMK_UI_MODE_GP) {   /* the CUP is not built */
-                ui->denied = true; ui->denied_t = 45;
-            } else {
-                ui->screen = SMK_UI_PLAYER;
-            }
+            ui->gp = (ui->mode_sel == SMK_UI_MODE_GP);
+            ui->screen = SMK_UI_PLAYER;
         }
         break;
 
@@ -167,10 +164,21 @@ bool smk_ui_step(smk_ui *ui, const smk_rom *rom, const smk_ui_input *in)
     case SMK_UI_COURSE:
         if (in->left)  ui->cup_sel = (ui->cup_sel + SMK_CUPS - 1) % SMK_CUPS;
         if (in->right) ui->cup_sel = (ui->cup_sel + 1) % SMK_CUPS;
-        if (in->up)    ui->course_sel = (ui->course_sel + SMK_CUP_COURSES - 1) % SMK_CUP_COURSES;
-        if (in->down)  ui->course_sel = (ui->course_sel + 1) % SMK_CUP_COURSES;
+        if (ui->gp) ui->course_sel = 0;              /* a cup starts at its first course */
+        else {
+            if (in->up)    ui->course_sel = (ui->course_sel + SMK_CUP_COURSES - 1) % SMK_CUP_COURSES;
+            if (in->down)  ui->course_sel = (ui->course_sel + 1) % SMK_CUP_COURSES;
+        }
         if (in->back)  ui->screen = SMK_UI_PLAYER;
         if (in->confirm) {
+            if (ui->gp) {
+                ui->gp_race = 0; ui->ranked_out = false;
+                for (int i = 0; i < SMK_CHARACTERS; i++) { ui->gp_points[i] = 0; ui->gp_place[i] = 0; }
+                for (int i = 0; i < 4; i++) {
+                    uint32_t pc = smk_snes_to_pc(rom, 0x85BEB4u + (uint32_t)i * 2u);
+                    ui->gp_pts_table[i] = pc + 1 < rom->size ? (rom->data[pc] | rom->data[pc + 1] << 8) : 0;
+                }
+            }
             ui->track = smk_cup_track(rom, ui->cup_sel, ui->course_sel);
             ui->screen = SMK_UI_RACE;
             return true;
@@ -181,10 +189,42 @@ bool smk_ui_step(smk_ui *ui, const smk_rom *rom, const smk_ui_input *in)
         break;
 
     case SMK_UI_RESULT:
-        if (in->confirm || in->back) ui->screen = SMK_UI_COURSE;
+        if (in->confirm || in->back) ui->screen = ui->gp ? SMK_UI_STANDINGS : SMK_UI_COURSE;
+        break;
+
+    case SMK_UI_STANDINGS:
+        if (in->back) { ui->gp = false; ui->screen = SMK_UI_COURSE; break; }
+        if (in->confirm) {
+            if (ui->ranked_out) {                       /* the same course again */
+                ui->ranked_out = false;
+                ui->screen = SMK_UI_RACE;
+                return true;
+            }
+            if (ui->gp_race + 1 < SMK_CUP_COURSES) {    /* the next course */
+                ui->gp_race++;
+                ui->track = smk_cup_track(rom, ui->cup_sel, ui->gp_race);
+                ui->screen = SMK_UI_RACE;
+                return true;
+            }
+            ui->gp = false;                             /* the cup is done */
+            ui->screen = SMK_UI_COURSE;
+        }
         break;
     }
     return false;
+}
+
+/* After a race in a cup: the ROM's points to the top four, by driver, and
+ * whether the player must run the course again. */
+void smk_ui_gp_award(smk_ui *ui, const smk_ui_result *res)
+{
+    if (!ui->gp) return;
+    ui->ranked_out = res->position > 4;
+    for (int p = 0; p < res->entries && p < SMK_CHARACTERS; p++) {
+        int ch = res->field[p].character % SMK_CHARACTERS;
+        ui->gp_place[ch] = p + 1;
+        if (!ui->ranked_out && p < 4) ui->gp_points[ch] += ui->gp_pts_table[p];
+    }
 }
 
 /* ---- the driver line-up -------------------------------------------- */
@@ -240,9 +280,6 @@ static void draw_mode(const smk_ui *ui, const smk_font *f,
             fill(fb, w, h, x - 12, y - 2, 8, 12, 0xFFFFC040);
         text(f, fb, w, h, x, y, row[i], c);
     }
-    text_c(f, fb, w, h, 158, "A CUP OF FIVE IS NOT BUILT YET", off);
-    if (ui->denied_t > 0 && ((ui->denied_t / 6) & 1))
-        text_c(f, fb, w, h, 174, "ONE RACE AT A TIME", hi);
     text_c(f, fb, w, h, 200, "ENTER SELECT   ESC BACK", lo);
 }
 
@@ -376,7 +413,7 @@ void smk_ui_draw_result(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
     ramp(f, TEXT_PAL, off, 0xFFFFFFFF, 0xFF2A3E78); dim(off);
 
     bool race = res->position > 0;
-    text_c(f, fb, w, h, 10, race ? "SINGLE RACE" : "TIME TRIAL", hi);
+    text_c(f, fb, w, h, 10, race ? (ui->gp ? "GRAND PRIX" : "SINGLE RACE") : "TIME TRIAL", hi);
     text_c(f, fb, w, h, 24, smk_track_name(rom, ui->track), gold);
 
     if (race && res->entries > 0) {
@@ -458,6 +495,54 @@ void smk_ui_draw_result(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
     }
     (void)rec;
     text_c(f, fb, w, h, 200, "ENTER CONTINUE", lo);
+}
+
+void smk_ui_draw_standings(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
+                           uint32_t *fb, int w, int h)
+{
+    if (!f->ok) return;
+    backdrop(fb, w, h, f);
+    uint32_t hi[4], lo[4], gold[4], off[4];
+    ramp(f, TEXT_HI, hi, 0xFFFFFFFF, 0xFF7A5A18);
+    ramp(f, TEXT_PAL, lo, 0xFFFFFFFF, 0xFF2A3E78);
+    ramp(f, TEXT_HI, gold, 0xFFFFFFFF, 0xFF7A5A18);
+    ramp(f, TEXT_PAL, off, 0xFFFFFFFF, 0xFF2A3E78); dim(off);
+    char line[48];
+    snprintf(line, sizeof line, "GRAND PRIX   RACE %d OF %d", ui->gp_race + 1, SMK_CUP_COURSES);
+    text_c(f, fb, w, h, 10, line, hi);
+    text_c(f, fb, w, h, 24, smk_track_name(rom, ui->track), gold);
+    text_c(f, fb, w, h, 38, ui->ranked_out ? "RANKED OUT   TRY AGAIN"
+                          : ui->gp_race + 1 < SMK_CUP_COURSES ? "STANDINGS" : "FINAL STANDINGS",
+           ui->ranked_out ? off : hi);
+    /* by points, then by this race's place */
+    int order[SMK_CHARACTERS];
+    for (int i = 0; i < SMK_CHARACTERS; i++) order[i] = i;
+    for (int i = 1; i < SMK_CHARACTERS; i++) {
+        int v = order[i], j = i - 1;
+        for (; j >= 0; j--) {
+            int a = order[j];
+            bool worse = ui->gp_points[a] < ui->gp_points[v]
+                      || (ui->gp_points[a] == ui->gp_points[v] && ui->gp_place[a] > ui->gp_place[v]);
+            if (!worse) break;
+            order[j + 1] = order[j];
+        }
+        order[j + 1] = v;
+    }
+    for (int i = 0; i < SMK_CHARACTERS; i++) {
+        int ch = order[i]; int y = 58 + i * 12;
+        bool me = ch == ui->player_sel;
+        const uint32_t *col = me ? gold : lo;
+        char nm[16];
+        snprintf(nm, sizeof nm, "%s", SMK_DRIVERS[ch].name);
+        for (char *q = nm; *q; q++) if (*q >= 'a' && *q <= 'z') *q -= 32;
+        snprintf(line, sizeof line, "%d", i + 1);           text(f, fb, w, h, 36, y, line, col);
+        text(f, fb, w, h, 56, y, nm, col);
+        snprintf(line, sizeof line, "%2d PTS", ui->gp_points[ch]); text(f, fb, w, h, 132, y, line, col);
+        if (ui->gp_place[ch] > 0) { snprintf(line, sizeof line, "%dTH", ui->gp_place[ch]);
+            if (ui->gp_place[ch] == 1) snprintf(line, sizeof line, "1ST"); else if (ui->gp_place[ch] == 2) snprintf(line, sizeof line, "2ND"); else if (ui->gp_place[ch] == 3) snprintf(line, sizeof line, "3RD");
+            text(f, fb, w, h, 196, y, line, i < 4 ? col : off); }
+    }
+    text_c(f, fb, w, h, 200, ui->ranked_out ? "ENTER RETRY" : ui->gp_race + 1 < SMK_CUP_COURSES ? "ENTER NEXT COURSE" : "ENTER CONTINUE", lo);
 }
 
 bool smk_tt_crossing(smk_ui_result *res, int *crossings, long *lap_start,

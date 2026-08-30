@@ -728,6 +728,35 @@ int main(int argc, char **argv)
                           && smk_ai_weapon_of(4) == SMK_PROJ_BANANA && smk_ai_weapon_of(0) == SMK_AI_WEAPON_STAR
                           && smk_ai_weapon_of(2) == SMK_PROJ_FIREBALL, det);
                 }
+                /* the cup (NOTES 198): five courses, 9/6/3/1 from $85:BEB4,
+                 * a retry when ranked out, the cup over after the fifth */
+                {
+                    smk_ui u; memset(&u, 0, sizeof u); smk_ui_init(&u);
+                    smk_ui_input go = { false, false, false, false, true, false };
+                    smk_ui_input none = { 0 };
+                    u.screen = SMK_UI_MODE; u.mode_sel = SMK_UI_MODE_GP; smk_ui_step(&u, &rom, &go);   /* -> player */
+                    smk_ui_step(&u, &rom, &go);                                                   /* -> course */
+                    u.cup_sel = 0; bool started = smk_ui_step(&u, &rom, &go);                     /* -> race 0 */
+                    int t0 = u.track;
+                    smk_ui_result r; memset(&r, 0, sizeof r); r.entries = 8; r.position = 2;
+                    for (int p = 0; p < 8; p++) { r.field[p].character = (p + 3) % 8; r.field[p].total = 1000 + p; }
+                    r.field[1].player = 1; u.player_sel = r.field[1].character;
+                    smk_ui_gp_award(&u, &r);
+                    int pts_me = u.gp_points[u.player_sel], pts_win = u.gp_points[r.field[0].character];
+                    u.screen = SMK_UI_RESULT; smk_ui_step(&u, &rom, &go);                         /* -> standings */
+                    bool st = u.screen == SMK_UI_STANDINGS;
+                    bool next = smk_ui_step(&u, &rom, &go);                                       /* -> race 1 */
+                    int t1 = u.track;
+                    r.position = 6; smk_ui_gp_award(&u, &r);                                      /* ranked out */
+                    u.screen = SMK_UI_RESULT; smk_ui_step(&u, &rom, &go);
+                    bool retry = smk_ui_step(&u, &rom, &go) && u.track == t1 && u.gp_race == 1;
+                    snprintf(det, sizeof det, "table %d %d %d %d; me %d pts winner %d; tracks %d -> %d; standings %d retry %d",
+                             u.gp_pts_table[0], u.gp_pts_table[1], u.gp_pts_table[2], u.gp_pts_table[3], pts_me, pts_win, t0, t1, st, retry);
+                    check("a cup: 9/6/3/1 from the ROM, standings, the next course, a retry when ranked out",
+                          started && u.gp_pts_table[0] == 9 && u.gp_pts_table[3] == 1 && pts_me == 6 && pts_win == 9
+                          && st && next && t1 != t0 && retry, det);
+                    (void)none;
+                }
                 smk_racer rb; memset(&rb, 0, sizeof rb); rb.k.speed = 835;
                 smk_racer_hit(&rb, 4, 1);
                 snprintf(det, sizeof det, "hit_t %d tumble $%04X", rb.hit_t, rb.tumble);

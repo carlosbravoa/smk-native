@@ -1600,7 +1600,7 @@ void smk_autopilot_step(smk_autopilot *a, const smk_track *trk,
  * shell drives. */
 typedef enum {
     SMK_UI_TITLE, SMK_UI_MODE, SMK_UI_PLAYER, SMK_UI_COURSE,
-    SMK_UI_RACE, SMK_UI_RESULT
+    SMK_UI_RACE, SMK_UI_RESULT, SMK_UI_STANDINGS
 } smk_ui_screen;
 #define SMK_MODE_GP    0
 #define SMK_MODE_TT    4
@@ -1625,9 +1625,21 @@ typedef struct {
     int  engine_class;
     int  track;           /* resolved on confirm                   */
     unsigned tick;        /* blink phase                           */
-    bool denied;          /* flash: Grand Prix is not built yet    */
+    bool denied;          /* flash (unused now that the cup is built) */
     int  denied_t;
+    /* THE CUP (NOTES 198): five courses in the cup's order, points to the
+     * top four from the ROM's own table at $85:BEB4 (9 6 3 1 - the results
+     * code at $85:C0C6 reads it for rank indices under 4 only), standings
+     * between races, a retry of the same course when the player ranks out
+     * of the top four. */
+    bool gp;              /* a Grand Prix is running                 */
+    int  gp_race;         /* 0..4 within the cup                     */
+    int  gp_points[SMK_CHARACTERS];   /* by SMK_DRIVERS index        */
+    int  gp_place[SMK_CHARACTERS];    /* last race's place, by driver */
+    bool ranked_out;      /* the player finished 5th or worse        */
+    int  gp_pts_table[4]; /* $85:BEB4                                */
 } smk_ui;
+
 void smk_ui_init(smk_ui *ui);
 /* advance one frame; true when a race should start */
 bool smk_ui_step(smk_ui *ui, const smk_rom *rom, const smk_ui_input *in);
@@ -1652,6 +1664,9 @@ typedef struct {
     } field[SMK_CHARACTERS];
     int  entries;         /* how many of field[] are filled (0 = trial)   */
 } smk_ui_result;
+void smk_ui_gp_award(smk_ui *ui, const smk_ui_result *res);
+void smk_ui_draw_standings(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
+                           uint32_t *fb, int w, int h);
 void smk_ui_draw_result(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
                         const smk_records *rec, const smk_ui_result *res,
                         uint32_t *fb, int w, int h);
