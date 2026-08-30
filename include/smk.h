@@ -168,6 +168,7 @@ typedef struct {
     int16_t  bvx, bvy;
     int8_t   bounce_cool;   /* $5C: the 8-frame window with the velocity held */
     uint8_t  star;          /* $E2 bit 1 mirrored: obstacles fly instead of you */
+    uint8_t  hazard_hit;    /* touched a plant / a fish this frame: spin, not a wall */
     uint8_t  bounce_dir;    /* $56: which way the wall pushed (0/2/4/6)       */
     uint8_t  bounce_pend;   /* $52's $C000 bits: damp on the NEXT frame       */
     uint8_t  bounce_hit;    /* $10 bit 12: hit a wall, $80A0C7 owes a cost   */
@@ -1794,7 +1795,7 @@ bool smk_projart_load(const smk_rom *rom, smk_projart *out);
 #define SMK_AI_NEAR         160   /* px; MEASURED drops at 53..153 - OURS as a bound */
 #define SMK_AI_COOL         640   /* frames; MEASURED intervals 646/874/884 - OURS as a floor */
 #define SMK_FIRE_WEAVE_AMP  20    /* OURS (the user: "fireballs move sideways"): px either side */
-#define SMK_FIRE_WEAVE_T    40    /* OURS: frames per full weave                                  */
+#define SMK_FIRE_WEAVE_T    96    /* OURS: frames per full weave (40 was "too fast" - the user)   */
 #define SMK_AI_WEAPON_NONE  0
 #define SMK_AI_WEAPON_STAR  100   /* not a projectile kind */
 int  smk_ai_weapon_of(int character);    /* SMK_PROJ_* kind, or SMK_AI_WEAPON_STAR / NONE */

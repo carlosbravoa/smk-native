@@ -704,7 +704,9 @@ static void step_kart(smk_kart *k, smk_track *trk,
      * is the narrow version of the same rule: a kart in Lakitu's hands is
      * not on the track, so the track cannot touch it. */
     k->star = (player.flags & 2) ? 1 : 0;
+    k->hazard_hit = 0;
     if (course_for_step && !player.hazard) smk_collide_objects(k, course_for_step);
+    if (k->hazard_hit) smk_player_hit_banana(&player, k);   /* a plant, a fish: the spin */
     /* the collector ($81B73B) serves ONE player per frame, alternating:
      * every P1 pickup in the demo lands on an odd frame, every P2 pickup
      * on an even one, with the cell the kart is on after that frame's
@@ -1533,7 +1535,7 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
             int len = kc->kind ? SMK_COINUP_PATH_LEN : SMK_COIN_PATH_LEN;
             if (step < 0 || step >= len) continue;
             const smk_coin_step *st = &(kc->kind ? SMK_COINUP_PATH : SMK_COIN_PATH)[step];
-            int cx = kx + (kc->kind ? st->dx + 4 * kc->side : st->dx * kc->side) * scale,
+            int cx = kx + (kc->kind ? st->dx : st->dx * kc->side) * scale,   /* the 2-coin item: same X (the user) */
                 cy = ky + st->dy * scale;
             if (getenv("SMK_COIN_TRACE"))
                 printf("coin t%d screen (%d,%d)\n", kc->t, cx * 256 / rw, cy * 224 / rh);
@@ -1649,7 +1651,17 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
          * 32-px block's bottom, 70, is exactly the kart sprite's top on the
          * ground (the player line 102 minus 32) - so the kart's lift is
          * 38 - his row, all the way down, and the two cannot drift. */
-        if (player.hazard == 0x0E) lift = (38 - smk_rescue_y(rescue_t)) * scale;
+        /* MEASURED (tools/labs/lakitu_rescue.py, the kart's own sprite,
+         * NOTES 195): through $0E the kart's sprite row is 128 + 2t,
+         * wrapping - it is off the bottom until frame 64, enters from the
+         * TOP at row 0 and lands on row 70 at frame 98, 2 px a frame.  The
+         * physics z is not the picture ($1E reads 0 / -32768 the whole
+         * way); the picture is this. */
+        if (player.hazard == 0x0E) {
+            int row = (128 + 2 * rescue_t) & 0xFF;          /* the sprite's top */
+            if (rescue_t < 64) lift = 100000;                /* off-screen: not drawn */
+            else lift = (70 - row) * scale;
+        }
         /* Fallen through the track: the kart goes UNDER the plane, so it
          * is hidden by the track and shows only through the hole it fell
          * into - the SNES drops the sprite below BG1 (NOTES 128). */
@@ -2479,10 +2491,11 @@ int main(int argc, char **argv)
                 in.hop_held = false;
             }
             if (getenv("SMK_SPEED_TRACE") && race_state == RACE_RUN)
-                printf("spd f%ld speed %d surf $%02X type %d drive $%02X fc %d state $%02X target %d\n",
+                printf("spd f%ld speed %d surf $%02X type %d drive $%02X fc %d state $%02X target %d at %d,%d\n",
                        hud_race_frames, kart.speed,
                        smk_track_surface(&trk, smk_kart_px(kart.x), smk_kart_px(kart.y)),
-                       player.type, player.drive, player.fc, player.state, player.target);
+                       player.type, player.drive, player.fc, player.state, player.target,
+                       smk_kart_px(kart.x), smk_kart_px(kart.y));
             if (race_state == RACE_RUN || race_state == RACE_FINISH) {
                 hud_race_frames++;
                 smk_race_frame = hud_race_frames;   /* so a kart can stamp its own finish */
@@ -2736,9 +2749,12 @@ int main(int argc, char **argv)
                                              player.heading, kart.vx, kart.vy, lost);
                         }
                     } else if (hk == SMK_PROJ_MUSHROOM) {
-                        /* the poison mushroom: the shell's tumble and the shrink */
+                        /* the poison mushroom: the SHRINK only - "doesn't
+                         * trigger spinning, it triggers the shrinking
+                         * animation" (the user); $80:EA3B's $0300 tumble is
+                         * the lightning's, not this */
                         if (!(player.flags & 2)) {
-                            smk_player_shrink(&player, &kart, (int)(fx_ticks & 1));
+                            player.shrink_t = 0x440;
                             int lost = player.coins < 4 ? player.coins : 4;
                             player.coins -= lost;
                             smk_coinfx_spawn(coins_fx, SMK_COINFX_MAX, kart.x, kart.y,
@@ -2761,7 +2777,7 @@ int main(int argc, char **argv)
                                    smk_kart_px(racers[q].k.x), smk_kart_px(racers[q].k.y), racers[q].rank, hq,
                                    smk_kart_px(kart.x), smk_kart_px(kart.y), racers[0].rank);
                         if (hq == SMK_PROJ_BANANA) smk_racer_hit(&racers[q], 1, (int)(fx_ticks & 1));
-                        else if (hq == SMK_PROJ_MUSHROOM) smk_racer_hit(&racers[q], 3, (int)(fx_ticks & 1));
+                        else if (hq == SMK_PROJ_MUSHROOM) { if (racers[q].star_t <= 0) racers[q].shrink_t = 0x440; }   /* shrink only */
                         else if (hq != SMK_PROJ_NONE) smk_racer_hit(&racers[q], 2, (int)(fx_ticks & 1));
                     }
                 }

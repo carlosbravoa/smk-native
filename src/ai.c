@@ -132,6 +132,10 @@ void smk_collide_objects(smk_kart *k, const smk_course *crs)
             ((smk_course *)crs)->dead[i] = 1;
             continue;
         }
+        /* Choco Island's piranha plants and Koopa Beach's cheep-cheeps are
+         * not walls: "if you touch it, it triggers the spinning animation"
+         * (the user).  The kart reports the touch; the driver spins. */
+        if (crs->theme == 3 || crs->theme == 5) { k->hazard_hit = 1; continue; }
         float d = sqrtf((float)d2);
         float nx2 = (float)dx / d, ny2 = (float)dy / d;
         float dot = (float)k->vx * nx2 + (float)k->vy * ny2;
@@ -473,7 +477,8 @@ void smk_racer_step(smk_racer *r, const smk_track *trk,
         smk_kart_face(&r->k);
         smk_kart_gravity(&r->k);
         smk_kart_move(&r->k, trk);
-        smk_collide_objects(&r->k, crs);
+        r->k.hazard_hit = 0; smk_collide_objects(&r->k, crs);
+        if (r->k.hazard_hit) smk_racer_hit(r, 1, 0);
         return;
     }
     if (r->shrink_t > 0) { r->shrink_t--; if (target > 0x200) target = 0x200; }   /* OURS: small is slow */
@@ -489,7 +494,8 @@ void smk_racer_step(smk_racer *r, const smk_track *trk,
     smk_kart_face(&r->k);
     smk_kart_gravity(&r->k);
     smk_kart_move(&r->k, trk);
-    smk_collide_objects(&r->k, crs);
+    r->k.hazard_hit = 0; smk_collide_objects(&r->k, crs);
+        if (r->k.hazard_hit) smk_racer_hit(r, 1, 0);
 }
 
 /* ---- The rubber band (NOTES 167) -------------------------------------- */

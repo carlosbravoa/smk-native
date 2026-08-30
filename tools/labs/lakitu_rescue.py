@@ -95,7 +95,7 @@ def sprites():
                     b.oam[k*4+3], (sh >> 1) & 1))
     return out
 
-log(" f  $A0  z($1E) kart(x,y) | sprites that are not karts")
+log(" f  $A0  z($1E) kart(x,y) | sprites that are not karts || KART sprites (tile $180-$1A3): slot x,y")
 prev = None
 for f in range(260):
     odd = [s for s in sprites()
@@ -103,6 +103,8 @@ for f in range(260):
            and (s[3] & 0x1FF) < 0x140]
     key = tuple(sorted((s[3], s[4]) for s in odd))
     if key != prev or f % 30 == 0:
+        ks=[(k,x,y) for k,x,y,t,a,big in sprites() if 0x180<=t<=0x1A3]
+        log("KART f%d $%02X z %d | %s" % (f, w(P1+0xA0), s16(w(P1+0x1E)), ' '.join('s%d(%d,%d)'%v for v in ks)))
         log("%3d  $%02X  %5d (%4d,%4d) | %s"
             % (f, w(P1+0xA0), s16(w(P1+0x1E)), w(P1+0x18), w(P1+0x1C),
                ' '.join("t$%03X@%d,%d%s" % (s[3], s[1], s[2],

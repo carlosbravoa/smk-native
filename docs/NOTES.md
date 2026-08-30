@@ -8237,3 +8237,41 @@ weave offset `wx/wy` the hit test and the drawing both read.
    HANGS from him: at the path's end his row is 38 and his block's bottom
    (70) is the kart sprite's top on the ground (102 - 32), so the kart's
    lift is `38 - his row` all the way down.
+
+## 195. The rescue, measured from the kart's own sprite; and four more
+
+The user: *"Lakitu drop-off is still wrong and now the kart gets reseted
+when coming down. Check the rom (to test, just pick ghost valley and go
+straight: after bumping a few blocks, you'll fall down. Lakitu brings
+the player from the top of the screen to the ground)."*
+
+`tools/labs/lakitu_rescue.py` now logs the KART's four sprites through
+the fall, the carry and the drop (OAM rows, Ghost Valley, the game
+deciding the fall):
+
+    fall   f0..30   row 69 -> 130, the sprite drops down the screen
+    carry  $0C      row 128 - below the 112-line view, unseen
+    drop   $0E      row 128 + 2t, wrapping: 168 at t=19, 230 at t=49,
+                    254 at t=63, then 2 at t=65 ... 70 at t=98 = released
+    Lakitu (NOTES 168a's path) = the kart's row - 27, from t=65 to the end
+
+So the kart is not lowered from a height of its own: its sprite runs
+down the screen at 2 px a frame from below the view, wraps, and comes
+in from the TOP at frame 64, hanging 27 px under Lakitu, and both land
+together at frame 98. `$1E` reads 0 / -32768 the whole way - the z is
+not the picture. The port draws exactly this: hidden until frame 64,
+then lift = 70 - (128 + 2t mod 256), with Lakitu on his own captured
+row; the physics z keeps its 96-frame fall for the collision side only.
+
+Also from the same session:
+- the 2-coin item's two hops share one X (the user);
+- the fireball's weave period 40 -> 96 frames ("too fast" - OURS still);
+- the poison mushroom SHRINKS and nothing else - "doesn't trigger
+  spinning, it triggers the shrinking animation" - for the player and an
+  AI alike; `$80:EA3B`'s `$0300` tumble is the lightning's routine;
+- Choco Island's piranha plants and Koopa Beach's cheep-cheeps are not
+  walls: touching one spins you (the banana reaction; the AI's kind 1).
+  Their art was already the theme's own sheet (`$C10AA5`, `$C11706`,
+  57 tiles each, the plant and the fish ladders) - the fish is
+  asymmetric and the near band's mirrored-half assembly (NOTES 155) will
+  not suit it; LABELLED, to be looked at with a screenshot.
