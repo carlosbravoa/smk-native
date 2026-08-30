@@ -9,6 +9,7 @@ local left = 0
 for _ in pairs(want) do left = left + 1 end
 local cpu = manager.machine.devices[":soundcpu"]
 local ram = cpu.spaces["program"]
+local dat = cpu.spaces["data"]      -- exposes the LIVE $F0-$FF (program reads give 0 for the write-only ones)
 local dsp = manager.machine.devices[":s_dsp"].spaces["data"]
 local n = 0
 emu.register_frame_done(function()
@@ -28,10 +29,13 @@ emu.register_frame_done(function()
   f:write(string.rep("\0", 0x100 - 0x2E))           -- ID666 fields, blank
   local t = {}
   for i = 0, 65535 do t[#t+1] = string.char(ram:read_u8(i)) end
-  -- $F1, the timer control, is write-only: a read gives 0 and the driver's
-  -- loop then never ticks (a silent .spc).  Timer 0 enabled is what makes
-  -- every snapshot play; 7 (all three) plays identically.
-  t[0xF1 + 1] = string.char(1)
+  -- $F1 and the timer dividers $FA-$FC are write-only through the program
+  -- space; the DATA space returns the live values (measured: $F1=$31,
+  -- $FA=$10 mid-race).  Without them the driver ticks 0 or 16x wrong -
+  -- "one note every 4 secs" (the user).
+  for _, r in ipairs({0xF1, 0xFA, 0xFB, 0xFC}) do
+    t[r + 1] = string.char(dat:read_u8(r))
+  end
   f:write(table.concat(t))
   local d = {}
   local saved = ram:read_u8(0xF2)
