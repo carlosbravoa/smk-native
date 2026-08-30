@@ -407,7 +407,15 @@ of them changes how every race feels.
 
 In rough order of value:
 
-1. **Sound (S8, P7) — the music HALF is in (NOTES 201/202).** The songs
+1. **Sound (S8, P7) — music PARKED, SFX open.** The pipeline works end to
+   end (NOTES 201/202, docs/SOUND.md): the game's own driver snapshotted
+   and rendered, one clean loop per song, mapped in rom/music/map.txt.
+   PARKED by the user 2026-08-30: the loops "don't start from a sensible
+   part of the song" and real intros are wanted - "this will take long to
+   get properly running and it is minor". The open half is the SFX: the
+   ENGINE NOTE first (the turbo launch is timed against it), then hits,
+   items, the countdown beeps.
+   The old text:** The songs
    are the game's own driver, snapshotted from a MAME replay and rendered
    by libgme; the port plays the WAVs the user maps in rom/music/map.txt
    (N toggles). Still open: per-theme snapshots for every course, loop
