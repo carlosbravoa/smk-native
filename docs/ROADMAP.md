@@ -64,6 +64,10 @@ and comes down toward the camera) and it inherits the kart's motion -
 thrown backwards it lands behind a forward-looking camera and is never
 drawn at all.
 
+**S33 — The track map (NOTES 200).** OURS by design: the corner, the size,
+the translucency and the dots; the picture is the course's own tilemap.
+M toggles it.
+
 **S32 — Surfaces, the picture (NOTES 197).** The shake per class is MEASURED
 for the nineteen classes swept on Mario Circuit; classes outside the sweep
 take the road's bob, and the AI karts shake by the same table (OURS: only
@@ -502,11 +506,9 @@ In rough order of value:
     faithful base, our extras clearly marked and toggleable, each one
     ledgered.
 
-12. **The track map (user's list).** Everyone's position on a small map.
-    The original only has one because the screen is split; ours must not
-    cost the big view - *"I like that we have a bigger view of the game
-    now and it shouldn't be affected"*. So the art can be faithful and
-    the PLACEMENT is ours, ledgered with the speedometer.
+12. **~~The track map (user's list)~~ — IN (NOTES 200, S33).** The
+    course's own tilemap in the bottom-right corner, every kart a dot, M
+    toggles it.
 
 13. **Two-player (user's list).** Two humans, or one human and one CPU.
     **SIDE BY SIDE, not stacked** - DECIDED by the user: *"split screen

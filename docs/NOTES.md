@@ -8430,3 +8430,14 @@ SMK_WIN_TOGGLE. The per-frame capture (`winpose_real2.py`, the same
 race again) pinned both: frame 46 exact from +85, the five arm tiles from
 +101 for 16 frames, plain for 16, and so on - period 32, arms up first.
 Nothing about the pose is labelled any more.
+
+## 200. The track map
+
+The user's list, item 12: *"Everyone's position on a small map. The
+original only has one because the screen is split; ours must not cost
+the big view."* So the art is the course's own tilemap - `smk_track_texel`
+sampled 2x2 per cell into a 96 px square at race load - and the
+placement is ours: the bottom-right corner, three parts map to one part
+scene so the road shows through, every kart a white dot and the player
+a larger gold one drawn last. M toggles it. Ledgered as S33 (OURS: the
+placement, the size, the dots; the picture is the ROM's).

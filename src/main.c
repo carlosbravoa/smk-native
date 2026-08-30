@@ -32,6 +32,7 @@ typedef struct {
     /* the shell: menu navigation and the item button, all edge-triggered */
     bool nav_up, nav_down, nav_left, nav_right, confirm, back;
     bool dpad_down;         /* the d-pad held DOWN (level): item + DOWN drops it behind */
+    bool toggle_map;        /* M: the track map on / off */
     bool item;
 } input_state;
 
@@ -128,6 +129,7 @@ static void pump(input_state *in)
             switch (e.key.keysym.sym) {
             case SDLK_UP:    case SDLK_w: in->nav_up = true; break;
             case SDLK_DOWN:  case SDLK_s: in->nav_down = true; break;
+            case SDLK_m: in->toggle_map = true; break;
             case SDLK_LEFT:  case SDLK_a: in->nav_left = true; break;
             case SDLK_RIGHT: case SDLK_d: in->nav_right = true; break;
             default: break;
@@ -632,6 +634,69 @@ static smk_font     menu_font;
 static smk_records  records;
 static smk_ui       ui;
 static smk_ui_result result;
+/* THE TRACK MAP (the user's list, item 12): the whole course as a small
+ * picture with every kart on it.  The original only has one because its
+ * screen is split; ours must not cost the big view, so the ART is the
+ * course's own tilemap, downsampled, and the PLACEMENT is ours: the
+ * bottom-right corner, translucent.  OURS, ledgered (S33). */
+#define SMK_MAP_PX 96
+static uint32_t track_map[SMK_MAP_PX * SMK_MAP_PX];
+static bool     track_map_ok;
+static bool     show_map = true;
+static void build_track_map(const smk_track *t)
+{
+    const int step = SMK_WORLD_PX / SMK_MAP_PX;        /* world px per map px */
+    for (int y = 0; y < SMK_MAP_PX; y++)
+        for (int x = 0; x < SMK_MAP_PX; x++) {
+            /* a 2x2 sample inside the cell, averaged, so thin walls survive */
+            unsigned r = 0, g = 0, b = 0;
+            for (int q = 0; q < 4; q++) {
+                uint32_t c = smk_track_texel(t, x * step + (q & 1) * (step / 2) + step / 4,
+                                                y * step + (q >> 1) * (step / 2) + step / 4);
+                r += (c >> 16) & 255; g += (c >> 8) & 255; b += c & 255;
+            }
+            track_map[y * SMK_MAP_PX + x] = 0xFF000000u | ((r / 4) << 16) | ((g / 4) << 8) | (b / 4);
+        }
+    track_map_ok = true;
+}
+static void draw_track_map(uint32_t *fb, int rw, int rh, const smk_kart *me,
+                           const smk_racer *rs, int nrs)
+{
+    if (!track_map_ok || !show_map) return;
+    int sc = rw / 512; if (sc < 1) sc = 1;                /* 96 px at 512 wide */
+    int size = SMK_MAP_PX * sc;
+    int x0 = rw - size - 8 * sc, y0 = rh - size - 8 * sc;
+    for (int y = 0; y < size; y++) {
+        int sy = y0 + y; if (sy < 0 || sy >= rh) continue;
+        for (int x = 0; x < size; x++) {
+            int sx = x0 + x; if (sx < 0 || sx >= rw) continue;
+            uint32_t m = track_map[(y / sc) * SMK_MAP_PX + x / sc], d = fb[(size_t)sy * rw + sx];
+            /* 3/4 map over 1/4 scene: readable, and the road shows through it */
+            fb[(size_t)sy * rw + sx] = 0xFF000000u
+                | ((((m >> 16) & 255) * 3 + ((d >> 16) & 255)) / 4) << 16
+                | ((((m >> 8) & 255) * 3 + ((d >> 8) & 255)) / 4) << 8
+                | ((((m) & 255) * 3 + ((d) & 255)) / 4);
+        }
+    }
+    /* the karts: a dot each, the player's larger and gold, drawn last */
+    for (int pass = 0; pass < 2; pass++)
+        for (int i = 0; i < nrs; i++) {
+            bool player = (i == 0);
+            if (player != (pass == 1)) continue;
+            const smk_kart *k = player ? me : &rs[i].k;
+            int mx = x0 + smk_kart_px(k->x) * size / SMK_WORLD_PX;
+            int my = y0 + smk_kart_px(k->y) * size / SMK_WORLD_PX;
+            int rad = (player ? 2 : 1) * sc;
+            uint32_t col = player ? 0xFFFFD040u : 0xFFF0F0F0u;
+            for (int dy = -rad; dy <= rad; dy++)
+                for (int dx = -rad; dx <= rad; dx++) {
+                    int sx = mx + dx, sy = my + dy;
+                    if (sx < 0 || sx >= rw || sy < 0 || sy >= rh) continue;
+                    if (dx * dx + dy * dy > rad * rad + rad) continue;
+                    fb[(size_t)sy * rw + sx] = col;
+                }
+        }
+}
 static bool shell;                  /* the menu drives the game        */
 static int  race_mode = SMK_MODE_GP;   /* the game's own $2C           */
 static long lap_start_frames;       /* clock at the last line crossing */
@@ -1726,6 +1791,7 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
     }
     if (!celebrating) {
         draw_hud(fb, rw, rh, trk->palette, hud_lap, player.coins, hud_rank);
+        draw_track_map(fb, rw, rh, &kart, racers, SMK_CHARACTERS);
         draw_clock(fb, rw, rh, trk->palette, hud_race_frames);
         /* THE ITEM SLOT: the game's own BG3 icon, 2x2 tiles at the top left
          * where the HUD tilemap puts it ($0C26 = row 0, column 19 of a
@@ -2214,7 +2280,7 @@ int main(int argc, char **argv)
                crs.nent, 40 * (crs.nent / 2));
     }
     smk_blocks_bind(&trk);
-    smk_objgfx_load(&rom, trk.theme, &obj_art); obj_whole = (trk.theme == 3 || trk.theme == 5);   /* the theme's objects */
+    smk_objgfx_load(&rom, trk.theme, &obj_art); obj_whole = (trk.theme == 3 || trk.theme == 5); build_track_map(&trk);   /* the theme's objects */
     /* SMK_OBJ_SHEET=path: the theme's object tiles as a sheet (16 a row),
      * palette 7 - to look at a theme's art without driving to one */
     if (getenv("SMK_OBJ_SHEET") && obj_art.ok) {
@@ -2461,7 +2527,7 @@ int main(int argc, char **argv)
                     uint16_t sh;
                     smk_track_place_objects(&rom, &trk);
                     smk_blocks_bind(&trk);
-                    smk_objgfx_load(&rom, trk.theme, &obj_art); obj_whole = (trk.theme == 3 || trk.theme == 5);
+                    smk_objgfx_load(&rom, trk.theme, &obj_art); obj_whole = (trk.theme == 3 || trk.theme == 5); build_track_map(&trk);
                     smk_horizon_load(&rom, trk.theme, &horizon);
                     track = nt; theme = nth;
                     smk_course_start(&crs, SMK_GRID_SLOT(0), &sx, &sy, &sh);
@@ -2480,6 +2546,7 @@ int main(int argc, char **argv)
                     smk_track_place_objects(&rom, &trk);
                 }
             }
+            if (in.toggle_map) { show_map = !show_map; in.toggle_map = false; }
             if (in.toggle_filter) {
                 filter = !filter;
                 SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, filter ? "1" : "0");
