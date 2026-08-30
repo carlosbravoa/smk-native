@@ -53,7 +53,7 @@ bool smk_sprites_load(const smk_rom *rom, uint32_t base, smk_sprites *out)
     uint32_t pc = smk_snes_to_pc(rom, base);
 
     out->frames = 0;
-    for (int f = 0; f < SMK_SPR_FRAMES; f++) {
+    for (int f = 0; f < 48; f++) {                 /* the sheet's 48; frame 48 is built below */
         /* frames advance across, then down, in the PPU's tile grid */
         int n0 = (f % 4) * 4 + (f / 4) * 64;
         for (int tr = 0; tr < 4; tr++) {
