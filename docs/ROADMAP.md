@@ -108,26 +108,10 @@ source, then wrong paint order (his head belongs OVER the flag's upper
 half) - and a third remains. The user spotted it from a picture, unable
 to test: *"the flag on the opposite side so the Sprite looks broken."*
 
-**S28 — STILL NOT DONE: the winner's celebration sprites and animation.
-USE OAM TO CHECK EXACTLY HOW IT IS IMPLEMENTED.**
-The user's screenshot of the original settles what it looks like: face on,
-mouth open, both white gloves raised, kart-sized. It is in the sheet - the
-packed frames 33-43, which hold four small sprites each - but those frames
-do NOT use the tile arrangement `smk_sprites_load` assumes for a 32x32
-(N, N+1, N+16, N+17), so slicing them gives heads without bodies. It is also ANIMATED in the original and we
-have not even established how many frames it runs through.
-
-**The way to do it is OAM, and it was available the whole time.** The
-oracle exposes OAM, VRAM and CGRAM (MAME exposes none of them). At the
-celebration frame, OAM names the exact tile numbers the game is drawing,
-their size bit and their palette - which identifies the sprite outright
-and needs no theory about how the sheet is packed. `movers.py` already
-shows how to drive the oracle to an arbitrary race state. Reading a
-static sheet and guessing, which is what was done instead, produced three
-confident wrong answers in a row (NOTES 180). Until then the finish shows the
-ordinary front-facing driver, which is right in every respect except the
-arms. The CAMERA is measured and not a shortcut (NOTES 179).
-
+**S28 — CLOSED (NOTES 199): the winner's pose is frame 46's mirrored half
+with five sheet tiles swapped for the raised arms, measured from a real
+finish in the oracle; the arms-up alternation period is the one number
+still labelled (a per-frame capture is running).**
 
 **S27 — The finish sequence is OURS by design, not by default.**
 The celebration camera, its timing (50 frames to swing, 210 to hold), the
@@ -503,8 +487,8 @@ In rough order of value:
    work and which hits call it. Small, visible, and the counter it
    animates is already correct.
 
-10. **The finish sequence — camera and results DONE, the celebration
-    SPRITES AND ANIMATION STILL NOT DONE (S28).** *"the race doesn't stop
+10. **~~The finish sequence~~ — camera, results and now the celebration
+    pose (NOTES 199) are in.** *"the race doesn't stop
     abruptly. If you arrive top 4, camera shows you from the front while
     the character celebrates for a few seconds. Then after that, you get
     times: your times, and the AI's total times and positions."* Three
