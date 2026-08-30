@@ -8425,6 +8425,8 @@ hold a head.
 The port builds frame 48 at load - frame 46 with those five tiles
 swapped in - and, while celebrating with the camera on the kart's front
 (|rel - $8000| < $C00), draws 46 or 48 as a mirrored half: 46 until
-SMK_WIN_ARMS_AT (180, measured) frames after the crossing, then the two
-alternating on SMK_WIN_TOGGLE (16 - LABELLED, a per-frame capture of the
-alternation is running).
+SMK_WIN_ARMS_AT frames after the crossing, then the two alternating on
+SMK_WIN_TOGGLE. The per-frame capture (`winpose_real2.py`, the same
+race again) pinned both: frame 46 exact from +85, the five arm tiles from
++101 for 16 frames, plain for 16, and so on - period 32, arms up first.
+Nothing about the pose is labelled any more.

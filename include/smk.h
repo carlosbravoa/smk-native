@@ -454,8 +454,8 @@ static inline const signed char *smk_shake_of(uint8_t cls)
 #define SMK_SPR_LEAN      47
 #define SMK_SPR_FRONT     46       /* the front view, drawn as its left half + mirror */
 #define SMK_SPR_WIN_FRAME 48       /* built: frame 46 with sheet tiles 3 16 19 34 35 - arms up */
-#define SMK_WIN_ARMS_AT   180      /* MEASURED: the arms go up ~180 frames after the crossing */
-#define SMK_WIN_TOGGLE    16       /* OURS until the per-frame capture lands: arms up/down period */
+#define SMK_WIN_ARMS_AT   101      /* MEASURED per frame (NOTES 199): arms up from +101 ...     */
+#define SMK_WIN_TOGGLE    16       /* ... 16 frames up, 16 down, up first - MEASURED             */
 #define SMK_SPR_WIN_QUAD   1
 #define SMK_SPR_WIN       47    /* arms up, REAR view - not the finish pose */
 

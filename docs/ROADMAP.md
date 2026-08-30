@@ -110,8 +110,8 @@ to test: *"the flag on the opposite side so the Sprite looks broken."*
 
 **S28 — CLOSED (NOTES 199): the winner's pose is frame 46's mirrored half
 with five sheet tiles swapped for the raised arms, measured from a real
-finish in the oracle; the arms-up alternation period is the one number
-still labelled (a per-frame capture is running).**
+finish in the oracle, and the arms-up alternation (from +101, 16 frames
+up / 16 down) measured per frame. Nothing labelled.**
 
 **S27 — The finish sequence is OURS by design, not by default.**
 The celebration camera, its timing (50 frames to swing, 210 to hold), the
