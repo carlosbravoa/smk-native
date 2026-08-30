@@ -1533,7 +1533,8 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
             int len = kc->kind ? SMK_COINUP_PATH_LEN : SMK_COIN_PATH_LEN;
             if (step < 0 || step >= len) continue;
             const smk_coin_step *st = &(kc->kind ? SMK_COINUP_PATH : SMK_COIN_PATH)[step];
-            int cx = kx + st->dx * kc->side * scale, cy = ky + st->dy * scale;
+            int cx = kx + (kc->kind ? st->dx + 4 * kc->side : st->dx * kc->side) * scale,
+                cy = ky + st->dy * scale;
             if (getenv("SMK_COIN_TRACE"))
                 printf("coin t%d screen (%d,%d)\n", kc->t, cx * 256 / rw, cy * 224 / rh);
             const uint8_t *art = coin_art.px[st->frame];
@@ -1639,6 +1640,16 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
          * plane - that only ever applied because our physics used to put
          * the kart underneath it. */
         if (player.hazard == 6) lift -= player.resc_t * 2 * scale;
+        /* THE RESCUE (the user: "it should come down with you with his
+         * fishing rod... Normally you appear from the top, attached to
+         * lakitu's fishing rod cable").  Lakitu's descent is the captured
+         * path (NOTES 168a, his block's row y per frame of the $0E phase);
+         * the kart's own z ran on its own clock and landed first.  The kart
+         * now HANGS from him: at the end of the path his row is 38 and his
+         * 32-px block's bottom, 70, is exactly the kart sprite's top on the
+         * ground (the player line 102 minus 32) - so the kart's lift is
+         * 38 - his row, all the way down, and the two cannot drift. */
+        if (player.hazard == 0x0E) lift = (38 - smk_rescue_y(rescue_t)) * scale;
         /* Fallen through the track: the kart goes UNDER the plane, so it
          * is hidden by the track and shows only through the hole it fell
          * into - the SNES drops the sprite below BG1 (NOTES 128). */
@@ -2467,6 +2478,11 @@ int main(int argc, char **argv)
                 in.up = in.down = false;
                 in.hop_held = false;
             }
+            if (getenv("SMK_SPEED_TRACE") && race_state == RACE_RUN)
+                printf("spd f%ld speed %d surf $%02X type %d drive $%02X fc %d state $%02X target %d\n",
+                       hud_race_frames, kart.speed,
+                       smk_track_surface(&trk, smk_kart_px(kart.x), smk_kart_px(kart.y)),
+                       player.type, player.drive, player.fc, player.state, player.target);
             if (race_state == RACE_RUN || race_state == RACE_FINISH) {
                 hud_race_frames++;
                 smk_race_frame = hud_race_frames;   /* so a kart can stamp its own finish */
@@ -2599,7 +2615,14 @@ int main(int argc, char **argv)
                 /* THE ITEMS (docs/ITEMS.md).  The word steps every frame;
                  * the button is the LEVEL, as the game tests it. */
                 {
-                    bool can_use = !kart.airborne && !player.hazard
+                    /* off-road is not a reason to refuse an item: the user
+                     * "used a mushroom for a boost while going off road and
+                     * there was no boost effect. The mushroom should also
+                     * work here, since it is used to get out from those
+                     * areas quickly".  Only the fall, the carry and the drop
+                     * (6 / $0C / $0E) hold the item. */
+                    bool can_use = !kart.airborne
+                                   && player.hazard != 6 && player.hazard != 0x0C && player.hazard != 0x0E
                                    && player.state != 0x0A && player.state != 0x0C
                                    && player.state != 0x1A;
                     {   /* SMK_ITEM_TEST=id:frame - the item appears READY on that
@@ -2652,6 +2675,7 @@ int main(int argc, char **argv)
                         case SMK_ITEM_BOO:       player.boo_t = 0x480; break;
                         case SMK_ITEM_COIN:
                             player.coins += 2; if (player.coins > 99) player.coins = 99;
+                            smk_coinfx_pickup2(coins_fx, SMK_COINFX_MAX);
                             break;
                         case SMK_ITEM_LIGHTNING:
                             for (int q = 1; q < SMK_CHARACTERS; q++)
@@ -2741,6 +2765,12 @@ int main(int argc, char **argv)
                         else if (hq != SMK_PROJ_NONE) smk_racer_hit(&racers[q], 2, (int)(fx_ticks & 1));
                     }
                 }
+                /* SMK_PLAYER_AT=x,y:frame - put the player there on that race frame */
+                { const char *e = getenv("SMK_PLAYER_AT");
+                  if (e && strchr(e, ':') && hud_race_frames == atol(strchr(e, ':') + 1)) {
+                      int ax = atoi(e), ay = atoi(strchr(e, ',') + 1);
+                      kart.x = (int32_t)ax << SMK_POS_SHIFT; kart.y = (int32_t)ay << SMK_POS_SHIFT;
+                  } }
                 /* SMK_TEST_PLACE=q:d - park racer q d px straight ahead of
                  * the player every frame, to look at one kart at one distance */
                 { const char *e = getenv("SMK_TEST_PLACE");
@@ -2837,9 +2867,13 @@ int main(int argc, char **argv)
                     static int8_t was_ai[SMK_CHARACTERS];
                     for (int q = 1; q < SMK_CHARACTERS; q++) {
                         int8_t bc = racers[q].k.bump_cool;
+                        /* the user: "When bumping an AI player, they should
+                         * never get the spinning animation. They don't get
+                         * affected by the coin situation as the player.
+                         * This applies also to them hitting between
+                         * themselves." - so a bump costs an AI nothing */
                         if (bc == SMK_BUMP_COOL && was_ai[q] == 0 && !replay_path) {
                             if (racers[q].coins > 0) racers[q].coins--;
-                            else smk_racer_hit(&racers[q], 4, (int)(fx_ticks & 1));
                         }
                         was_ai[q] = bc;
                     }

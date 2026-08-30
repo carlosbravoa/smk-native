@@ -1474,6 +1474,7 @@ extern const smk_coin_step SMK_COINUP_PATH[];
 extern const int SMK_COINUP_PATH_LEN;
 #define SMK_COINUP_DELAY 2
 void smk_coinfx_pickup(smk_coin *c, int n);
+void smk_coinfx_pickup2(smk_coin *c, int n);   /* the 2-coin item: the hop, doubled */
 /* `count` coins out of a kart at (x,y) travelling on `heading` */
 void smk_coinfx_spawn(smk_coin *c, int n, int32_t x, int32_t y,
                       uint16_t heading, int16_t kvx, int16_t kvy, int count);
@@ -1804,7 +1805,7 @@ int  smk_ai_weapon_of(int character);    /* SMK_PROJ_* kind, or SMK_AI_WEAPON_ST
 #define SMK_PROJ_BOUNCE_NUM 7     /* MEASURED once: 1286 -> 1125 = 7/8   */
 #define SMK_PROJ_DIE_HOP    0x0100 /* $80:F85D: it hops as it dies       */
 #define SMK_PROJ_OWNER_SAFE 60    /* $66 = $3C: frames the owner is immune */
-#define SMK_PROJ_HIT_R      8     /* OURS, labelled: contact box in px    */
+#define SMK_PROJ_HIT_R      5     /* OURS, labelled: contact half-box in world px (was 8: "huge" - the user) */
 #define SMK_PROJ_MAX_BOUNCE 8     /* OURS, labelled: a green gives up     */
 #define SMK_PROJ_BANANA_AIR_T 24  /* OURS until chain2 lands: flight frames */
 typedef struct {

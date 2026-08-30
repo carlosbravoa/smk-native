@@ -8208,3 +8208,32 @@ they stay in place and then have a zigzag but only to the left and
 right."* It is now carried and let go like every other drop, then weaves
 left and right of the spot (OURS: 20 px, 40-frame period), through the
 weave offset `wx/wy` the hit test and the drawing both read.
+
+## 194. Six from the same play session
+
+1. **The 2-coin item** now hops two coins the way a picked-up coin hops
+   (NOTES 189), 4 px either side of centre, the second a frame late.
+2. **Road items' hit box**: `SMK_PROJ_HIT_R` 8 -> 5 world px each way. A
+   kart is ~8 world px wide and an item ~4, so 8 each way was a 16 px
+   square around a 4 px object - "super easy to get affected by an item
+   even if I am not even touching it" (the user). Still OURS, labelled.
+3. **AI karts hit by their own drops**: the carried object sits 8 px
+   behind its kart inside that square; the owner is immune while it
+   carries and 60 frames after, but the kart BEHIND it was not - the
+   smaller box is most of the fix, and the immunity stands.
+4. **The mushroom off-road**: `can_use` refused any `hazard`, and the
+   deep off-road classes are hazards (the wade drive). Only the fall,
+   the carry and the drop (6 / $0C / $0E) hold the item now. (A headless
+   rig to put the kart on grass was tried and did not take; the trace did
+   confirm the boost itself: 0 -> 1500 in 32 frames on the road.)
+5. **AI karts never spin from a bump** - "they don't get affected by the
+   coin situation as the player. This applies also to them hitting
+   between themselves" (the user). NOTES 187's kind-4 spin is the
+   player's only; an AI bump costs nothing.
+6. **The rescue**: Lakitu's descent is the captured path (NOTES 168a) on
+   a frame clock from the `$0E` entry, while the kart's z ran its own
+   96-frame fall and landed first - "it appears with higher altitude, so
+   it only comes from the top once you are on the ground". The kart now
+   HANGS from him: at the path's end his row is 38 and his block's bottom
+   (70) is the kart sprite's top on the ground (102 - 32), so the kart's
+   lift is `38 - his row` all the way down.
