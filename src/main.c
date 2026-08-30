@@ -1436,25 +1436,24 @@ static void draw_ai_kart(const smk_rom *rom, const smk_track *trk,
         bool hf2 = hf;
         (void)kt;
         {
-            /* The winner's pose is NOT reachable yet, and this is the
-             * honest state of it (NOTES 180).  The user's screenshot of
-             * the original shows it exactly: face on, mouth open, both
-             * white gloves raised.  It lives in the packed frames 33-43,
-             * which hold four small sprites each - and those frames do
-             * NOT use the tile arrangement smk_sprites_load assumes for a
-             * 32x32 (N, N+1, N+16, N+17), so slicing them into quadrants
-             * yields heads without bodies and arms without heads.
-             * Extracting it is a decode, not a crop.
-             *
-             * SMK_WIN_POSE=1 draws the quadrant anyway, which is how that
-             * was established and is worth keeping for whoever finishes
-             * it.  Default OFF: a garbled winner is worse than a plain one. */
-            if (celebrating && k == smk_ai_player_block && smk_win_pose) {
-                smk_draw_sprite_quad(&other[k], SMK_SPR_WIN_FRAME,
-                                     SMK_SPR_WIN_QUAD, trk->palette, d2->pal,
-                                     (int)px, (int)py, kscale * 2, false,
-                                     fb, rw, rh, rw);
-                return;
+            /* THE WINNER (NOTES 199, measured from a real finish): once the
+             * camera has swung to the front the game shows frame 46 as its
+             * left half and mirror, and from SMK_WIN_ARMS_AT frames after
+             * the crossing it alternates that with the arms-up build
+             * (frame 48).  Before the swing settles the rotation frames
+             * are the ordinary ones, which the path below already picks. */
+            if (celebrating && k == smk_ai_player_block) {
+                int rel2 = (int16_t)(uint16_t)(racers[k].k.angle - cam_heading + 0x8000);
+                if (rel2 < 0) rel2 = -rel2;
+                if (rel2 < 0x0C00) {
+                    int fr = SMK_SPR_FRONT;
+                    if (finish_t >= SMK_WIN_ARMS_AT && (((finish_t - SMK_WIN_ARMS_AT) / SMK_WIN_TOGGLE) & 1) == 0)
+                        fr = SMK_SPR_WIN_FRAME;
+                    smk_draw_sprite_scaled(&other[k], fr, trk->palette, d2->pal,
+                                           (int)px, (int)py, ks, false, true,
+                                           fb, rw, rh, rw);
+                    return;
+                }
             }
             /* Mario / Luigi under their own star: the player's measured
              * palette run (NOTES 189) */

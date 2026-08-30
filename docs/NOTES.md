@@ -8394,3 +8394,37 @@ RANKED OUT: no points that race, and ENTER runs the same course again
 points on a retried race are not measured - LABELLED). After the fifth
 course the standings are final and ENTER returns to the course screen.
 Self-tested through the shell's own state machine.
+
+## 199. The winner's pose, from a real finish (S28 closed)
+
+Three forced-finish rigs (the lap word poked to the last lap, NOTES 178
+and 184's) never showed it, and this one explains why: after a faked
+crossing the game drops the kart from OAM entirely and freezes the
+camera azimuth. So `tools/labs/winpose_real.py` drove a real race - the
+seven AI karts held still every frame, P1 on the flow field for five laps
+(5,956 frames), a genuine first place - and after the crossing compared
+the sixteen tiles the game uploads for the kart (sprite $180-$1B3) with
+every 32x32 frame of Mario's sheet, every frame, with OAM and VRAM dumps.
+
+    +0..+5     frame 47 (the drive), $94 leaving $A4: the camera swings
+    +10 +20    frames 2, 4, 5 ... +60 frame 10      the rotation frames
+    +90        FRAME 46, exact - the front view; $94 = $A4 + $8000 now
+    +180 on    frame 46 with FIVE tiles different, alternating with the
+               exact 46 (+280's dump was exact again)
+
+The OAM at +200: two 16x16 sprites at tile $180 (x 112) and $180 H-FLIPPED
+(x 128), and the same for $1A0 - the kart is its left half and that
+half's mirror, exactly the "mirrored pose" NOTES 080 found for the rear
+view, on the front. The five changed tiles are rows 0-2, columns 0-1 of
+that half - the driver's head and arms - and every one of them is a tile
+of the sheet's first 64-tile band: 3, 16 (18 is its twin), 19, 34, 35.
+Nothing is in the packed frames 33-43: NOTES 180's "frame 40, upper
+right" is superseded; that reading came from a quadrant that happened to
+hold a head.
+
+The port builds frame 48 at load - frame 46 with those five tiles
+swapped in - and, while celebrating with the camera on the kart's front
+(|rel - $8000| < $C00), draws 46 or 48 as a mirrored half: 46 until
+SMK_WIN_ARMS_AT (180, measured) frames after the crossing, then the two
+alternating on SMK_WIN_TOGGLE (16 - LABELLED, a per-frame capture of the
+alternation is running).

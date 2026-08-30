@@ -418,7 +418,7 @@ static inline const signed char *smk_shake_of(uint8_t cls)
 /* The sheet region is $2000-$8000 per bank: 48 frames.  0-31 are the three
  * size tiers of rotation steps (NOTES 030); 32-47 are spin/tumble poses,
  * far-tier variants and specials (NOTES 040). */
-#define SMK_SPR_FRAMES  48
+#define SMK_SPR_FRAMES  49         /* 48 on the sheet + the celebration, built (NOTES 199) */
 #define SMK_SPR_BYTES   512
 /* Three size tiers of eleven rotation steps (frames 0..10, 11..21, 22..31;
  * NOTES 030), with 32..47 holding spin/tumble poses and specials.
@@ -452,7 +452,10 @@ static inline const signed char *smk_shake_of(uint8_t cls)
  * (NOTES 182).  Folded it is the straight pose; UNFOLDED its own right
  * half is the standstill lean. */
 #define SMK_SPR_LEAN      47
-#define SMK_SPR_WIN_FRAME 40
+#define SMK_SPR_FRONT     46       /* the front view, drawn as its left half + mirror */
+#define SMK_SPR_WIN_FRAME 48       /* built: frame 46 with sheet tiles 3 16 19 34 35 - arms up */
+#define SMK_WIN_ARMS_AT   180      /* MEASURED: the arms go up ~180 frames after the crossing */
+#define SMK_WIN_TOGGLE    16       /* OURS until the per-frame capture lands: arms up/down period */
 #define SMK_SPR_WIN_QUAD   1
 #define SMK_SPR_WIN       47    /* arms up, REAR view - not the finish pose */
 

@@ -71,6 +71,24 @@ bool smk_sprites_load(const smk_rom *rom, uint32_t base, smk_sprites *out)
         }
         out->frames = f + 1;
     }
+    /* THE CELEBRATION (NOTES 199, from a real finish in the oracle): the
+     * front view, frame 46, with five tiles of its LEFT half replaced by
+     * sheet tiles 3, 16, 19, 34, 35 - the driver's head and raised arms -
+     * and drawn, like every front/rear pose, as that half and its mirror. */
+    if (out->frames == 48) {
+        static const struct { int r, c, tile; } SWAP[5] = {
+            { 0, 1, 3 }, { 1, 0, 16 }, { 1, 1, 19 }, { 2, 0, 34 }, { 2, 1, 35 } };
+        memcpy(out->px[48], out->px[46], sizeof out->px[48]);
+        for (int i = 0; i < 5; i++) {
+            uint32_t off = pc + (uint32_t)SWAP[i].tile * 32u;
+            if (off + 32 > rom->size) break;
+            uint8_t t[64]; memset(t, 0, sizeof t); tile_px(rom->data + off, t);
+            for (int y = 0; y < 8; y++)
+                for (int x = 0; x < 8; x++)
+                    out->px[48][(SWAP[i].r * 8 + y) * SMK_SPR_PX + SWAP[i].c * 8 + x] = t[y * 8 + x];
+        }
+        out->frames = 49;
+    }
     return true;
 }
 
