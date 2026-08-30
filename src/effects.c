@@ -34,6 +34,7 @@
 #define FX_WRAM_BASE       0x2000u
 #define FX_RECORDS         0x80D1CEu
 #define FX_WOBBLE          0x80D46Fu
+#define FX_LO_STREAM       0xC00903u   /* sprite tiles $000-$03F (NOTES 197) */
 
 static uint8_t rd8(const smk_rom *rom, uint32_t snes)
 {
@@ -92,11 +93,20 @@ bool smk_effects_load(const smk_rom *rom, smk_effects *fx)
         decode_tile(raw, fx->tiles[t]);
     }
 
+    /* sprite tiles $000-$03F: one stream, 64 tiles, tile n at n*32 - the
+     * game's own upload to VRAM $4000 (tools/labs/dmalist.py) */
+    {
+        static uint8_t lo[0x800];
+        long nl = smk_decompress_into(rom->data, rom->size,
+                                      smk_snes_to_pc(rom, FX_LO_STREAM), lo, sizeof lo, 0, NULL);
+        if (nl >= 0x800)
+            for (int t = 0; t < 64; t++) decode_tile(lo + t * 32, fx->lo[t]);
+    }
     /* the wobble table ($80D460: x += table[frame & 7]) */
     for (int i = 0; i < 8; i++) fx->wobble[i] = (int16_t)rd16(rom, FX_WOBBLE + (uint32_t)i * 2u);
 
     /* records for the kinds the handlers below can return */
-    static const int kinds[] = { 0x00, 0x18, 0x1E, 0x24, 0x2A };
+    static const int kinds[] = { 0x00, 0x06, 0x12, 0x18, 0x1E, 0x24, 0x2A, 0x36, 0x3C };
     for (size_t i = 0; i < sizeof kinds / sizeof kinds[0]; i++) {
         int kind = kinds[i];
         smk_effect_kind *k = &fx->kind[kind / 6];
@@ -157,8 +167,13 @@ int smk_effects_pick(uint8_t surf, bool grounded, bool spinning, bool deep_drift
         if (deep_drift) return 0x2A;
         return speed >= 0x80 ? 0x00 : -1;
     }
-    /* $5A (splash, $80D3F3), $5C/$5E (spray, $80D3D2), $20-$24 (water):
-     * other template blocks and art - not ported yet, LABELLED */
+    /* MEASURED on the running game (tools/labs/surffx.py, NOTES 197): $5A
+     * shows kind $12's tiles ($024-$02C) every frame, $5C/$5E kind $06's
+     * ($000-$004); the handlers $80:D3F3 / $80:D3D2 pick $3C / $36 only
+     * when nearly stopped (speed < $10 / $20) */
+    if (cls == 0x5A) { if (spinning) return 0x12; return speed < 0x10 ? 0x3C : 0x12; }
+    if (cls == 0x5C || cls == 0x5E) { if (speed < 0x20 && !spinning) return 0x36; return 0x06; }
+    /* $20-$24 (water): the fall's own drawings - not ported, LABELLED */
     return -1;
 }
 
@@ -215,14 +230,17 @@ void smk_effects_draw(const smk_effects *fx, const smk_effect_state *st, bool mi
         uint8_t attr = (uint8_t)(t->attr[j] ^ k->attr_xor ^ (mirror ? 0x40 : 0));
         bool hf = (attr & 0x40) != 0;
         int pal = (attr >> 1) & 7;
-        int tile = t->tile[j] & 0xFF;              /* attr bit 0 selects $1xx */
+        int tile = t->tile[j] & 0xFF;
+        bool hi = (attr & 1) != 0;                 /* attr bit 0 selects $1xx */
         int sx = base_x + (dx + wob) * scale, sy = base_y + dy * scale;
         const uint32_t *pl = palette + 128 + pal * 16;
-        /* a 16x16 sprite: subtiles n, n+1 / n+16, n+17, mirrored as a whole */
-        int a = tile & 0x1F, b = (tile + 1) & 0x1F, c = (tile + 16) & 0x1F, d = (tile + 17) & 0x1F;
-        draw_subtile(fx->tiles[hf ? b : a], hf, sx, sy, scale, pl, fb, w, h);
-        draw_subtile(fx->tiles[hf ? a : b], hf, sx + 8 * scale, sy, scale, pl, fb, w, h);
-        draw_subtile(fx->tiles[hf ? d : c], hf, sx, sy + 8 * scale, scale, pl, fb, w, h);
-        draw_subtile(fx->tiles[hf ? c : d], hf, sx + 8 * scale, sy + 8 * scale, scale, pl, fb, w, h);
+        /* $1xx: the theme's puffs (32 tiles); $0xx: the cloud puffs (64, NOTES 197) */
+        const uint8_t *ta, *tb, *tc, *td;
+        if (hi) { ta = fx->tiles[tile & 0x1F]; tb = fx->tiles[(tile + 1) & 0x1F]; tc = fx->tiles[(tile + 16) & 0x1F]; td = fx->tiles[(tile + 17) & 0x1F]; }
+        else    { ta = fx->lo[tile & 0x3F];    tb = fx->lo[(tile + 1) & 0x3F];    tc = fx->lo[(tile + 16) & 0x3F];    td = fx->lo[(tile + 17) & 0x3F]; }
+        draw_subtile(hf ? tb : ta, hf, sx, sy, scale, pl, fb, w, h);
+        draw_subtile(hf ? ta : tb, hf, sx + 8 * scale, sy, scale, pl, fb, w, h);
+        draw_subtile(hf ? td : tc, hf, sx, sy + 8 * scale, scale, pl, fb, w, h);
+        draw_subtile(hf ? tc : td, hf, sx + 8 * scale, sy + 8 * scale, scale, pl, fb, w, h);
     }
 }

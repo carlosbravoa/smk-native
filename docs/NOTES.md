@@ -8344,3 +8344,23 @@ the theme's own (3 of 32 tiles shared between Mario Circuit and Koopa
 Beach). Neither art is in the shared blob or any aligned stream; where
 the game DMAs them from is the next step, and the port's effect kinds
 $06/$12 and the white smoke on the road family wait on it.
+
+### Addendum — where the effect art comes from (tools/labs/dmalist.py)
+
+Logging every VRAM-bound DMA from reset to the settled race, with the
+VRAM address each landed at:
+
+    VRAM $4000  spr $000   <- 7F:C000   64 tiles   then <- 84:C500  32 tiles (earlier; overwritten)
+    VRAM $4400  spr $040   <- 7F:C200  128 tiles   (the HUD / Lakitu set)
+    VRAM $5000  spr $100   <- 7F:6C00   32 tiles   (the theme's puffs)
+    VRAM $5200  spr $120   <- 7F:C800   52 tiles   (the results faces)
+
+`$7F:C000`'s 64 tiles are the stream at **`$C0:0903`**: it decompresses to
+exactly 2048 bytes and tile n of it is sprite tile $000+n, byte for byte,
+all 64 - the cloud puffs the spray and the splash assemble, identical on
+every theme. The port loads it as `smk_effects.lo[64]` and the draw
+takes tiles under $100 from there (attribute bit 0 clear); kinds $06
+(spray: $5C/$5E) and $12 (splash: $5A) are in, with $36/$3C for the
+near-stopped variants the handlers pick. The theme puffs at `$7F:6C00`
+are the `$C4:9C1A` stream on Mario Circuit; the other themes' are being
+looked for the same way.

@@ -1509,8 +1509,11 @@ typedef struct { bool valid; uint8_t attr_xor; smk_effect_script script[12]; } s
 typedef struct {
     bool ok;
     uint8_t tiles[32][64];         /* VRAM $100..$11F, palette indices */
+    uint8_t lo[64][64];            /* sprite tiles $000..$03F: the stream at $C0:0903
+                                    * (NOTES 197) - Lakitu's cloud puffs, which the
+                                    * spray (kind $06) and splash (kind $12) assemble */
     int16_t wobble[8];             /* $80D46F, by frame counter & 7     */
-    smk_effect_kind kind[8];       /* by record offset / 6              */
+    smk_effect_kind kind[12];      /* by record offset / 6, kinds $00..$42 */       /* by record offset / 6              */
 } smk_effects;
 typedef struct { int kind, frame_idx, pos, dur; } smk_effect_state;
 bool smk_effects_load(const smk_rom *rom, smk_effects *fx);
