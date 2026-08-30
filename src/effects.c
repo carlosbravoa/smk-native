@@ -106,7 +106,7 @@ bool smk_effects_load(const smk_rom *rom, smk_effects *fx)
     for (int i = 0; i < 8; i++) fx->wobble[i] = (int16_t)rd16(rom, FX_WOBBLE + (uint32_t)i * 2u);
 
     /* records for the kinds the handlers below can return */
-    static const int kinds[] = { 0x00, 0x06, 0x12, 0x18, 0x1E, 0x24, 0x2A, 0x36, 0x3C };
+    static const int kinds[] = { 0x00, 0x06, 0x0C, 0x12, 0x18, 0x1E, 0x24, 0x2A, 0x30, 0x36, 0x3C };
     for (size_t i = 0; i < sizeof kinds / sizeof kinds[0]; i++) {
         int kind = kinds[i];
         smk_effect_kind *k = &fx->kind[kind / 6];
@@ -173,7 +173,11 @@ int smk_effects_pick(uint8_t surf, bool grounded, bool spinning, bool deep_drift
      * when nearly stopped (speed < $10 / $20) */
     if (cls == 0x5A) { if (spinning) return 0x12; return speed < 0x10 ? 0x3C : 0x12; }
     if (cls == 0x5C || cls == 0x5E) { if (speed < 0x20 && !spinning) return 0x36; return 0x06; }
-    /* $20-$24 (water): the fall's own drawings - not ported, LABELLED */
+    /* $22/$24, the shallow water ($80:D418 -> $D437): kind $0C, the water
+     * spray, from the same cloud set (its tiles 32-34 / 49-51 are sprite
+     * $020-$022 / $031-$033).  $20 ($80:D40B) is the deep water's own
+     * business - not ported, LABELLED */
+    if (cls == 0x22 || cls == 0x24) return speed >= 0x80 ? 0x0C : -1;
     return -1;
 }
 

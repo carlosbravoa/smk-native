@@ -8364,3 +8364,17 @@ takes tiles under $100 from there (attribute bit 0 clear); kinds $06
 near-stopped variants the handlers pick. The theme puffs at `$7F:6C00`
 are the `$C4:9C1A` stream on Mario Circuit; the other themes' are being
 looked for the same way.
+
+### Addendum — the puffs are global; the water kinds
+
+Re-dumped 700 frames into Koopa Beach 1 and Choco Island 1, the theme
+puff tiles `$100-$11F` are the `$C4:9C19` stream on both, all 26
+non-blank tiles - the "3 of 32 shared" of the first dumps was the
+countdown, before the upload. And `$120-$13F` stays the results faces on
+Koopa Beach: the water kinds `$0C`/`$30` name tiles 32-34 / 49-51 with
+attribute bit 0 clear, i.e. sprite `$020-$022` / `$031-$033`, cloud puffs
+from the same `$C0:0903` set. So every effect kind's art is one of two
+global streams, and the themes differ only in which kind and palette a
+class asks for. Kind `$0C` is now picked on the shallow water ($22/$24,
+`$80:D437`) while moving; `$20`'s handler (`$80:D40B`) is the deep
+water's and stays out.
