@@ -991,9 +991,20 @@ static void finish_camera(smk_camera *cam, const smk_kart *k, int t)
  * Band 0 is the 32x32 metasprite (NOTES 157): four 16x16 sprites, the
  * right column being the left one mirrored, top row from base
  * SMK_OBJ_NEAR_TOP and bottom row from SMK_OBJ_NEAR_BOT. */
+static bool obj_whole;              /* the sheet's near art is a whole 16x16, not a mirrored half */
 static uint8_t obj_texel(int base, int aw, int ax, int ay)
 {
     int sbase = base;
+    if (aw == SMK_OBJ_NEAR_W && obj_whole) {
+        /* Choco Island's plant and Koopa Beach's fish (NOTES 195/198):
+         * their sheets' first drawing is the WHOLE sprite - a fish with
+         * one face - so the near band samples it 2:1 instead of folding
+         * a half and its mirror, which made a two-headed fish */
+        ax >>= 1; ay >>= 1;
+        int tl = (ay / 8) * SMK_OBJ_STRIDE + (ax / 8);
+        if (tl < 0 || tl >= SMK_OBJ_TILES) return 0;
+        return obj_art.px[tl][(ay % 8) * 8 + (ax % 8)];
+    }
     if (aw == SMK_OBJ_NEAR_W) {
         sbase = (ay < 16) ? SMK_OBJ_NEAR_TOP : SMK_OBJ_NEAR_BOT;
         ay &= 15;
@@ -2204,7 +2215,22 @@ int main(int argc, char **argv)
                crs.nent, 40 * (crs.nent / 2));
     }
     smk_blocks_bind(&trk);
-    smk_objgfx_load(&rom, trk.theme, &obj_art);   /* the theme's objects */
+    smk_objgfx_load(&rom, trk.theme, &obj_art); obj_whole = (trk.theme == 3 || trk.theme == 5);   /* the theme's objects */
+    /* SMK_OBJ_SHEET=path: the theme's object tiles as a sheet (16 a row),
+     * palette 7 - to look at a theme's art without driving to one */
+    if (getenv("SMK_OBJ_SHEET") && obj_art.ok) {
+        FILE *pf = fopen(getenv("SMK_OBJ_SHEET"), "wb");
+        if (pf) {
+            int W = 16 * 8, H = ((SMK_OBJ_TILES + 15) / 16) * 8;
+            fprintf(pf, "P6\n%d %d\n255\n", W, H);
+            for (int y = 0; y < H; y++) for (int x = 0; x < W; x++) {
+                int t = (y / 8) * 16 + x / 8; uint8_t v = t < SMK_OBJ_TILES ? obj_art.px[t][(y % 8) * 8 + x % 8] : 0;
+                uint32_t c = v ? trk.palette[(0x80 + 7 * 16 + v) & 0xFF] : 0xFF181828u;
+                fputc((c >> 16) & 255, pf); fputc((c >> 8) & 255, pf); fputc(c & 255, pf);
+            }
+            fclose(pf);
+        }
+    }
     smk_shadow_load(&rom, &shadow_art);
     if (!smk_horizon_load(&rom, trk.theme, &horizon))
         fprintf(stderr, "warning: horizon not loaded\n");
@@ -2436,7 +2462,7 @@ int main(int argc, char **argv)
                     uint16_t sh;
                     smk_track_place_objects(&rom, &trk);
                     smk_blocks_bind(&trk);
-                    smk_objgfx_load(&rom, trk.theme, &obj_art);
+                    smk_objgfx_load(&rom, trk.theme, &obj_art); obj_whole = (trk.theme == 3 || trk.theme == 5);
                     smk_horizon_load(&rom, trk.theme, &horizon);
                     track = nt; theme = nth;
                     smk_course_start(&crs, SMK_GRID_SLOT(0), &sx, &sy, &sh);
