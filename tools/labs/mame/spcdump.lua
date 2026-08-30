@@ -2,15 +2,19 @@
 -- into an .spc file (SPC700 RAM + DSP registers + CPU state), which
 -- ffmpeg/libgme renders to WAV: the game's own driver plays on from that
 -- moment, so the snapshot IS the music that was playing.
-local frame = tonumber(os.getenv("SPC_FRAME") or "3000")
-local out = os.getenv("SPC_OUT") or "tmp/snap.spc"
+local want = {}
+for tok in (os.getenv("SPC_FRAME") or "3000"):gmatch("[^,]+") do want[tonumber(tok)] = true end
+local outbase = os.getenv("SPC_OUT") or "tmp/snap"
+local left = 0
+for _ in pairs(want) do left = left + 1 end
 local cpu = manager.machine.devices[":soundcpu"]
 local ram = cpu.spaces["program"]
 local dsp = manager.machine.devices[":s_dsp"].spaces["data"]
 local n = 0
 emu.register_frame_done(function()
   n = n + 1
-  if n ~= frame then return end
+  if not want[n] then return end
+  local out = outbase .. "_" .. n .. ".spc"
   local f = io.open(out, "wb")
   local hdr = "SNES-SPC700 Sound File Data v0.30" .. string.char(26, 26, 26) .. string.char(30)  -- has ID666 tag
   f:write(hdr)
@@ -34,5 +38,6 @@ emu.register_frame_done(function()
   f:write(string.rep("\0", 0x40))                    -- extra RAM (IPL area) - zeros
   f:close()
   print("SPC written: " .. out .. " at frame " .. n)
-  manager.machine:exit()
+  left = left - 1
+  if left == 0 then manager.machine:exit() end
 end)

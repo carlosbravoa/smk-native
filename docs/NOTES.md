@@ -8441,3 +8441,28 @@ placement is ours: the bottom-right corner, three parts map to one part
 scene so the road shows through, every kart a white dot and the player
 a larger gold one drawn last. M toggles it. Ledgered as S33 (OURS: the
 placement, the size, the dots; the picture is the ROM's).
+
+## 201. Sound: the route, proven on one song
+
+P7 decided pre-recorded, and the question was how to record the game's
+own music without an SPC700 of our own. The toolkit has none
+(`smktool/apu.py` only answers the 65816's waits), but MAME has, and
+`ffmpeg` here is built with libgme, which plays `.spc` files.
+
+`tools/labs/mame/spcdump.lua` replays a recorded session and, on the
+frames asked for, writes an `.spc`: the sound CPU's 64 KB (`:soundcpu`
+program space), its registers (`state`: PC S P A X Y), and the 128 DSP
+registers. Two traps, both hit: `-sound none` leaves the DSP idle (its
+registers stale - MVOL 0), so the replay runs with `SDL_AUDIODRIVER=dummy
+-sound sdl`; and the `:s_dsp` data space does not return the live
+register file either - the registers must be read the way the SPC700
+reads them, index into `$F2`, value from `$F3`, `$F2` restored.
+
+Snapshot at frame 3000 of `sessions/cc100` (Mario Circuit 1, racing):
+MVOL 96/96, DIR `$3C`, and libgme renders 45 s of audio (rms ~1500) -
+the driver playing on from that moment, so the file IS the course music
+(with whatever engine voices were live at the snapshot decaying out).
+What remains for P7: a snapshot per theme and for the title / menu /
+results / GP-end music at moments with no engine voice (the countdown,
+the results screen), loop points, and the port's playback - a WAV per
+song mixed under the race (S8). The user chooses the moments by ear.
