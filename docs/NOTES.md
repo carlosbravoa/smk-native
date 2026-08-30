@@ -8466,3 +8466,10 @@ What remains for P7: a snapshot per theme and for the title / menu /
 results / GP-end music at moments with no engine voice (the countdown,
 the results screen), loop points, and the port's playback - a WAV per
 song mixed under the race (S8). The user chooses the moments by ear.
+
+Addendum: the menu-time snapshots came out silent, and the reason is the
+timer control register `$F1` - write-only, so the snapshot holds 0 and
+the driver's loop never ticks under libgme. Patching the byte to 1
+(timer 0 enabled; 7 plays the same) makes frame 1000 (the menus) and
+7600 (after the race) play; frame 1900 stays silent because the game is
+silent there. The dumper writes the 1 itself now.

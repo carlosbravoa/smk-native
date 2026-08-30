@@ -28,6 +28,10 @@ emu.register_frame_done(function()
   f:write(string.rep("\0", 0x100 - 0x2E))           -- ID666 fields, blank
   local t = {}
   for i = 0, 65535 do t[#t+1] = string.char(ram:read_u8(i)) end
+  -- $F1, the timer control, is write-only: a read gives 0 and the driver's
+  -- loop then never ticks (a silent .spc).  Timer 0 enabled is what makes
+  -- every snapshot play; 7 (all three) plays identically.
+  t[0xF1 + 1] = string.char(1)
   f:write(table.concat(t))
   local d = {}
   local saved = ram:read_u8(0xF2)
