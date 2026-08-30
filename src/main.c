@@ -1433,7 +1433,7 @@ static void draw_ai_kart(const smk_rom *rom, const smk_track *trk,
          * sweep measured P1's sprite, the AI's is assumed the same) */
         if (!racers[k].k.airborne && racers[k].k.speed != 0)
             py -= (float)smk_shake_of(smk_track_surface(trk, smk_kart_px(racers[k].k.x),
-                                                        smk_kart_px(racers[k].k.y)))[(fx_ticks + (unsigned)k * 3) & 7] * sc * (float)(rw / 256);
+                                                        smk_kart_px(racers[k].k.y)))[(fx_ticks + (unsigned)k * 3) & 7];
         /* Size follows the SAME projection as everything else,
          * anchored on the ONE unambiguous measurement: the player's
          * kart is 32 SNES px at the trail distance (NOTES 084).  So
@@ -1725,8 +1725,10 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
         /* the hop lifts the sprite; the shadow stays on the ground */
         int lift = player_height_px * scale;
         /* the surface's shake (NOTES 197), while on the ground and moving */
+        /* in ABSOLUTE pixels, not window-scaled: "in real game it is never
+         * that big. Always super subtle 1px maybe" (the user) */
         if (!kart.airborne && kart.speed != 0 && !celebrating)
-            lift -= smk_shake_of(smk_track_surface(trk, smk_kart_px(kart.x), smk_kart_px(kart.y)))[fx_ticks & 7] * scale;
+            lift -= smk_shake_of(smk_track_surface(trk, smk_kart_px(kart.x), smk_kart_px(kart.y)))[fx_ticks & 7];
         /* The fall is a RENDERING effect here and nowhere else (NOTES
          * 142).  The game holds `$1F` at 1 for the whole countdown and
          * animates the sprite; we have no fall animation, so the kart is
