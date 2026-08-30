@@ -8299,3 +8299,48 @@ banana's and the bump's spins move the sprite only.
 
 The port adds `plag/2` to the azimuth while `state == $1A`; the sprite's
 relative angle was already the full lag, so nothing else moves.
+
+## 197. Surfaces, the picture: the shake, measured per class
+
+The user: *"we need to analize different surfaces and their effect, not
+only on speed but also visual effects... they make the kart vibrate.
+for example grass ($5A), or the bridge that is only vibration and sound
+($50). gravel had also the effect of being super slippery ($52) or mud
+that had special sound and actual mud coming from the wheel ($5E)."*
+
+`tools/labs/surffx.py`: the road made one class at a time (the grip and
+cap sweeps' `surface_fill`), P1 driven on it with B held, and every
+frame the kart's own four OAM rows, every other sprite within 48 px
+(tile, attribute), the speed and `$EE`. Nineteen classes, 80 frames each,
+on the attract race's theme (Mario Circuit).
+
+The kart's TOP ROW, per frame (row 70 is the resting sprite):
+
+    $40 $52          70 69 70 69 ...                    the 1 px engine bob
+    $44 $50 $58 $5A  69 69 67 69 69 70 70 70 (period 8)  a 3 px dip: the shake
+    $4A $54          69 70 69 70 70 69 68 68 (period 8)  softer
+    $5C $5E          72 73 72 73 ...                     SUNK 2-3 px, buzzing
+
+Gravel ($52) does not shake at all - its business is the grip table
+(NOTES 079) - and the bridge ($50) shakes with nothing else on screen,
+as the user said. Ported as `smk_shake_of(class)` on the player's sprite
+lift, 8-frame patterns as measured; classes not in the sweep take the
+road's bob (LABELLED).
+
+The effect sprites, same sweep (attribute bits 1-3 = palette):
+
+    $44 $4A $4C $4E $52   tiles $100-$104, palette 5 (white smoke), while moving
+    $54 $56 $58           tiles $100-$104, palette 7 (tan dust), every frame
+    $5A                   tiles $024-$02C, palette 7   = kind $12 ($80:D3F3)
+    $5C $5E               tiles $000-$004, palette 7   = kind $06 ($80:D3D2)
+    $20 $22 $24           the water: kart hidden / sunk, Lakitu's tiles - the fall
+
+and the handler table is `$80:D31A + class` (words): $00-$1E and $40-$52
+-> `$80:D37A`, $54-$58 -> `$D3B6`, $5A -> `$D3F3`, $5C/$5E -> `$D3D2`,
+$20 -> `$D40B`, $22/$24 -> `$D418`, $26-$3E -> nothing. The templates of
+kinds $06 and $12 name sprite tiles $000-$00E and $024-$02C - Lakitu's
+cloud puffs, identical on every theme - while the $100-$11F puffs are
+the theme's own (3 of 32 tiles shared between Mario Circuit and Koopa
+Beach). Neither art is in the shared blob or any aligned stream; where
+the game DMAs them from is the next step, and the port's effect kinds
+$06/$12 and the white smoke on the road family wait on it.

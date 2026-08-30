@@ -382,6 +382,27 @@ static inline int smk_kart_px(int32_t v) { return (int)(v >> SMK_POS_SHIFT); }
 static inline int smk_kart_height_px(const smk_kart *k)
 { return (int)(k->z / 25029); }
 
+/* The kart sprite's SHAKE per surface class - MEASURED (tools/labs/
+ * surffx.py, NOTES 197): the sprite's top row through 80 frames on each
+ * class, as offsets from row 70, repeating every 8 frames.  The road's
+ * own 1 px engine bob is pattern 0; gravel ($52) has only that (its
+ * business is grip); grass / bridge / sand ($44 $50 $58 $5A) the hard
+ * pattern with a 3 px dip; $4A $54 the soft one; mud ($5C $5E) sits 2-3
+ * px DOWN and buzzes.  Classes not measured take the road's. */
+static inline const signed char *smk_shake_of(uint8_t cls)
+{
+    static const signed char P0[8] = {  0, -1,  0, -1,  0, -1,  0, -1 };   /* the bob */
+    static const signed char P1[8] = { -1, -1, -3, -1, -1,  0,  0,  0 };   /* hard   */
+    static const signed char P2[8] = { -1,  0, -1,  0,  0, -1, -2, -2 };   /* soft   */
+    static const signed char P3[8] = {  3,  2,  3,  2,  3,  2,  3,  2 };   /* sunk   */
+    switch (cls & 0xFE) {
+    case 0x44: case 0x50: case 0x58: case 0x5A: return P1;
+    case 0x4A: case 0x54: case 0x56:            return P2;
+    case 0x5C: case 0x5E:                       return P3;
+    default:                                    return P0;
+    }
+}
+
 /* ---- Kart sprites ------------------------------------------------------
  *
  * Uncompressed 4bpp in ROM, laid out exactly as the PPU wants them: a 32x32
