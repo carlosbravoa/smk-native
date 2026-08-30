@@ -8473,3 +8473,15 @@ the driver's loop never ticks under libgme. Patching the byte to 1
 (timer 0 enabled; 7 plays the same) makes frame 1000 (the menus) and
 7600 (after the race) play; frame 1900 stays silent because the game is
 silent there. The dumper writes the 1 itself now.
+
+## 202. Music in the port: pre-recorded, user-mapped
+
+`src/audio.c`: SDL audio, one music channel, fed by SDL_QueueAudio once a
+frame and looping the file whole. The state picks a KEY - `title`,
+`menu`, `results`, `theme0`..`theme7` (the course's theme in a race) -
+and `rom/music/map.txt` (beside the ROM, one `key file.wav` a line,
+written by the user) maps keys to files rendered by NOTES 201's
+spc-snapshot route. A missing map, key or file is silence, never an
+error; nothing derived from the ROM is committed (rom/music is
+git-ignored). N toggles the music. LABELLED (S8): loop points are
+whole-file; the engine and item SFX are still absent.

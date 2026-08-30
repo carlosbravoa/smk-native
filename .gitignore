@@ -17,3 +17,4 @@ build*/
 *.bin
 __pycache__/
 *.pyc
+rom/music/

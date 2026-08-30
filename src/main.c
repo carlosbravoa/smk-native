@@ -130,6 +130,7 @@ static void pump(input_state *in)
             case SDLK_UP:    case SDLK_w: in->nav_up = true; break;
             case SDLK_DOWN:  case SDLK_s: in->nav_down = true; break;
             case SDLK_m: in->toggle_map = true; break;
+            case SDLK_n: smk_music_toggle(); break;
             case SDLK_LEFT:  case SDLK_a: in->nav_left = true; break;
             case SDLK_RIGHT: case SDLK_d: in->nav_right = true; break;
             default: break;
@@ -2356,6 +2357,8 @@ int main(int argc, char **argv)
         fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
         return 1;
     }
+    if (!smk_audio_init()) printf("audio: unavailable (silent)\n");
+    smk_audio_set_dir(rom_path);
 
     /* The pad is optional: a machine with no controller (or no udev
      * permissions) must still run, so this failing is not fatal. */
@@ -2545,6 +2548,21 @@ int main(int argc, char **argv)
                     smk_track_load(&rom, track, theme, &trk, err, sizeof err);
                     smk_track_place_objects(&rom, &trk);
                 }
+            }
+            /* the music follows the state; the mapping is the user's
+             * music/map.txt (NOTES 202) */
+            {
+                char mkey[16];
+                if (!shell || ui.screen == SMK_UI_RACE)
+                    snprintf(mkey, sizeof mkey, "theme%d", trk.theme % SMK_THEME_COUNT);
+                else if (ui.screen == SMK_UI_RESULT || ui.screen == SMK_UI_STANDINGS)
+                    snprintf(mkey, sizeof mkey, "results");
+                else if (ui.screen == SMK_UI_TITLE)
+                    snprintf(mkey, sizeof mkey, "title");
+                else
+                    snprintf(mkey, sizeof mkey, "menu");
+                smk_music_set(mkey);
+                smk_audio_pump();
             }
             if (in.toggle_map) { show_map = !show_map; in.toggle_map = false; }
             if (in.toggle_filter) {

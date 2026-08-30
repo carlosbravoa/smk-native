@@ -40,7 +40,7 @@ target_include_directories(smkcore PUBLIC include)
 target_compile_options(smkcore PRIVATE -Wall -Wextra -O2)
 target_link_libraries(smkcore PUBLIC m)
 
-add_executable(smk src/main.c)
+add_executable(smk src/main.c src/audio.c)
 target_link_libraries(smk PRIVATE smkcore PkgConfig::SDL2)
 target_compile_options(smk PRIVATE -Wall -Wextra -O2)
 

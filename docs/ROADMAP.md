@@ -407,7 +407,12 @@ of them changes how every race feels.
 
 In rough order of value:
 
-1. **Sound (S8, P7).** It has moved from "polish" to "the missing half of
+1. **Sound (S8, P7) — the music HALF is in (NOTES 201/202).** The songs
+   are the game's own driver, snapshotted from a MAME replay and rendered
+   by libgme; the port plays the WAVs the user maps in rom/music/map.txt
+   (N toggles). Still open: per-theme snapshots for every course, loop
+   points, and all SFX - the engine note that the turbo launch needs most.
+   The old text:** It has moved from "polish" to "the missing half of
    a mechanic", and the user has now confirmed it from play: the turbo
    launch works in the port and is "slightly harder to pull off given
    that there is no sound yet". The window is 95 frames before the green

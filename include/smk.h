@@ -1239,6 +1239,13 @@ void smk_draw_sprite_mini(const smk_sprites *s, int frame,
                           uint32_t *pixels, int w, int h, int pitch_px);
 
 
+/* ---- Music (src/audio.c, NOTES 202): pre-recorded, user-mapped --------- */
+bool smk_audio_init(void);
+void smk_audio_set_dir(const char *rom_path);
+void smk_music_set(const char *key);
+void smk_audio_pump(void);
+void smk_music_toggle(void);
+
 /* ---- Coins and item boxes (src/pickup.c, NOTES 110) ----------------------
  * The collector at $81B73B: the tilemap cell under a grounded player decides.
  * Returns true when something was picked up (the map is rewritten). */
