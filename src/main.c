@@ -860,13 +860,21 @@ static bool load_race(const smk_rom *rom, int track, int theme, int character,
 
 /* The ROM's angle is 0 = -Y increasing clockwise; the renderer wants
  * radians with 0 = +X, and (cos, sin) must equal (sin a, -cos a). */
+/* MEASURED (tools/labs/spincam.py, NOTES 196): through the object tumble
+ * (state $1A) the camera azimuth $94 turns WITH the spin - $A4 + $C0 +
+ * $AA/2, while the pose goes the other way, $A4 - $AA/2 - so the whole
+ * view does 360s at half the tumble rate (a turn every 16 frames at $2000,
+ * decaying with $E4).  The banana's and the coinless bump's spins leave
+ * $94 at $A4 + $C0: only the sprite turns.  The user remembered the
+ * camera turning; this is which one. */
+static int cam_spin;            /* $AA/2 while tumbling, else 0 */
 static void camera_from_kart(smk_camera *cam, const smk_kart *k)
 {
     cam->x = (float)k->x / (float)SMK_POS_ONE;
     cam->y = (float)k->y / (float)SMK_POS_ONE;
     /* the ROM's camera azimuth is the heading plus a constant $C0 lead
      * ($808632, measured on the live race: cam - $A4 == 192 every frame) */
-    uint16_t az = (uint16_t)(k->angle + SMK_CAM_LEAD);
+    uint16_t az = (uint16_t)(k->angle + SMK_CAM_LEAD + cam_spin);
     cam->angle = (float)az * (2.0f * (float)M_PI / (float)SMK_ANGLE_TURN)
                  - (float)M_PI / 2.0f;
 }
@@ -2597,6 +2605,7 @@ int main(int argc, char **argv)
                 }
             }
             input_edges_clear(&in);
+            cam_spin = (player.state == 0x1A) ? player.plag / 2 : 0;
             camera_from_kart(&cam, &kart);
             if (force_steer) {
                 in.left  = force_steer < 0;

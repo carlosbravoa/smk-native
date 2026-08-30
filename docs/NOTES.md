@@ -8275,3 +8275,27 @@ Also from the same session:
   57 tiles each, the plant and the fish ladders) - the fish is
   asymmetric and the near band's mirrored-half assembly (NOTES 155) will
   not suit it; LABELLED, to be looked at with a screenshot.
+
+## 196. The camera turns with the tumble - and only the tumble
+
+The user: *"it was not only that the kart did a few full spins but also
+the camera did some 360... it could be good to get it from the rom."*
+
+`tools/labs/spincam.py` injects a reaction bit on P1 in the attract race
+and logs the camera azimuth `$94`, the heading `$A4`, the pose lag `$AA`
+and the pose `$2A` every frame:
+
+    banana  $1000        $94 = $A4 + $C0 throughout; $2A = $A4 - $AA/2
+    coinless $0800       the same
+    object  $0300+$E4    $94 = $A4 + $C0 + $AA/2 ; $2A = $A4 - $AA/2
+
+(the first shell try did nothing: `$819ACE` arms `$E4 = $2000` with the
+bit, and without it the tumble has no rate.) So through state `$1A` the
+camera advances `$E4/2` a frame - 4096 at the full rate, a whole turn
+every 16 frames, decaying `$40` a frame with `$E4` - while the sprite
+turns the other way by the same amount: relative to the camera the kart
+spins at the full lag, and the world spins behind it at half. The
+banana's and the bump's spins move the sprite only.
+
+The port adds `plag/2` to the azimuth while `state == $1A`; the sprite's
+relative angle was already the full lag, so nothing else moves.
