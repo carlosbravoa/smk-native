@@ -428,13 +428,13 @@ In rough order of value:
    reliably use is the strongest case on this list. `smk spc` already
    dumps the driver; nothing renders it.
 
-2. **Items (P5) — IN, needs playing (docs/ITEMS.md, NOTES 185).** The
-   roulette replays the user's race 285/285 frames exact; the nine items
-   work from a box through the HUD's own icons to the road; shells and
-   bananas fly with measured speeds and hit karts, which tumble or spin
-   the way the recorded hits did. Still OURS or open: the projectiles'
-   sprites (discs for now), the thrown banana's arc, and the AI's own
-   weapons (S31).
+2. **Items (P5) — IN and played (docs/ITEMS.md, NOTES 185/190/192).**
+   The roulette replays the user's race 285/285 frames exact; the nine
+   items work from the game's own box through its icons to the road; the
+   AI's weapons ride behind their karts and drop (measured); the road art
+   is the ripped ladders through the ROM's palettes. Still OURS (S31): the
+   thrown banana's arc and the fireball's weave (both wait on a recording
+   with one in it), the shell's spin rate, the hit box.
 
 3. **Moving obstacles (S12's other half) — the MOTION is MEASURED and one
    number short of portable.**
