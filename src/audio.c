@@ -172,7 +172,7 @@ int smk_sfx_audition(void)
     int played = 0, answered = 0;
     bool stopped = false;
     if (ask)
-        printf("\n  ENTER = right   i = wrong   r = again   s = skip   q = stop\n"
+        printf("\n  c = right   w = wrong   ENTER = skip   r = again   q = stop\n"
                "  ...or just type what it really is.\n\n");
     for (int id = 0; id < SFX_SLOTS; id++) {
         char path[900];
@@ -194,13 +194,13 @@ int smk_sfx_audition(void)
             size_t l = strlen(p);
             while (l && (p[l - 1] == '\n' || p[l - 1] == '\r' || p[l - 1] == ' ')) p[--l] = 0;
             if (!strcmp(p, "r")) continue;                  /* again */
-            if (!strcmp(p, "s")) break;                     /* no answer */
+            if (!l || !strcmp(p, "s")) break;               /* ENTER: no answer */
             bool named = smk_sfx_name(id)[0] != '(';
             const char *verdict, *note = smk_sfx_name(id);
             if (!strcmp(p, "q")) { stopped = true; break; }
-            if (!l)                     { verdict = named ? "correct" : "unknown";
-                                          if (!named) note = "(still unnamed)"; }
-            else if (!strcmp(p, "i"))   { verdict = "WRONG"; note = "(no name given)"; }
+            if (!strcmp(p, "c"))        { verdict = named ? "correct" : "unknown";
+                                          if (!named) note = "(right, but still unnamed)"; }
+            else if (!strcmp(p, "w"))   { verdict = "WRONG"; note = "(no name given)"; }
             else                        { verdict = named ? "WRONG" : "named"; note = p; }
             used += (size_t)snprintf(answers + used, sizeof answers - used,
                                      "$%02X  %5.2f s  %-9s  %s\n",
@@ -230,10 +230,11 @@ int smk_sfx_audition(void)
         size_t l = strlen(p);
         while (l && (p[l - 1] == '\n' || p[l - 1] == '\r' || p[l - 1] == ' ')) p[--l] = 0;
         if (!strcmp(p, "r")) continue;
-        if (!strcmp(p, "s") || !strcmp(p, "q")) break;
+        if (!l || !strcmp(p, "s") || !strcmp(p, "q")) break;   /* ENTER: no answer */
         used += (size_t)snprintf(answers + used, sizeof answers - used,
                                  "engine  %-9s  %s\n",
-                                 l ? "WRONG" : "correct", l ? p : "the rev and its pitch");
+                                 strcmp(p, "c") ? "WRONG" : "correct",
+                                 strcmp(p, "c") ? p : "the rev and its pitch");
         answered++;
         break;
     }

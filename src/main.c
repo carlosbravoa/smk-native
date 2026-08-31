@@ -2287,7 +2287,7 @@ static void usage(const char *argv0)
            "  --rom PATH      Super Mario Kart (USA) ROM   [rom/smk_usa.sfc]\n"
            "  --menu          start in the menu shell (the default)\n"
            "  --sfx           play every captured sound effect and ask what it is\n"
-           "                  (ENTER right, i wrong, r again, s skip, q stop, or\n"
+           "                  (c right, w wrong, ENTER skip, r again, q stop, or\n"
            "                  type the real name); answers -> rom/sfx/names.txt\n"
            "  --track N       0..23: skip the shell and drive this course\n"
            "  --timetrial     with --track: a solo 5-lap time trial\n"

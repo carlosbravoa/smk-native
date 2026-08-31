@@ -119,10 +119,12 @@ the port steps through it at the rate the DSP would.
 `smk --sfx` plays every effect in id order with the name the ROM's own
 call site gives it, and asks after each one:
 
-    ENTER = right   i = wrong   r = again   s = skip   q = stop
+    c = right   w = wrong   ENTER = skip   r = again   q = stop
     ...or just type what it really is
 
-The answers land in `rom/sfx/names.txt` (`SMK_SFX_NAMES` overrides) -
+ENTER is the free key: it records nothing, so a whole pass can be
+tapped through and only the ones you are sure of are answered.  The
+answers land in `rom/sfx/names.txt` (`SMK_SFX_NAMES` overrides) -
 id, length, verdict, name - which is the file to hand back: the naming
 in the listener's own words, for the ids the ROM does not name and as a
 check on the ones it does.  The engine's sweep is asked about last.
