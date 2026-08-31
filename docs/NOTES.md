@@ -9023,3 +9023,41 @@ in the recording (32 to 206 frames long, all different), the game plays
 $55 on the exact frame that bit clears - the moment it lands on an item.
 The port was playing it when the item became USABLE ($4000, 65 frames
 later).  Hitting the box itself is silent, which is worth knowing too.
+
+## 219. The engine note is not proportional to speed - it is a rev with a ceiling
+
+The user: "as soon as I start accelerating, the engine sounds like you
+rapidly reached high speed, but speed is doing something different.  We
+need to find a way to map sound to speed properly."
+
+The map was the problem, and the ROM says why.  `$80:B121` is the
+IN-RACE builder for `$C2`, and its numbers are in WRAM where they can
+be read: `$0E20` = $3FFF is the ceiling, `$0E22` = +$0120 a frame while
+the rev is under $2000, `$0E24` = +$0080 over it, `$0E26` = -$0200
+coasting.  So the rev climbs fast to a knee and then CRAWLS, and the
+parameter is that rev over about 222 (`$42 = $C2/222 + 6.3`, correlation
+0.95 over 8,600 frames).  The note therefore lives in a narrow band, not
+a wide sweep.  Measured medians with the throttle held:
+
+    speed  150 300 450 650 750 850 950+
+    $42     36  33  42  50  54  61  61
+
+which is 20 + speed * 0.048 - and the port now uses exactly that,
+clamped to the rev's own $01..$3F, with the countdown still reading the
+port's transcribed $C2 (NOTES 163).  The first fit, speed * 0.079 - 6,
+swept the whole range: at 450 it asked for 29 where the game plays 42,
+so the note ran away from the kart.
+
+THE SKID (still labelled).  Nothing repeats on the chip through a
+drift, so it is not a sustained sound.  The best evidence is id $40:
+six of its ten firings in the Ghost Valley recording land while the
+slide lag $A8 is over 6000, and it is rare otherwise.  Wired on that
+threshold with a half-second cooldown - OURS - for the user to judge.
+
+THE ROULETTE has no sound of its own, as far as the chip shows.  Across
+ten spins (32 to 206 frames) nothing is queued while it turns, and the
+one repeating figure that looks like a tick - samples $0F/$0F/$0D on
+three voices every eight frames - also plays at f2198-2267 and
+f4643-4734, where no roulette is spinning.  It is the song's own
+accompaniment.  What the game does play is $55 at the exact frame the
+roulette STOPS, which is the three beeps the user described.

@@ -1327,6 +1327,8 @@ const char *smk_sfx_hint(int id);   /* when the game fires an unnamed one */
 #define SMK_SFX_MENU_OK    0x2E   /* USER                                      */
 #define SMK_SFX_MENU_BACK  0x2F   /* USER                                      */
 #define SMK_SFX_WALL       0x3F   /* MEASURED: drive $16, the bounce state     */
+#define SMK_SFX_SLIDE      0x40   /* MEASURED: 6 of 10 fire while sliding hard
+                                   * (the Ghost Valley run) - the skid       */
 #define SMK_SFX_BOOST      0x48   /* USER + ROM $80:B48C                       */
 #define SMK_SFX_MUD        0x4C   /* MEASURED: every one on surface class $5E  */
 #define SMK_SFX_MENU_SCROLL 0x4D  /* USER: "menu scrolling"                    */

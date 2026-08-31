@@ -326,6 +326,7 @@ const char *smk_sfx_name(int id)
     case SMK_SFX_MENU_OK:     return "menu confirm        (you)";
     case SMK_SFX_MENU_BACK:   return "menu back           (you)";
     case SMK_SFX_WALL:        return "hitting a wall      (measured)";
+    case SMK_SFX_SLIDE:       return "the skid, sliding hard (measured)";
     case SMK_SFX_BOOST:       return "mushroom boost      (you)";
     case SMK_SFX_MUD:         return "mud / heavy off-road (measured)";
     case SMK_SFX_MENU_SCROLL: return "menu scrolling      (you)";

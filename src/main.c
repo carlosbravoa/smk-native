@@ -877,6 +877,21 @@ static void step_kart(smk_kart *k, smk_track *trk,
         if (!k->airborne && was_air && player.state != 0x18)
             smk_sfx_play(SMK_SFX_LAND);
         if (k->bounce_hit) smk_sfx_play(SMK_SFX_WALL);
+        /* THE SKID (the user: "the sliding sound is missing").  $40 is
+         * the best-evidenced candidate: six of its ten firings in the
+         * Ghost Valley recording land while the slide lag $A8 is over
+         * 6000, and it is rare otherwise.  OURS: the threshold and the
+         * half-second cooldown, so it marks a drift instead of
+         * machine-gunning through one. */
+        {
+            static int slide_cool;
+            int slip = player.vlag < 0 ? -player.vlag : player.vlag;
+            if (slide_cool > 0) slide_cool--;
+            if (slip > 6000 && slide_cool == 0 && !k->airborne) {
+                smk_sfx_play(SMK_SFX_SLIDE);
+                slide_cool = 30;
+            }
+        }
         if (surf_now == 0x5E && was_surf != 0x5E) smk_sfx_play(SMK_SFX_MUD);
         if (player.drive == 0x10 && was_drive != 0x10)
             smk_sfx_play(SMK_SFX_BOOST);     /* mushroom, boost pad, AND
@@ -907,36 +922,40 @@ static void step_kart(smk_kart *k, smk_track *trk,
     {
         static float rev = 1.0f;
         bool thr = (player.pad & 0x8000) != 0 || engine_throttle;
-        float target = (float)k->speed * 0.079f - 6.0f;
-        /* THROUGH THE COUNTDOWN the port already has the game's own rev:
-         * smk_player_rev transcribes $80:95BB and keeps $C2 (NOTES 163),
-         * the very accumulator the sound parameter is taken from - so
-         * use its high byte and inherit the real thing, oscillation and
-         * all, instead of approximating a climb. */
+        /* THE MAP FROM SPEED, measured (NOTES 219).  The engine note is
+         * NOT proportional to speed: the game's own $42 sits in a narrow
+         * band - about $14 at a standstill under throttle and $3D flat
+         * out - because the parameter is a REV accumulator ($80:B121,
+         * +$0120 a frame under $2000, +$0080 over, -$0200 coasting,
+         * ceiling $3FFF) and $42 is that rev over about 222.  Medians
+         * from 8,600 logged frames with the throttle held:
+         *
+         *   speed  150 300 450 650 750 850 950+
+         *   $42     36  33  42  50  54  61  61
+         *
+         * which is 20 + speed * 0.048, and that is what the port uses.
+         * A straight speed * 0.079 - 6 (the first fit) swept the whole
+         * range instead and the note ran away from the kart. */
+        float target = 20.0f + (float)k->speed * 0.048f;
         if (race_state == RACE_COUNTDOWN) {
+            /* the port already keeps the game's own countdown rev
+             * (smk_player_rev transcribes $80:95BB - NOTES 163) */
             target = (float)((player.rev >> 8) & 0x7F);
-            (void)thr;
-        } else if (thr && k->speed < 0x100) {
-            /* stopped on the road with the throttle down: revving again */
-            float climb = rev + 0.40f;
-            if (climb > target) target = climb;
+        } else if (!thr && k->speed < 0x40) {
+            target = 1.0f;                    /* stopped and coasting: idle */
         }
-        if (target < 1.0f) target = 1.0f;     /* the idle the game holds  */
-        if (target > 78.0f) target = 78.0f;   /* the trace tops at $4E    */
-        /* MEASURED rates, and they are not symmetric: the game's own
-         * trace rises about 1 a frame and FALLS up to 3 - after a crash
-         * from $3F it is back at $20 within ten frames.  (Shipped the
-         * other way round at first, which is why the note hung on after
-         * a hit.) */
+        if (target < 1.0f) target = 1.0f;
+        if (target > 63.0f) target = 63.0f;   /* the rev's own ceiling      */
+        /* MEASURED rates, and they are not symmetric: the trace rises
+         * about 1 a frame and FALLS up to 3 - after a crash from $3F it
+         * is back at $20 within ten frames. */
         float d = target - rev;
         rev += d > 0.0f ? (d < 0.8f ? d : 0.8f) : (d > -3.0f ? d : -3.0f);
         int v = (int)(rev + 0.5f);
-        /* silent only OUTSIDE a race: $42 = 0 is the driver's own silence
-         * ($81:A26F), and $01 is an idling kart, not a quiet one */
         bool racing = race_state == RACE_RUN || race_state == RACE_COUNTDOWN;
         smk_engine_set(racing ? (v < 1 ? 1 : v) : 0);
         if (getenv("SMK_ENGINE_TRACE") && (fx_ticks % 15) == 0)
-            printf("engine f%ld speed %d thr %d -> $%02X (%.0f Hz)\n",
+            printf("engine f%ld speed %4d thr %d -> $%02X (%.0f Hz)\n",
                    hud_race_frames, k->speed, (int)thr, v,
                    ((0x4700 + 34 * v) & 0x3FFF) / 4096.0 * 32000.0);
     }
