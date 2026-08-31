@@ -1284,6 +1284,37 @@ void smk_music_set(const char *key);
 void smk_audio_pump(void);
 void smk_music_toggle(void);
 
+/* ---- Sound effects (P7) --------------------------------------------
+ *
+ * The game asks for a sound by ID through $81:F57A (A = id), queued at
+ * $0E6C (NOTES 211).  The port keeps the game's OWN ids so every call
+ * site reads like the ROM's, and plays `rom/sfx/<ID>.wav` - captured
+ * from the running game by tools/labs/mame/grab.sh.  A missing file is
+ * silence, never an error. */
+void smk_sfx_play(int id);
+void smk_sfx_toggle(void);
+int  smk_sfx_audition(void);      /* `smk --sfx`: play them all, named */
+const char *smk_sfx_name(int id);
+
+/* the ids the ROM's own call sites use (tools/labs/sfxsites.py) */
+#define SMK_SFX_HOP        0x21   /* $80:B555 - the hop, and the $2A bump */
+#define SMK_SFX_MOLE       0x22   /* $80:B6B9 */
+#define SMK_SFX_FALL       0x23   /* $80:B66A - the deep drop ($26)       */
+#define SMK_SFX_FEATHER    0x24   /* $80:B57B - the feather (docs/ITEMS)  */
+#define SMK_SFX_RESCUE     0x25   /* $80:B20E - the hazard state machine  */
+#define SMK_SFX_WATER      0x27   /* $80:B5BB - inside the $22 water code */
+#define SMK_SFX_LAVA       0x28   /* $80:B647 - the lava / pit ($24)      */
+#define SMK_SFX_SPIN       0x2A   /* $80:B75A - the shell tumble; $80:A9A8 */
+#define SMK_SFX_MENU_MOVE  0x2C   /* $85:885E and friends                 */
+#define SMK_SFX_MENU_OK    0x2E   /* $85:853C and friends                 */
+#define SMK_SFX_MENU_BACK  0x2F   /* $85:855F                             */
+#define SMK_SFX_BOOST      0x48   /* $80:B48C - the mushroom (docs/ITEMS) */
+#define SMK_SFX_ITEMBOX    0x49   /* $85:B10F - the item block            */
+#define SMK_SFX_HAZARD     0x4C   /* $80:B204                             */
+#define SMK_SFX_COIN       0x55   /* $80:9B32                             */
+#define SMK_SFX_LAP        0x65   /* $80:A497                             */
+#define SMK_SFX_START      0x68   /* $80:8A2A                             */
+
 /* ---- Coins and item boxes (src/pickup.c, NOTES 110) ----------------------
  * The collector at $81B73B: the tilemap cell under a grounded player decides.
  * Returns true when something was picked up (the map is rewritten). */

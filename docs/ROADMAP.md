@@ -64,6 +64,14 @@ and comes down toward the camera) and it inherits the kart's motion -
 thrown backwards it lands behind a forward-looking camera and is never
 drawn at all.
 
+**S37 — The captured sound effects (NOTES 211).** The audio is the game's
+own, but the CUT is ours: where each effect starts and stops comes from a
+threshold on the subtracted envelope, with a 10 ms fade and a normalise,
+so an effect with a long quiet tail is trimmed shorter than the ROM's.
+Which event fires which id is the ROM's for the dozen with immediate call
+sites, and OURS-by-placement for the rest until a person names them.
+The engine note is absent entirely.
+
 **S36 — Round 2's approximations (NOTES 207/208).** The wading kart
 rides 9 px low (the game's submerged drawing is unread); the Rainbow
 Road Thwomp's palette-pair flash alternates every 8 frames (the pair is
@@ -579,7 +587,18 @@ of them changes how every race feels.
 
 In rough order of value:
 
-1. **Sound (S8, P7) — music PARKED, SFX open.** The pipeline works end to
+1. **Sound (S8, P7) — music PARKED and now OFF by default; the SFX are
+   IN (NOTES 211).** 31 of the game's own effects are captured from the
+   running game by subtracting two deterministic MAME replays, cut by
+   tools/labs/sfxcut.py into rom/sfx/<ID>.wav, and played by the GAME'S
+   own ids so every call site reads like the ROM's. A dozen are named by
+   the ROM's own call sites (hop, spin, water, lava, feather, mushroom,
+   item box, coin, lap, the lights, the menu); the rest need an ear -
+   `smk --sfx` plays them all. STILL OPEN: **the engine note**, which is
+   not in the sound queue at all (the one per-frame id, $7E, is silent -
+   a parameter, not a sound), so it lives inside the driver and needs
+   either the driver's pitch path decoded or a captured loop pitched by
+   speed. Old text:** The pipeline works end to
    end (NOTES 201/202, docs/SOUND.md): the game's own driver snapshotted
    and rendered, one clean loop per song, mapped in rom/music/map.txt.
    PARKED by the user 2026-08-30: the loops "don't start from a sensible

@@ -18,3 +18,4 @@ build*/
 __pycache__/
 *.pyc
 rom/music/
+rom/sfx/

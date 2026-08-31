@@ -8701,3 +8701,42 @@ hops shake it off (OURS: the user never shook theirs, so the real
 shake-off is unmeasured).  The art: the ripped mole ladder fits DP's
 OBJ palette 7 with ZERO error - it was Choco's palette 0 at avg err
 1449 until the recording relocated the moles to Donut Plains.
+
+## 211. The sound effects: the game's own ids, captured from the running game
+
+THE PATH.  `$81:F57A` is the play-sound call - A = the sound id - and it
+queues at `$0E6C,x` with the index in `$0E6A` (`$81:F5E2`, three a
+frame).  Poking that queue asks the REAL driver for the REAL sound in the
+real race state, which is what the capture rig does.
+
+THE IDS, from the ROM itself (a scan for `JSL $81:F5xx` sites with the
+`LDA #imm` before them - 50 sites, ~30 distinct ids):
+
+    $21 $80:B555 hop, and $80:B68C the $2A bump    $22 $80:B6B9 mole
+    $23 $80:B66A the drop        $24 $80:B57B feather (docs/ITEMS.md)
+    $25 $80:B20E hazard machine  $27 $80:B5BB water ($22's handler)
+    $28 $80:B647 lava / the pit  $2A $80:B75A spin out, $80:A9A8 skid
+    $48 $80:B48C mushroom        $49 $85:B10F item box
+    $4C $80:B204 hazard          $55 $80:9B32 coin
+    $65 $80:A497 lap             $68 $80:8A2A the lights
+    $2C/$2E/$2F $85:85xx/$94xx/$95xx the menu; $20/$29/$37/$4A/$4B/$5D/$5F/$64 elsewhere
+
+THE CAPTURE (tools/labs/mame/{sfxgrab.lua,grab.sh} + tools/labs/sfxcut.py).
+MAME replays a recorded race twice with `-wavwrite`: once poking ONE id,
+once poking nothing.  The emulation is deterministic, so subtracting the
+two leaves the effect alone.  One id per run matters: poking perturbs the
+driver's channel juggling, so a second poke in the same run sits on the
+first one's wake - one per run gives 45-70 dB over the residual where
+eight per run gave 10-15.  sfxcut then trims each slot to where the
+effect is actually sounding, fades 10 ms both ends and normalises.
+31 effects, in rom/sfx/<ID>.wav beside the ROM (git-ignored, like the
+music).  `smk --sfx` plays them all with the ROM's own name for each -
+for naming the rest by ear.
+
+WHAT IS NOT IN.  The ENGINE.  It is not in this queue at all: the only
+per-frame-ish id, $7E (720 requests in one race), captures as SILENCE, so
+it is a parameter update, not a sound - the engine note lives inside the
+driver, pitched from a value the 65816 writes.  Two dead ends worth not
+repeating: id $17 wedges the driver (everything after it is one steady
+820 Hz tone, and it stops answering requests), and $7F - the id the boot
+code sends through $81:F504 - does not stop the music either.

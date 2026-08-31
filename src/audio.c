@@ -19,7 +19,11 @@ static bool     ready;
 static Mix_Music *cur, *loop_next;
 static char     cur_key[32];
 static char     map_dir[512];
-static bool     music_on = true;
+/* OFF by default (the user, 2026-08-31): "let's focus on sfx.  Disable
+ * music for the moment so we can do clean testing".  N turns it on, and
+ * SMK_MUSIC=1 starts with it on for a music session. */
+static bool     music_on;
+static bool     music_checked;
 
 /* the intro has finished: the loop file takes over, forever */
 static void on_music_done(void)
@@ -38,6 +42,7 @@ bool smk_audio_init(void)
 {
     if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) return false;
     if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) != 0) return false;
+    Mix_AllocateChannels(16);        /* several effects can overlap */
     Mix_HookMusicFinished(on_music_done);
     ready = true;
     return true;
@@ -52,6 +57,7 @@ void smk_audio_set_dir(const char *rom_path)
 
 void smk_music_toggle(void)
 {
+    music_checked = true;
     music_on = !music_on;
     if (!ready) return;
     if (!music_on) Mix_PauseMusic(); else Mix_ResumeMusic();
@@ -59,6 +65,8 @@ void smk_music_toggle(void)
 
 void smk_music_set(const char *key)
 {
+    if (!music_checked) { music_checked = true; music_on = getenv("SMK_MUSIC") != NULL; }
+    if (!music_on) return;             /* not even loaded: silence is silence */
     if (!ready || !key || !strcmp(key, cur_key)) return;
     snprintf(cur_key, sizeof cur_key, "%s", key);
     if (getenv("SMK_MUSIC_TRACE")) printf("music: set %s\n", key);
@@ -92,3 +100,82 @@ void smk_music_set(const char *key)
 }
 
 void smk_audio_pump(void) { /* SDL_mixer feeds itself */ }
+
+/* ---- Sound effects (NOTES 211) --------------------------------------
+ *
+ * One Mix_Chunk per game sound ID, loaded lazily from rom/sfx/<ID>.wav
+ * and cached; the ids are the GAME'S own ($81:F57A's A), so a call site
+ * here reads like the ROM's.  Nothing ROM-derived is committed: the wavs
+ * live beside the ROM, like the music.
+ */
+#define SFX_SLOTS 128
+static Mix_Chunk *sfx[SFX_SLOTS];
+static int8_t     sfx_tried[SFX_SLOTS];
+static bool       sfx_on = true;
+
+void smk_sfx_toggle(void) { sfx_on = !sfx_on; }
+
+void smk_sfx_play(int id)
+{
+    if (!ready || !sfx_on || id < 0 || id >= SFX_SLOTS) return;
+    if (!sfx[id]) {
+        if (sfx_tried[id]) return;             /* one look per id, then quiet */
+        sfx_tried[id] = 1;
+        char path[900];
+        snprintf(path, sizeof path, "%ssfx/%02X.wav", map_dir, id);
+        sfx[id] = Mix_LoadWAV(path);
+        if (getenv("SMK_SFX_TRACE"))
+            printf("sfx: %s %s\n", path, sfx[id] ? "loaded" : "MISSING");
+        if (!sfx[id]) return;
+    }
+    if (getenv("SMK_SFX_TRACE")) printf("sfx: play $%02X\n", id);
+    Mix_PlayChannel(-1, sfx[id], 0);
+}
+
+/* Play every captured effect in id order, announcing each - so a person
+ * can NAME them by ear (`smk --sfx`).  The ROM's own call sites give the
+ * event for a dozen of them (NOTES 211); the rest are for the user. */
+int smk_sfx_audition(void)
+{
+    if (!ready) return 0;
+    int played = 0;
+    for (int id = 0; id < SFX_SLOTS; id++) {
+        char path[900];
+        snprintf(path, sizeof path, "%ssfx/%02X.wav", map_dir, id);
+        Mix_Chunk *c = Mix_LoadWAV(path);
+        if (!c) continue;
+        played++;
+        int ms = (int)((double)c->alen * 1000.0 / (44100.0 * 4.0));
+        printf("  $%02X  %5.2f s  %s\n", id, ms / 1000.0, smk_sfx_name(id));
+        fflush(stdout);
+        Mix_PlayChannel(-1, c, 0);
+        SDL_Delay((Uint32)(ms + 450));
+        Mix_FreeChunk(c);
+    }
+    return played;
+}
+
+/* what the ROM's own call site says the sound is, where we know it */
+const char *smk_sfx_name(int id)
+{
+    switch (id) {
+    case SMK_SFX_HOP:       return "hop / bump          ($80:B555, $80:B68C)";
+    case SMK_SFX_MOLE:      return "mole                ($80:B6B9)";
+    case SMK_SFX_FALL:      return "the drop            ($80:B66A)";
+    case SMK_SFX_FEATHER:   return "feather             ($80:B57B)";
+    case SMK_SFX_RESCUE:    return "rescue / hazard     ($80:B20E)";
+    case SMK_SFX_WATER:     return "water               ($80:B5BB)";
+    case SMK_SFX_LAVA:      return "lava / pit          ($80:B647)";
+    case SMK_SFX_SPIN:      return "spin out            ($80:B75A, $80:A9A8)";
+    case SMK_SFX_MENU_MOVE: return "menu move           ($85:885E ...)";
+    case SMK_SFX_MENU_OK:   return "menu confirm        ($85:853C ...)";
+    case SMK_SFX_MENU_BACK: return "menu back           ($85:855F)";
+    case SMK_SFX_BOOST:     return "mushroom boost      ($80:B48C)";
+    case SMK_SFX_ITEMBOX:   return "item box            ($85:B10F ...)";
+    case SMK_SFX_HAZARD:    return "hazard              ($80:B204)";
+    case SMK_SFX_COIN:      return "coin                ($80:9B32)";
+    case SMK_SFX_LAP:       return "lap                 ($80:A497)";
+    case SMK_SFX_START:     return "the lights          ($80:8A2A)";
+    default:                return "(unnamed - the ROM has no immediate call site)";
+    }
+}

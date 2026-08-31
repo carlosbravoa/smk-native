@@ -837,14 +837,48 @@ static void step_kart(smk_kart *k, smk_track *trk,
             {   /* a coin taken: the count moved.  Its hop is NOTES 189 */
                 int before = player.coins;
                 smk_pickup_step(rom_for_step, trk, &player, k, grounded);
-                if (player.coins != before && !replay_path) smk_coinfx_pickup(coins_fx, SMK_COINFX_MAX);
+                if (player.coins != before && !replay_path) {
+                    smk_coinfx_pickup(coins_fx, SMK_COINFX_MAX);
+                    smk_sfx_play(SMK_SFX_COIN);         /* $80:9B32's sound */
+                }
             }
             /* a fresh box: choose the item and start the roulette ($81:B34A
              * and the pick at $81:B6D1, docs/ITEMS.md §3).  The lap and
              * rank are the HUD's, which are the race's own. */
-            if (player.item_held && !had && itemtab.ok && !replay_path)
+            if (player.item_held && !had && itemtab.ok && !replay_path) {
                 smk_item_box(&item, &itemtab, cur_track, hud_lap, hud_rank - 1, item_roll());
+                smk_sfx_play(SMK_SFX_ITEMBOX);          /* $85:B10F's sound */
+            }
         }
+    }
+
+    /* THE SOUND EFFECTS (NOTES 211).  The ROM plays these from inside the
+     * routines this port transcribed; rather than scatter calls through
+     * player.c (which the headless tools link WITHOUT the audio), the
+     * same events are read off the state machine here, once a frame, at
+     * the transitions the ROM's own call sites sit on. */
+    if (!replay_path) {
+        static int was_state, was_hazard2, was_mole, was_air;
+        static int was_spin_kind;
+        int st = player.state;
+        bool spin = (st == 0x0A || st == 0x0C || st == 0x1A);
+        bool was_spin = (was_state == 0x0A || was_state == 0x0C || was_state == 0x1A);
+        if (spin && !was_spin) smk_sfx_play(SMK_SFX_SPIN);       /* $80:B75A */
+        if (player.hazard != was_hazard2) {
+            if (player.hazard == 8) smk_sfx_play(SMK_SFX_WATER); /* $80:B5BB */
+            else if (player.hazard == 6) {
+                /* the lava/pit and the plain drop are different sounds in
+                 * the ROM ($80:B647 vs $80:B66A) - the class says which */
+                uint8_t hs = smk_track_surface(trk, smk_kart_px(k->x), smk_kart_px(k->y));
+                smk_sfx_play((hs & 0x0E) == 0x04 ? SMK_SFX_LAVA : SMK_SFX_FALL);
+            } else if (player.hazard == 0x0C) smk_sfx_play(SMK_SFX_RESCUE);  /* $80:B20E */
+        }
+        if (player.mole_on && !was_mole) smk_sfx_play(SMK_SFX_MOLE);   /* $80:B6B9 */
+        if (k->airborne && !was_air && player.state != 0x18)
+            smk_sfx_play(SMK_SFX_HOP);                                 /* $80:B555 */
+        was_state = st; was_hazard2 = player.hazard;
+        was_mole = player.mole_on; was_air = k->airborne;
+        (void)was_spin_kind;
     }
 
     /* the ground effect object ($80CF7B..$80D4A3): what the surface under
@@ -2218,6 +2252,7 @@ static void usage(const char *argv0)
     printf("usage: %s [options]\n"
            "  --rom PATH      Super Mario Kart (USA) ROM   [rom/smk_usa.sfc]\n"
            "  --menu          start in the menu shell (the default)\n"
+           "  --sfx           play every captured sound effect, named, and exit\n"
            "  --track N       0..23: skip the shell and drive this course\n"
            "  --timetrial     with --track: a solo 5-lap time trial\n"
            "  --autodrive     drive itself (a test aid, not the AI: it gets\n"
@@ -2298,6 +2333,7 @@ int main(int argc, char **argv)
      * field Lakitu's rescue and the AI use) so a whole five-lap run can be
      * played headlessly. */
     int want_tt = 0, want_race = 0, autodrive = 0;
+    int sfx_audition = 0;
     /* --scaletest: a straight Mario Circuit road with a line of pipes down
      * the middle at known distances, so one screenshot shows how object
      * scaling compares with the ground's own perspective. */
@@ -2317,6 +2353,7 @@ int main(int argc, char **argv)
         if (!strcmp(a, "--rom") && i + 1 < argc) { rom_path = argv[++i]; continue; }
         if (!strcmp(a, "--track") && i + 1 < argc) { track = atoi(argv[++i]); explicit_start = 1; continue; }
         if (!strcmp(a, "--menu")) { force_menu = 1; continue; }
+        if (!strcmp(a, "--sfx")) { sfx_audition = 1; continue; }
         if (!strcmp(a, "--timetrial")) { want_tt = 1; explicit_start = 1; continue; }
         if (!strcmp(a, "--race")) { want_race = 1; explicit_start = 1; continue; }
         if (!strcmp(a, "--autodrive")) { autodrive = 1; continue; }
@@ -2617,6 +2654,15 @@ int main(int argc, char **argv)
     }
     if (!smk_audio_init()) printf("audio: unavailable (silent)\n");
     smk_audio_set_dir(rom_path);
+    if (sfx_audition) {
+        /* `--sfx`: play every captured effect, named where the ROM's own
+         * call site says what it is (NOTES 211).  For naming by ear. */
+        printf("the game's sound effects, from rom/sfx (id, length, what the ROM calls it):\n");
+        int nplayed = smk_sfx_audition();
+        if (!nplayed) printf("  none found - capture them first (docs/SOUND.md)\n");
+        smk_rom_free(&rom);
+        return 0;
+    }
 
     /* The pad is optional: a machine with no controller (or no udev
      * permissions) must still run, so this failing is not fatal. */
@@ -2761,6 +2807,11 @@ int main(int argc, char **argv)
                                      in.nav_right, in.confirm,
                                      in.back || in.item };
                 if (ui.screen == SMK_UI_TITLE && in.back) in.quit = true;
+                /* the shell's own clicks, on the ROM's menu ids */
+                if (nav.up || nav.down || nav.left || nav.right)
+                    smk_sfx_play(SMK_SFX_MENU_MOVE);        /* $85:885E */
+                else if (nav.confirm) smk_sfx_play(SMK_SFX_MENU_OK);    /* $85:853C */
+                else if (nav.back)    smk_sfx_play(SMK_SFX_MENU_BACK);  /* $85:855F */
                 if (smk_ui_step(&ui, &rom, &nav)) {
                     /* a single race IS a Grand Prix course on its own */
                     int m = (ui.mode_sel == SMK_UI_MODE_TT)
@@ -2786,6 +2837,7 @@ int main(int argc, char **argv)
             /* the one mushroom */
             if (in.item && tt_mushroom && race_state == RACE_RUN
                 && smk_player_boost(&player)) {
+                smk_sfx_play(SMK_SFX_BOOST);
                 tt_mushroom = false;
                 player.item_held = false;
             }
@@ -2856,6 +2908,7 @@ int main(int argc, char **argv)
                 if (race_count >= SMK_COUNT_FRAMES) {
                     race_state = RACE_RUN;
                     smk_player_launch(&player);   /* $80956A pays out here */
+                    smk_sfx_play(SMK_SFX_START);  /* $80:8A2A - the lights */
                 }
                 /* Throttle and hop are consumed here; STEERING IS NOT.
                  * The user: "When stopped (speed=0) and you press left or
@@ -3089,8 +3142,8 @@ int main(int argc, char **argv)
                             for (int q = 1; q < SMK_CHARACTERS; q++)
                                 if (racers[q].rank == racers[0].rank + 1) { ahead_idx = q; break; }
                         switch (used) {
-                        case SMK_ITEM_MUSHROOM:  smk_player_boost(&player); break;
-                        case SMK_ITEM_FEATHER:   smk_player_feather(&player, &kart); break;
+                        case SMK_ITEM_MUSHROOM:  smk_player_boost(&player); smk_sfx_play(SMK_SFX_BOOST); break;
+                        case SMK_ITEM_FEATHER:   smk_player_feather(&player, &kart); smk_sfx_play(SMK_SFX_FEATHER); break;
                         case SMK_ITEM_STAR:      smk_player_star(&player); break;
                         /* the user: the button alone THROWS (banana in an arc,
                          * shell fast and bouncing); button + DOWN leaves it
@@ -3370,7 +3423,7 @@ int main(int argc, char **argv)
                                 /* he comes back with the sign (NOTES 168);
                                  * the grid crossing enters lap 1 and shows
                                  * nothing, so this starts at lap 2 */
-                                if (me->lap >= 2) lap_sign_t = 0;
+                                if (me->lap >= 2) { lap_sign_t = 0; smk_sfx_play(SMK_SFX_LAP); }  /* $80:A497 */
                                 if (race_state == RACE_RUN && !race_over)
                                     race_over = smk_tt_crossing(
                                         &result, &crossings,

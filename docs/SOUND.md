@@ -72,3 +72,21 @@ A missing key or file is silence. N toggles the music in the game.
   layered - command pulses on port 0, streamed blocks on ports 2/3, an
   engine byte on port 1 - so songs are captured from play rather than
   requested by command.
+
+## Sound effects (NOTES 211)
+
+The effects are captured from the running game, not synthesised:
+
+    # one id per run - the subtraction is only clean on the first poke
+    SFX_IDS=48 SFX_START=2200 SFX_GAP=180 \
+        tools/labs/mame/grab.sh moles tmp/sfxcap/48.wav 45
+    SFX_SILENT=1 SFX_IDS=48 SFX_START=2200 SFX_GAP=180 \
+        tools/labs/mame/grab.sh moles tmp/sfxcap/base.wav 45
+    tools/labs/sfxcut.py tmp/sfxcap/base.wav tmp/sfxcap/48.wav 48 2200 180 rom/sfx
+
+`SFX_QUIET=<id>` pokes an id first (a dead end so far - see NOTES 211).
+The port loads `rom/sfx/<ID>.wav` lazily by the GAME'S id, so a call site
+reads like the ROM's: `smk_sfx_play(SMK_SFX_BOOST)` is `$80:B48C`'s own
+`LDA #$0048 / JSL $81F57A`.  `smk --sfx` plays every captured effect with
+its name.  Music is OFF by default now (`N` toggles it, `SMK_MUSIC=1`
+starts with it on) so the effects can be judged on their own.
