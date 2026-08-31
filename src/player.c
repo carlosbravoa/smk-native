@@ -740,11 +740,8 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
     }
     if (p->boo_t > 0) p->boo_t--;
     if (p->shrink_t > 0) p->shrink_t--;
-    /* the feather's barrel roll: MEASURED +$0800 of pose a frame in the air */
-    if (p->state == 0x18) {
-        if (k->airborne) p->plag = s16(p->plag - 0x0800);
-        else { p->plag = 0; p->state = 0x1C; }
-    }
+    /* (the feather's roll lives in the pose machine's case $18 - an older
+     * copy of the step HERE doubled the rate to $1000 a frame) */
 
     /* 3. $80A892 - heading, velocity angle, pose */
     {
@@ -1072,6 +1069,8 @@ bool smk_player_hit_banana(smk_player *p, smk_kart *k)
 {
     if (p->flags & 2) return false;               /* $80A957: the star */
     if (p->state == 0x0A || p->state == 0x0C || p->state == 0x1A) return false;
+    /* round 2, bug 20: a SHRUNK kart is squashed, not spun */
+    if (p->shrink_t > 0) { p->squash_t = SMK_SQUASH_T; return true; }
     /* $80B443 */
     if (k->speed > 0x300) k->speed = 0x300;
     p->drive = 0;
@@ -1084,6 +1083,8 @@ bool smk_player_hit_shell(smk_player *p, smk_kart *k, int dir)
 {
     if (p->flags & 2) return false;
     if (p->state == 0x1A) return false;
+    /* round 2, bug 20: a SHRUNK kart is squashed, not spun */
+    if (p->shrink_t > 0) { p->squash_t = SMK_SQUASH_T; return true; }
     /* $81:9ACE, then $80:B4D1 */
     p->flags  = (uint16_t)((p->flags & ~0x0300u) | 0x0200 | (dir ? 0x0100 : 0));
     p->tumble = 0x1000;                           /* $E4 for the player */
@@ -1124,6 +1125,10 @@ void smk_racer_hit(smk_racer *r, int kind, int dir)
 {
     if (r->hit_t > 0) return;
     if (r->star_t > 0) return;                    /* Mario / Luigi under their star */
+    /* round 2, bug 20: "when small, if someone hits you, they squash
+     * you.  no banana spin" - every hit but the lightning itself
+     * flattens a shrunk kart instead of spinning it */
+    if (r->shrink_t > 0 && kind != 3) { r->squash_t = SMK_SQUASH_T; return; }
     r->hit_kind = kind;
     r->hit_dir = dir;
     r->spin_pose = 0;

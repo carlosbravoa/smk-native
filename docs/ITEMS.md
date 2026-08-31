@@ -120,6 +120,10 @@ port rolls its own five bits. Ledgered.
 The star runs `$86` down (`$80:EA09`); at 1 it clears `$4E` bit 15 and
 `$E2` down to bit 14 and calls `$80:A631`. While `$68,x` (surface class)
 is below `$52` the countdown pauses at 1 - LABELLED, not understood.
+CORRECTED by measurement (tools/labs/starlab.py / starlab2.py, NOTES
+208): live, `$86` runs straight down at 1 a frame on classes `$40`,
+`$4E`, `$54` and `$5A` alike and the star ends at 512 frames on all of
+them - whatever that code path guards, it never manifests as a pause.
 
 ## 5. Projectiles — MEASURED (`tools/labs/itemfx.py`)
 

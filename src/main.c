@@ -2,6 +2,7 @@
 #include "smk.h"
 #include "itemart.inc"
 #include "flatart.inc"
+#include "rrthwomp.inc"
 
 #ifndef SMK_BUILD
 #define SMK_BUILD "dev"
@@ -428,8 +429,14 @@ static void draw_finish_flag(uint32_t *fb, int rw, int rh,
  * Only during the DROP phase - through the carry his sprites are parked
  * off the side of the screen, which is the game not drawing him. */
 static int rescue_draw_lift;        /* the kart's drawn lift this frame */
+/* after the drop he TAKES HIS FEE and rises; the kart is held until he
+ * is gone (round 2, bugs 1/15 - the user: "you saw it taking two coins
+ * from you with the rod, and going up and you were not released until
+ * it was gone").  OURS: the pacing. */
+#define SMK_LAKITU_EXIT 64
+static int lakitu_exit_t;
 static void draw_rescue_lakitu(uint32_t *fb, int rw, int rh,
-                               const uint32_t *palette, int t)
+                               const uint32_t *palette, int t, int rise)
 {
     if (!hud_art.ok) return;
     int sc = rw >= 640 ? 3 : 2;
@@ -440,7 +447,7 @@ static void draw_rescue_lakitu(uint32_t *fb, int rw, int rh,
     int scale2 = rw / 256; if (scale2 < 1) scale2 = 1;
     int kart_top = (int)(SMK_PLAYER_LINE * (float)rh / 112.0f) / sc
                  - (rescue_draw_lift + 32 * scale2) / sc;
-    int y = kart_top - 27;
+    int y = kart_top - 27 - rise;
     (void)t;
     static const struct { int dx, dy, tile; } PART[5] = {
         {  0,  0, SMK_RESCUE_TL }, { 16,  0, SMK_RESCUE_TR },
@@ -788,6 +795,24 @@ static void step_kart(smk_kart *k, smk_track *trk,
         if (getenv("SMK_SQUASH_TRACE")) printf("squash f%ld: the player\n", hud_race_frames);
     } else if (k->hazard_hit) smk_player_hit_banana(&player, k);   /* a plant, a fish: the spin */
     if (player.squash_t > 0) { player.squash_t--; k->speed = 0; k->speed_frac = 0; }
+    /* the rescue's EXIT (round 2, bugs 1/15): the moment the drop ends,
+     * Lakitu takes his two-coin fee and rises; the kart is held (speed 0)
+     * until he is gone */
+    {
+        static int was_hazard;
+        if (was_hazard == 0x0E && player.hazard == 0) {
+            if (getenv("SMK_RESCUE_TRACE"))
+                printf("rescue DONE f%ld: the fee and the exit\n", hud_race_frames);
+            lakitu_exit_t = SMK_LAKITU_EXIT;
+            int fee = player.coins < 2 ? player.coins : 2;
+            player.coins -= fee;
+            if (fee && !replay_path)
+                smk_coinfx_spawn(coins_fx, SMK_COINFX_MAX, kart.x, kart.y,
+                                 player.heading, kart.vx, kart.vy, fee);
+        }
+        was_hazard = player.hazard;
+    }
+    if (lakitu_exit_t > 0) { lakitu_exit_t--; k->speed = 0; k->speed_frac = 0; }
     /* the collector ($81B73B) serves ONE player per frame, alternating:
      * every P1 pickup in the demo lands on an odd frame, every P2 pickup
      * on an even one, with the cell the kart is on after that frame's
@@ -1256,6 +1281,13 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
          * the ROM's ladder is a hardware limit we do not have. */
         int obase = SMK_OBJ_PIPE0;         /* unused by the near sampler */
         int aw = SMK_OBJ_NEAR_W, ah = SMK_OBJ_NEAR_H;
+        /* Rainbow Road's Thwomp is the ripped BLUE sprite through RR's
+         * own palettes - "the flashy color is totally wrong. Probably
+         * even the sprite used" (round 2, bug 8).  Palette 1 fits it
+         * with zero error and palette 2 is its flash coloring (three
+         * entries differ); the alternation period is OURS. */
+        const uint8_t *rrart = trk->theme == 7 ? SMK_RRTHWOMP : NULL;
+        if (rrart) { aw = SMK_RRTHWOMP_W; ah = SMK_RRTHWOMP_H; }
         /* The SIZE is the game's own scale, and the band only picks which
          * drawing supplies the detail.
          *
@@ -1393,7 +1425,8 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
             int lo = 999, hi = -1, bot = -1;
             for (int ay = 0; ay < ah; ay++)
                 for (int ax = 0; ax < aw; ax++) {
-                    if (!obj_texel(obase, aw, ax, ay)) continue;
+                    if (!(rrart ? rrart[ay * aw + ax]
+                                : obj_texel(obase, aw, ax, ay))) continue;
                     if (ax < lo) lo = ax;
                     if (ax > hi) hi = ax;
                     if (ay > bot) bot = ay;
@@ -1418,12 +1451,14 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
                 int xx = x0 + dx;
                 if (xx < 0 || xx >= rw) continue;
                 int tx = dx * aw / pw;
-                uint8_t v = obj_texel(obase, aw, tx, ty);
+                uint8_t v = rrart ? rrart[ty * aw + tx]
+                                  : obj_texel(obase, aw, tx, ty);
                 if (!v) continue;
-                fb[yy * rw + xx] =
-                    trk->palette[((unsigned)(trk->theme == 7
-                                    ? smk_obj_pal(trk->theme) ^ (int)(((fx_ticks >> 2) & 1u) << 4)
-                                    : smk_obj_pal(trk->theme)) + v) & 0xFF];
+                int pbase = rrart
+                          ? (((fx_ticks >> 3) & 1u) ? SMK_RRTHWOMP_PAL2
+                                                    : SMK_RRTHWOMP_PAL1)
+                          : smk_obj_pal(trk->theme);
+                fb[yy * rw + xx] = trk->palette[((unsigned)pbase + v) & 0xFF];
             }
         }
 }
@@ -2001,7 +2036,10 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
             draw_lap_sign(fb, rw, rh, trk->palette, lap_sign_t,
                           hud_lap, SMK_RACE_LAPS);
         if (player.hazard == 0x0E)        /* and once more, on a rescue */
-            draw_rescue_lakitu(fb, rw, rh, trk->palette, rescue_t);
+            draw_rescue_lakitu(fb, rw, rh, trk->palette, rescue_t, 0);
+        else if (lakitu_exit_t > 0)       /* ...and he leaves, fee in hand */
+            draw_rescue_lakitu(fb, rw, rh, trk->palette, 0,
+                               (SMK_LAKITU_EXIT - lakitu_exit_t) * 3);
     }
 }
 
@@ -3048,7 +3086,9 @@ int main(int argc, char **argv)
                          * animation" (the user); $80:EA3B's $0300 tumble is
                          * the lightning's, not this */
                         if (!(player.flags & 2)) {
-                            player.shrink_t = 0x440;
+                            /* round 2, bug 21: "when small, eating another
+                             * poison mushroom makes you come back" */
+                            player.shrink_t = player.shrink_t > 0 ? 0 : 0x440;
                             int lost = player.coins < 4 ? player.coins : 4;
                             player.coins -= lost;
                             smk_coinfx_spawn(coins_fx, SMK_COINFX_MAX, kart.x, kart.y,
@@ -3071,7 +3111,7 @@ int main(int argc, char **argv)
                                    smk_kart_px(racers[q].k.x), smk_kart_px(racers[q].k.y), racers[q].rank, hq,
                                    smk_kart_px(kart.x), smk_kart_px(kart.y), racers[0].rank);
                         if (hq == SMK_PROJ_BANANA) smk_racer_hit(&racers[q], 1, (int)(fx_ticks & 1));
-                        else if (hq == SMK_PROJ_MUSHROOM) { if (racers[q].star_t <= 0) racers[q].shrink_t = 0x440; }   /* shrink only */
+                        else if (hq == SMK_PROJ_MUSHROOM) { if (racers[q].star_t <= 0) racers[q].shrink_t = racers[q].shrink_t > 0 ? 0 : 0x440; }   /* shrink only; a second one restores (bug 21) */
                         else if (hq != SMK_PROJ_NONE) smk_racer_hit(&racers[q], 2, (int)(fx_ticks & 1));
                     }
                 }

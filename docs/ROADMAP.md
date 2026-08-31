@@ -64,6 +64,14 @@ and comes down toward the camera) and it inherits the kart's motion -
 thrown backwards it lands behind a forward-looking camera and is never
 drawn at all.
 
+**S36 — Round 2's approximations (NOTES 207/208).** The wading kart
+rides 9 px low (the game's submerged drawing is unread); the Rainbow
+Road Thwomp's palette-pair flash alternates every 8 frames (the pair is
+measured, the period is not); Lakitu's post-drop exit - the two-coin
+fee, the 64-frame rise, the kart held till he is gone - follows the
+user's account of the original, with the pacing ours; a squashed-while-
+small kart reuses the bug-13 flatten wholesale.
+
 **S35 — The Thwomp squash (bug 13, NOTES 204).** The art is the user's
 ripped flattened-racer sheet through each driver's OWN palette (fit
 near-zero error; the Yoshi/Koopa block assignment is by eye where two
@@ -498,8 +506,10 @@ Stubborn ones, and ones marked fixed that are not:
    happening.~~ See 4/5 - all three courses' deep water is $22.
 7. NOT solved: four piranha plants on Choco Island where the game has
    ONE.  Same with Koopa Beach's cheep-cheeps.
-8. Rainbow Road Thwomps: the flashy colour is totally wrong - probably
-   even the sprite used.
+8. ~~Rainbow Road Thwomps: the flashy colour is totally wrong -
+   probably even the sprite used.~~ DONE: the ripped BLUE Thwomp,
+   zero-error on RR's own palette 1, flashing to palette 2 (its exact
+   flash coloring - three entries differ); the period is OURS (S36).
 9. ~~Rainbow Road Thwomps: you can pass THROUGH them; they should be a
    rock (the spin on touch, but solid).~~ FIXED: theme 7 flags the spin
    AND falls through to the measured bounce.
@@ -523,22 +533,35 @@ Stubborn ones, and ones marked fixed that are not:
 15. Lakitu's rescue: Mario disappears in the middle of the drop; Lakitu
     shows with Mario coming back but is GONE after dropping you.  The
     original shows him taking TWO COINS with the rod and going up - you
-    are not released until he is gone.
+    are not released until he is gone.  PART DONE: after the drop he
+    now takes the two-coin fee and rises off (OURS: the pacing), and
+    the kart is held until he is gone.  The mid-drop disappearance
+    still needs the user's detail on WHICH phase (the fall, the carry,
+    or the descent).
 16. AI players jitter in X when they get close.  ATTEMPTED: the near
     draw now rounds instead of truncating its centre; awaiting the
     user's eyes.
 17. ~~The star's colour cycle is not applied to the TURNING sprites -
     the colours go away when you turn.~~ FIXED: one of the three player
     draw branches used the plain driver palette.
-18. Star duration has rules - investigate from the ROM.  DOCUMENTED
-    already (docs/ITEMS.md): $86 = $200 (512 frames), and the countdown
-    PAUSES at 1 while the surface class is under $52 (labelled, not
-    understood).  The pause is not ported yet.
-19. The poison-mushroom small kart is a SPECIFIC SPRITE, not a scaled
-    kart.
-20. When small, a hit from another kart SQUASHES you - no banana spin.
-21. When small, another poison mushroom returns you to full size.
-22. Check the duration of being small (from the ROM).
+18. ~~Star duration has rules - investigate from the ROM.~~ MEASURED
+    LIVE (tools/labs/starlab.py/starlab2.py, NOTES 208): $86 = $200 and
+    it runs straight down at 1 a frame on classes $40, $4E, $54 and $5A
+    alike - the "pauses at 1 below $52" reading in docs/ITEMS.md never
+    manifests.  The port's flat 512 frames is the game's.
+19. ~~The poison-mushroom small kart is a SPECIFIC SPRITE, not a scaled
+    kart.~~ MEASURED (shrinklab2, NOTES 208): the game draws the SAME
+    kart tiles ($80/$A0, the straight pose's left column mirrored) with
+    the OAM size bits dropped - half size, same art.  That is the very
+    operation the port's half-scale draw performs.  Awaiting the user's
+    eyes on what still looks off.
+20. ~~When small, a hit from another kart SQUASHES you - no banana
+    spin.~~ DONE: every hit but the lightning flattens a shrunk kart
+    (player and AI), through the bug-13 squash.
+21. ~~When small, another poison mushroom returns you to full size.~~
+    DONE, both directions, player and AI.
+22. ~~Check the duration of being small (from the ROM).~~ $84 = $440
+    (1088 frames), and shrinklab watched it tick 1 a frame live.
 
 ## Where to pick up next
 

@@ -8623,3 +8623,29 @@ Road's Thwomps spin AND stand (bug 9); load_race never rebuilt the
 minimap, so every shell race showed the boot track's map (bug 13); the
 near AI draw rounds its centre instead of truncating (bug 16,
 attempted); SMK_SURF_FILL brings the oracle's surface_fill to the port.
+
+## 208. Round 2, the second sweep: the star has no pause, and the small kart is the same art at half size
+
+THE STAR (bug 18).  starlab/starlab2 poke a READY star ($0D70 = $C002),
+press A, and watch $86 with the class under the kart: on $40, $4E, $54
+and $5A alike it runs down 1 a frame and the star ends at 512.  The
+"pauses at 1 below $52" reading in docs/ITEMS.md (now corrected there)
+never manifests.  The port's flat $200 was right all along.
+
+THE SMALL KART (bugs 19-22).  shrinklab2 pokes $84 = $440 and diffs the
+whole OAM: the big kart's four 16x16 blocks ($80/$82/$A0/$A2) become
+$80/$A0 - the straight pose's LEFT column - drawn twice each, one
+h-flipped, with the OAM size bits dropped.  Half size, same art,
+mirrored half: the exact operation the port's half-scale draw already
+performs.  $84 ticks 1 a frame (1088 = ~18 s), watched live.  New rules
+from the user, ported: a hit while small SQUASHES (the bug-13 flatten,
+player and AI, every kind but the lightning itself), and a second
+poison mushroom restores full size.
+
+ALSO IN: Rainbow Road's Thwomp is the ripped BLUE sprite - zero-error
+on RR's own OBJ palette 1, and palette 2 is the same sprite's flash
+coloring (three entries differ), so the flash is a palette-pair swap
+(the period is OURS, S36); Lakitu now takes his two-coin fee after the
+drop and rises away while the kart is held (OURS: the pacing); the
+double feather-roll (an older copy of the step next to the pose
+machine) is gone - the flight held 33 frames at the single $0800 rate.
