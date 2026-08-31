@@ -469,12 +469,10 @@ regression in them is noticed.
     Oracle-verified (tools/labs/bc1seg.py), selftest-pinned.
 15. The track map shows the karts on the wrong track. (Could not
     reproduce on the keyboard map - which track/mode showed it?)
-16. From the user's screenshot (tmp/"graphic issues.png", track 7 lap 3
-    at sector 0): rainbow-garbage rows along the far road/grass
-    boundary, a garbled white-blue shape at the top right, and the lap
-    sign overlapping the HUD's top-left digits.  Not yet reproduced
-    headlessly - the start-line shot renders clean; needs the spot or
-    the heading it happens at.
+16. ~~From the user's screenshot (tmp/"graphic issues.png"): rainbow
+    rows at the road/grass boundary, a garbled top-right shape.~~
+    STALE - the screenshot was old; the user confirms this was solved
+    long ago.
 
 ## Where to pick up next
 
