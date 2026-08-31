@@ -113,3 +113,16 @@ every effect.  This route never records audio:
 The engine is the same idea: it is voice 7 playing SRCN $02 at a pitch
 of $4700 + 34*v, so `rom/sfx/engine.wav` is that sample's own loop and
 the port steps through it at the rate the DSP would.
+
+## Naming them by ear
+
+`smk --sfx` plays every effect in id order with the name the ROM's own
+call site gives it, and asks after each one:
+
+    ENTER = right   i = wrong   r = again   s = skip   q = stop
+    ...or just type what it really is
+
+The answers land in `rom/sfx/names.txt` (`SMK_SFX_NAMES` overrides) -
+id, length, verdict, name - which is the file to hand back: the naming
+in the listener's own words, for the ids the ROM does not name and as a
+check on the ones it does.  The engine's sweep is asked about last.

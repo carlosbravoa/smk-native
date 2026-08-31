@@ -13,6 +13,7 @@
 #include <SDL.h>
 #include <SDL_mixer.h>
 #include <stdio.h>
+#include <unistd.h>
 #include <string.h>
 #include <math.h>
 #include <stdlib.h>
@@ -137,10 +138,42 @@ void smk_sfx_play(int id)
 /* Play every captured effect in id order, announcing each - so a person
  * can NAME them by ear (`smk --sfx`).  The ROM's own call sites give the
  * event for a dozen of them (NOTES 211); the rest are for the user. */
+/* Play every captured effect in id order and ASK - the ROM's call sites
+ * name a dozen of them and the rest need an ear, and even the named ones
+ * are only as good as my reading of the call site.  Answers go to
+ * rom/sfx/names.txt (SMK_SFX_NAMES overrides), which is the file to hand
+ * back: it is the naming, in the user's own words.
+ *
+ * ENTER = the label is right, i = wrong, r = play it again, s = skip,
+ * q = stop here, anything else is a comment (and counts as a correction).
+ */
+static void audition_write(const char *path, const char *lines, int n)
+{
+    FILE *f = fopen(path, "w");
+    if (!f) { printf("  (could not write %s)\n", path); return; }
+    fprintf(f, "# The game's sound effects, as heard.  Written by `smk --sfx`.\n"
+               "# id  verdict     what it is\n");
+    fwrite(lines, 1, strlen(lines), f);
+    fclose(f);
+    printf("\n  %d answered -> %s\n", n, path);
+}
+
 int smk_sfx_audition(void)
 {
     if (!ready) return 0;
-    int played = 0;
+    bool ask = isatty(fileno(stdin)) || getenv("SMK_SFX_ASK");
+    char answers[16000];
+    size_t used = 0;
+    answers[0] = 0;
+    const char *out = getenv("SMK_SFX_NAMES");
+    char outpath[900];
+    if (out) snprintf(outpath, sizeof outpath, "%s", out);
+    else     snprintf(outpath, sizeof outpath, "%ssfx/names.txt", map_dir);
+    int played = 0, answered = 0;
+    bool stopped = false;
+    if (ask)
+        printf("\n  ENTER = right   i = wrong   r = again   s = skip   q = stop\n"
+               "  ...or just type what it really is.\n\n");
     for (int id = 0; id < SFX_SLOTS; id++) {
         char path[900];
         snprintf(path, sizeof path, "%ssfx/%02X.wav", map_dir, id);
@@ -148,21 +181,63 @@ int smk_sfx_audition(void)
         if (!c) continue;
         played++;
         int ms = (int)((double)c->alen * 1000.0 / (44100.0 * 4.0));
-        printf("  $%02X  %5.2f s  %s\n", id, ms / 1000.0, smk_sfx_name(id));
-        fflush(stdout);
-        Mix_PlayChannel(-1, c, 0);
-        SDL_Delay((Uint32)(ms + 450));
+        for (;;) {
+            printf("  $%02X  %5.2f s  %s\n", id, ms / 1000.0, smk_sfx_name(id));
+            fflush(stdout);
+            Mix_PlayChannel(-1, c, 0);
+            if (!ask) { SDL_Delay((Uint32)(ms + 450)); break; }
+            printf("      > "); fflush(stdout);
+            char line[512];
+            if (!fgets(line, sizeof line, stdin)) { ask = false; break; }
+            char *p = line;
+            while (*p == ' ' || *p == '\t') p++;
+            size_t l = strlen(p);
+            while (l && (p[l - 1] == '\n' || p[l - 1] == '\r' || p[l - 1] == ' ')) p[--l] = 0;
+            if (!strcmp(p, "r")) continue;                  /* again */
+            if (!strcmp(p, "s")) break;                     /* no answer */
+            bool named = smk_sfx_name(id)[0] != '(';
+            const char *verdict, *note = smk_sfx_name(id);
+            if (!strcmp(p, "q")) { stopped = true; break; }
+            if (!l)                     { verdict = named ? "correct" : "unknown";
+                                          if (!named) note = "(still unnamed)"; }
+            else if (!strcmp(p, "i"))   { verdict = "WRONG"; note = "(no name given)"; }
+            else                        { verdict = named ? "WRONG" : "named"; note = p; }
+            used += (size_t)snprintf(answers + used, sizeof answers - used,
+                                     "$%02X  %5.2f s  %-9s  %s\n",
+                                     id, ms / 1000.0, verdict, note);
+            answered++;
+            break;
+        }
         Mix_FreeChunk(c);
+        if (stopped || used > sizeof answers - 600) break;
     }
-    /* and the ENGINE, which is no file at all: the ROM's rev law driving
-     * the measured tone (NOTES 212) - idle, up to the limit, and back */
-    printf("  engine  the rev, $01 -> $4F -> $01  (400 Hz -> 984 Hz)\n");
-    fflush(stdout);
-    for (int v = 1; v <= 0x4F; v++) { smk_engine_set(v); SDL_Delay(28); }
-    for (int i = 0; i < 40; i++) { smk_engine_set(0x4F - (i & 7)); SDL_Delay(30); }
-    for (int v = 0x4F; v >= 1; v--) { smk_engine_set(v); SDL_Delay(22); }
-    smk_engine_off();
-    SDL_Delay(400);
+    /* and the ENGINE, which is no file of notes at all: the ROM's rev law
+     * driving the game's own looped sample (NOTES 213) */
+    while (!stopped) {
+        printf("  engine  the rev, $01 -> $4F -> $01  (the sample SRCN $02,"
+               " pitch $4700 + 34*v)\n");
+        fflush(stdout);
+        for (int v = 1; v <= 0x4F; v++) { smk_engine_set(v); SDL_Delay(28); }
+        for (int i = 0; i < 40; i++) { smk_engine_set(0x4F - (i & 7)); SDL_Delay(30); }
+        for (int v = 0x4F; v >= 1; v--) { smk_engine_set(v); SDL_Delay(22); }
+        smk_engine_off();
+        SDL_Delay(300);
+        if (!ask) break;
+        printf("      > "); fflush(stdout);
+        char line[512];
+        if (!fgets(line, sizeof line, stdin)) break;
+        char *p = line;
+        size_t l = strlen(p);
+        while (l && (p[l - 1] == '\n' || p[l - 1] == '\r' || p[l - 1] == ' ')) p[--l] = 0;
+        if (!strcmp(p, "r")) continue;
+        if (!strcmp(p, "s") || !strcmp(p, "q")) break;
+        used += (size_t)snprintf(answers + used, sizeof answers - used,
+                                 "engine  %-9s  %s\n",
+                                 l ? "WRONG" : "correct", l ? p : "the rev and its pitch");
+        answered++;
+        break;
+    }
+    if (ask && answered) audition_write(outpath, answers, answered);
     return played;
 }
 
