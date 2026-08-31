@@ -1327,9 +1327,16 @@ const char *smk_sfx_hint(int id);   /* when the game fires an unnamed one */
 #define SMK_SFX_MENU_MOVE  0x2C   /* USER                                      */
 #define SMK_SFX_MENU_OK    0x2E   /* USER                                      */
 #define SMK_SFX_MENU_BACK  0x2F   /* USER                                      */
-#define SMK_SFX_WALL       0x3F   /* MEASURED: drive $16, the bounce state     */
+#define SMK_SFX_BRAKE      0x3C   /* USER: "braking hard, skids probably"      */
+#define SMK_SFX_WALL       0x42   /* USER: "hitting a barrier 100%" - and it
+                                   * MEASURED as the bump that costs a coin  */
+#define SMK_SFX_GRAVEL     0x40   /* USER: "sounds like going on gravel"      */
+#define SMK_SFX_BOO_START  0x56   /* USER: "boo starting sound"               */
+#define SMK_SFX_AI_ENGINE  0x62   /* USER: "the engine of another player"     */
+#define SMK_SFX_FEATHER2   0x65   /* USER: "a feather" (twice) - the flight?  */
 /* ($40 was read as the skid on a 6-of-10 correlation and it is NOT: the
- * skid is a HELD voice, NOTES 221.  Back in the unnamed pool.) */
+ * skid is a HELD voice, NOTES 221.  The user then named it by ear -
+ * gravel - which fits: the game plays it on a surface, like $4C's mud.) */
 #define SMK_SFX_BOOST      0x48   /* USER + ROM $80:B48C                       */
 #define SMK_SFX_MUD        0x4C   /* MEASURED: every one on surface class $5E  */
 #define SMK_SFX_MENU_SCROLL 0x4D  /* USER: "menu scrolling"                    */

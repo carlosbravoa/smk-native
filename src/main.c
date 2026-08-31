@@ -861,6 +861,8 @@ static void step_kart(smk_kart *k, smk_track *trk,
      * user's recordings - and the rest is the user's ear. */
     if (!replay_path) {
         static int was_state, was_hazard2, was_mole, was_air, was_shrink, was_drive;
+        static int16_t was_speed;
+        static int was_boo;
         static uint8_t was_surf;
         int st = player.state;
         uint8_t surf_now = smk_track_surface(trk, smk_kart_px(k->x), smk_kart_px(k->y));
@@ -892,15 +894,28 @@ static void step_kart(smk_kart *k, smk_track *trk,
             smk_sfx_loop("skid", sliding && race_state == RACE_RUN);
         }
         if (surf_now == 0x5E && was_surf != 0x5E) smk_sfx_play(SMK_SFX_MUD);
+        if (surf_now == 0x52 && was_surf != 0x52) smk_sfx_play(SMK_SFX_GRAVEL);
+        /* braking hard (the user's $3C): Y held and the speed really going */
+        {
+            static int brake_cool;
+            if (brake_cool > 0) brake_cool--;
+            if ((player.pad & 0x4000) && k->speed > 0x200
+                && k->speed < was_speed - 24 && brake_cool == 0) {
+                smk_sfx_play(SMK_SFX_BRAKE);
+                brake_cool = 45;
+            }
+        }
+        was_speed = k->speed;
         if (player.drive == 0x10 && was_drive != 0x10)
             smk_sfx_play(SMK_SFX_BOOST);     /* mushroom, boost pad, AND
                                               * the turbo start (the user) */
+        if (player.boo_t == 0 && was_boo > 0) smk_sfx_play(SMK_SFX_BOO);  /* back in view */
         if (player.shrink_t > 0 && !was_shrink) smk_sfx_play(SMK_SFX_SHRINK);
         if (player.shrink_t == 0 && was_shrink) smk_sfx_play(SMK_SFX_GROW);
         was_state = st; was_hazard2 = player.hazard;
         was_mole = player.mole_on; was_air = k->airborne;
         was_surf = surf_now; was_shrink = player.shrink_t > 0;
-        was_drive = player.drive;
+        was_drive = player.drive; was_boo = player.boo_t;
     }
 
     /* THE ENGINE (NOTES 214/216).  $42 - the byte the driver gets every
@@ -3260,7 +3275,9 @@ int main(int argc, char **argv)
                                            !in.dpad_down && !getenv("SMK_BANANA_DOWN"));
                             break;
                         case SMK_ITEM_GREEN:
-                            if (!in.dpad_down) smk_sfx_play(SMK_SFX_THROW);
+                            /* the user: "shooting a shell should also launch
+                             * the sound of forward-throwing a banana" */
+                            smk_sfx_play(SMK_SFX_THROW);
                             smk_proj_throw(projs, SMK_PROJ_MAX, SMK_PROJ_GREEN, &kart,
                                            player.heading, 0, -1,
                                            in.dpad_down || getenv("SMK_SHELL_DOWN"), false);
@@ -3270,7 +3287,10 @@ int main(int argc, char **argv)
                             smk_proj_throw(projs, SMK_PROJ_MAX, SMK_PROJ_RED, &kart,
                                            player.heading, 0, ahead_idx, false, false);
                             break;
-                        case SMK_ITEM_BOO:       player.boo_t = 0x480; smk_sfx_play(SMK_SFX_BOO); break;
+                        case SMK_ITEM_BOO:
+                            player.boo_t = 0x480;
+                            smk_sfx_play(SMK_SFX_BOO_START);   /* the user: "boo starting" */
+                            break;
                         case SMK_ITEM_COIN:
                             player.coins += 2; if (player.coins > 99) player.coins = 99;
                             smk_coinfx_pickup2(coins_fx, SMK_COINFX_MAX);
@@ -3368,7 +3388,12 @@ int main(int argc, char **argv)
                                    q, SMK_DRIVERS[racers[q].character % SMK_CHARACTERS].name,
                                    smk_kart_px(racers[q].k.x), smk_kart_px(racers[q].k.y), racers[q].rank, hq,
                                    smk_kart_px(kart.x), smk_kart_px(kart.y), racers[0].rank);
-                        if (hq) smk_sfx_play(SMK_SFX_AI_HIT);   /* the user's $39 */
+                        if (hq) {
+                            /* the user: hitting an AI is BOTH - the hit and
+                             * the spin it puts them into */
+                            smk_sfx_play(SMK_SFX_AI_HIT);
+                            smk_sfx_play(SMK_SFX_AI_FELL);
+                        }
                         if (hq == SMK_PROJ_BANANA) smk_racer_hit(&racers[q], 1, (int)(fx_ticks & 1));
                         else if (hq == SMK_PROJ_MUSHROOM) { if (racers[q].star_t <= 0) racers[q].shrink_t = racers[q].shrink_t > 0 ? 0 : 0x440; }   /* shrink only; a second one restores (bug 21) */
                         else if (hq != SMK_PROJ_NONE) smk_racer_hit(&racers[q], 2, (int)(fx_ticks & 1));

@@ -381,7 +381,12 @@ const char *smk_sfx_name(int id)
     case SMK_SFX_MENU_MOVE:   return "menu move           (you)";
     case SMK_SFX_MENU_OK:     return "menu confirm        (you)";
     case SMK_SFX_MENU_BACK:   return "menu back           (you)";
-    case SMK_SFX_WALL:        return "hitting a wall      (measured)";
+    case SMK_SFX_WALL:        return "hitting a barrier   (you, and measured)";
+    case SMK_SFX_BRAKE:       return "braking hard        (you)";
+    case SMK_SFX_GRAVEL:      return "gravel              (you)";
+    case SMK_SFX_BOO_START:   return "Boo, starting       (you)";
+    case SMK_SFX_AI_ENGINE:   return "another kart's engine (you)";
+    case SMK_SFX_FEATHER2:    return "a feather           (you) - $24 is one too";
     case SMK_SFX_BOOST:       return "mushroom boost      (you)";
     case SMK_SFX_MUD:         return "mud / heavy off-road (measured)";
     case SMK_SFX_MENU_SCROLL: return "menu scrolling      (you)";
@@ -408,23 +413,19 @@ const char *smk_sfx_hint(int id)
     case 0x2B: return "(unnamed - fires at full speed on the road)";
     case 0x37: return "(unnamed - the ROM plays it from bank $85's object code)";
     case 0x39: return "(unnamed - fires at speed on the road)";
-    case 0x3C: return "(unnamed - fires against walls and grass, slowing hard)";
-    case 0x40: return "(unnamed - at speed, often in the bounce state; not the skid)";
-    case 0x42: return "(unnamed - 23 times, settling after a big slowdown)";
     case 0x49: return "(unnamed - the ROM plays it near the item-box code)";
     case 0x4A: return "(unnamed - the ROM plays it from bank $85's object code)";
     case 0x4B: return "(unnamed - the ROM plays it from bank $85's object code)";
     case 0x4F: return "(unnamed - once, at speed on the road)";
-    case 0x50: return "(unnamed - fires almost stopped)";
+    case 0x50: return "(HALF a sound - you: yoshi passing, or firing an object)";
     case 0x51: return "(unnamed - fires stopped, on grass)";
     case 0x53: return "(unnamed - fires at speed, on and off the road)";
     case 0x54: return "(unnamed - once, losing a lot of speed at once)";
-    case 0x56: case 0x57: return "(unnamed - the ROM's Boo pair)";
+    case 0x57: return "(unnamed - the ROM's other Boo id)";
     case 0x58: case 0x5E: return "(unnamed - never seen fired in a recording)";
     case 0x5C: return "(unnamed - fires at low speed)";
-    case 0x61: case 0x62: return "(unnamed - the engine-band ids from $80:96xx)";
+    case 0x61: return "(unnamed - an engine-band id from $80:96xx)";
     case 0x64: return "(unnamed - the ROM plays it from bank $85's object code)";
-    case 0x65: return "(unnamed - fires at half speed; you thought a feather)";
     default:   return "(unnamed - never seen fired, and nobody has named it)";
     }
 }

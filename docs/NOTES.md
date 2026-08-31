@@ -9116,3 +9116,34 @@ channels - the roulette and the skid can overlap, and do.
 Also, at the user's request, `smk --sfx` now offers only the sounds
 nobody has named yet: a second pass over assigned ones is wasted
 listening.  SMK_SFX_ALL=1 plays the lot.
+
+## 222. The second naming pass, and two sounds that belong to one event
+
+From the user's pass over the unnamed sounds:
+
+    $3C  braking hard, skids probably     $40  going on gravel
+    $42  hitting a barrier - "100%"       $50  half of a sound (Yoshi?)
+    $56  Boo, starting                    $62  another kart's engine
+    $65  a feather (again - $24 is one too)
+
+$42 is the satisfying one: the user is certain by ear, and it was
+already measured as the bump that COSTS A COIN - every one of its
+firings in the recording lands as the coin count drops, with a big
+slowdown.  Both readings are the same event, so $42 takes over the wall
+from $3F (which was only ever "drive $16 was set"), and $40 - named the
+skid on a 6-of-10 correlation and disproved by NOTES 221 - turns out to
+be a SURFACE, like $4C's mud.  Wired the same way: on entering class
+$52, the gravel the user identified back in the surface work.
+
+$62 is a fact worth keeping even though nothing uses it yet: the game
+plays a separate engine for a NEARBY AI kart.  The port has one engine.
+
+And two events that fire two sounds, from play:
+
+* shooting a shell plays the forward-throw sound too ($2B), whichever
+  way the shell goes;
+* hitting an AI plays BOTH the hit ($39) and the spin it puts them into
+  ($66) - they are one event with two voices.
+
+Still ambiguous: $65 and $24 are both "a feather" by ear, and $50 is
+half of something.  Neither is wired twice; $24 keeps the item.
