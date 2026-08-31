@@ -37,9 +37,76 @@ def read_log(path):
         rows[(f, v)] = (int(p[2]), int(p[3]), int(p[4], 16), int(p[5], 16), int(p[6]))
     return rows
 
+def render_all(spc, test, frames, out_p):
+    """Every voice, the whole window, mixed - no baseline, no filtering."""
+    samples = brr.load_samples(spc)
+    f0, f1 = frames[0], frames[-1]
+    nout = int((f1 - f0 + 2) / FPS * OUT_SR)
+    mix = np.zeros((nout, 2))
+    for v in range(8):
+        phase, cur = 0.0, None
+        for f in frames:
+            t = test.get((f, v))
+            if t is None:
+                continue
+            vl, vr, pitch, srcn, envx = t
+            samp = samples.get(srcn)
+            if samp is None or envx == 0:
+                if envx == 0:
+                    cur = None
+                continue
+            pcm, loop = samp
+            if srcn != cur:
+                cur, phase = srcn, 0.0
+            rate = (pitch & 0x3FFF) / 4096.0 * SR
+            step = rate / OUT_SR
+            n = int(OUT_SR / FPS)
+            s0 = int((f - f0) / FPS * OUT_SR)
+            nx = test.get((f + 1, v))
+            gl, gr = (envx / 127.0) * (vl / 127.0), (envx / 127.0) * (vr / 127.0)
+            e2 = nx[4] if nx else envx
+            gl2 = (e2 / 127.0) * ((nx[0] if nx else vl) / 127.0)
+            gr2 = (e2 / 127.0) * ((nx[1] if nx else vr) / 127.0)
+            for i in range(n):
+                j = int(phase)
+                if j >= len(pcm):
+                    if loop is None:
+                        break
+                    phase = loop + (phase - len(pcm)); j = int(phase)
+                    if j >= len(pcm):
+                        break
+                k = s0 + i
+                if 0 <= k < nout:
+                    val = pcm[j] / 32768.0
+                    a = i / float(n)
+                    mix[k, 0] += val * (gl + (gl2 - gl) * a)
+                    mix[k, 1] += val * (gr + (gr2 - gr) * a)
+                phase += step
+    peak = np.abs(mix).max()
+    if peak < 1e-4:
+        print('%s: silent' % os.path.basename(out_p)); return
+    mix *= 22000.0 / peak
+    fade = min(512, len(mix) // 8)
+    if fade > 1:
+        r = np.linspace(0, 1, fade)[:, None]
+        mix[:fade] *= r; mix[-fade:] *= r[::-1]
+    w = wave.open(out_p, 'wb')
+    w.setnchannels(2); w.setsampwidth(2); w.setframerate(OUT_SR)
+    w.writeframes(mix.astype('<i2').tobytes()); w.close()
+    print('%s: %.2f s, every voice, no subtraction' % (os.path.basename(out_p), len(mix) / OUT_SR))
+
+
 def main():
     spc, base_p, test_p, out_p = sys.argv[1:5]
-    base, test = read_log(base_p), read_log(test_p)
+    # base "-" renders EVERY voice for the whole window and subtracts
+    # nothing: that is how a passage the game plays on its own - the
+    # countdown jingle over Lakitu's lights - is captured (NOTES 216).
+    test = read_log(test_p)
+    base = {} if base_p == '-' else read_log(base_p)
+    if base_p == '-':
+        frames = sorted({f for (f, v) in test})
+        render_all(spc, test, frames, out_p)
+        return
     frames = sorted({f for (f, v) in test})
     if not frames:
         print('no data'); return
@@ -88,6 +155,8 @@ def main():
         phase, cur_srcn = 0.0, None
         quiet = same = 0
         first_srcn = test[(first, v)][3]
+        kit = {test[(f2, v)][3] for f2 in range(first, min(first + 4, f1 + 1))
+               if (f2, v) in test}
         for f in range(first, f1 + 1):
             t = test.get((f, v))
             if t is None:
@@ -100,16 +169,29 @@ def main():
             # just a part of the whole sound": several of these are two
             # or three bursts with gaps between them, and stopping at the
             # first gap cut them into fragments (NOTES 215).
+            # A frame the baseline plays IDENTICALLY is the music, not
+            # the effect: skip it entirely rather than render it.  The
+            # first cut of this rendered eight such frames before giving
+            # up, which appended a music note to every effect - the
+            # user heard it as a phantom second tone on the coin.
             if b is not None and t == b:
                 same += 1
                 if same >= 8 and f > first + 4:
                     break                  # the music has the voice back
-            else:
-                same = 0
+                continue
+            same = 0
+            # The effect is what this voice plays with the SAMPLE it
+            # started on (the pitch may move and it may be re-keyed - the
+            # coin is one sample struck twice, low then high).  A
+            # different sample is the music coming back, whatever the
+            # baseline says, and rendering on from there put a musical
+            # tail on everything (NOTES 216).
+            if f > first + 3 and srcn not in kit:
+                break
             if envx == 0 and f > first + 2:
                 quiet += 1
-                if quiet >= 90:
-                    break                  # a second and a half of nothing
+                if quiet >= 8:
+                    break                  # a moment of nothing: it is over
             else:
                 quiet = 0
             samp = samples.get(srcn)

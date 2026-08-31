@@ -423,7 +423,7 @@ void smk_engine_set(int v)
     if (!eng_pcm) return;
     /* the driver's own silence: $42 = 0 is what $81:A26F writes to stop
      * the sound, and an idle kart sits at 1 */
-    if (v <= 1 || music_on) { eng_vol_want = 0.0f; return; }
+    if (v <= 0 || music_on) { eng_vol_want = 0.0f; return; }
     int p = (0x4700 + 34 * v) & 0x3FFF;         /* MEASURED (NOTES 213) */
     double rate = (double)p / 4096.0 * 32000.0;
     eng_step = rate / 44100.0;

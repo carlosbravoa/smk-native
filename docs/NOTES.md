@@ -8907,3 +8907,49 @@ item chosen off the roulette (not the box), $56/$57 Boo, $65 the
 feather, $66 an AI kart falling, $68 the finish, $5D/$5F the poison
 mushroom both ways, $4C mud, $4D menu scrolling, $2C/$2E/$2F the menu.
 And the engine, at last: "correct - the rev and its pitch".
+
+## 216. What the user heard in play, and what each fault turned out to be
+
+Five reports from a race, and every one had a cause worth writing down.
+
+**"The coin sound is wrong, or maybe incomplete - two tones, low-high."**
+Right on both counts, and the fix was two bugs deep.  First, sfxrender
+was rendering up to eight frames of the BASELINE after an effect ended,
+so every effect carried a musical tail - that was a phantom second tone.
+Second, and the real one: the coin IS two tones, and the poke rig had
+been losing the second.  A live pickup (frame 2072 of the moles
+recording, watched on the chip) plays sample $0D at pitch $17AD, then
+THREE FRAMES LATER re-keys the same sample at $1F96 - a fourth higher.
+The poke captured only the first because in that particular frame the
+music reclaimed voice 3 in between.  So each effect is now captured at
+FOUR different moments and the fullest render wins; the coin comes out
+1967 Hz then 2633 Hz, which is the two tones, low-high.
+
+**"Kart engine idle should be present since the race starts."**  The
+game's trace holds $42 at $01 for the whole countdown - an idling
+engine, not a silent one - and the port was treating $01 as off.  It
+also climbs about 0.4 a frame while the throttle is held at a standstill,
+which is the rev you hear before the lights (and the cue the turbo
+launch is timed against).  Both in.
+
+**"Jumping has wrong or incomplete sound."**  Same truncation: $21 is a
+rising sweep from 267 to 639 Hz over 0.41 s, and it had been cut to
+0.07 s.
+
+**"Lakitu's semaphore lights have a sound."**  It is not a sound EFFECT
+at all - nothing is queued during the countdown.  It belongs to the
+music driver's start jingle, which is why it vanished when the music
+went off.  tools/labs/sfxrender.py grew a no-baseline mode that renders
+every voice of a passage for exactly this; the passage is captured but
+not yet wired.
+
+**"When slipping, there is a missing sound."**  A lead, not an answer:
+ids $5D-$62 are played by $80:96A6/$80:9721, the code that also flips
+bit 7 of $42 - the engine parameter - so they are an engine/surface
+family, not one-shots.  (The user named $5D and $5F as the poison
+mushroom by ear; the ROM plays them from bank $84 as well.  Both can be
+true - the driver reuses samples - but the skid is in this family.)
+
+**"Menu items are playing two sounds."**  Not reproduced headlessly yet;
+the port makes exactly one call per menu action.  Needs SMK_SFX_TRACE=1
+from a menu to see which two ids actually play.

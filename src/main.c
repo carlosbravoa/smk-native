@@ -728,6 +728,7 @@ static bool race_reported;
 static bool obj_marks;   /* --obj-marks: show each object's ground point */
 static smk_autopilot autopilot;
 static int  crossings;              /* finish-line crossings this race */
+static bool engine_throttle;        /* B held: the rev, countdown included */
 
 /* One frame of the player's kart: the DECODED control (src/player.c, NOTES
  * 103).  This function only translates the SDL input into the SNES pad word
@@ -884,33 +885,41 @@ static void step_kart(smk_kart *k, smk_track *trk,
         was_surf = surf_now; was_shrink = player.shrink_t > 0;
     }
 
-    /* THE ENGINE (NOTES 214).  $42 - the byte the driver gets every
-     * frame - is written from $C2 INSIDE the sound update, and the
-     * physics reuses $C2 later in the same frame, so a transcription of
-     * $80:9543 cannot be checked against anything a frame-end sample
-     * can see: the first attempt ran the parameter at $43-$4F where the
-     * game's own trace sits at a median of $39, and the user heard it
-     * at once ("perfect, but in game is slower").
+    /* THE ENGINE (NOTES 214/216).  $42 - the byte the driver gets every
+     * frame - is written from $C2 inside the sound update, which the
+     * physics overwrites later in the same frame, so $80:9543 cannot be
+     * checked against anything a frame-end sample sees.  It is fitted to
+     * the game's own trace instead (10,172 logged frames), and the trace
+     * says three things:
      *
-     * So the parameter is FITTED to the game's own numbers instead -
-     * 10,172 frames of $42 logged against speed from a recorded race
-     * (tools/labs/mame/revlog.lua): a target of speed * 0.07 that the
-     * value walks toward, up to 3 a frame climbing and 1 a frame
-     * falling.  LABELLED (S38): the shape is the game's, the constants
-     * are a fit. */
+     *   - it sits at $01 for the WHOLE countdown, which is the idle: the
+     *     engine is audible from the moment the race appears, not from
+     *     the green light (the user);
+     *   - holding the throttle at a standstill climbs it about 0.4 a
+     *     frame - that is the rev you hear before the lights;
+     *   - once moving it tracks speed * 0.07.
+     *
+     * LABELLED (S38): the shape is the game's, the constants are a fit. */
     {
         static float rev = 1.0f;
+        bool thr = (player.pad & 0x8000) != 0 || engine_throttle;
         float target = (float)k->speed * 0.07f;
-        if (target < 1.0f) target = 1.0f;
-        if (target > 78.0f) target = 78.0f;      /* the trace tops at $4E */
+        if (thr) {                            /* revving, moving or not */
+            float climb = rev + 0.40f;
+            if (climb > target) target = climb;
+        }
+        if (target < 1.0f) target = 1.0f;     /* the idle the game holds  */
+        if (target > 78.0f) target = 78.0f;   /* the trace tops at $4E    */
         float d = target - rev;
         rev += d > 0.0f ? (d < 3.0f ? d : 3.0f) : (d > -1.0f ? d : -1.0f);
         int v = (int)(rev + 0.5f);
-        smk_engine_set(race_state == RACE_RUN || race_state == RACE_COUNTDOWN
-                       ? v : 0);
+        /* silent only OUTSIDE a race: $42 = 0 is the driver's own silence
+         * ($81:A26F), and $01 is an idling kart, not a quiet one */
+        bool racing = race_state == RACE_RUN || race_state == RACE_COUNTDOWN;
+        smk_engine_set(racing ? (v < 1 ? 1 : v) : 0);
         if (getenv("SMK_ENGINE_TRACE") && (fx_ticks % 15) == 0)
-            printf("engine f%ld speed %d -> $%02X (%.0f Hz sample rate)\n",
-                   hud_race_frames, k->speed, v,
+            printf("engine f%ld speed %d thr %d -> $%02X (%.0f Hz)\n",
+                   hud_race_frames, k->speed, (int)thr, v,
                    ((0x4700 + 34 * v) & 0x3FFF) / 4096.0 * 32000.0);
     }
 
@@ -2941,9 +2950,11 @@ int main(int argc, char **argv)
                     if (hold >= 0 && race_count >= hold) thr = true;
                 }
                 smk_player_rev(&player, thr, (unsigned)race_count);
+                engine_throttle = thr;   /* the rev before the lights */
                 if (race_count >= SMK_COUNT_FRAMES) {
                     race_state = RACE_RUN;
                     smk_player_launch(&player);   /* $80956A pays out here */
+                    engine_throttle = false;
                 }
                 /* Throttle and hop are consumed here; STEERING IS NOT.
                  * The user: "When stopped (speed=0) and you press left or
