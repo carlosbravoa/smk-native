@@ -126,14 +126,15 @@ void smk_collide_objects(smk_kart *k, const smk_course *crs)
          * rule after seven rigs failed to measure the game's (NOTES 176).
          * It is validated against their recorded run rather than guessed:
          * every crash in it was below the line and every close pass above. */
-        /* Bug 13: a kart under a DESCENDING block is squashed - it cannot
-         * bounce off the block's underside, and the drop takes ~15 frames,
-         * faster than a kart leaves the footprint.  Checked BEFORE the
-         * overhead skip: a falling Thwomp spends most of the drop above
-         * CLEAR.  Hazard kind 2; the driver code flattens and freezes. */
+        /* Bug 13, retimed (round 2, bug 11: "it gets triggered too soon,
+         * the thwomp is still in top altitude.  It should be on contact"):
+         * the squash fires only in the CONTACT band of the fall; higher
+         * up, a descending block overhead is neither a wall nor a hit -
+         * you cannot bounce off its underside - so it is skipped until it
+         * reaches you.  Checked BEFORE the overhead skip. */
         if (!crs->dead[i] && !k->star && smk_theme_has_movers(crs->theme)
             && i < 32 && crs->mv[i].phase == SMK_MV_FALL) {
-            k->hazard_hit = 2;
+            if (smk_mover_z(crs, i) < SMK_SQUASH_Z) k->hazard_hit = 2;
             continue;
         }
         if (smk_mover_z(crs, i) > SMK_MOVER_CLEAR) continue;
@@ -145,9 +146,12 @@ void smk_collide_objects(smk_kart *k, const smk_course *crs)
         /* Choco Island's piranha plants and Koopa Beach's cheep-cheeps are
          * not walls: "if you touch it, it triggers the spinning animation"
          * (the user).  The kart reports the touch; the driver spins. */
-        if (crs->theme == 3 || crs->theme == 5 || crs->theme == 7) { k->hazard_hit = 1; continue; }
-        /* (theme 7, Rainbow Road: "thwomps are invincible: if you touch
-         * them, you get the banana roll" - bug 11) */
+        if (crs->theme == 3 || crs->theme == 5) { k->hazard_hit = 1; continue; }
+        /* Rainbow Road's Thwomps spin you AND stand like a rock (round 2,
+         * bug 9: "you can pass-through thwomps, they are not a rock as
+         * THEY SHOULD BE") - flag the spin and fall through to the
+         * measured bounce.  Plants and fish stay pass-through. */
+        if (crs->theme == 7) k->hazard_hit = 1;
         float d = sqrtf((float)d2);
         float nx2 = (float)dx / d, ny2 = (float)dy / d;
         float dot = (float)k->vx * nx2 + (float)k->vy * ny2;

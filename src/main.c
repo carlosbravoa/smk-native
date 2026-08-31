@@ -654,6 +654,7 @@ static smk_ui_result result;
 static uint32_t track_map[SMK_MAP_PX * SMK_MAP_PX];
 static bool     track_map_ok;
 static bool     show_map = true;
+static bool     obj_whole;   /* the sheet's near art is a whole 16x16, not a mirrored half */
 static void build_track_map(const smk_track *t)
 {
     const int step = SMK_WORLD_PX / SMK_MAP_PX;        /* world px per map px */
@@ -849,6 +850,19 @@ static void strip_pickups(const smk_rom *rom, smk_track *t)
     }
 }
 
+/* SMK_SURF_FILL: every driveable tile -> this class (the oracle's
+ * surface_fill, port side).  A helper because BOTH load paths must apply
+ * it - the first draft filled only the boot path and load_race's fresh
+ * track wiped it. */
+static void apply_surf_fill(void)
+{
+    const char *sf = getenv("SMK_SURF_FILL");
+    if (!sf) return;
+    int fcls = (int)strtol(sf, NULL, 0);
+    for (int i = 0; i < SMK_TILE_TOTAL; i++)
+        if (trk.surface[i] >= 0x40) trk.surface[i] = (uint8_t)fcls;
+}
+
 static bool load_race(const smk_rom *rom, int track, int theme, int character,
                       int engine_class, int mode)
 {
@@ -863,11 +877,16 @@ static bool load_race(const smk_rom *rom, int track, int theme, int character,
         return false;
     }
     smk_track_place_objects(rom, &trk);
+    apply_surf_fill();
     if (mode == SMK_MODE_TT) strip_pickups(rom, &trk);
     smk_blocks_bind(&trk);
     smk_objgfx_load(rom, trk.theme, &obj_art);
     smk_shadow_load(rom, &shadow_art);
     smk_horizon_load(rom, trk.theme, &horizon);
+    /* the minimap follows the course (round 2, bug 13: the shell never
+     * rebuilt it, so every race showed the BOOT track's map) */
+    obj_whole = (trk.theme == 3 || trk.theme == 5);
+    build_track_map(&trk);
 
     drv = &SMK_DRIVERS[character];
     if (!smk_sprites_load(rom, drv->sheet, &karts))
@@ -1087,7 +1106,6 @@ static void finish_camera(smk_camera *cam, const smk_kart *k, int t)
  * Band 0 is the 32x32 metasprite (NOTES 157): four 16x16 sprites, the
  * right column being the left one mirrored, top row from base
  * SMK_OBJ_NEAR_TOP and bottom row from SMK_OBJ_NEAR_BOT. */
-static bool obj_whole;              /* the sheet's near art is a whole 16x16, not a mirrored half */
 static uint8_t obj_texel(int base, int aw, int ax, int ay)
 {
     int sbase = base;
@@ -1562,7 +1580,8 @@ static void draw_ai_kart(const smk_rom *rom, const smk_track *trk,
         bool hf2 = hf;
         (void)kt;
         if (racers[k].squash_t > 0) {              /* bug 13: flattened */
-            draw_flat(fb, rw, rh, trk->palette, ch, 1, (int)px, (int)py, ks);
+            draw_flat(fb, rw, rh, trk->palette, ch, 1,
+                      (int)lroundf(px), (int)lroundf(py), ks);
             return;
         }
         {
@@ -1580,7 +1599,7 @@ static void draw_ai_kart(const smk_rom *rom, const smk_track *trk,
                     if (finish_t >= SMK_WIN_ARMS_AT && (((finish_t - SMK_WIN_ARMS_AT) / SMK_WIN_TOGGLE) & 1) == 0)
                         fr = SMK_SPR_WIN_FRAME;
                     smk_draw_sprite_scaled(&other[k], fr, trk->palette, d2->pal,
-                                           (int)px, (int)py, ks, false, true,
+                                           (int)lroundf(px), (int)lroundf(py), ks, false, true,
                                            fb, rw, rh, rw);
                     return;
                 }
@@ -1590,8 +1609,11 @@ static void draw_ai_kart(const smk_rom *rom, const smk_track *trk,
             static const int AI_STAR_PAL[8] = { 5, 4, 7, 6, 1, 0, 3, 2 };
             int apal = (racers && racers[k].star_t > 0)
                      ? 0x80 + AI_STAR_PAL[fx_ticks & 7] * 0x10 : d2->pal;
+            /* ROUNDED, not truncated: near karts flickered a pixel in X as
+             * the projected centre and the scaled size crossed integer
+             * boundaries out of step (round 2, bug 16) */
             smk_draw_sprite_scaled(&other[k], fdraw, trk->palette, apal,
-                                   (int)px, (int)py, ks, hf2, mirror,
+                                   (int)lroundf(px), (int)lroundf(py), ks, hf2, mirror,
                                    fb, rw, rh, rw);
         }
 }
@@ -1800,6 +1822,11 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
          * plane - that only ever applied because our physics used to put
          * the kart underneath it. */
         if (player.hazard == 6) lift -= player.resc_t * 2 * scale;
+        /* IN THE WATER (hazard 8): the kart rides low - the sink has to be
+         * SEEN, not only felt (round 2, bug 4: the crawl worked and read
+         * as "not working" because the sprite sat at full height).
+         * OURS: 9 px down; the game's own submerged drawing is unread. */
+        if (player.hazard == 8) lift -= 9 * scale;
         /* THE RESCUE (the user: "it should come down with you with his
          * fishing rod... Normally you appear from the top, attached to
          * lakitu's fishing rod cable").  Lakitu's descent is the captured
@@ -1849,8 +1876,11 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
                                    fb, rw, rh, rw);
         else {
             bool hf = frame < 0;
+            /* ppal, not drv->pal: the star's colour run must survive the
+             * TURNING sprites too (round 2, bug 17: "when turning, the
+             * colors go away") */
             smk_draw_sprite(karts, hf ? -frame : frame, trk->palette,
-                            drv->pal, rw / 2, prow - lift, scale,
+                            ppal, rw / 2, prow - lift, scale,
                             hf, fb, rw, rh, rw);
         }
         /* the puffs sit relative to the kart sprite's top-left + (0,16)
@@ -2313,6 +2343,20 @@ int main(int argc, char **argv)
     }
 
     smk_track_place_objects(&rom, &trk);
+    if (getenv("SMK_SURF_MAP")) {   /* every cell's CLASS byte as a P5 PGM,
+                                     * 128x128 - the water diagnosis (round 2).
+                                     * AFTER the track load: an earlier draft
+                                     * ran before trk existed and wrote zeros */
+        FILE *sfp = fopen(getenv("SMK_SURF_MAP"), "wb");
+        if (sfp) {
+            fprintf(sfp, "P5\n128 128\n255\n");
+            for (int sy = 0; sy < 128; sy++)
+                for (int sx = 0; sx < 128; sx++)
+                    fputc(smk_track_surface(&trk, sx * 8 + 4, sy * 8 + 4), sfp);
+            fclose(sfp);
+        }
+    }
+    apply_surf_fill();
     if (scaletest) {
         /* Build a ruler: a straight road running north, with pipes down
          * the middle every 40 world px.  The ground is drawn by the Mode 7
@@ -2707,6 +2751,14 @@ int main(int argc, char **argv)
                        smk_track_surface(&trk, smk_kart_px(kart.x), smk_kart_px(kart.y)),
                        player.type, player.drive, player.fc, player.state, player.target,
                        smk_kart_px(kart.x), smk_kart_px(kart.y), (int)(kart.z >> 8), (int)kart.airborne);
+            if (getenv("SMK_SPEED_TRACE")) {
+                static int was_state = -1, was_screen = -1;
+                if (race_state != was_state || ui.screen != was_screen) {
+                    printf("race_state %d -> %d screen %d -> %d at f%ld\n",
+                           was_state, race_state, was_screen, ui.screen, hud_race_frames);
+                    was_state = race_state; was_screen = ui.screen;
+                }
+            }
             if (race_state == RACE_RUN || race_state == RACE_FINISH) {
                 hud_race_frames++;
                 smk_race_frame = hud_race_frames;   /* so a kart can stamp its own finish */
@@ -2817,7 +2869,14 @@ int main(int argc, char **argv)
                 }
             }
             input_edges_clear(&in);
-            cam_spin = (player.state == 0x1A) ? player.plag / 2 : 0;
+            /* $94 = $A4 + $C0 + $AA/2 - and $AA lives in EVERY spin, not
+             * just the shell tumble: the feather's $80B6D1 steps it, the
+             * banana states carry it.  The camera turning with the spin
+             * is the user's round-2 bug 14. */
+            cam_spin = (player.state == 0x0A || player.state == 0x0C
+                        || player.state == 0x0E || player.state == 0x10
+                        || player.state == 0x18 || player.state == 0x1A)
+                     ? player.plag / 2 : 0;
             camera_from_kart(&cam, &kart);
             if (force_steer) {
                 in.left  = force_steer < 0;
@@ -3021,6 +3080,9 @@ int main(int argc, char **argv)
                   if (e && strchr(e, ':') && hud_race_frames == atol(strchr(e, ':') + 1)) {
                       int ax = atoi(e), ay = atoi(strchr(e, ',') + 1);
                       kart.x = (int32_t)ax << SMK_POS_SHIFT; kart.y = (int32_t)ay << SMK_POS_SHIFT;
+                      me->k = kart;   /* or the collide pass copies the old
+                                       * position straight back - the same
+                                       * lost-write as the feather (NOTES 203) */
                   } }
                 /* SMK_TEST_PLACE=q:d - park racer q d px straight ahead of
                  * the player every frame, to look at one kart at one distance */
@@ -3305,8 +3367,27 @@ int main(int argc, char **argv)
             if (hud_lap > SMK_RACE_LAPS) hud_lap = SMK_RACE_LAPS;
             hud_rank = smk_race_rank(racers, 0, &crs);
             int pframe = frame_for(&in, &lean);
+            /* The SPIN states draw through the FULL rotation rule, not
+             * frame_for's seven bands: those cap at the side-on frame, so
+             * half of every spin showed one frame and the feather's 360
+             * never read as a rotation (round 2, bug 3).  The pose lag
+             * carries the spin; the AI's measured heading rule turns it
+             * into the whole frame circle. */
+            if (player.state == 0x0A || player.state == 0x0C
+                || player.state == 0x0E || player.state == 0x10
+                || player.state == 0x18 || player.state == 0x1A) {
+                uint16_t r16 = (uint16_t)player_slip_units;
+                int ar16 = (int16_t)r16 < 0 ? -(int16_t)r16 : (int16_t)r16;
+                if (ar16 < 0x0400) pframe = 1000;
+                else {
+                    bool hfs = false;
+                    int fs = smk_sprite_for_heading(SMK_SPR_TIER0, r16, &hfs);
+                    pframe = hfs ? -fs : fs;
+                }
+            }
             {
                 int af = pframe < 0 ? -pframe : pframe;
+                if (af > 7 && af != 47 && pframe != 1000) af = 7;   /* the fx column caps at 7 */
                 /* the game's $BC frame index: 0 straight, 1..7 the rotation
                  * bands; the drift-onset sheet frame 47 counts as band 1
                  * (LABELLED: its $BC index is not measured) */

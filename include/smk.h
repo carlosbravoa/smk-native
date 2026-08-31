@@ -567,11 +567,14 @@ extern const smk_driver SMK_DRIVERS[SMK_CHARACTERS];
  * radius) is z ~ 900-1050; the recording crashed at 960 and passed at
  * 2880, and 960 is the lowest value both agree on (`>` passes above it). */
 #define SMK_MOVER_CLEAR    960
-/* Bug 13: a mover still FALLING below this z comes down ON the kart - the
- * squash.  OURS, like CLEAR: the whole hittable stretch of the drop (a
- * kart cannot bounce off the BOTTOM of a descending block; at 400 the
- * band lasted one frame and nothing was ever squashed). */
-#define SMK_SQUASH_Z       SMK_MOVER_CLEAR
+/* Bug 13: a mover still FALLING below this z is IN CONTACT with the kart
+ * under it - the squash.  OURS, like CLEAR.  The user retimed it: "it
+ * gets triggered too soon, the thwomp is still in top altitude.  It
+ * should be on contact" - so the band is the last stretch of the drop,
+ * and a falling block above it is skipped (no wall, no hit) until it
+ * arrives.  The fall covers this band in a frame or two, which is
+ * enough: the check runs every frame. */
+#define SMK_SQUASH_Z       400
 #define SMK_SQUASH_T       100     /* frames flattened (OURS, ~1.7 s)     */
 enum { SMK_MV_PARK, SMK_MV_FALL, SMK_MV_HOLD, SMK_MV_RISE };
 typedef struct { int32_t z; int16_t zv; uint8_t phase; int16_t t; } smk_mover;

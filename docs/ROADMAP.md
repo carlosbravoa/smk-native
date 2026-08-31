@@ -474,6 +474,72 @@ regression in them is noticed.
     STALE - the screenshot was old; the user confirms this was solved
     long ago.
 
+## Known bugs, round 2 (the user's list, 2026-08-30, after testing)
+
+Stubborn ones, and ones marked fixed that are not:
+
+1. Lakitu's drop-off is STILL badly implemented - not the kart, LAKITU's
+   own position through the whole process.
+2. Tyre dust / water / mud STILL comes out shifted to the left.
+3. ~~Feathers fire now but the animation is wrong: the jump should carry
+   a 360 movement while airborne.~~ FIXED (NOTES 207): $80B6D1
+   disassembled - one exact 360, and the spin states now draw through
+   the full rotation rule instead of capping at the side-on frame.
+4. ~~Sink on water is STILL not working - anywhere.~~ The MECHANICS were
+   working (measured against the live game: skim at speed, $CA=$FF,
+   crawl to 123, rescue); what was missing was the PICTURE - the kart
+   sat at full height on the water.  It now rides low while wading
+   (OURS, 9 px).  Awaiting the user's eyes.
+5. ~~Donut Plains water: sink at once, keep full control, very very
+   slow, Lakitu after some seconds.  Not happening.~~ See 4: DP deep
+   water is class $22 (the round-1 fix keyed on $24, which does not
+   exist there - dead code, removed); the $22 cycle is in and measured.
+6. ~~Koopa Beach deep water (and Vanilla Lake): same rule.  Not
+   happening.~~ See 4/5 - all three courses' deep water is $22.
+7. NOT solved: four piranha plants on Choco Island where the game has
+   ONE.  Same with Koopa Beach's cheep-cheeps.
+8. Rainbow Road Thwomps: the flashy colour is totally wrong - probably
+   even the sprite used.
+9. ~~Rainbow Road Thwomps: you can pass THROUGH them; they should be a
+   rock (the spin on touch, but solid).~~ FIXED: theme 7 flags the spin
+   AND falls through to the measured bounce.
+10. Cheep-cheep (Koopa Beach and probably everywhere): shown as FOUR
+    fishes in a block you cannot pass through.  The game has ONE, white
+    colours, jumping around its place; touch = banana spin, then you
+    pass through.
+11. ~~The squash triggers TOO SOON - the Thwomp is still at top
+    altitude.  It should be on contact.~~ FIXED: the squash fires only
+    in the contact band of the drop; higher up the descending block is
+    neither wall nor hit.  Selftest-pinned both ways.
+12. Bowser Castle 1 and Rainbow Road have FEWER Thwomps than the
+    original - a regression from assuming there were too many.
+13. ~~The map shows EXACTLY THE SAME TRACK whatever you race on.~~
+    FIXED: load_race never rebuilt the minimap, so every shell race
+    kept the boot track's picture.
+14. ~~The banana spin (every status that causes it) does not move the
+    camera in 360.~~ FIXED: the $AA/2 camera term now rides every spin
+    state, not just the shell tumble ($80B6D1 shows $AA is the spin's
+    home in the feather too).
+15. Lakitu's rescue: Mario disappears in the middle of the drop; Lakitu
+    shows with Mario coming back but is GONE after dropping you.  The
+    original shows him taking TWO COINS with the rod and going up - you
+    are not released until he is gone.
+16. AI players jitter in X when they get close.  ATTEMPTED: the near
+    draw now rounds instead of truncating its centre; awaiting the
+    user's eyes.
+17. ~~The star's colour cycle is not applied to the TURNING sprites -
+    the colours go away when you turn.~~ FIXED: one of the three player
+    draw branches used the plain driver palette.
+18. Star duration has rules - investigate from the ROM.  DOCUMENTED
+    already (docs/ITEMS.md): $86 = $200 (512 frames), and the countdown
+    PAUSES at 1 while the surface class is under $52 (labelled, not
+    understood).  The pause is not ported yet.
+19. The poison-mushroom small kart is a SPECIFIC SPRITE, not a scaled
+    kart.
+20. When small, a hit from another kart SQUASHES you - no banana spin.
+21. When small, another poison mushroom returns you to full size.
+22. Check the duration of being small (from the ROM).
+
 ## Where to pick up next
 
 The driving is gated by two human runs at their best numbers (crash

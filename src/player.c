@@ -608,7 +608,10 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
                 k->z = 0; k->zvel = 0; k->airborne = false;
                 k->speed = 0; k->speed_frac = 0; p->accel32 = 0;
                 p->turn = 0; p->vlag = p->plag = 0; p->state = 0;
-                p->ca = 0x0102;
+                /* $FF on the FIRST fall-in, measured live (waterlab2:
+                 * $CA counts $FF..0 at 1 a frame); the $0102 the port
+                 * used everywhere is the RE-drop value after a rescue */
+                p->ca = 0x00FF;
                 p->hazard = 8; p->drive = 8; p->jump_state = 8;
             }
             break;
@@ -616,20 +619,12 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
                                              * Rainbow Road (NOTES 119) */
         case 0x08:                          /* $28: Rainbow Road's edge - the
                                              * same fall, measured (NOTES 120) */
-        case 0x04:                          /* $24: lava / the pit ($80B643) */
-            if (t->theme == 2 || t->theme == 4 || t->theme == 5) {
-                /* Donut Plains / Vanilla Lake / Koopa Beach DEEP water:
-                 * "sink immediately, but you still have full control,
-                 * although very very slow. After some seconds, Lakitu
-                 * comes to the rescue" (bugs 7/8) - the $22 fall-in */
-                p->flags &= 0x4002;
-                k->z = 0; k->zvel = 0; k->airborne = false;
-                k->speed = 0; k->speed_frac = 0; p->accel32 = 0;
-                p->turn = 0; p->vlag = p->plag = 0; p->state = 0;
-                p->ca = 0x0102;
-                p->hazard = 8; p->drive = 8; p->jump_state = 8;
-                break;
-            }
+        case 0x04:                          /* $24: lava / the pit ($80B643).
+                                             * NOT deep water: the class maps
+                                             * (SMK_SURF_MAP) show DP / KB /
+                                             * VL deep water is all $22 - the
+                                             * round-1 theme branch here was
+                                             * dead code and is gone. */
             goto hard_hazard;               /* lava and everywhere else */
         case 0x06: hard_hazard:                          /* $26: the deep drop ($80B626) */
             k->speed = 0; k->speed_frac = 0; p->accel32 = 0;
@@ -903,14 +898,22 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
     }
     case 0x12: case 0x14:              /* $80AA4B: the reward holds unless row 7 */
         break;
-    case 0x18:                         /* $80B6D1: the feather's flight */
-        /* MEASURED: the pose rolls +$0800 a frame for the whole flight -
-         * the barrel roll.  On landing, settle.  (Bug 6: without this
-         * case the default reset the state the very next frame and the
-         * feather "did nothing".) */
-        if (k->airborne) p->plag = s16(p->plag + 0x0800);
-        else { p->plag = 0; p->state = 0x1C; }
+    case 0x18: {                       /* $80B6D1: the feather's flight,
+                                        * now DISASSEMBLED exact: while
+                                        * airborne $AA steps $0800 a frame,
+                                        * and when the step WRAPS through
+                                        * zero with the kart already
+                                        * falling ($26 negative) the spin
+                                        * ends - $AA = 0, state $1C - so
+                                        * the jump carries exactly ONE
+                                        * full 360 and lands straight. */
+        if (!k->airborne) { p->plag = 0; p->state = 0x1C; break; }
+        uint16_t before = (uint16_t)p->plag;
+        p->plag = s16((uint16_t)p->plag - 0x0800);
+        bool wrapped = (uint16_t)p->plag > before;      /* the SBC borrow */
+        if (wrapped && k->zvel < 0) { p->plag = 0; p->state = 0x1C; }
         break;
+    }
     case 0x1C: {                       /* $80AA8D: settle with row 0's rates */
         decay(p, p->drift[0]);
         if (p->vlag == 0) p->state = 0;

@@ -8584,3 +8584,42 @@ sit between the palette's, labelled).  src/molart.inc waits unused.
 THE ASK: a MAME recording on Choco Island - drive the dirt, let moles
 pop, catch one on the face and shake it off - the same route that
 cracked the AI weapons ("attack") and the coin pickup.
+
+## 207. Round 2, the first sweep: the wall clock fooled the water rig, not the code
+
+WATER (bugs 4/5/6).  The class maps (new SMK_SURF_MAP, a 128x128 PGM of
+every cell's class) prove Donut Plains / Koopa Beach / Vanilla Lake deep
+water is ALL class $22 - round 1's fix keyed $24 on those themes, dead
+code, now gone (KB's fine shallow water is driveable $5C; VL's ice holes
+are the $26 drop).  waterlab/waterlab2 measured the live game's $22
+cycle: skim at speed (about -$A0 a skip), fall-in with $CA = $FF - the
+$0102 the port used is the RE-drop value - crawl +1 a frame to 123,
+rescue when $CA runs out.  The port runs the same cycle end to end once
+SMK_PLAYER_AT can park the kart in a pond (fixed: the collide pass's
+copy-back erased the teleport - NOTES 203's lost-write again).  What the
+user could not see was the PICTURE: the kart sat at full height on the
+water; it now rides 9 px low while wading (OURS).  And the "frozen" test
+races that looked like the sink breaking were the WALL CLOCK: a --frames
+run that finishes in 10 s gets ~590 sim ticks, whatever the frame count.
+
+FEATHER (bug 3).  $80B6D1 disassembled exact: while airborne $AA steps
+$0800 a frame, and when the step wraps through zero with $26 already
+negative the spin ends - $AA = 0, state $1C.  One full 360, landing
+straight.  The DRAW was the visible bug: frame_for's bands cap at the
+side-on frame, so half of every spin showed one frame; the six spin
+states ($0A/$0C/$0E/$10/$18/$1A) now draw through the measured full
+rotation rule.  Shots at f160/f172 of the test rig show the kart high
+over its shadow in mid-rotation.
+
+THE CAMERA (bug 14).  $AA is the spin's home in the feather's own
+handler, so $94's $AA/2 term is not a state-$1A special: cam_spin now
+rides every spin state.
+
+SMALLER: the star's colour run died on the TURNING sprites - one of the
+three player draw branches drew drv->pal (bug 17); the squash waits for
+the CONTACT band of the drop, and a descending block overhead is
+neither wall nor hit (bug 11, selftest-pinned both ways); Rainbow
+Road's Thwomps spin AND stand (bug 9); load_race never rebuilt the
+minimap, so every shell race showed the boot track's map (bug 13); the
+near AI draw rounds its centre instead of truncating (bug 16,
+attempted); SMK_SURF_FILL brings the oracle's surface_fill to the port.
