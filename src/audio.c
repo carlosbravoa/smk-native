@@ -216,6 +216,13 @@ static bool   eng_hooked, eng_built;
 static void engine_mix(void *ud, Uint8 *stream, int len)
 {
     (void)ud;
+    if (getenv("SMK_ENGINE_TRACE")) {
+        static int calls;
+        if (calls < 3 || (calls % 200) == 0)
+            printf("engine_mix call %d len %d vol %.3f want %.3f step %.3f\n",
+                   calls, len, eng_vol, eng_vol_want, eng_step);
+        calls++;
+    }
     int16_t *out = (int16_t *)stream;
     int frames = len / 4;                       /* stereo, 16-bit */
     for (int i = 0; i < frames; i++) {
@@ -257,8 +264,13 @@ void smk_engine_set(int v)
     double f = 392.0 + 7.5 * (double)v;         /* MEASURED (NOTES 212) */
     eng_step = (double)ENG_TAB * f / 44100.0;
     const char *ev = getenv("SMK_ENGINE_VOL");
-    eng_vol_want = ev ? (float)atof(ev) : 0.22f;
-    if (!eng_hooked) { Mix_HookMusic(engine_mix, NULL); eng_hooked = true; }
+    eng_vol_want = ev ? (float)atof(ev) : 0.15f;
+    if (!eng_hooked) {
+        Mix_HookMusic(engine_mix, NULL);
+        eng_hooked = true;
+        if (getenv("SMK_ENGINE_TRACE"))
+            printf("engine: hook installed (v %d, step %.3f, ready %d)\n", v, eng_step, (int)ready);
+    }
 }
 
 void smk_engine_off(void)

@@ -8773,3 +8773,13 @@ and clears it - the SURGE you hear at full speed, not a constant note.
 Off the throttle it decays $0180 a frame to a $0100 idle.  The
 parameter is the rev's high byte, so the note runs 400 Hz idle to 984 Hz
 at the limit.  `smk --sfx` plays the sweep after the effects.
+
+VERIFIED end to end (and it was NOT working when first written): SDL's
+`disk` audio driver writes the port's own output to a file -
+`SDL_AUDIODRIVER=disk SDL_DISKAUDIOFILE=x.raw` - so the mix can be read
+back without a speaker.  The first three attempts dumped pure silence,
+which looked like a broken hook and was really the rig: the runs never
+left the countdown, where the rev is $01 and the engine is meant to be
+silent.  Long enough to reach the throttle, the dump reads 425 Hz at
+idle, 969 Hz at the limit and 840-867 Hz through the over-rev surge -
+the measured law, out of the port's own speaker path.
