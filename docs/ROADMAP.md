@@ -67,10 +67,15 @@ drawn at all.
 **S38 — The engine note (NOTES 212/213).** Now the game's own sample
 (SRCN $02's loop, decoded from BRR) played at the game's own rate: the
 DSP pitch register is exactly $4700 + 34*v, measured at ten values, and
-the REV that drives v is the ROM's $80:9543. OURS: only the volume. (The
-first version synthesised a tone from a spectral peak and came out an
-octave and a half sharp - the peak was the sample's ninth partial. The
-user heard it immediately.)
+the REV that drives v is the ROM's $80:9543. OURS: the volume, and the
+PARAMETER - $42 is written from $C2 inside the sound update and the
+physics reuses $C2 later in the frame, so the transcription of $80:9543
+could not be validated and ran a third too high (the user: "in game is
+slower"); the port now walks the parameter toward speed * 0.07 at most
+3 a frame up and 1 down, fitted to 10,172 logged frames of the game's
+own $42 (NOTES 214). Two earlier versions were wrong in a way only an
+ear caught: a synthesised tone an octave and a half sharp (it fitted the
+sample's ninth partial), then this parameter.
 
 **S37 — The sound effects, rendered from the chip (NOTES 213).** The
 samples are the game's own BRR, decoded from its sound RAM, and the

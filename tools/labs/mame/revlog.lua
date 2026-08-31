@@ -1,17 +1,16 @@
--- The rev machine as the PLAYER drives it: $C2 (the rev), $E0 (the turbo
--- window bit), $E2 (bit 0 the wheelspin flag, bit 5 the smoke), $EA speed,
--- $EE accel and $AC the drive state, against the countdown $0146.
--- Replay the user's own `starts` recording under it (NOTES 143/145).
-local cpu = manager.machine.devices[":maincpu"]
-local mem = cpu.spaces["program"]
+-- The engine parameter and what drives it: the pad word the rev law
+-- reads ($0020), $42 itself, and the rev accumulator $C2/$C4 in the
+-- player's kart block - so the port's transcription can be replayed
+-- against the game's own numbers.
+local mem = manager.machine.devices[":maincpu"].spaces["program"]
 local function w(a) return mem:read_u16(0x7E0000 + a) end
-local function s(v) if v > 32767 then return v - 65536 end return v end
-print("frame,c146,c142,rev,E0,E2,speed,EE,AC,pad")
+local function b(a) return mem:read_u8(0x7E0000 + a) end
 local n = 0
+print("frame,pad,p42,c2,c4,speed,mode")
 emu.register_frame_done(function()
   n = n + 1
-  if mem:read_u8(0x7E0036) // 2 ~= 6 and mem:read_u8(0x7E0036) // 2 ~= 1 then return end
-  print(string.format("%d,%d,%d,%d,%04X,%04X,%d,%d,%04X,%04X",
-    n, s(w(0x0146)), s(w(0x0142)), s(w(0x10C2)), w(0x10E0), w(0x10E2),
-    s(w(0x10EA)), s(w(0x10EE)), w(0x10AC), w(0x10C4)))
+  local m = b(0x36) // 2
+  if m ~= 6 and m ~= 1 then return end
+  print(string.format("%d,%04X,%02X,%04X,%04X,%d,%d",
+    n, w(0x0020), b(0x42), w(0x10C2), w(0x10C4), w(0x10EA), m))
 end)

@@ -8832,3 +8832,42 @@ render, but if the driver swaps banks between states their samples
 belong to a different set - re-capture from a menu snapshot before
 trusting those three.  Also measured on the way: the driver answers a
 request on VOICE 3 in this state, every time.
+
+## 214. Naming the sounds by what the GAME does, and the engine's parameter fitted
+
+The user auditioned NOTES 213's renders and could not place most of them
+out of context ("had to skip too many since I had no recall of them"),
+which is the right answer to a bad question: a 60 ms blip means nothing
+on its own.  So the naming moved to the recordings.
+tools/labs/mame/sfxevent.lua logs every sound request WITH the state
+around it - speed, the drive and pose states, the hazard, the surface
+class, the coin count, the item word - and the ids name themselves:
+
+    $20  the COIN        41 of 63 requests land as the coin count rises
+    $21  the HOP         fires exactly as jump_state goes to 2
+    $25  the LANDING     drive $02 -> $00 with z falling to 0, every time
+    $23  the RAMP        airborne (drive $02) on all 88
+    $4E  the BIG JUMP    airborne at speed ~1620, the ramps
+    $4C  MUD             all 13 on surface class $5E and nowhere else
+    $55  the ITEM BOX    16 of 22 with the item word changing
+    $48  the MUSHROOM    all 35 in the boost drive state $10
+    $22  the MOLE        at the mole's own grab (NOTES 210)
+    $3F  the WALL        drive $16, the bounce state, with big slowdowns
+
+and the user's ear supplied the rest: $24 feather, $27 falling off the
+road, $29 hitting another kart, $2C/$2E/$2F the menu, $4D menu
+scrolling, $5D/$5F the poison mushroom shrinking and growing back, $66 a
+kart spinning out, $68 the finish.  Half of NOTES 211's ROM-call-site
+readings were WRONG - the coin was $55, the item box was $49, the finish
+was the lights - which is worth remembering: a call site says where the
+code plays a sound, not what the sound is.
+
+THE ENGINE, corrected.  The user: "perfect, but in game is slower."  It
+was: the parameter $42 is written from $C2 INSIDE the sound update and
+the physics reuses $C2 later in the same frame, so NOTES 212's
+transcription of $80:9543 could never be checked - and it ran the
+parameter at $43-$4F where the game's own trace (10,172 logged frames,
+tools/labs/mame/revlog.lua) sits at a median of $39 and a maximum of
+$4E.  The port now walks the parameter toward speed * 0.07, at most 3 a
+frame up and 1 a frame down, which is a FIT to those frames rather than
+a transcription (S38) - and it puts the note where the game keeps it.

@@ -241,28 +241,35 @@ int smk_sfx_audition(void)
     return played;
 }
 
-/* what the ROM's own call site says the sound is, where we know it */
+/* What the sound IS, and on whose word (NOTES 214).  MEASURED beats
+ * USER beats ROM: a call site's address only says where the code plays
+ * it, and half of those readings turned out wrong once the ids were
+ * watched firing against the game's own state. */
 const char *smk_sfx_name(int id)
 {
     switch (id) {
-    case SMK_SFX_HOP:       return "hop / bump          ($80:B555, $80:B68C)";
-    case SMK_SFX_MOLE:      return "mole                ($80:B6B9)";
-    case SMK_SFX_FALL:      return "the drop            ($80:B66A)";
-    case SMK_SFX_FEATHER:   return "feather             ($80:B57B)";
-    case SMK_SFX_RESCUE:    return "rescue / hazard     ($80:B20E)";
-    case SMK_SFX_WATER:     return "water               ($80:B5BB)";
-    case SMK_SFX_LAVA:      return "lava / pit          ($80:B647)";
-    case SMK_SFX_SPIN:      return "spin out            ($80:B75A, $80:A9A8)";
-    case SMK_SFX_MENU_MOVE: return "menu move           ($85:885E ...)";
-    case SMK_SFX_MENU_OK:   return "menu confirm        ($85:853C ...)";
-    case SMK_SFX_MENU_BACK: return "menu back           ($85:855F)";
-    case SMK_SFX_BOOST:     return "mushroom boost      ($80:B48C)";
-    case SMK_SFX_ITEMBOX:   return "item box            ($85:B10F ...)";
-    case SMK_SFX_HAZARD:    return "hazard              ($80:B204)";
-    case SMK_SFX_COIN:      return "coin                ($80:9B32)";
-    case SMK_SFX_LAP:       return "lap                 ($80:A497)";
-    case SMK_SFX_START:     return "the lights          ($80:8A2A)";
-    default:                return "(unnamed - the ROM has no immediate call site)";
+    case SMK_SFX_COIN:        return "coin                (measured)";
+    case SMK_SFX_HOP:         return "hop, taking off     (measured)";
+    case SMK_SFX_MOLE:        return "mole                (measured)";
+    case SMK_SFX_RAMP:        return "ramp / going up     (measured)";
+    case SMK_SFX_FEATHER:     return "feather             (you)";
+    case SMK_SFX_LAND:        return "landing             (measured)";
+    case SMK_SFX_FALL:        return "falling off the road (you)";
+    case SMK_SFX_HIT_KART:    return "hitting another kart (you)";
+    case SMK_SFX_MENU_MOVE:   return "menu move           (you)";
+    case SMK_SFX_MENU_OK:     return "menu confirm        (you)";
+    case SMK_SFX_MENU_BACK:   return "menu back           (you)";
+    case SMK_SFX_WALL:        return "hitting a wall      (measured)";
+    case SMK_SFX_BOOST:       return "mushroom boost      (you)";
+    case SMK_SFX_MUD:         return "mud / heavy off-road (measured)";
+    case SMK_SFX_MENU_SCROLL: return "menu scrolling      (you)";
+    case SMK_SFX_JUMP_BIG:    return "the big ramp jump   (measured)";
+    case SMK_SFX_ITEMBOX:     return "item box            (measured)";
+    case SMK_SFX_SHRINK:      return "poison mushroom, shrinking (you)";
+    case SMK_SFX_GROW:        return "back to full size   (you)";
+    case SMK_SFX_SPIN:        return "a kart spun out     (you)";
+    case SMK_SFX_FINISH:      return "the finish          (you)";
+    default:                  return "(unnamed - nobody has named this one yet)";
     }
 }
 

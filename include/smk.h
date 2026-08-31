@@ -1299,24 +1299,31 @@ void smk_engine_set(int v);
 void smk_engine_off(void);
 const char *smk_sfx_name(int id);
 
-/* the ids the ROM's own call sites use (tools/labs/sfxsites.py) */
-#define SMK_SFX_HOP        0x21   /* $80:B555 - the hop, and the $2A bump */
-#define SMK_SFX_MOLE       0x22   /* $80:B6B9 */
-#define SMK_SFX_FALL       0x23   /* $80:B66A - the deep drop ($26)       */
-#define SMK_SFX_FEATHER    0x24   /* $80:B57B - the feather (docs/ITEMS)  */
-#define SMK_SFX_RESCUE     0x25   /* $80:B20E - the hazard state machine  */
-#define SMK_SFX_WATER      0x27   /* $80:B5BB - inside the $22 water code */
-#define SMK_SFX_LAVA       0x28   /* $80:B647 - the lava / pit ($24)      */
-#define SMK_SFX_SPIN       0x2A   /* $80:B75A - the shell tumble; $80:A9A8 */
-#define SMK_SFX_MENU_MOVE  0x2C   /* $85:885E and friends                 */
-#define SMK_SFX_MENU_OK    0x2E   /* $85:853C and friends                 */
-#define SMK_SFX_MENU_BACK  0x2F   /* $85:855F                             */
-#define SMK_SFX_BOOST      0x48   /* $80:B48C - the mushroom (docs/ITEMS) */
-#define SMK_SFX_ITEMBOX    0x49   /* $85:B10F - the item block            */
-#define SMK_SFX_HAZARD     0x4C   /* $80:B204                             */
-#define SMK_SFX_COIN       0x55   /* $80:9B32                             */
-#define SMK_SFX_LAP        0x65   /* $80:A497                             */
-#define SMK_SFX_START      0x68   /* $80:8A2A                             */
+/* The game's own sound ids (NOTES 211/213/214).  Named three ways, and
+ * the strongest wins: MEASURED means the id was watched firing against
+ * the game's own state in a recording; USER means the user named it by
+ * ear; ROM means only the call site's address suggests it. */
+#define SMK_SFX_COIN       0x20   /* MEASURED: 41 of 63 with the coin count up */
+#define SMK_SFX_HOP        0x21   /* MEASURED: fires as jump_state goes to 2   */
+#define SMK_SFX_MOLE       0x22   /* MEASURED: at the mole's grab              */
+#define SMK_SFX_RAMP       0x23   /* MEASURED: airborne (drive $02) every time */
+#define SMK_SFX_FEATHER    0x24   /* USER + ROM $80:B57B                       */
+#define SMK_SFX_LAND       0x25   /* MEASURED: drive $02->$00 and z to 0       */
+#define SMK_SFX_FALL       0x27   /* USER: "falling down from the road"        */
+#define SMK_SFX_HIT_KART   0x29   /* USER: "when you hit someone"              */
+#define SMK_SFX_MENU_MOVE  0x2C   /* USER                                      */
+#define SMK_SFX_MENU_OK    0x2E   /* USER                                      */
+#define SMK_SFX_MENU_BACK  0x2F   /* USER                                      */
+#define SMK_SFX_WALL       0x3F   /* MEASURED: drive $16, the bounce state     */
+#define SMK_SFX_BOOST      0x48   /* USER + ROM $80:B48C                       */
+#define SMK_SFX_MUD        0x4C   /* MEASURED: every one on surface class $5E  */
+#define SMK_SFX_MENU_SCROLL 0x4D  /* USER: "menu scrolling"                    */
+#define SMK_SFX_JUMP_BIG   0x4E   /* MEASURED: airborne at speed ~1620         */
+#define SMK_SFX_ITEMBOX    0x55   /* MEASURED: 16 of 22 with the item word     */
+#define SMK_SFX_SHRINK     0x5D   /* USER: the poison mushroom                 */
+#define SMK_SFX_GROW       0x5F   /* USER: back to full size                   */
+#define SMK_SFX_SPIN       0x66   /* USER: "AI player gets hit, banana spin"   */
+#define SMK_SFX_FINISH     0x68   /* USER: "getting to the goal"               */
 
 /* ---- Coins and item boxes (src/pickup.c, NOTES 110) ----------------------
  * The collector at $81B73B: the tilemap cell under a grounded player decides.

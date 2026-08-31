@@ -839,7 +839,7 @@ static void step_kart(smk_kart *k, smk_track *trk,
                 smk_pickup_step(rom_for_step, trk, &player, k, grounded);
                 if (player.coins != before && !replay_path) {
                     smk_coinfx_pickup(coins_fx, SMK_COINFX_MAX);
-                    smk_sfx_play(SMK_SFX_COIN);         /* $80:9B32's sound */
+                    smk_sfx_play(SMK_SFX_COIN);         /* MEASURED (NOTES 214) */
                 }
             }
             /* a fresh box: choose the item and start the roulette ($81:B34A
@@ -847,67 +847,72 @@ static void step_kart(smk_kart *k, smk_track *trk,
              * rank are the HUD's, which are the race's own. */
             if (player.item_held && !had && itemtab.ok && !replay_path) {
                 smk_item_box(&item, &itemtab, cur_track, hud_lap, hud_rank - 1, item_roll());
-                smk_sfx_play(SMK_SFX_ITEMBOX);          /* $85:B10F's sound */
+                smk_sfx_play(SMK_SFX_ITEMBOX);          /* MEASURED (NOTES 214) */
             }
         }
     }
 
-    /* THE SOUND EFFECTS (NOTES 211).  The ROM plays these from inside the
-     * routines this port transcribed; rather than scatter calls through
-     * player.c (which the headless tools link WITHOUT the audio), the
-     * same events are read off the state machine here, once a frame, at
-     * the transitions the ROM's own call sites sit on. */
+    /* THE SOUND EFFECTS (NOTES 211/214).  The ROM plays these from
+     * inside the routines this port transcribed; rather than scatter
+     * calls through player.c (which the headless tools link WITHOUT the
+     * audio), the same events are read off the state machine here, once
+     * a frame.  Which id belongs to which event is now mostly MEASURED -
+     * the ids were watched firing against the game's own state in the
+     * user's recordings - and the rest is the user's ear. */
     if (!replay_path) {
-        static int was_state, was_hazard2, was_mole, was_air;
-        static int was_spin_kind;
+        static int was_state, was_hazard2, was_mole, was_air, was_shrink;
+        static uint8_t was_surf;
         int st = player.state;
+        uint8_t surf_now = smk_track_surface(trk, smk_kart_px(k->x), smk_kart_px(k->y));
         bool spin = (st == 0x0A || st == 0x0C || st == 0x1A);
         bool was_spin = (was_state == 0x0A || was_state == 0x0C || was_state == 0x1A);
-        if (spin && !was_spin) smk_sfx_play(SMK_SFX_SPIN);       /* $80:B75A */
-        if (player.hazard != was_hazard2) {
-            if (player.hazard == 8) smk_sfx_play(SMK_SFX_WATER); /* $80:B5BB */
-            else if (player.hazard == 6) {
-                /* the lava/pit and the plain drop are different sounds in
-                 * the ROM ($80:B647 vs $80:B66A) - the class says which */
-                uint8_t hs = smk_track_surface(trk, smk_kart_px(k->x), smk_kart_px(k->y));
-                smk_sfx_play((hs & 0x0E) == 0x04 ? SMK_SFX_LAVA : SMK_SFX_FALL);
-            } else if (player.hazard == 0x0C) smk_sfx_play(SMK_SFX_RESCUE);  /* $80:B20E */
+        if (spin && !was_spin) smk_sfx_play(SMK_SFX_SPIN);
+        if (player.hazard != was_hazard2 && player.hazard == 6)
+            smk_sfx_play(SMK_SFX_FALL);              /* off the road   */
+        if (player.mole_on && !was_mole) smk_sfx_play(SMK_SFX_MOLE);
+        if (k->airborne && !was_air && player.state != 0x18) {
+            /* taking off: the ramp at speed is its own sound */
+            smk_sfx_play(k->speed > 0x500 ? SMK_SFX_JUMP_BIG : SMK_SFX_HOP);
         }
-        if (player.mole_on && !was_mole) smk_sfx_play(SMK_SFX_MOLE);   /* $80:B6B9 */
-        if (k->airborne && !was_air && player.state != 0x18)
-            smk_sfx_play(SMK_SFX_HOP);                                 /* $80:B555 */
+        if (!k->airborne && was_air && player.state != 0x18)
+            smk_sfx_play(SMK_SFX_LAND);
+        if (k->bounce_hit) smk_sfx_play(SMK_SFX_WALL);
+        if (surf_now == 0x5E && was_surf != 0x5E) smk_sfx_play(SMK_SFX_MUD);
+        if (player.shrink_t > 0 && !was_shrink) smk_sfx_play(SMK_SFX_SHRINK);
+        if (player.shrink_t == 0 && was_shrink) smk_sfx_play(SMK_SFX_GROW);
         was_state = st; was_hazard2 = player.hazard;
         was_mole = player.mole_on; was_air = k->airborne;
-        (void)was_spin_kind;
+        was_surf = surf_now; was_shrink = player.shrink_t > 0;
     }
 
-    /* THE ENGINE ($80:9543, transcribed - NOTES 212).  $C2,x is a rev
-     * accumulator and $C4,x an over-rev flag: with the throttle held it
-     * climbs $C0 a frame until $4F00, which sets the flag; the flag
-     * costs $280 a frame until the rev falls back under $3F00 and
-     * clears it - the surge you hear at full speed.  Off the throttle
-     * it falls $180 a frame to a $100 idle.  The parameter the driver
-     * gets is the HIGH BYTE, and the port's tone follows it. */
+    /* THE ENGINE (NOTES 214).  $42 - the byte the driver gets every
+     * frame - is written from $C2 INSIDE the sound update, and the
+     * physics reuses $C2 later in the same frame, so a transcription of
+     * $80:9543 cannot be checked against anything a frame-end sample
+     * can see: the first attempt ran the parameter at $43-$4F where the
+     * game's own trace sits at a median of $39, and the user heard it
+     * at once ("perfect, but in game is slower").
+     *
+     * So the parameter is FITTED to the game's own numbers instead -
+     * 10,172 frames of $42 logged against speed from a recorded race
+     * (tools/labs/mame/revlog.lua): a target of speed * 0.07 that the
+     * value walks toward, up to 3 a frame climbing and 1 a frame
+     * falling.  LABELLED (S38): the shape is the game's, the constants
+     * are a fit. */
     {
-        static int rev = 0x0100, over;
-        bool thr = (player.pad & 0x8000) != 0;      /* B: accelerate */
-        if (over) {
-            rev -= 0x0280;
-            if (rev < 0x3F00) over = 0;
-        } else if (thr) {
-            rev += 0x00C0;
-            if (rev >= 0x4F00) over = 1;
-        } else {
-            rev -= 0x0180;
-            if (rev < 0x0100) rev = 0x0100;
-        }
-        if (rev > 0x5000) rev = 0x5000;
-        if (rev < 0x0100) rev = 0x0100;
+        static float rev = 1.0f;
+        float target = (float)k->speed * 0.07f;
+        if (target < 1.0f) target = 1.0f;
+        if (target > 78.0f) target = 78.0f;      /* the trace tops at $4E */
+        float d = target - rev;
+        rev += d > 0.0f ? (d < 3.0f ? d : 3.0f) : (d > -1.0f ? d : -1.0f);
+        int v = (int)(rev + 0.5f);
         smk_engine_set(race_state == RACE_RUN || race_state == RACE_COUNTDOWN
-                       ? rev >> 8 : 0);
+                       ? v : 0);
         if (getenv("SMK_ENGINE_TRACE") && (fx_ticks % 15) == 0)
-            printf("engine f%ld rev %04X -> $%02X (%.0f Hz) thr %d\n",
-                   hud_race_frames, rev, rev >> 8, 392.0 + 7.5 * (rev >> 8), (int)thr);
+            printf("engine f%ld speed %d -> $%02X (%.0f Hz sample rate)\n",
+                   hud_race_frames, k->speed, v,
+                   ((0x4700 + 34 * v) & 0x3FFF) / 4096.0 * 32000.0);
     }
 
     /* the ground effect object ($80CF7B..$80D4A3): what the surface under
@@ -2840,9 +2845,10 @@ int main(int argc, char **argv)
                 if (ui.screen == SMK_UI_TITLE && in.back) in.quit = true;
                 /* the shell's own clicks, on the ROM's menu ids */
                 if (nav.up || nav.down || nav.left || nav.right)
-                    smk_sfx_play(SMK_SFX_MENU_MOVE);        /* $85:885E */
-                else if (nav.confirm) smk_sfx_play(SMK_SFX_MENU_OK);    /* $85:853C */
-                else if (nav.back)    smk_sfx_play(SMK_SFX_MENU_BACK);  /* $85:855F */
+                    smk_sfx_play(ui.screen == SMK_UI_COURSE
+                                 ? SMK_SFX_MENU_SCROLL : SMK_SFX_MENU_MOVE);
+                else if (nav.confirm) smk_sfx_play(SMK_SFX_MENU_OK);
+                else if (nav.back)    smk_sfx_play(SMK_SFX_MENU_BACK);
                 if (smk_ui_step(&ui, &rom, &nav)) {
                     /* a single race IS a Grand Prix course on its own */
                     int m = (ui.mode_sel == SMK_UI_MODE_TT)
@@ -2939,7 +2945,6 @@ int main(int argc, char **argv)
                 if (race_count >= SMK_COUNT_FRAMES) {
                     race_state = RACE_RUN;
                     smk_player_launch(&player);   /* $80956A pays out here */
-                    smk_sfx_play(SMK_SFX_START);  /* $80:8A2A - the lights */
                 }
                 /* Throttle and hop are consumed here; STEERING IS NOT.
                  * The user: "When stopped (speed=0) and you press left or
@@ -3454,7 +3459,7 @@ int main(int argc, char **argv)
                                 /* he comes back with the sign (NOTES 168);
                                  * the grid crossing enters lap 1 and shows
                                  * nothing, so this starts at lap 2 */
-                                if (me->lap >= 2) { lap_sign_t = 0; smk_sfx_play(SMK_SFX_LAP); }  /* $80:A497 */
+                                if (me->lap >= 2) lap_sign_t = 0;
                                 if (race_state == RACE_RUN && !race_over)
                                     race_over = smk_tt_crossing(
                                         &result, &crossings,
@@ -3515,6 +3520,7 @@ int main(int argc, char **argv)
                  * still racing and their times are what the results are
                  * for, so hand over to the celebration and let it run. */
                 me->finish_frame = hud_race_frames;
+                smk_sfx_play(SMK_SFX_FINISH);    /* the user: "getting to the goal" */
                 if (race_mode == SMK_MODE_TT) {
                     if (shell || getenv("SMK_RESULT_SHOT")) { smk_ui_gp_award(&ui, &result); ui.screen = SMK_UI_RESULT; }
                 } else {
