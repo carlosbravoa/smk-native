@@ -8561,3 +8561,26 @@ the spawned blocks - segments 0-3 give entity pairs 0/1, 4/5, 8/9, 12/13
 again.  Ported: smk_course carries seg_off[] read from the table, and
 smk_course_spawn indexes it instead of multiplying.  Selftest-pinned on
 both the table bytes and the wp-40 respawn.
+
+## 206. Bug 12, the moles: what the probes ruled out, and the recording needed
+
+Choco Island 1 is track 18 (cup 1 course 0; CI2 is track 10).  Booted
+there, the live entity blocks are STATIC for 900 frames - their +$18/+$1C
+words match entities 0/1 exactly - and each entity is a PAIR of records
+with handlers $84:E06E and $84:E07A (the same two-record shape as every
+theme).  Parking the kart ON one produces a single write burst (+$06
+counts down to 0, +$2C/+$2E/+$38 take $7F7F/$7F65) and then nothing for
+600 frames.  So the moles that pop from the dirt are NOT these blocks:
+these are the piranha plant(s) the port already draws and spins.  The
+moles are almost certainly a dynamic spawn family (the $0800 blocks that
+objspawn.lua watches alongside $1800), and those come alive under a real
+drive, not a parked probe.
+
+Ready meanwhile: tools/labs/molesheet.py imports the mole's ten-step
+size ladder from the user's ripped hazard sheet against Choco's own
+CGRAM (tmp/cgram_c10.bin, palette 0; avg sq err ~1449 - the rip's tans
+sit between the palette's, labelled).  src/molart.inc waits unused.
+
+THE ASK: a MAME recording on Choco Island - drive the dirt, let moles
+pop, catch one on the face and shake it off - the same route that
+cracked the AI weapons ("attack") and the coin pickup.
