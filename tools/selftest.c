@@ -1636,6 +1636,25 @@ int main(int argc, char **argv)
                   k.hazard_hit == 0 && k.vx == 0 && k.vy == 0, NULL);
         }
     }
+    {
+        /* bug 14: the spawn offsets are the $84DAC5 TABLE, whose entry 4
+         * is ZERO - Bowser Castle 1's (track 17) last segment respawns
+         * the FIRST Thwomp pair, measured in the oracle (bc1seg.py:
+         * waypoint 40 spawns (388,68)/(388,52) again, never ents 16-17) */
+        smk_course bc1;
+        if (smk_course_load(&rom, 17, &bc1)) {
+            char d[64];
+            snprintf(d, sizeof d, "off %d %d %d %d %d", bc1.seg_off[0],
+                     bc1.seg_off[1], bc1.seg_off[2], bc1.seg_off[3], bc1.seg_off[4]);
+            check("the $84DAC5 spawn offsets read 0/8/16/24 then ZERO",
+                  bc1.seg_off[0] == 0 && bc1.seg_off[1] == 8 && bc1.seg_off[2] == 16
+                  && bc1.seg_off[3] == 24 && bc1.seg_off[4] == 0, d);
+            smk_course_spawn(&bc1, 40, false);
+            check("BC1's last segment respawns the FIRST pair (oracle: wp 40)",
+                  bc1.nlive == 2 && bc1.live[0] == 0 && bc1.live[1] == 1
+                  && bc1.ent[0].x == 388 && bc1.ent[0].y == 68, NULL);
+        }
+    }
 
     printf("\n%d passed, %d failed\n", pass, fail);
     smk_rom_free(&rom);

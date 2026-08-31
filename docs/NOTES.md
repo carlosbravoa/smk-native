@@ -8539,3 +8539,25 @@ the movers from frame 0 for rigs; the climb is clamped at the parked
 height (the trace showed blocks rising to 7680 and falling from up
 there); and two selftest checks pin the squash and the overhead pass.
 SMK_SQUASH_TEST=frame flattens P1 and kart 1 for an eyeball shot.
+
+## 205. Bug 14 was two ghost Thwomps: the spawn offset is a TABLE, and its fifth entry is zero
+
+The user: "Bowser Castle 1 has one or two Thwomps in the wrong place."
+BC1 is track 17 (the $0150/$0152 boot into cup 0 course 3 lands there).
+Its start-segment entities match the game's live blocks EXACTLY -
+(388,68) and (388,52), read from the booted game's $1800/$1880 blocks -
+so the positions were never wrong.  The WINDOW was: the port respawned
+`seg * 4` words into the entity list, but the game takes the offset from
+the word table at $84:DAC5 - 0, 8, 16, 24 bytes... and then ZERO.  The
+fifth segment respawns the FIRST pair.  With five thresholds on BC1
+(9/16/23/32/$FF) our linear rule reached entities 16-17 - (396,44) and
+(956,148), a pair the game never spawns on any segment.  One or two
+Thwomps, in places the game keeps empty.
+
+Verified by driving the game's own spawner: tools/labs/bc1seg.py boots
+BC1, pokes the player's waypoint ($10C0) through every segment, and logs
+the spawned blocks - segments 0-3 give entity pairs 0/1, 4/5, 8/9, 12/13
+(our windows agree), and waypoint 40 ($0D34 = 8) spawns (388,68)/(388,52)
+again.  Ported: smk_course carries seg_off[] read from the table, and
+smk_course_spawn indexes it instead of multiplying.  Selftest-pinned on
+both the table bytes and the wp-40 respawn.

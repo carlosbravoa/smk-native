@@ -158,6 +158,16 @@ bool smk_course_load(const smk_rom *rom, int track, smk_course *out)
         }
     }
 
+    /* --- the per-segment spawn offsets ($84DAC5, read not assumed) ---
+     * The table is 0, 8, 16, 24 bytes for segments 0-3 and then ZERO:
+     * the fifth segment respawns the FIRST window.  The port's linear
+     * seg*8 put entities 16-17 on the track there - two Thwomps the
+     * game never spawns (bug 14, Bowser Castle 1 = track 17). */
+    for (int i = 0; i < 8; i++) {
+        uint32_t sp = smk_snes_to_pc(rom, 0x84DAC5u) + (uint32_t)i * 2u;
+        out->seg_off[i] = (uint16_t)(rom->data[sp] | (unsigned)rom->data[sp + 1] << 8);
+    }
+
     /* --- sprite obstacles ($84DC20: $85:C800 + track*64) ------------- */
     {
         uint32_t p3 = smk_snes_to_pc(rom, 0x85C800u) + (uint32_t)track * 64u;
@@ -243,7 +253,9 @@ void smk_course_spawn(smk_course *c, int waypoint, bool two_player)
     c->seg = seg;
     c->nlive = 0;
     memset(c->dead, 0, sizeof c->dead);   /* a fresh segment brings them back */
-    int first = seg * 4;                     /* offset seg*8 bytes = 4 words */
+    /* the offset comes from the game's own table, not seg*8: entry 4 is
+     * ZERO, so the last segment respawns the first window (bug 14) */
+    int first = (seg < 8 ? c->seg_off[seg] : 0) / 2;
     if (first >= c->nent) first = 0;         /* $84DC35: fall back to the start */
     for (int i = 0; i < want && first + i < c->nent; i++)
         c->live[c->nlive++] = first + i;

@@ -2254,6 +2254,9 @@ int main(int argc, char **argv)
                    i, crs.ent[i].kind, crs.ent[i].x, crs.ent[i].y);
         for (int i = 0; i < crs.nlive; i++)
             printf("live %d: ent %d\n", i, crs.live[i]);
+        printf("segs %d:", crs.nseg);
+        for (int i = 0; i < crs.nseg; i++) printf(" %d", crs.seg_thresh[i]);
+        printf("\n");
     }
     smk_hud_load(&rom, &hud_art);
     if (!smk_coin_load(&rom, &coin_art))

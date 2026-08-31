@@ -454,9 +454,20 @@ regression in them is noticed.
     their parked height in an autodrive race (the release counts the
     player's crossings), so movers now clamp their climb and
     SMK_MV_ON=1 releases them from frame 0 for testing.
-14. Bowser Castle 1 has one or two Thwomps in the wrong place.
+14. ~~Bowser Castle 1 has one or two Thwomps in the wrong place.~~ FIXED
+    (NOTES 205), and it was exactly "one or two": the spawn offsets are
+    a TABLE ($84DAC5) whose fifth entry is ZERO - BC1's last segment
+    respawns the first pair, while our linear seg*8 spawned entities
+    16-17 at (396,44)/(956,148), two Thwomps the game never places.
+    Oracle-verified (tools/labs/bc1seg.py), selftest-pinned.
 15. The track map shows the karts on the wrong track. (Could not
     reproduce on the keyboard map - which track/mode showed it?)
+16. From the user's screenshot (tmp/"graphic issues.png", track 7 lap 3
+    at sector 0): rainbow-garbage rows along the far road/grass
+    boundary, a garbled white-blue shape at the top right, and the lap
+    sign overlapping the HUD's top-left digits.  Not yet reproduced
+    headlessly - the start-line shot renders clean; needs the spot or
+    the heading it happens at.
 
 ## Where to pick up next
 

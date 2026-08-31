@@ -616,6 +616,7 @@ typedef struct {
      * spawner at $84DC20: per-track word list at $85:C800 + track*64,
      * [kind:2][y:7][x:7], coordinates cell*8+4, zero-terminated. */
     struct { uint8_t kind; uint16_t x, y; } ent[SMK_COURSE_ENTS];
+    uint16_t seg_off[8];        /* $84DAC5: spawn offset per segment, in BYTES */
     uint8_t  dead[SMK_COURSE_ENTS];   /* knocked out by a star; back on respawn */
     int      nent;
     smk_mover mv[32];         /* one per ENTITY, NOTES 152/155 */
