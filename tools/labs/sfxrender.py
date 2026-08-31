@@ -163,6 +163,8 @@ def main():
         first_srcn = test[(first, v)][3]
         kit = {test[(f2, v)][3] for f2 in range(first, min(first + 4, f1 + 1))
                if (f2, v) in test}
+        strikes = 0
+        last_env = 0
         for f in range(first, f1 + 1):
             t = test.get((f, v))
             if t is None:
@@ -194,6 +196,15 @@ def main():
             # tail on everything (NOTES 216).
             if f > first + 3 and srcn not in kit:
                 break
+            # An effect may strike its sample twice - the coin is one
+            # sample keyed low then a fourth higher - but a THIRD strike
+            # is the music taking the sample back, and rendering it made
+            # the coin "sound three times" (the user).
+            if envx > last_env + 8:
+                strikes += 1
+                if strikes > 2 and f > first + 4:
+                    break
+            last_env = envx
             if envx == 0 and f > first + 2:
                 quiet += 1
                 if quiet >= 8:

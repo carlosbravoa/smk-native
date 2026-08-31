@@ -860,7 +860,7 @@ static void step_kart(smk_kart *k, smk_track *trk,
      * the ids were watched firing against the game's own state in the
      * user's recordings - and the rest is the user's ear. */
     if (!replay_path) {
-        static int was_state, was_hazard2, was_mole, was_air, was_shrink;
+        static int was_state, was_hazard2, was_mole, was_air, was_shrink, was_drive;
         static uint8_t was_surf;
         int st = player.state;
         uint8_t surf_now = smk_track_surface(trk, smk_kart_px(k->x), smk_kart_px(k->y));
@@ -878,11 +878,15 @@ static void step_kart(smk_kart *k, smk_track *trk,
             smk_sfx_play(SMK_SFX_LAND);
         if (k->bounce_hit) smk_sfx_play(SMK_SFX_WALL);
         if (surf_now == 0x5E && was_surf != 0x5E) smk_sfx_play(SMK_SFX_MUD);
+        if (player.drive == 0x10 && was_drive != 0x10)
+            smk_sfx_play(SMK_SFX_BOOST);     /* mushroom, boost pad, AND
+                                              * the turbo start (the user) */
         if (player.shrink_t > 0 && !was_shrink) smk_sfx_play(SMK_SFX_SHRINK);
         if (player.shrink_t == 0 && was_shrink) smk_sfx_play(SMK_SFX_GROW);
         was_state = st; was_hazard2 = player.hazard;
         was_mole = player.mole_on; was_air = k->airborne;
         was_surf = surf_now; was_shrink = player.shrink_t > 0;
+        was_drive = player.drive;
     }
 
     /* THE ENGINE (NOTES 214/216).  $42 - the byte the driver gets every
@@ -903,15 +907,29 @@ static void step_kart(smk_kart *k, smk_track *trk,
     {
         static float rev = 1.0f;
         bool thr = (player.pad & 0x8000) != 0 || engine_throttle;
-        float target = (float)k->speed * 0.07f;
-        if (thr) {                            /* revving, moving or not */
+        float target = (float)k->speed * 0.079f - 6.0f;
+        /* THROUGH THE COUNTDOWN the port already has the game's own rev:
+         * smk_player_rev transcribes $80:95BB and keeps $C2 (NOTES 163),
+         * the very accumulator the sound parameter is taken from - so
+         * use its high byte and inherit the real thing, oscillation and
+         * all, instead of approximating a climb. */
+        if (race_state == RACE_COUNTDOWN) {
+            target = (float)((player.rev >> 8) & 0x7F);
+            (void)thr;
+        } else if (thr && k->speed < 0x100) {
+            /* stopped on the road with the throttle down: revving again */
             float climb = rev + 0.40f;
             if (climb > target) target = climb;
         }
         if (target < 1.0f) target = 1.0f;     /* the idle the game holds  */
         if (target > 78.0f) target = 78.0f;   /* the trace tops at $4E    */
+        /* MEASURED rates, and they are not symmetric: the game's own
+         * trace rises about 1 a frame and FALLS up to 3 - after a crash
+         * from $3F it is back at $20 within ten frames.  (Shipped the
+         * other way round at first, which is why the note hung on after
+         * a hit.) */
         float d = target - rev;
-        rev += d > 0.0f ? (d < 3.0f ? d : 3.0f) : (d > -1.0f ? d : -1.0f);
+        rev += d > 0.0f ? (d < 0.8f ? d : 0.8f) : (d > -3.0f ? d : -3.0f);
         int v = (int)(rev + 0.5f);
         /* silent only OUTSIDE a race: $42 = 0 is the driver's own silence
          * ($81:A26F), and $01 is an idling kart, not a quiet one */
@@ -2882,7 +2900,6 @@ int main(int argc, char **argv)
             /* the one mushroom */
             if (in.item && tt_mushroom && race_state == RACE_RUN
                 && smk_player_boost(&player)) {
-                smk_sfx_play(SMK_SFX_BOOST);
                 tt_mushroom = false;
                 player.item_held = false;
             }
@@ -3185,11 +3202,17 @@ int main(int argc, char **argv)
                             racers[1].squash_t = SMK_SQUASH_T;
                         }
                     }
-                    bool was_ready = smk_item_ready(&item);
+                    bool was_spin = smk_item_spinning(&item);
                     int used = smk_item_step(&item, item_btn, can_use);
                     player.item_held = smk_item_present(&item);
-                    /* the user: "$55 = item selected from roulette" */
-                    if (!was_ready && smk_item_ready(&item)) smk_sfx_play(SMK_SFX_ITEMBOX);
+                    /* MEASURED (NOTES 218): the game plays $55 on the
+                     * frame the roulette STOPS - every one of ten spins
+                     * in the recording, at the exact frame the $2000 bit
+                     * clears - not when the item becomes usable 65
+                     * frames later, which is where this used to fire.
+                     * Hitting the box itself is silent. */
+                    if (was_spin && !smk_item_spinning(&item) && smk_item_present(&item))
+                        smk_sfx_play(SMK_SFX_ITEMBOX);
                     if (used >= 0) {
                         item_used_once = true;
                         int ahead_idx = -1;                 /* the red shell's target */
@@ -3199,7 +3222,7 @@ int main(int argc, char **argv)
                             for (int q = 1; q < SMK_CHARACTERS; q++)
                                 if (racers[q].rank == racers[0].rank + 1) { ahead_idx = q; break; }
                         switch (used) {
-                        case SMK_ITEM_MUSHROOM:  smk_player_boost(&player); smk_sfx_play(SMK_SFX_BOOST); break;
+                        case SMK_ITEM_MUSHROOM:  smk_player_boost(&player); break;
                         case SMK_ITEM_FEATHER:   smk_player_feather(&player, &kart); smk_sfx_play(SMK_SFX_FEATHER); break;
                         case SMK_ITEM_STAR:      smk_player_star(&player); break;
                         /* the user: the button alone THROWS (banana in an arc,

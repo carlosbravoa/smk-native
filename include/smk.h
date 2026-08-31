@@ -1849,6 +1849,9 @@ int  smk_item_step(smk_item *it, bool button, bool can_use);
 static inline bool smk_item_present(const smk_item *it) { return (it->word & 0x8000) != 0; }
 /* $81:B3AF sets $4000 when the roulette stops: the item is READY */
 static inline bool smk_item_ready(const smk_item *it) { return (it->word & 0x4000) != 0; }
+/* $0D70 = $A000 while the roulette TURNS; the bit clears when it lands on
+ * an item, which is the frame the game plays its sound (NOTES 218) */
+static inline bool smk_item_spinning(const smk_item *it) { return (it->word & 0x2000) != 0; }
 static inline int  smk_item_shown(const smk_item *it)   { return it->word & 0xFF; }
 /* $0D78 & 8 while held: the icon blinks */
 static inline bool smk_item_blink(const smk_item *it)

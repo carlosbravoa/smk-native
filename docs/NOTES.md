@@ -8987,3 +8987,39 @@ beep" is now a cue a player can actually hear.
 (The renderer grew SFX_SKIP_VOICES for this: voice 7 is the engine and
 the port synthesises that itself, so a countdown capture must not carry
 a second engine inside it.)
+
+## 218. Five more from a race: the rev's rates were backwards, and the roulette fires on the STOP
+
+**"If I start over-revved the sound gets stuck in high rev while the
+speed catches up"** and **"if I hit something at high speed the sound
+doesn't adjust"** are one bug: the rise and fall limits were the wrong
+way round.  The game's own trace says the parameter RISES about 1 a
+frame and FALLS up to 3 - after a crash from $3F it is back at $20
+within ten frames, and after an over-revved launch it drops from $3F to
+$25 in fifteen.  The port had rise 3 / fall 1, so a note that went up
+stayed up.  Now 0.8 up and 3 down, refitted (target = speed * 0.079 - 6).
+
+And through the COUNTDOWN the port no longer approximates at all: it
+already keeps the game's own rev - smk_player_rev transcribes $80:95BB
+and maintains $C2, the very accumulator the sound parameter is taken
+from (NOTES 163) - so the engine now reads its high byte and inherits
+the real thing, oscillation and all.
+
+**"Turbo boost on start doesn't have the mushroom sound"** - because the
+sound was hung on the mushroom ITEM rather than on the drive state.
+$48 now plays whenever drive becomes $10, which is the mushroom, the
+boost pads AND the turbo start: one hook, and it matches what the user
+called it by ear ("floor or mushroom boost").
+
+**"The coin sound is the right one, although it sounds three times"** -
+the render was running past the effect.  The coin is ONE sample struck
+twice: $0D at $17AD, then three frames later at $1F96, a fourth up, with
+a long decay.  A THIRD strike is the music taking the sample back, so
+the renderer now stops there; the coin is 0.77 s, low then high, once.
+
+**"The item roulette doesn't have a sound"** - it did, 65 frames late.
+$0D70 is $A000 while the roulette turns, and MEASURED across ten spins
+in the recording (32 to 206 frames long, all different), the game plays
+$55 on the exact frame that bit clears - the moment it lands on an item.
+The port was playing it when the item became USABLE ($4000, 65 frames
+later).  Hitting the box itself is silent, which is worth knowing too.
