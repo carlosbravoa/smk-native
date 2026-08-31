@@ -8649,3 +8649,29 @@ coloring (three entries differ), so the flash is a palette-pair swap
 drop and rises away while the kart is held (OURS: the pacing); the
 double feather-roll (an older copy of the step next to the pose
 machine) is gone - the flight held 33 frames at the single $0800 rate.
+
+## 209. The user's recordings: FOUR live entities, and the cheep-cheep measured
+
+Three MAME recordings (cheep-cheep / choco / moles) played back through
+a new per-frame block logger (tools/labs/mame/entblocks.lua: every $18xx
+entity block's position and motion words, with P1's own position and
+state on the same line).
+
+FOUR LIVE, NOT TWO.  Both short recordings show four entity PAIRS alive
+for the whole race - Koopa Beach 1's four fish are exactly track 13's
+decoded list entries 0-3, Choco Island 1's plants are entries 0-3 of
+track 18 - so the $84DAC5 windows are four words wide and $819136's
+"two in a one-player race" reading (NOTES 078) was BACKWARDS.  Ported:
+want = 4 in 1P.  That closes round 2's bug 12 as well: BC1 and Rainbow
+Road were running half their Thwomps.
+
+THE CHEEP-CHEEP (bug 10).  One fish per entity.  Its jump: the +$26
+word saws from +316 down at 18 a frame to -316 and relaunches - a
+~35-frame leap peaking ~11 world px - while the block wanders a few px
+around its list spot.  The port draws the ripped fish ladder (zero
+error on KB's OBJ palette 6, WHITE with the red back - the user's
+colours) with that parabola, two flip frames per hop (the flip period
+and the per-fish phase stagger are OURS).  Touching one spins and
+passes through, as before.  The recording also shows the touch drops
+the player into state $02, not the $0A/$0C banana pair - the felt
+result is the same spin; noted, not chased.

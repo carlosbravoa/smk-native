@@ -1461,7 +1461,11 @@ int main(int argc, char **argv)
             d2[0] = 0;
             for (size_t i = 0; i < sizeof R / sizeof R[0]; i++) {
                 smk_course_spawn(&c7, R[i].wp, false);
-                if (c7.seg != R[i].seg || c7.nlive != 2
+                /* FOUR live in 1P, measured off the cheep-cheep / choco
+                 * recordings (the old "two" reading of $819136 was
+                 * backwards); the windows' first two entities are the
+                 * ones these captures pinned */
+                if (c7.seg != R[i].seg || c7.nlive != 4
                     || c7.ent[c7.live[0]].x != R[i].x0 || c7.ent[c7.live[0]].y != R[i].y0
                     || c7.ent[c7.live[1]].x != R[i].x1 || c7.ent[c7.live[1]].y != R[i].y1) {
                     bad++;
@@ -1471,7 +1475,7 @@ int main(int argc, char **argv)
                              c7.ent[c7.live[1]].x, c7.ent[c7.live[1]].y);
                 }
             }
-            check("the obstacles respawn per lap segment, two slots at a time", !bad, d2);
+            check("the obstacles respawn per lap segment, four slots a window", !bad, d2);
             /* Ghost Valley has no static obstacles at all */
             static smk_course cg;
             if (smk_course_load(&rom, 16, &cg)) {
@@ -1655,8 +1659,9 @@ int main(int argc, char **argv)
                   bc1.seg_off[0] == 0 && bc1.seg_off[1] == 8 && bc1.seg_off[2] == 16
                   && bc1.seg_off[3] == 24 && bc1.seg_off[4] == 0, d);
             smk_course_spawn(&bc1, 40, false);
-            check("BC1's last segment respawns the FIRST pair (oracle: wp 40)",
-                  bc1.nlive == 2 && bc1.live[0] == 0 && bc1.live[1] == 1
+            check("BC1's last segment respawns the FIRST window (oracle: wp 40)",
+                  bc1.nlive == 4 && bc1.live[0] == 0 && bc1.live[1] == 1
+                  && bc1.live[3] == 3
                   && bc1.ent[0].x == 388 && bc1.ent[0].y == 68, NULL);
         }
     }

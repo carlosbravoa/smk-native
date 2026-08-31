@@ -513,16 +513,23 @@ Stubborn ones, and ones marked fixed that are not:
 9. ~~Rainbow Road Thwomps: you can pass THROUGH them; they should be a
    rock (the spin on touch, but solid).~~ FIXED: theme 7 flags the spin
    AND falls through to the measured bounce.
-10. Cheep-cheep (Koopa Beach and probably everywhere): shown as FOUR
+10. ~~Cheep-cheep (Koopa Beach and probably everywhere): shown as FOUR
     fishes in a block you cannot pass through.  The game has ONE, white
     colours, jumping around its place; touch = banana spin, then you
-    pass through.
+    pass through.~~ DONE (NOTES 209, from the user's cheep-cheep
+    recording): ONE white fish per entity (the ripped ladder on KB's
+    own palette, zero error), hopping with the measured leap (vz 316,
+    g 18, ~35 frames); touch spins and passes through.
 11. ~~The squash triggers TOO SOON - the Thwomp is still at top
     altitude.  It should be on contact.~~ FIXED: the squash fires only
     in the contact band of the drop; higher up the descending block is
     neither wall nor hit.  Selftest-pinned both ways.
-12. Bowser Castle 1 and Rainbow Road have FEWER Thwomps than the
-    original - a regression from assuming there were too many.
+12. ~~Bowser Castle 1 and Rainbow Road have FEWER Thwomps than the
+    original - a regression from assuming there were too many.~~ FIXED
+    (NOTES 209): the game runs FOUR live entities per spawn window in a
+    1P race - both recordings show four pairs alive the whole way - and
+    the old "two in 1P" reading of $819136 was backwards.  Every course
+    now carries its full window (Thwomps, plants, fish alike).
 13. ~~The map shows EXACTLY THE SAME TRACK whatever you race on.~~
     FIXED: load_race never rebuilt the minimap, so every shell race
     kept the boot track's picture.

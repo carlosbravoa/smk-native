@@ -242,12 +242,17 @@ int smk_course_segment(const smk_course *c, int waypoint)
 }
 
 /* $84DC17: when the segment changes the whole set is respawned from the
- * track's list at segment * 8 ($84DAC5), one word per live slot - two of
- * them in a one-player race, four in two ($819136). */
+ * track's list at the $84DAC5 offset, one word per live slot - FOUR of
+ * them in a one-player race, MEASURED: the cheep-cheep and choco
+ * recordings both show four live entity pairs the whole race, matching
+ * entities 0-3, and the offset table's 8-byte stride is exactly four
+ * words.  (The old $819136 reading had it backwards - "two in 1P" - and
+ * that is why BC1 and RR were missing half their Thwomps, round 2 bug
+ * 12's regression.) */
 void smk_course_spawn(smk_course *c, int waypoint, bool two_player)
 {
     int seg = smk_course_segment(c, waypoint);
-    int want = two_player ? 4 : 2;
+    int want = two_player ? 2 : 4;
     if (seg < 0) { c->nlive = 0; c->seg = -1; return; }
     if (seg == c->seg && c->nlive == want) return;
     c->seg = seg;

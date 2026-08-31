@@ -3,6 +3,7 @@
 #include "itemart.inc"
 #include "flatart.inc"
 #include "rrthwomp.inc"
+#include "fishart.inc"
 
 #ifndef SMK_BUILD
 #define SMK_BUILD "dev"
@@ -1288,6 +1289,13 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
          * entries differ); the alternation period is OURS. */
         const uint8_t *rrart = trk->theme == 7 ? SMK_RRTHWOMP : NULL;
         if (rrart) { aw = SMK_RRTHWOMP_W; ah = SMK_RRTHWOMP_H; }
+        /* Koopa Beach's entity is ONE white cheep-cheep, not the theme
+         * sheet's four-fish block (round 2, bug 10) - the ripped ladder
+         * on KB's own palette, two flip frames (the flip period is OURS,
+         * half a hop). */
+        const smk_itemart_tier *fart = trk->theme == 5
+            ? &SMK_FISHART[(fx_ticks / 18 + (unsigned)i) & 1] : NULL;
+        if (fart) { aw = fart->w; ah = fart->h; }
         /* The SIZE is the game's own scale, and the band only picks which
          * drawing supplies the detail.
          *
@@ -1400,6 +1408,17 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
         float depth = (SMK_PROJ_LES * (float)rw / 256.0f) / sc;
         int lift = (int)(smk_mover_world(course, i)
                          * (SMK_PROJ_LES / depth) * ((float)rh / 112.0f));
+        if (fart) {
+            /* the cheep-cheep HOPS - measured off the recording (NOTES
+             * 209): the jump velocity saws 316 -> -316 at 18 a frame in
+             * 8.8 units, a ~35-frame leap peaking ~11 world px; each
+             * fish on its own phase */
+            int t35 = (int)((fx_ticks + (unsigned)i * 13u) % 35u);
+            int hopz = (316 * t35 - 9 * t35 * t35) / 256;
+            if (hopz < 0) hopz = 0;
+            lift += (int)((float)hopz * (SMK_PROJ_LES / depth)
+                          * ((float)rh / 112.0f));
+        }
         if (getenv("SMK_LIFT_TRACE") && smk_mover_z(course, i) > 0)
             printf("lift f%u ent %d z %d world %.1f depth %.1f sc %.2f lift_px %d rh %d\n",
                    fx_ticks, i, smk_mover_z(course, i), smk_mover_world(course, i), depth, sc, lift, rh);
@@ -1425,7 +1444,8 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
             int lo = 999, hi = -1, bot = -1;
             for (int ay = 0; ay < ah; ay++)
                 for (int ax = 0; ax < aw; ax++) {
-                    if (!(rrart ? rrart[ay * aw + ax]
+                    if (!(fart ? fart->px[ay * aw + ax]
+                        : rrart ? rrart[ay * aw + ax]
                                 : obj_texel(obase, aw, ax, ay))) continue;
                     if (ax < lo) lo = ax;
                     if (ax > hi) hi = ax;
@@ -1451,10 +1471,12 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
                 int xx = x0 + dx;
                 if (xx < 0 || xx >= rw) continue;
                 int tx = dx * aw / pw;
-                uint8_t v = rrart ? rrart[ty * aw + tx]
+                uint8_t v = fart ? fart->px[ty * aw + tx]
+                          : rrart ? rrart[ty * aw + tx]
                                   : obj_texel(obase, aw, tx, ty);
                 if (!v) continue;
-                int pbase = rrart
+                int pbase = fart ? 0x80 + SMK_FISHART_PAL * 16
+                          : rrart
                           ? (((fx_ticks >> 3) & 1u) ? SMK_RRTHWOMP_PAL2
                                                     : SMK_RRTHWOMP_PAL1)
                           : smk_obj_pal(trk->theme);
