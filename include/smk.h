@@ -303,6 +303,8 @@ typedef struct {
     int      boo_t;            /* $82: 1152 frames invisible                */
     int      shrink_t;         /* $84: 1088 frames small after lightning    */
     int      squash_t;         /* bug 13: frames flat under a Thwomp (OURS) */
+    int      mole_on;          /* bug 12: a mole rides the kart (sticks until shaken) */
+    int      mole_hops;        /* hops so far toward shaking it off (OURS: 3) */
     int      fc, ca;           /* $FC countdown, $CA hold counter           */
     /* hazards (NOTES 113): water = the $22 wade, fall = the $24/$26 drop
      * and Lakitu's rescue.  The caller supplies the rescue target - the
@@ -692,6 +694,23 @@ float smk_mover_world(const smk_course *c, int slot);
  * "there should be two thwomps and there is only one, but you can still
  * hit the invisible one".  Whatever is drawn is what you can hit, so the
  * height that decides both comes from here and nowhere else. */
+/* the frame tick the collide pass shares with the renderer, so a mole is
+ * solid exactly when it is drawn (set once a frame by the main loop) */
+extern unsigned smk_obj_ticks;
+
+/* The MOLE's pop (bug 12, MEASURED off the user's recording, NOTES 210):
+ * the block's +$20 step runs 0 -> 6 -> 0 on a ~130-frame period - hidden
+ * ~97 frames, ~12 rising, ~9 held, ~12 sinking.  The per-mole stagger is
+ * OURS (the movers' 37-frame offset).  Returns 0..6: the height step. */
+static inline int smk_mole_step(unsigned t, int slot)
+{
+    unsigned ph = (t + (unsigned)slot * 37u) % 130u;
+    if (ph < 12)  return (int)(1 + ph * 6 / 12);
+    if (ph < 21)  return 6;
+    if (ph < 33)  return (int)(6 - (ph - 21) * 6 / 12);
+    return 0;
+}
+
 static inline int smk_mover_z(const smk_course *c, int slot)
 {
     if (slot < 0 || slot >= 32 || !smk_theme_has_movers(c->theme)) return 0;

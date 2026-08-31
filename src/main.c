@@ -4,6 +4,7 @@
 #include "flatart.inc"
 #include "rrthwomp.inc"
 #include "fishart.inc"
+#include "molart.inc"
 
 #ifndef SMK_BUILD
 #define SMK_BUILD "dev"
@@ -794,7 +795,16 @@ static void step_kart(smk_kart *k, smk_track *trk,
     if (k->hazard_hit == 2) {                        /* bug 13: flattened */
         player.squash_t = SMK_SQUASH_T;
         if (getenv("SMK_SQUASH_TRACE")) printf("squash f%ld: the player\n", hud_race_frames);
+    } else if (k->hazard_hit == 3) {                 /* bug 12: the mole grabs on */
+        if (!player.mole_on) {
+            player.mole_on = 1; player.mole_hops = 0;
+            if (getenv("SMK_MOLE_TRACE")) printf("mole ON f%ld\n", hud_race_frames);
+        }
     } else if (k->hazard_hit) smk_player_hit_banana(&player, k);   /* a plant, a fish: the spin */
+    /* a mole on the kart drags it to a crawl - it "sticks forever" until
+     * shaken (the recording's rides sit at crawl speeds; the cap and the
+     * three-hop shake-off are OURS) */
+    if (player.mole_on && k->speed > 0x100) k->speed = 0x100;
     if (player.squash_t > 0) { player.squash_t--; k->speed = 0; k->speed_frac = 0; }
     /* the rescue's EXIT (round 2, bugs 1/15): the moment the drop ends,
      * Lakitu takes his two-coin fee and rises; the kart is held (speed 0)
@@ -1335,6 +1345,44 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
         int pw = (int)((float)SMK_OBJ_PIPE_W * sc + 0.5f);
         int ph = (int)((float)SMK_OBJ_PIPE_H * sc + 0.5f);
         if (pw < 1 || ph < 1) return;
+        if (trk->theme == 2) {
+            /* DONUT PLAINS' entity is the MOLE (bug 12, NOTES 210): the
+             * recording's blocks are track 2's own list entries, and the
+             * pop is the block's +$20 step, 0..6 on a ~130-frame cycle.
+             * Drawn rising out of its hole: the top step/6 of the ripped
+             * art (zero-error on DP's palette 7), bottom at the ground. */
+            int mstep = smk_mole_step(fx_ticks, i);
+            if (mstep <= 0) return;                    /* underground */
+            const smk_itemart_tier *mt = &SMK_MOLART[0];
+            /* the mole RESTS +6,+6 from its hole - every recorded block
+             * sat exactly there - so it projects from that point, not
+             * the list entry; ~12 world px wide (OURS, sized to the
+             * hole art) */
+            float mpx, mpy, msc;
+            if (!smk_project(cam, (float)course->ent[i].x + 6.0f,
+                             (float)course->ent[i].y + 6.0f, rw, rh,
+                             &mpx, &mpy, &msc)) return;
+            float ms = 10.0f * msc / (float)mt->w;
+            int mdw = (int)((float)mt->w * ms + 0.5f);
+            int mdh = (int)((float)mt->h * ms + 0.5f);
+            int vis = mdh * mstep / 6;
+            if (mdw < 1 || vis < 1) return;
+            int mx0 = (int)mpx - mdw / 2, my0 = (int)mpy - vis;
+            for (int dy = 0; dy < vis; dy++) {
+                int yy = my0 + dy;
+                if (yy < 0 || yy >= rh) continue;
+                int ty = dy * mt->h / mdh;
+                for (int dx2 = 0; dx2 < mdw; dx2++) {
+                    int xx = mx0 + dx2;
+                    if (xx < 0 || xx >= rw) continue;
+                    int tx = dx2 * mt->w / mdw;
+                    uint8_t v = mt->px[ty * mt->w + tx];
+                    if (!v) continue;
+                    fb[yy * rw + xx] = trk->palette[(0x80 + SMK_MOLART_PAL * 16 + v) & 0xFF];
+                }
+            }
+            return;
+        }
         /* --obj-marks: draw where the object's BASE is, and where the road
          * is on that same row, so "is this pipe on the road" can be read
          * off the screen instead of judged by eye.  Magenta cross = the
@@ -1939,6 +1987,27 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
             smk_draw_sprite(karts, hf ? -frame : frame, trk->palette,
                             ppal, rw / 2, prow - lift, scale,
                             hf, fb, rw, rh, rw);
+        }
+        if (player.mole_on) {
+            /* the mole RIDES THE DRIVER (bug 12): the ripped art over the
+             * kart sprite's head, wobbling with the frame counter */
+            const smk_itemart_tier *mt = &SMK_MOLART[0];
+            int mdw = mt->w * scale * 2 / 3, mdh = mt->h * scale * 2 / 3;
+            int mcx = rw / 2 + (int)(((fx_ticks >> 3) & 1u) ? 1 : -1) * scale;
+            int mcy = prow - lift - 22 * scale;
+            for (int dy = 0; dy < mdh; dy++) {
+                int yy = mcy - mdh + dy;
+                if (yy < 0 || yy >= rh) continue;
+                int ty = dy * mt->h / mdh;
+                for (int dx2 = 0; dx2 < mdw; dx2++) {
+                    int xx = mcx - mdw / 2 + dx2;
+                    if (xx < 0 || xx >= rw) continue;
+                    int tx = dx2 * mt->w / mdw;
+                    uint8_t v = mt->px[ty * mt->w + tx];
+                    if (!v) continue;
+                    fb[(size_t)yy * rw + xx] = trk->palette[(0x80 + SMK_MOLART_PAL * 16 + v) & 0xFF];
+                }
+            }
         }
         /* the puffs sit relative to the kart sprite's top-left + (0,16)
          * and draw over the wheels (lower OAM slots than the kart) */
@@ -2892,6 +2961,12 @@ int main(int argc, char **argv)
                 if (mv_on < 0) mv_on = getenv("SMK_MV_ON") ? 1 : 0;
                 smk_course_movers_step(&crs, mv_on || crossings >= 2);
             }
+            smk_obj_ticks = fx_ticks;   /* the moles' clock, shared with collide */
+            /* shaking the mole off: three fresh hops (OURS - the user let
+             * one ride forever by doing nothing, which is the measured
+             * baseline; the shake count is not) */
+            if (player.mole_on && in.hop && ++player.mole_hops >= 3)
+                player.mole_on = 0;
             if (getenv("SMK_MV_TRACE") && (fx_ticks % 300) == 0)
                 printf("mv f%ld cross %d z0 %d p0 %d z1 %d p1 %d\n",
                        hud_race_frames, crossings,

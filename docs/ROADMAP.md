@@ -453,15 +453,14 @@ regression in them is noticed.
     only (show-all was left on).
 11. ~~Rainbow Road Thwomps: touching one is the "banana roll", not a wall,
     and they flash.~~ DONE (S34 for the flash).
-12. Moles are not implemented: they rise from holes, and passing over
-    one sticks it to your face.  GROUNDWORK IN (NOTES 206): the mole
-    size ladder is imported from the ripped hazard sheet against
-    Choco's own CGRAM (src/molart.inc, unused until the behaviour is
-    measured).  Two oracle probes show Choco's entity blocks are the
-    static plant pair - the popping moles are a separate dynamic spawn
-    (likely the $0800 block family), which only a real drive wakes.
-    NEEDS A RECORDING: a Choco Island run driving over the dirt, moles
-    popping, one caught on the face - same route as the AI weapons.
+12. ~~Moles are not implemented: they rise from holes, and passing over
+    one sticks it to your face.~~ DONE (NOTES 210, from the user's
+    moles recording): the moles are DONUT PLAINS' entities (not
+    Choco's), popping 0..6 on a measured ~130-frame cycle; underground
+    they are nothing, popped they latch on and drag the kart to a
+    crawl, riding the driver until shaken off (three hops - OURS; the
+    recording's mole was never shaken, "they can stick forever").
+    Art zero-error on DP's own palette 7.
 13. ~~A Thwomp landing exactly on you SQUASHES you - the flattened racer
     sprites are in tmp/new/flattened-racers-after-thwomp.png.~~ DONE
     (NOTES 204, S35): the sheet imported per driver, hazard kind 2,

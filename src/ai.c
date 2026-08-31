@@ -146,6 +146,13 @@ void smk_collide_objects(smk_kart *k, const smk_course *crs)
         /* Choco Island's piranha plants and Koopa Beach's cheep-cheeps are
          * not walls: "if you touch it, it triggers the spinning animation"
          * (the user).  The kart reports the touch; the driver spins. */
+        /* Donut Plains: the MOLE (bug 12).  Underground it is nothing at
+         * all; popped, it LATCHES onto the kart - hazard kind 3; the
+         * driver code attaches it.  The AI ignores it (OURS). */
+        if (crs->theme == 2) {
+            if (smk_mole_step(smk_obj_ticks, i) > 0) k->hazard_hit = 3;
+            continue;
+        }
         if (crs->theme == 3 || crs->theme == 5) { k->hazard_hit = 1; continue; }
         /* Rainbow Road's Thwomps spin you AND stand like a rock (round 2,
          * bug 9: "you can pass-through thwomps, they are not a rock as
@@ -495,7 +502,7 @@ void smk_racer_step(smk_racer *r, const smk_track *trk,
         smk_kart_move(&r->k, trk);
         r->k.hazard_hit = 0; smk_collide_objects(&r->k, crs);
         if (r->k.hazard_hit == 2) r->squash_t = SMK_SQUASH_T;
-        else if (r->k.hazard_hit) smk_racer_hit(r, 1, 0);
+        else if (r->k.hazard_hit == 1) smk_racer_hit(r, 1, 0);
         return;
     }
     if (r->squash_t > 0) { r->squash_t--; target = 0; }   /* bug 13: flattened, going nowhere */
@@ -514,7 +521,7 @@ void smk_racer_step(smk_racer *r, const smk_track *trk,
     smk_kart_move(&r->k, trk);
     r->k.hazard_hit = 0; smk_collide_objects(&r->k, crs);
     if (r->k.hazard_hit == 2) r->squash_t = SMK_SQUASH_T;
-    else if (r->k.hazard_hit) smk_racer_hit(r, 1, 0);
+    else if (r->k.hazard_hit == 1) smk_racer_hit(r, 1, 0);
 }
 
 /* ---- The rubber band (NOTES 167) -------------------------------------- */

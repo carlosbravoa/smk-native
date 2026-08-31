@@ -8675,3 +8675,29 @@ and the per-fish phase stagger are OURS).  Touching one spins and
 passes through, as before.  The recording also shows the touch drops
 the player into state $02, not the $0A/$0C banana pair - the felt
 result is the same spin; noted, not chased.
+
+## 210. The moles, measured and in: Donut Plains' entities, a 130-frame pop, a latch that lasts forever
+
+The moles recording's third race is DONUT PLAINS 2 (track 2 - cup 1's
+third course), and its four live blocks sit on track 2's own entity list
+(entries 0-3, each +6,+6 from the hole).  So the moles are the same
+entity system as the plants, fish and Thwomps - the per-track handler is
+what differs - and the spawn windows apply unchanged.
+
+THE POP (tools/labs/mame/moledump.lua, every word of one block, 300
+frames): the block's +$20 steps 0 -> 6 -> 0 - about 12 frames rising,
+9 held, 12 sinking - on a ~130-frame period, with +$1E animating only
+while up.  Ported as smk_mole_step(): the exact profile, the per-mole
+stagger OURS (the movers' 37).  A mole underground is nothing at all -
+not drawn, not solid; popped, touching it LATCHES it onto the kart.
+
+THE LATCH (tools/labs/mame/kartdiff.lua at the recorded touches): the
+kart block takes the mole block's ADDRESS at +$50 with counters at
++$52/+$5E, and the ride sits at crawl speeds for as long as the user
+cared to let it ("they can stick forever").  Ported: mole_on caps the
+kart at $100 (the cap is OURS - the recording shows a crawl, not the
+constant), the mole is drawn riding the driver's head, and three fresh
+hops shake it off (OURS: the user never shook theirs, so the real
+shake-off is unmeasured).  The art: the ripped mole ladder fits DP's
+OBJ palette 7 with ZERO error - it was Choco's palette 0 at avg err
+1449 until the recording relocated the moles to Donut Plains.

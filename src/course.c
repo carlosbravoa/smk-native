@@ -283,6 +283,7 @@ bool smk_theme_has_movers(int theme)
 }
 
 bool smk_obj_show_all = false;     /* the ROM's spawn set (bug 10: four plants where the game has one) */
+unsigned smk_obj_ticks;            /* the renderer's frame tick, shared with collide */
 
 void smk_course_movers_reset(smk_course *c)
 {
