@@ -1002,6 +1002,9 @@ static void build_result_table(smk_ui_result *res, smk_racer *rs, long player_to
         }
         order[j + 1] = v;
     }
+    if (getenv("SMK_RESULT_TRACE"))
+        for (int p = 0; p < SMK_CHARACTERS; p++)
+            printf("result %d: racer %d finish %ld\n", p, order[p], rs[order[p]].finish_frame);
     for (int p = 0; p < SMK_CHARACTERS; p++) {
         int i = order[p];
         rs[i].place = p + 1;
@@ -1787,8 +1790,12 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
         }
         /* the puffs sit relative to the kart sprite's top-left + (0,16)
          * and draw over the wheels (lower OAM slots than the kart) */
+        /* the base: the sweep's OAM puts cls-$54 puffs at kart_left -5..+21
+         * (avg +7) while kind $00's template dx average -11, so the game's
+         * base is kart_left + 18 - the old -16 sat every puff ~34 px left
+         * (bug 5, "coming shifted to the left") */
         smk_effects_draw(&fx, &fx_state, fx_mirror, fx_ticks,
-                         rw / 2 - 16 * scale, prow - lift - 16 * scale, scale,
+                         rw / 2 + 2 * scale, prow - lift - 16 * scale, scale,
                          trk->palette, fb, rw, rh);
         smk_draw_set_clip_mask(NULL, 0);
     }
@@ -2993,7 +3000,16 @@ int main(int argc, char **argv)
                  * ($D6 = $B4 + 8*min(coins,10)), so dropping one would
                  * make the ghost diverge from the recording it is being
                  * compared against. */
-                if (kart.bump_cool == SMK_BUMP_COOL && was_cool == 0 && !replay_path) {
+                bool star_bumped_player = false;
+                for (int q = 1; q < SMK_CHARACTERS; q++)
+                    if (racers[q].star_t > 0 && racers[q].k.bump_cool == SMK_BUMP_COOL)
+                        star_bumped_player = true;
+                if (kart.bump_cool == SMK_BUMP_COOL && was_cool == 0 && !replay_path
+                    && star_bumped_player) {
+                    /* bumped by an INVINCIBLE kart: the banana roll, no coin
+                     * rule (the user) */
+                    smk_player_hit_banana(&player, &kart);
+                } else if (kart.bump_cool == SMK_BUMP_COOL && was_cool == 0 && !replay_path) {
                     if (player.coins > 0) {
                         player.coins--;
                         smk_coinfx_spawn(coins_fx, SMK_COINFX_MAX,
@@ -3018,7 +3034,8 @@ int main(int argc, char **argv)
                          * This applies also to them hitting between
                          * themselves." - so a bump costs an AI nothing */
                         if (bc == SMK_BUMP_COOL && was_ai[q] == 0 && !replay_path) {
-                            if (racers[q].coins > 0) racers[q].coins--;
+                            if (player.star_t > 0) smk_racer_hit(&racers[q], 1, (int)(fx_ticks & 1));
+                            else if (racers[q].coins > 0) racers[q].coins--;
                         }
                         was_ai[q] = bc;
                     }

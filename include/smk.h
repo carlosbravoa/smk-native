@@ -399,11 +399,14 @@ static inline const signed char *smk_shake_of(uint8_t cls)
     static const signed char P1[8] = { -1, -1, -3, -1, -1,  0,  0,  0 };   /* hard   */
     static const signed char P2[8] = { -1,  0, -1,  0,  0, -1, -2, -2 };   /* soft   */
     static const signed char P3[8] = {  3,  2,  3,  2,  3,  2,  3,  2 };   /* sunk   */
+    /* only where the user confirmed the original vibrates: grass ($5A),
+     * the bridge ($50), and the mud's sunken buzz ($5C/$5E).  The other
+     * classes measured with patterns on Mario Circuit read as "jumpy on
+     * sand" elsewhere - class semantics differ per theme (bug 9). */
     switch (cls & 0xFE) {
-    case 0x44: case 0x50: case 0x58: case 0x5A: return P1;
-    case 0x4A: case 0x54: case 0x56:            return P2;
-    case 0x5C: case 0x5E:                       return P3;
-    default:                                    return P0;
+    case 0x50: case 0x5A:  return P1;
+    case 0x5C: case 0x5E:  return P3;
+    default:               (void)P2; return P0;
     }
 }
 

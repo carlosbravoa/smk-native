@@ -265,7 +265,7 @@ bool smk_theme_has_movers(int theme)
     return theme == 6 || theme == 7;
 }
 
-bool smk_obj_show_all = true;      /* see smk.h; --rom-spawn turns it off */
+bool smk_obj_show_all = false;     /* the ROM's spawn set (bug 10: four plants where the game has one) */
 
 void smk_course_movers_reset(smk_course *c)
 {

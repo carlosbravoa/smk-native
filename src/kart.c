@@ -75,7 +75,11 @@ static int32_t advance(int32_t pos, int16_t vel)
 {
     pos += (int32_t)vel << (SMK_POS_SHIFT - SMK_VEL_SHIFT);
     /* the track plane wraps, and so does the ROM's tilemap */
-    pos &= (SMK_WORLD_FIX - 1);
+    /* The world does NOT wrap (NOTES 063; bug 1: a long jump off Ghost
+     * Valley's edge teleported you across).  Clamp; the void classes at
+     * the edge do the rest. */
+    if (pos < 0) pos = 0;
+    if (pos > SMK_WORLD_FIX - 1) pos = SMK_WORLD_FIX - 1;
     return pos;
 }
 
