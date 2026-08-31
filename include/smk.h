@@ -1294,6 +1294,9 @@ void smk_music_toggle(void);
 void smk_sfx_play(int id);
 void smk_sfx_toggle(void);
 int  smk_sfx_audition(void);      /* `smk --sfx`: play them all, named */
+/* the engine note: v is the game's own $42 (NOTES 212), 0 = silent */
+void smk_engine_set(int v);
+void smk_engine_off(void);
 const char *smk_sfx_name(int id);
 
 /* the ids the ROM's own call sites use (tools/labs/sfxsites.py) */

@@ -64,6 +64,14 @@ and comes down toward the camera) and it inherits the kart's motion -
 thrown backwards it lands behind a forward-looking camera and is never
 drawn at all.
 
+**S38 — The engine note (NOTES 212).** The PITCH LAW is measured
+(f = 392 + 7.5*v Hz, from pinning the parameter with a ROM patch and
+reading the spectrum) and the REV is the ROM's own $80:9543. OURS: the
+tone itself - a single-cycle table built from the measured harmonic
+profile (h2 0.10, h3 0.15, the rest under 0.04) instead of a captured
+loop, because the diff-isolated engine carries only 6% harmonic energy
+and a captured loop cannot be pitched without clicking; and the volume.
+
 **S37 — The captured sound effects (NOTES 211).** The audio is the game's
 own, but the CUT is ours: where each effect starts and stops comes from a
 threshold on the subtracted envelope, with a 10 ms fade and a normalise,
@@ -594,11 +602,14 @@ In rough order of value:
    own ids so every call site reads like the ROM's. A dozen are named by
    the ROM's own call sites (hop, spin, water, lava, feather, mushroom,
    item box, coin, lap, the lights, the menu); the rest need an ear -
-   `smk --sfx` plays them all. STILL OPEN: **the engine note**, which is
-   not in the sound queue at all (the one per-frame id, $7E, is silent -
-   a parameter, not a sound), so it lives inside the driver and needs
-   either the driver's pitch path decoded or a captured loop pitched by
-   speed. Old text:** The pipeline works end to
+   `smk --sfx` plays them all. **The engine note is now IN** (NOTES 212, S38): it was never
+   in the queue - $80:9643 hands the driver one byte a frame - and both
+   halves are measured, the pitch law (f = 392 + 7.5*v Hz, by pinning
+   the parameter with a ROM patch) and the rev that drives it ($80:9543,
+   +$C0 a frame to $4F00, the over-rev surge, $180 decay to idle). The
+   turbo launch finally has the cue a player times against. STILL OPEN:
+   the SFX are not yet mixed per-event with distance/priority, and the
+   effects for events the ROM's call sites do not name. Old text:** The pipeline works end to
    end (NOTES 201/202, docs/SOUND.md): the game's own driver snapshotted
    and rendered, one clean loop per song, mapped in rom/music/map.txt.
    PARKED by the user 2026-08-30: the loops "don't start from a sensible

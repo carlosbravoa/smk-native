@@ -14,6 +14,8 @@
 #include <SDL_mixer.h>
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
+#include <stdlib.h>
 
 static bool     ready;
 static Mix_Music *cur, *loop_next;
@@ -152,6 +154,15 @@ int smk_sfx_audition(void)
         SDL_Delay((Uint32)(ms + 450));
         Mix_FreeChunk(c);
     }
+    /* and the ENGINE, which is no file at all: the ROM's rev law driving
+     * the measured tone (NOTES 212) - idle, up to the limit, and back */
+    printf("  engine  the rev, $01 -> $4F -> $01  (400 Hz -> 984 Hz)\n");
+    fflush(stdout);
+    for (int v = 1; v <= 0x4F; v++) { smk_engine_set(v); SDL_Delay(28); }
+    for (int i = 0; i < 40; i++) { smk_engine_set(0x4F - (i & 7)); SDL_Delay(30); }
+    for (int v = 0x4F; v >= 1; v--) { smk_engine_set(v); SDL_Delay(22); }
+    smk_engine_off();
+    SDL_Delay(400);
     return played;
 }
 
@@ -178,4 +189,79 @@ const char *smk_sfx_name(int id)
     case SMK_SFX_START:     return "the lights          ($80:8A2A)";
     default:                return "(unnamed - the ROM has no immediate call site)";
     }
+}
+
+/* ---- The engine (NOTES 212) -----------------------------------------
+ *
+ * The engine is NOT a queued effect: the 65816 hands the driver a
+ * parameter every frame - $42's low seven bits, written to APU port 2 at
+ * $80:9643 - and the driver holds a tone whose pitch is that parameter.
+ * MEASURED, by pinning $42 to a constant with a ROM patch and reading
+ * the spectrum: the pitch is LINEAR, f = 392 + 7.5 * v Hz (572/632/692/
+ * 752/812/872 Hz for $18/$20/$28/$30/$38/$40), and the tone is nearly
+ * pure - the second and third harmonics measure 0.10 and 0.15 of the
+ * fundamental, everything above that under 0.04.
+ *
+ * So the port SYNTHESISES it from that measured profile rather than
+ * looping a capture: a single-cycle table stepped at the wanted pitch,
+ * which cannot click when the rev moves (LABELLED, S38).  The rev itself
+ * is the ROM's own ($80:9543) and lives in main.c.
+ */
+#define ENG_TAB 512
+static float  eng_tab[ENG_TAB];
+static double eng_phase, eng_step;
+static float  eng_vol, eng_vol_want;
+static bool   eng_hooked, eng_built;
+
+static void engine_mix(void *ud, Uint8 *stream, int len)
+{
+    (void)ud;
+    int16_t *out = (int16_t *)stream;
+    int frames = len / 4;                       /* stereo, 16-bit */
+    for (int i = 0; i < frames; i++) {
+        /* the wanted volume is approached, never jumped to: a step in
+         * gain is a click, and the rev moves every frame */
+        eng_vol += (eng_vol_want - eng_vol) * 0.002f;
+        int j = (int)eng_phase;
+        float f = (float)(eng_phase - j);
+        float a = eng_tab[j & (ENG_TAB - 1)], b = eng_tab[(j + 1) & (ENG_TAB - 1)];
+        int16_t s = (int16_t)((a + (b - a) * f) * eng_vol * 32767.0f);
+        out[i * 2] = s; out[i * 2 + 1] = s;
+        eng_phase += eng_step;
+        if (eng_phase >= ENG_TAB) eng_phase -= ENG_TAB;
+    }
+}
+
+static void engine_build(void)
+{
+    /* the measured harmonic profile (V = $30 and $40 agreeing) */
+    static const float H[6] = { 1.00f, 0.10f, 0.15f, 0.01f, 0.02f, 0.02f };
+    float peak = 0.0f;
+    for (int i = 0; i < ENG_TAB; i++) {
+        double t = 2.0 * M_PI * i / ENG_TAB, s = 0.0;
+        for (int h = 0; h < 6; h++) s += H[h] * sin(t * (h + 1) + h * 0.7);
+        eng_tab[i] = (float)s;
+        if (fabsf(eng_tab[i]) > peak) peak = fabsf(eng_tab[i]);
+    }
+    if (peak > 0.0f) for (int i = 0; i < ENG_TAB; i++) eng_tab[i] /= peak;
+    eng_built = true;
+}
+
+void smk_engine_set(int v)
+{
+    if (!ready) return;
+    if (!eng_built) engine_build();
+    /* the driver's own silence: $42 = 0 is what $81:A26F writes to stop
+     * the sound, and an idle kart sits at 1 */
+    if (v <= 1 || music_on) { eng_vol_want = 0.0f; return; }
+    double f = 392.0 + 7.5 * (double)v;         /* MEASURED (NOTES 212) */
+    eng_step = (double)ENG_TAB * f / 44100.0;
+    const char *ev = getenv("SMK_ENGINE_VOL");
+    eng_vol_want = ev ? (float)atof(ev) : 0.22f;
+    if (!eng_hooked) { Mix_HookMusic(engine_mix, NULL); eng_hooked = true; }
+}
+
+void smk_engine_off(void)
+{
+    eng_vol_want = 0.0f;
 }

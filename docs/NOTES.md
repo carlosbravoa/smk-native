@@ -8740,3 +8740,36 @@ driver, pitched from a value the 65816 writes.  Two dead ends worth not
 repeating: id $17 wedges the driver (everything after it is one steady
 820 Hz tone, and it stops answering requests), and $7F - the id the boot
 code sends through $81:F504 - does not stop the music either.
+
+## 212. The engine note: a parameter, not a sound - and its pitch law, measured
+
+The engine never goes through the sound queue (NOTES 211).  `$80:9643`
+is `LDA $42 / STA $2142`: the 65816 hands the driver ONE BYTE a frame on
+APU port 2, and the driver holds a tone at that pitch.  ($81:A26F's
+`LDA #$00 / STA $42 / STA $43` is the driver's own silence, which is how
+we know 0 is off.)
+
+THE PITCH, measured by PATCHING THE ROM IN MAME: `A5 42` -> `A9 vv` pins
+the parameter for a whole replay, so a run is a steady tone and its
+spectrum can be read straight off.  Against the median spectrum of the
+whole sweep (which cancels the music), the tone is unmistakable:
+
+    $10 514 Hz   $18 572   $20 632   $28 692   $30 752   $38 812   $40 872
+
+- exactly 60 Hz per 8 of the parameter, so **f = 392 + 7.5 * v Hz**, dead
+linear.  The timbre is nearly a pure tone: the second and third
+harmonics measure 0.10 and 0.15 of the fundamental and nothing above is
+over 0.04.  The port synthesises from that profile (a single-cycle table
+stepped at the wanted pitch) rather than looping a capture, because a
+capture cannot be pitched without clicking and the diff-isolated engine
+was only 6% harmonic energy - the music does not cancel when the engine
+voice moves.
+
+THE REV is the ROM's own, `$80:9543`, transcribed: `$C2,x` accumulates
++$00C0 a frame while the throttle is held (bit 15 of the pad word at
+`$0020,y`) until it reaches $4F00, which sets the over-rev flag `$C4,x`;
+the flag then costs $0280 a frame until the rev falls back under $3F00
+and clears it - the SURGE you hear at full speed, not a constant note.
+Off the throttle it decays $0180 a frame to a $0100 idle.  The
+parameter is the rev's high byte, so the note runs 400 Hz idle to 984 Hz
+at the limit.  `smk --sfx` plays the sweep after the effects.

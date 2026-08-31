@@ -881,6 +881,35 @@ static void step_kart(smk_kart *k, smk_track *trk,
         (void)was_spin_kind;
     }
 
+    /* THE ENGINE ($80:9543, transcribed - NOTES 212).  $C2,x is a rev
+     * accumulator and $C4,x an over-rev flag: with the throttle held it
+     * climbs $C0 a frame until $4F00, which sets the flag; the flag
+     * costs $280 a frame until the rev falls back under $3F00 and
+     * clears it - the surge you hear at full speed.  Off the throttle
+     * it falls $180 a frame to a $100 idle.  The parameter the driver
+     * gets is the HIGH BYTE, and the port's tone follows it. */
+    {
+        static int rev = 0x0100, over;
+        bool thr = (player.pad & 0x8000) != 0;      /* B: accelerate */
+        if (over) {
+            rev -= 0x0280;
+            if (rev < 0x3F00) over = 0;
+        } else if (thr) {
+            rev += 0x00C0;
+            if (rev >= 0x4F00) over = 1;
+        } else {
+            rev -= 0x0180;
+            if (rev < 0x0100) rev = 0x0100;
+        }
+        if (rev > 0x5000) rev = 0x5000;
+        if (rev < 0x0100) rev = 0x0100;
+        smk_engine_set(race_state == RACE_RUN || race_state == RACE_COUNTDOWN
+                       ? rev >> 8 : 0);
+        if (getenv("SMK_ENGINE_TRACE") && (fx_ticks % 15) == 0)
+            printf("engine f%ld rev %04X -> $%02X (%.0f Hz) thr %d\n",
+                   hud_race_frames, rev, rev >> 8, 392.0 + 7.5 * (rev >> 8), (int)thr);
+    }
+
     /* the ground effect object ($80CF7B..$80D4A3): what the surface under
      * the kart and the slide/spin state ask for this frame */
     {
