@@ -877,20 +877,19 @@ static void step_kart(smk_kart *k, smk_track *trk,
         if (!k->airborne && was_air && player.state != 0x18)
             smk_sfx_play(SMK_SFX_LAND);
         if (k->bounce_hit) smk_sfx_play(SMK_SFX_WALL);
-        /* THE SKID (the user: "the sliding sound is missing").  $40 is
-         * the best-evidenced candidate: six of its ten firings in the
-         * Ghost Valley recording land while the slide lag $A8 is over
-         * 6000, and it is rare otherwise.  OURS: the threshold and the
-         * half-second cooldown, so it marks a drift instead of
-         * machine-gunning through one. */
+        /* THE SKID (NOTES 221).  Not a queued effect at all - like the
+         * roulette it is HELD: through a slide the driver keeps one
+         * voice on sample $00 at full envelope and dithers its pitch
+         * every frame, which is why the user hears it as "quite more
+         * frequent, to the point that it is a continuous sound".  So
+         * the port holds it too, with hysteresis so it does not chatter
+         * on the edge (OURS: the two thresholds). */
         {
-            static int slide_cool;
+            static bool sliding;
             int slip = player.vlag < 0 ? -player.vlag : player.vlag;
-            if (slide_cool > 0) slide_cool--;
-            if (slip > 6000 && slide_cool == 0 && !k->airborne) {
-                smk_sfx_play(SMK_SFX_SLIDE);
-                slide_cool = 30;
-            }
+            if (!sliding && slip > 4000 && !k->airborne) sliding = true;
+            else if (sliding && (slip < 2500 || k->airborne)) sliding = false;
+            smk_sfx_loop("skid", sliding && race_state == RACE_RUN);
         }
         if (surf_now == 0x5E && was_surf != 0x5E) smk_sfx_play(SMK_SFX_MUD);
         if (player.drive == 0x10 && was_drive != 0x10)

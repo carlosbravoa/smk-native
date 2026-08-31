@@ -9089,3 +9089,30 @@ The lesson is general and worth keeping: a sound that is not in the
 queue may still be the driver's, HELD on a voice with its pitch walked -
 so "nothing is queued" is not "there is no sound".  The engine works
 exactly this way too (NOTES 213), and the skid may well be the next.
+
+## 221. The skid is held too - and $40 was a false positive
+
+The user: "the sliding sound is not right.  In the real game it is quite
+more frequent, to the point that it is a continuous sound."  Which is
+the tell: continuous means HELD, the shape NOTES 220 had just found for
+the roulette, and not the one-shot $40 that a 6-of-10 correlation had
+suggested.  ($40 goes back in the unnamed pool - a correlation over ten
+firings was never enough to name a sound.)
+
+Watched over a 162-frame slide in the `crash` recording, voice 5 holds
+sample $00 at FULL envelope ($7F, never decaying) for the whole slide
+and the driver dithers its pitch every single frame between $0F00 and
+$1200 - about 12% either side - which is what makes it a rasp rather
+than a tone.  Later in the same slide the band drops to $0280-$0400.
+Nothing is keyed off until the slide ends.
+
+Rendering voice 5 alone over 76 frames of it gives rom/sfx/skid.wav, a
+1.28 s loop the port holds while the slide lag $A8 is over 4000, letting
+go under 2500 (hysteresis, ours, so it cannot chatter on the edge).
+
+The audio layer now carries TWO held sounds at once on reserved
+channels - the roulette and the skid can overlap, and do.
+
+Also, at the user's request, `smk --sfx` now offers only the sounds
+nobody has named yet: a second pass over assigned ones is wasted
+listening.  SMK_SFX_ALL=1 plays the lot.

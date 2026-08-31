@@ -15,9 +15,12 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <dirent.h>
+#include <ctype.h>
 #include <string.h>
 #include <math.h>
 #include <stdlib.h>
+
+#define SFX_LOOPS 2                 /* the roulette and the skid at once */
 
 static bool     ready;
 static Mix_Music *cur, *loop_next;
@@ -47,7 +50,7 @@ bool smk_audio_init(void)
     if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) return false;
     if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) != 0) return false;
     Mix_AllocateChannels(16);        /* several effects can overlap */
-    Mix_ReserveChannels(1);          /* channel 0 belongs to the loop */
+    Mix_ReserveChannels(SFX_LOOPS);  /* the held sounds get their own */
     Mix_HookMusicFinished(on_music_done);
     ready = true;
     return true;
@@ -152,33 +155,38 @@ void smk_sfx_play_name(const char *name)
  * voice keyed once and left running, its pitch stepped through eight
  * notes until the roulette stops (NOTES 220).  Looped on a channel of
  * its own so it can be started and stopped by the state that owns it. */
-#define SFX_LOOP_CHANNEL 0
-static Mix_Chunk *loop_chunk;
-static char       loop_name[24];
-static bool       loop_on;
+static struct { char name[24]; Mix_Chunk *chunk; bool on; } loops[SFX_LOOPS];
 
 void smk_sfx_loop(const char *name, bool on)
 {
-    if (!ready || !sfx_on) return;
+    if (!ready || !sfx_on || !name) return;
+    int slot = -1, free_slot = -1;
+    for (int i = 0; i < SFX_LOOPS; i++) {
+        if (loops[i].name[0] && !strcmp(loops[i].name, name)) { slot = i; break; }
+        if (!loops[i].name[0] && free_slot < 0) free_slot = i;
+    }
+    if (slot < 0) {
+        if (!on) return;                    /* nothing of that name is running */
+        slot = free_slot >= 0 ? free_slot : SFX_LOOPS - 1;
+        snprintf(loops[slot].name, sizeof loops[slot].name, "%s", name);
+    }
     if (on) {
-        if (loop_on && !strcmp(loop_name, name)) return;
-        if (!loop_chunk || strcmp(loop_name, name)) {
-            if (loop_chunk) Mix_FreeChunk(loop_chunk);
+        if (loops[slot].on) return;
+        if (!loops[slot].chunk) {
             char path[900];
             snprintf(path, sizeof path, "%ssfx/%s.wav", map_dir, name);
-            loop_chunk = Mix_LoadWAV(path);
-            snprintf(loop_name, sizeof loop_name, "%s", name);
+            loops[slot].chunk = Mix_LoadWAV(path);
             if (getenv("SMK_SFX_TRACE"))
-                printf("sfx: %s %s (loop)\n", path, loop_chunk ? "loaded" : "MISSING");
-            if (!loop_chunk) return;
+                printf("sfx: %s %s (loop)\n", path, loops[slot].chunk ? "loaded" : "MISSING");
+            if (!loops[slot].chunk) return;
         }
-        Mix_PlayChannel(SFX_LOOP_CHANNEL, loop_chunk, -1);
-        loop_on = true;
+        Mix_PlayChannel(slot, loops[slot].chunk, -1);
+        loops[slot].on = true;
         if (getenv("SMK_SFX_TRACE")) printf("sfx: loop %s ON\n", name);
-    } else if (loop_on) {
-        Mix_HaltChannel(SFX_LOOP_CHANNEL);
-        loop_on = false;
-        if (getenv("SMK_SFX_TRACE")) printf("sfx: loop off\n");
+    } else if (loops[slot].on) {
+        Mix_HaltChannel(slot);
+        loops[slot].on = false;
+        if (getenv("SMK_SFX_TRACE")) printf("sfx: loop %s off\n", name);
     }
 }
 
@@ -266,10 +274,23 @@ int smk_sfx_audition(void)
     bool stopped = false;
     if (ask)
         printf("\n  c = right   w = wrong   ENTER = skip   r = again   q = stop\n"
-               "  ...or just type what it really is.\n\n");
+               "  ...or just type what it really is.\n"
+               "  (only the ones nobody has named yet; SMK_SFX_ALL=1 for all)\n\n");
+    /* By default the audition offers only what NOBODY has named yet: a
+     * second pass through sounds already assigned is wasted listening
+     * (the user).  SMK_SFX_ALL=1 plays everything again. */
+    bool all = getenv("SMK_SFX_ALL") != NULL;
     for (int i = 0; i < n && !stopped; i++) {
         char path[900];
         snprintf(path, sizeof path, "%s/%s.wav", dirpath, names[i]);
+        if (!all) {
+            bool hex = strlen(names[i]) == 2
+                    && isxdigit((unsigned char)names[i][0])
+                    && isxdigit((unsigned char)names[i][1]);
+            if (!hex) continue;                       /* roulette, the beeps */
+            if (smk_sfx_name((int)strtol(names[i], NULL, 16))[0] != '(')
+                continue;                             /* already named       */
+        }
         Mix_Chunk *c = Mix_LoadWAV(path);
         if (!c) continue;
         played++;
@@ -361,7 +382,6 @@ const char *smk_sfx_name(int id)
     case SMK_SFX_MENU_OK:     return "menu confirm        (you)";
     case SMK_SFX_MENU_BACK:   return "menu back           (you)";
     case SMK_SFX_WALL:        return "hitting a wall      (measured)";
-    case SMK_SFX_SLIDE:       return "the skid, sliding hard (measured)";
     case SMK_SFX_BOOST:       return "mushroom boost      (you)";
     case SMK_SFX_MUD:         return "mud / heavy off-road (measured)";
     case SMK_SFX_MENU_SCROLL: return "menu scrolling      (you)";
@@ -389,7 +409,7 @@ const char *smk_sfx_hint(int id)
     case 0x37: return "(unnamed - the ROM plays it from bank $85's object code)";
     case 0x39: return "(unnamed - fires at speed on the road)";
     case 0x3C: return "(unnamed - fires against walls and grass, slowing hard)";
-    case 0x40: return "(unnamed - fires at speed, often in the bounce state)";
+    case 0x40: return "(unnamed - at speed, often in the bounce state; not the skid)";
     case 0x42: return "(unnamed - 23 times, settling after a big slowdown)";
     case 0x49: return "(unnamed - the ROM plays it near the item-box code)";
     case 0x4A: return "(unnamed - the ROM plays it from bank $85's object code)";
