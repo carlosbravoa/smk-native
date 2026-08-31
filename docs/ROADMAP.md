@@ -397,6 +397,33 @@ regression in them is noticed.
 | P7 audio | **decided** — pre-recorded; `smk spc` dumps the driver, rendering not wired up |
 | P8 modes / menus | **part** — a working shell: title → mode → driver+class → course-by-cup → race → results, in two modes.  SINGLE RACE is a Grand Prix course on its own: eight karts, the ROM's per-character grid order (`$81EE97`, NOTES 111) on the ROM's own grid rows with the player at the back (NOTES 164), starting coins, and a finishing place.  TIME TRIAL is alone with one mushroom and keeps the top five lap times per course on disk.  Font, palettes, cup order, course names, lap count and the time-trial rules are all ROM-derived (NOTES 147/148).  Residual: the real menu art (S20), the mushroom grant rule (S19); the cup is in (NOTES 198) |
 
+## Known bugs (the user's list, 2026-08-30)
+
+1. A long jump off the edge of Ghost Valley / Rainbow Road teleports you
+   to the other side - the WRAPPED WORLD again (NOTES 063/138).
+2. Bumping a player while invincible does nothing; it should trigger the
+   "banana roll" spin on the victim.
+3. Lakitu's drop-off is still wrong - not the kart, LAKITU's own position
+   through the whole process.
+4. AI karts finish as DNF; the simulation must bring them home with times.
+5. The tyre dust / water / mud comes out shifted to the left.
+6. The feather does nothing; it should jump with a 360 roll.
+7. Donut Plains water: sink at once but keep FULL control, very very
+   slow; after some seconds Lakitu rescues.
+8. Koopa Beach DEEP water (and likely Vanilla Lake): the same rule -
+   full control, super slow; shallow is fine.
+9. The kart is jumpy on sand; the original is not.
+10. Choco Island shows FOUR piranha plants where the game has one; the
+    same for Koopa Beach's cheep-cheeps.
+11. Rainbow Road Thwomps: touching one is the "banana roll", not a wall,
+    and they flash.
+12. Moles are not implemented: they rise from holes, and passing over
+    one sticks it to your face.
+13. A Thwomp landing exactly on you SQUASHES you - the flattened racer
+    sprites are in tmp/new/flattened-racers-after-thwomp.png.
+14. Bowser Castle 1 has one or two Thwomps in the wrong place.
+15. The track map shows the karts on the wrong track.
+
 ## Where to pick up next
 
 The driving is gated by two human runs at their best numbers (crash
