@@ -269,7 +269,41 @@ const char *smk_sfx_name(int id)
     case SMK_SFX_GROW:        return "back to full size   (you)";
     case SMK_SFX_SPIN:        return "a kart spun out     (you)";
     case SMK_SFX_FINISH:      return "the finish          (you)";
-    default:                  return "(unnamed - nobody has named this one yet)";
+    default:                  return smk_sfx_hint(id);
+    }
+}
+
+/* For the ids nobody has named: WHEN the game fires them, straight from
+ * the recordings (tools/labs/mame/sfxevent.lua).  A 60 ms blip means
+ * nothing on its own - "you heard this one going into a wall" is the
+ * hint that makes it placeable. */
+const char *smk_sfx_hint(int id)
+{
+    switch (id) {
+    case 0x26: return "(unnamed - fires standing still)";
+    case 0x28: return "(unnamed - the ROM plays it in the lava/pit handler)";
+    case 0x2A: return "(unnamed - the ROM plays it in the shell-tumble code)";
+    case 0x2B: return "(unnamed - fires at full speed on the road)";
+    case 0x37: return "(unnamed - the ROM plays it from bank $85's object code)";
+    case 0x39: return "(unnamed - fires at speed on the road)";
+    case 0x3C: return "(unnamed - fires against walls and grass, slowing hard)";
+    case 0x40: return "(unnamed - fires at speed, often in the bounce state)";
+    case 0x42: return "(unnamed - 23 times, settling after a big slowdown)";
+    case 0x49: return "(unnamed - the ROM plays it near the item-box code)";
+    case 0x4A: return "(unnamed - the ROM plays it from bank $85's object code)";
+    case 0x4B: return "(unnamed - the ROM plays it from bank $85's object code)";
+    case 0x4F: return "(unnamed - once, at speed on the road)";
+    case 0x50: return "(unnamed - fires almost stopped)";
+    case 0x51: return "(unnamed - fires stopped, on grass)";
+    case 0x53: return "(unnamed - fires at speed, on and off the road)";
+    case 0x54: return "(unnamed - once, losing a lot of speed at once)";
+    case 0x56: case 0x57: return "(unnamed - the ROM's Boo pair)";
+    case 0x58: case 0x5E: return "(unnamed - never seen fired in a recording)";
+    case 0x5C: return "(unnamed - fires at low speed)";
+    case 0x61: case 0x62: return "(unnamed - the engine-band ids from $80:96xx)";
+    case 0x64: return "(unnamed - the ROM plays it from bank $85's object code)";
+    case 0x65: return "(unnamed - fires at half speed; you thought a feather)";
+    default:   return "(unnamed - never seen fired, and nobody has named it)";
     }
 }
 

@@ -1298,6 +1298,7 @@ int  smk_sfx_audition(void);      /* `smk --sfx`: play them all, named */
 void smk_engine_set(int v);
 void smk_engine_off(void);
 const char *smk_sfx_name(int id);
+const char *smk_sfx_hint(int id);   /* when the game fires an unnamed one */
 
 /* The game's own sound ids (NOTES 211/213/214).  Named three ways, and
  * the strongest wins: MEASURED means the id was watched firing against

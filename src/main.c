@@ -2693,7 +2693,7 @@ int main(int argc, char **argv)
     if (sfx_audition) {
         /* `--sfx`: play every captured effect, named where the ROM's own
          * call site says what it is (NOTES 211).  For naming by ear. */
-        printf("the game's sound effects, from rom/sfx (id, length, what the ROM calls it):\n");
+        printf("the game's sound effects (id, length, what it is - and how we know):\n");
         int nplayed = smk_sfx_audition();
         if (!nplayed) printf("  none found - capture them first (docs/SOUND.md)\n");
         smk_rom_free(&rom);
