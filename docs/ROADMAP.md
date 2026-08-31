@@ -64,21 +64,26 @@ and comes down toward the camera) and it inherits the kart's motion -
 thrown backwards it lands behind a forward-looking camera and is never
 drawn at all.
 
-**S38 — The engine note (NOTES 212).** The PITCH LAW is measured
-(f = 392 + 7.5*v Hz, from pinning the parameter with a ROM patch and
-reading the spectrum) and the REV is the ROM's own $80:9543. OURS: the
-tone itself - a single-cycle table built from the measured harmonic
-profile (h2 0.10, h3 0.15, the rest under 0.04) instead of a captured
-loop, because the diff-isolated engine carries only 6% harmonic energy
-and a captured loop cannot be pitched without clicking; and the volume.
+**S38 — The engine note (NOTES 212/213).** Now the game's own sample
+(SRCN $02's loop, decoded from BRR) played at the game's own rate: the
+DSP pitch register is exactly $4700 + 34*v, measured at ten values, and
+the REV that drives v is the ROM's $80:9543. OURS: only the volume. (The
+first version synthesised a tone from a spectral peak and came out an
+octave and a half sharp - the peak was the sample's ninth partial. The
+user heard it immediately.)
 
-**S37 — The captured sound effects (NOTES 211).** The audio is the game's
-own, but the CUT is ours: where each effect starts and stops comes from a
-threshold on the subtracted envelope, with a 10 ms fade and a normalise,
-so an effect with a long quiet tail is trimmed shorter than the ROM's.
-Which event fires which id is the ROM's for the dozen with immediate call
-sites, and OURS-by-placement for the rest until a person names them.
-The engine note is absent entirely.
+**S37 — The sound effects, rendered from the chip (NOTES 213).** The
+samples are the game's own BRR, decoded from its sound RAM, and the
+notes are the DSP's own logged registers, so there is no music in them
+at all - the first route (recording and subtracting, NOTES 211) left the
+song smeared underneath every effect and is superseded. OURS: the
+envelope is read once a FRAME and interpolated between, where the chip
+runs it continuously; the effect is judged over when its envelope
+reaches zero or the music takes voice 3 back; and every sample comes
+from ONE snapshot, taken mid-race, so a state with a different sample
+bank (the menus, most likely) may render the wrong sample. Which event
+fires which id is the ROM's for the dozen with immediate call sites and
+OURS-by-placement for the rest until a person names them.
 
 **S36 — Round 2's approximations (NOTES 207/208).** The wading kart
 rides 9 px low (the game's submerged drawing is unread); the Rainbow

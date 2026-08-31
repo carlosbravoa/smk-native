@@ -90,3 +90,26 @@ reads like the ROM's: `smk_sfx_play(SMK_SFX_BOOST)` is `$80:B48C`'s own
 `LDA #$0048 / JSL $81F57A`.  `smk --sfx` plays every captured effect with
 its name.  Music is OFF by default now (`N` toggles it, `SMK_MUSIC=1`
 starts with it on) so the effects can be judged on their own.
+
+## Rendering the effects from the chip (NOTES 213) - the route that works
+
+Recording the speaker and subtracting leaves the music smeared under
+every effect.  This route never records audio:
+
+    # the sample bank: a snapshot of the sound RAM mid-race
+    SPC_FRAME=2400 SPC_OUT=tmp/snap \
+        tools/labs/mame/replay.sh moles tools/labs/mame/spcdump.lua 60
+    tools/labs/brr.py tmp/snap_2400.spc          # decode every BRR sample
+
+    # the notes: every DSP voice, every frame, with and without the poke
+    SFX_START=2200 tools/labs/mame/replay.sh moles \
+        tools/labs/mame/voicedump.lua 45 > tmp/vd_base.log
+    SFX_ID=48 SFX_START=2200 tools/labs/mame/replay.sh moles \
+        tools/labs/mame/voicedump.lua 45 > tmp/vdump/48.log
+
+    tools/labs/sfxrender.py tmp/snap_2400.spc tmp/vd_base.log \
+        tmp/vdump/48.log rom/sfx/48.wav
+
+The engine is the same idea: it is voice 7 playing SRCN $02 at a pitch
+of $4700 + 34*v, so `rom/sfx/engine.wav` is that sample's own loop and
+the port steps through it at the rate the DSP would.

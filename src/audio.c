@@ -191,85 +191,95 @@ const char *smk_sfx_name(int id)
     }
 }
 
-/* ---- The engine (NOTES 212) -----------------------------------------
+/* ---- The engine (NOTES 212/213) -------------------------------------
  *
  * The engine is NOT a queued effect: the 65816 hands the driver a
  * parameter every frame - $42's low seven bits, written to APU port 2 at
- * $80:9643 - and the driver holds a tone whose pitch is that parameter.
- * MEASURED, by pinning $42 to a constant with a ROM patch and reading
- * the spectrum: the pitch is LINEAR, f = 392 + 7.5 * v Hz (572/632/692/
- * 752/812/872 Hz for $18/$20/$28/$30/$38/$40), and the tone is nearly
- * pure - the second and third harmonics measure 0.10 and 0.15 of the
- * fundamental, everything above that under 0.04.
+ * $80:9643 - and the driver plays ONE LOOPED SAMPLE at a pitch set by
+ * it.  Both halves are now read off the CHIP rather than the speaker
+ * (NOTES 213): the engine is DSP voice 7, sample SRCN $02, and its DSP
+ * pitch register is exactly
  *
- * So the port SYNTHESISES it from that measured profile rather than
- * looping a capture: a single-cycle table stepped at the wanted pitch,
- * which cannot click when the rev moves (LABELLED, S38).  The rev itself
- * is the ROM's own ($80:9543) and lives in main.c.
+ *     P = $4700 + 34 * v        (masked to the DSP's 14 bits)
+ *
+ * measured at ten values of v, so the sample plays at
+ * ((1792 + 34v) / 4096) * 32000 Hz.  rom/sfx/engine.wav is that sample's
+ * own loop, decoded from the game's BRR by tools/labs/brr.py, so the
+ * timbre and the pitch are both the game's.  (The first version
+ * synthesised a tone from a spectral peak and came out an octave and a
+ * half high - the peak was the sample's 9th partial, not its pitch.)
  */
-#define ENG_TAB 512
-static float  eng_tab[ENG_TAB];
-static double eng_phase, eng_step;
-static float  eng_vol, eng_vol_want;
-static bool   eng_hooked, eng_built;
+static float  *eng_pcm;             /* the ROM's own loop, -1..1     */
+static int     eng_len;
+static double  eng_phase, eng_step;
+static float   eng_vol, eng_vol_want;
+static bool    eng_hooked, eng_tried;
 
 static void engine_mix(void *ud, Uint8 *stream, int len)
 {
     (void)ud;
-    if (getenv("SMK_ENGINE_TRACE")) {
-        static int calls;
-        if (calls < 3 || (calls % 200) == 0)
-            printf("engine_mix call %d len %d vol %.3f want %.3f step %.3f\n",
-                   calls, len, eng_vol, eng_vol_want, eng_step);
-        calls++;
-    }
     int16_t *out = (int16_t *)stream;
     int frames = len / 4;                       /* stereo, 16-bit */
+    if (!eng_pcm || eng_len < 2) { memset(stream, 0, (size_t)len); return; }
     for (int i = 0; i < frames; i++) {
         /* the wanted volume is approached, never jumped to: a step in
          * gain is a click, and the rev moves every frame */
         eng_vol += (eng_vol_want - eng_vol) * 0.002f;
         int j = (int)eng_phase;
         float f = (float)(eng_phase - j);
-        float a = eng_tab[j & (ENG_TAB - 1)], b = eng_tab[(j + 1) & (ENG_TAB - 1)];
+        float a = eng_pcm[j % eng_len], b = eng_pcm[(j + 1) % eng_len];
         int16_t s = (int16_t)((a + (b - a) * f) * eng_vol * 32767.0f);
         out[i * 2] = s; out[i * 2 + 1] = s;
         eng_phase += eng_step;
-        if (eng_phase >= ENG_TAB) eng_phase -= ENG_TAB;
+        while (eng_phase >= eng_len) eng_phase -= eng_len;
     }
 }
 
-static void engine_build(void)
+static void engine_load(void)
 {
-    /* the measured harmonic profile (V = $30 and $40 agreeing) */
-    static const float H[6] = { 1.00f, 0.10f, 0.15f, 0.01f, 0.02f, 0.02f };
-    float peak = 0.0f;
-    for (int i = 0; i < ENG_TAB; i++) {
-        double t = 2.0 * M_PI * i / ENG_TAB, s = 0.0;
-        for (int h = 0; h < 6; h++) s += H[h] * sin(t * (h + 1) + h * 0.7);
-        eng_tab[i] = (float)s;
-        if (fabsf(eng_tab[i]) > peak) peak = fabsf(eng_tab[i]);
+    eng_tried = true;
+    char path[900];
+    snprintf(path, sizeof path, "%ssfx/engine.wav", map_dir);
+    SDL_AudioSpec spec;
+    Uint8 *buf = NULL; Uint32 blen = 0;
+    if (!SDL_LoadWAV(path, &spec, &buf, &blen)) {
+        if (getenv("SMK_ENGINE_TRACE")) printf("engine: %s missing\n", path);
+        return;
     }
-    if (peak > 0.0f) for (int i = 0; i < ENG_TAB; i++) eng_tab[i] /= peak;
-    eng_built = true;
+    /* the decode is 16-bit mono, the game's own 32 kHz sample */
+    int n = (int)(blen / 2);
+    if (spec.format != AUDIO_S16LSB || spec.channels != 1 || n < 2) {
+        SDL_FreeWAV(buf);
+        if (getenv("SMK_ENGINE_TRACE")) printf("engine: unexpected wav format\n");
+        return;
+    }
+    eng_pcm = malloc((size_t)n * sizeof *eng_pcm);
+    if (!eng_pcm) { SDL_FreeWAV(buf); return; }
+    const int16_t *src = (const int16_t *)buf;
+    for (int i = 0; i < n; i++) eng_pcm[i] = (float)src[i] / 32768.0f;
+    eng_len = n;
+    SDL_FreeWAV(buf);
+    if (getenv("SMK_ENGINE_TRACE")) printf("engine: loaded %d samples\n", n);
 }
 
 void smk_engine_set(int v)
 {
     if (!ready) return;
-    if (!eng_built) engine_build();
+    if (!eng_tried) engine_load();
+    if (!eng_pcm) return;
     /* the driver's own silence: $42 = 0 is what $81:A26F writes to stop
      * the sound, and an idle kart sits at 1 */
     if (v <= 1 || music_on) { eng_vol_want = 0.0f; return; }
-    double f = 392.0 + 7.5 * (double)v;         /* MEASURED (NOTES 212) */
-    eng_step = (double)ENG_TAB * f / 44100.0;
+    int p = (0x4700 + 34 * v) & 0x3FFF;         /* MEASURED (NOTES 213) */
+    double rate = (double)p / 4096.0 * 32000.0;
+    eng_step = rate / 44100.0;
     const char *ev = getenv("SMK_ENGINE_VOL");
-    eng_vol_want = ev ? (float)atof(ev) : 0.15f;
+    eng_vol_want = ev ? (float)atof(ev) : 0.5f;
     if (!eng_hooked) {
         Mix_HookMusic(engine_mix, NULL);
         eng_hooked = true;
         if (getenv("SMK_ENGINE_TRACE"))
-            printf("engine: hook installed (v %d, step %.3f, ready %d)\n", v, eng_step, (int)ready);
+            printf("engine: hook installed (v %d, %.0f Hz sample rate)\n", v, rate);
     }
 }
 

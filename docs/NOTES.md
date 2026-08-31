@@ -8783,3 +8783,52 @@ left the countdown, where the rev is $01 and the engine is meant to be
 silent.  Long enough to reach the throttle, the dump reads 425 Hz at
 idle, 969 Hz at the limit and 840-867 Hz through the over-rev surge -
 the measured law, out of the port's own speaker path.
+
+## 213. Reading the sound off the CHIP: the BRR samples, and the engine's real pitch
+
+The user, after listening to NOTES 211's captures: "they all have the
+music in the background... probably we need a different approach for
+dumping sounds.  The only one that came clean was the engine sound,
+although with a higher pitch."  Both halves of that are right, and both
+have the same fix: stop recording the speaker.
+
+THE SAMPLES.  The SPC snapshot (tools/labs/mame/spcdump.lua) carries the
+whole 64K of sound RAM, and the DSP's DIR register ($5D = $3C here)
+points at the sample directory: four bytes a sample, start and loop.
+tools/labs/brr.py decodes the game's BRR blocks - a shift/filter header
+and sixteen 4-bit deltas through the SPC's four filters - so every sample
+the game has can be read straight out, perfectly clean.
+
+THE EFFECTS.  tools/labs/mame/voicedump.lua logs every voice's SRCN,
+PITCH, VOL and ENVX EVERY FRAME, once with the sound poked and once
+without; tools/labs/sfxrender.py keeps the voices that change in the
+first frames after the poke (the driver answers about five frames later
+- the first window of five missed it entirely) and rebuilds them from
+the BRR samples at the logged pitch and envelope.  Music cannot bleed
+in because none of it is ever rendered: a voice the effect STEALS is
+rendered as the effect, and the note the song would have played there is
+simply absent.  The mushroom, as a check, comes out as one voice, sample
+$13, a 0.96 s pitch sweep from 2031 to 3359 Hz with a decaying envelope
+- and nothing else.
+
+THE ENGINE'S PITCH.  It is DSP voice 7, sample SRCN $02 (a 1920-sample
+loop), and its pitch register is exactly
+
+    P = $4700 + 34 * v          (measured at ten values of v)
+
+so the sample plays at ((P & $3FFF)/4096)*32000 Hz - 14.3 kHz at idle,
+35 kHz at the limit.  NOTES 212's synthesis was an octave and a half
+sharp because the spectral peak it fitted (632 Hz at v=$20) is the
+sample's NINTH partial, not its pitch: the loop's own period is 320
+samples, so at that rate the engine's fundamental is about 70 Hz.  The
+port now loops the game's own sample at the game's own rate, so neither
+number can be wrong again.
+
+CAVEAT worth keeping in sight: the samples and the voice logs both come
+from a snapshot taken DURING A RACE (Donut Plains, frame 2400 of the
+`moles` recording), so every effect is rendered through the race's
+sample bank.  The menu sounds ($2C/$2E/$2F) are requested there too and
+render, but if the driver swaps banks between states their samples
+belong to a different set - re-capture from a menu snapshot before
+trusting those three.  Also measured on the way: the driver answers a
+request on VOICE 3 in this state, every time.
