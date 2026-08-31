@@ -77,7 +77,12 @@ own $42 (NOTES 214). Two earlier versions were wrong in a way only an
 ear caught: a synthesised tone an octave and a half sharp (it fitted the
 sample's ninth partial), then this parameter.
 
-**S37 — The sound effects, rendered from the chip (NOTES 213).** The
+**S37 — The sound effects, rendered from the chip (NOTES 213/215).**
+Two more things are ours here: where each effect ENDS (a voice is
+followed until the baseline plays the same thing for eight frames, which
+is a rule, not a measurement), and the fact that a sound made of several
+ids cannot be rebuilt at all by poking - the driver serialises them onto
+one voice - so the port fires the parts it knows separately. The
 samples are the game's own BRR, decoded from its sound RAM, and the
 notes are the DSP's own logged registers, so there is no music in them
 at all - the first route (recording and subtracting, NOTES 211) left the

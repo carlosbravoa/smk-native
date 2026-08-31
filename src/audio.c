@@ -14,6 +14,7 @@
 #include <SDL_mixer.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <dirent.h>
 #include <string.h>
 #include <math.h>
 #include <stdlib.h>
@@ -166,23 +167,56 @@ int smk_sfx_audition(void)
     size_t used = 0;
     answers[0] = 0;
     const char *out = getenv("SMK_SFX_NAMES");
-    char outpath[900];
+    char outpath[900], dirpath[900];
+    snprintf(dirpath, sizeof dirpath, "%ssfx", map_dir);
     if (out) snprintf(outpath, sizeof outpath, "%s", out);
-    else     snprintf(outpath, sizeof outpath, "%ssfx/names.txt", map_dir);
+    else     snprintf(outpath, sizeof outpath, "%s/names.txt", dirpath);
+    /* The directory, not a loop over ids: some sounds are SEVERAL ids
+     * the game fires together and those live under a name like
+     * "3C+3F.wav" (NOTES 215) - the user: "some sounds are just a part
+     * of the whole sound". */
+    char names[256][32];
+    int n = 0;
+    DIR *d = opendir(dirpath);
+    if (d) {
+        struct dirent *e;
+        while ((e = readdir(d)) && n < 256) {
+            size_t l = strlen(e->d_name);
+            if (l < 5 || l > 30 || strcmp(e->d_name + l - 4, ".wav")) continue;
+            if (!strncmp(e->d_name, "engine", 6)) continue;
+            snprintf(names[n], sizeof names[n], "%.*s", (int)(l - 4), e->d_name);
+            n++;
+        }
+        closedir(d);
+    }
+    for (int i = 1; i < n; i++) {            /* plain ids first, then pairs */
+        char t[32]; snprintf(t, sizeof t, "%s", names[i]);
+        int j = i - 1;
+        while (j >= 0 && ((strchr(names[j], '+') != NULL) != (strchr(t, '+') != NULL)
+                          ? (strchr(names[j], '+') != NULL)
+                          : strcmp(names[j], t) > 0)) {
+            snprintf(names[j + 1], sizeof names[j + 1], "%s", names[j]); j--;
+        }
+        snprintf(names[j + 1], sizeof names[j + 1], "%s", t);
+    }
     int played = 0, answered = 0;
     bool stopped = false;
     if (ask)
         printf("\n  c = right   w = wrong   ENTER = skip   r = again   q = stop\n"
                "  ...or just type what it really is.\n\n");
-    for (int id = 0; id < SFX_SLOTS; id++) {
+    for (int i = 0; i < n && !stopped; i++) {
         char path[900];
-        snprintf(path, sizeof path, "%ssfx/%02X.wav", map_dir, id);
+        snprintf(path, sizeof path, "%s/%s.wav", dirpath, names[i]);
         Mix_Chunk *c = Mix_LoadWAV(path);
         if (!c) continue;
         played++;
         int ms = (int)((double)c->alen * 1000.0 / (44100.0 * 4.0));
+        bool pair = strchr(names[i], '+') != NULL;
+        int id = (int)strtol(names[i], NULL, 16);
+        const char *label = pair ? "the two together, as the game fires them"
+                                 : smk_sfx_name(id);
         for (;;) {
-            printf("  $%02X  %5.2f s  %s\n", id, ms / 1000.0, smk_sfx_name(id));
+            printf("  $%-7s %5.2f s  %s\n", names[i], ms / 1000.0, label);
             fflush(stdout);
             Mix_PlayChannel(-1, c, 0);
             if (!ask) { SDL_Delay((Uint32)(ms + 450)); break; }
@@ -193,29 +227,29 @@ int smk_sfx_audition(void)
             while (*p == ' ' || *p == '\t') p++;
             size_t l = strlen(p);
             while (l && (p[l - 1] == '\n' || p[l - 1] == '\r' || p[l - 1] == ' ')) p[--l] = 0;
-            if (!strcmp(p, "r")) continue;                  /* again */
-            if (!l || !strcmp(p, "s")) break;               /* ENTER: no answer */
-            bool named = smk_sfx_name(id)[0] != '(';
-            const char *verdict, *note = smk_sfx_name(id);
+            if (!strcmp(p, "r")) continue;
+            if (!l || !strcmp(p, "s")) break;              /* ENTER: no answer */
             if (!strcmp(p, "q")) { stopped = true; break; }
-            if (!strcmp(p, "c"))        { verdict = named ? "correct" : "unknown";
-                                          if (!named) note = "(right, but still unnamed)"; }
-            else if (!strcmp(p, "w"))   { verdict = "WRONG"; note = "(no name given)"; }
-            else                        { verdict = named ? "WRONG" : "named"; note = p; }
+            bool named = !pair && smk_sfx_name(id)[0] != '(';
+            const char *verdict, *note = label;
+            if (!strcmp(p, "c"))      { verdict = named ? "correct" : "unknown";
+                                        if (!named) note = "(right, but still unnamed)"; }
+            else if (!strcmp(p, "w")) { verdict = "WRONG"; note = "(no name given)"; }
+            else                      { verdict = named ? "WRONG" : "named"; note = p; }
             used += (size_t)snprintf(answers + used, sizeof answers - used,
-                                     "$%02X  %5.2f s  %-9s  %s\n",
-                                     id, ms / 1000.0, verdict, note);
+                                     "$%-7s %5.2f s  %-9s  %s\n",
+                                     names[i], ms / 1000.0, verdict, note);
             answered++;
             break;
         }
         Mix_FreeChunk(c);
-        if (stopped || used > sizeof answers - 600) break;
+        if (used > sizeof answers - 600) break;
     }
     /* and the ENGINE, which is no file of notes at all: the ROM's rev law
      * driving the game's own looped sample (NOTES 213) */
     while (!stopped) {
-        printf("  engine  the rev, $01 -> $4F -> $01  (the sample SRCN $02,"
-               " pitch $4700 + 34*v)\n");
+        printf("  engine   the rev, $01 -> $4F -> $01  (SRCN $02 at the"
+               " game's own rate)\n");
         fflush(stdout);
         for (int v = 1; v <= 0x4F; v++) { smk_engine_set(v); SDL_Delay(28); }
         for (int i = 0; i < 40; i++) { smk_engine_set(0x4F - (i & 7)); SDL_Delay(30); }
@@ -230,9 +264,9 @@ int smk_sfx_audition(void)
         size_t l = strlen(p);
         while (l && (p[l - 1] == '\n' || p[l - 1] == '\r' || p[l - 1] == ' ')) p[--l] = 0;
         if (!strcmp(p, "r")) continue;
-        if (!l || !strcmp(p, "s") || !strcmp(p, "q")) break;   /* ENTER: no answer */
+        if (!l || !strcmp(p, "s") || !strcmp(p, "q")) break;
         used += (size_t)snprintf(answers + used, sizeof answers - used,
-                                 "engine  %-9s  %s\n",
+                                 "engine   %-9s  %s\n",
                                  strcmp(p, "c") ? "WRONG" : "correct",
                                  strcmp(p, "c") ? p : "the rev and its pitch");
         answered++;
@@ -249,14 +283,17 @@ int smk_sfx_audition(void)
 const char *smk_sfx_name(int id)
 {
     switch (id) {
-    case SMK_SFX_COIN:        return "coin                (measured)";
-    case SMK_SFX_HOP:         return "hop, taking off     (measured)";
+    case SMK_SFX_COIN:        return "coin (measured; you did not recognise it alone)";
+    case SMK_SFX_HOP:         return "hop (measured; you did not recognise it alone)";
     case SMK_SFX_MOLE:        return "mole                (measured)";
     case SMK_SFX_RAMP:        return "ramp / going up     (measured)";
     case SMK_SFX_FEATHER:     return "feather             (you)";
     case SMK_SFX_LAND:        return "landing             (measured)";
     case SMK_SFX_FALL:        return "falling off the road (you)";
-    case SMK_SFX_HIT_KART:    return "hitting another kart (you)";
+    case SMK_SFX_SHELL_HIT:   return "hitting with a shell (you)";
+    case SMK_SFX_THROW:       return "firing an item forward (you)";
+    case SMK_SFX_AI_HIT:      return "an AI kart takes a hit (you)";
+    case SMK_SFX_BOO:         return "Boo                 (you)";
     case SMK_SFX_MENU_MOVE:   return "menu move           (you)";
     case SMK_SFX_MENU_OK:     return "menu confirm        (you)";
     case SMK_SFX_MENU_BACK:   return "menu back           (you)";
@@ -265,10 +302,10 @@ const char *smk_sfx_name(int id)
     case SMK_SFX_MUD:         return "mud / heavy off-road (measured)";
     case SMK_SFX_MENU_SCROLL: return "menu scrolling      (you)";
     case SMK_SFX_JUMP_BIG:    return "the big ramp jump   (measured)";
-    case SMK_SFX_ITEMBOX:     return "item box            (measured)";
+    case SMK_SFX_ITEMBOX:     return "the item picked from the roulette (you)";
     case SMK_SFX_SHRINK:      return "poison mushroom, shrinking (you)";
     case SMK_SFX_GROW:        return "back to full size   (you)";
-    case SMK_SFX_SPIN:        return "a kart spun out     (you)";
+    case SMK_SFX_AI_FELL:     return "an AI kart fell on something (you)";
     case SMK_SFX_FINISH:      return "the finish          (you)";
     default:                  return smk_sfx_hint(id);
     }

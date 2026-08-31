@@ -1311,7 +1311,9 @@ const char *smk_sfx_hint(int id);   /* when the game fires an unnamed one */
 #define SMK_SFX_FEATHER    0x24   /* USER + ROM $80:B57B                       */
 #define SMK_SFX_LAND       0x25   /* MEASURED: drive $02->$00 and z to 0       */
 #define SMK_SFX_FALL       0x27   /* USER: "falling down from the road"        */
-#define SMK_SFX_HIT_KART   0x29   /* USER: "when you hit someone"              */
+#define SMK_SFX_SHELL_HIT  0x29   /* USER: "hitting with a shell"              */
+#define SMK_SFX_THROW      0x2B   /* USER: "forward firing an item"            */
+#define SMK_SFX_AI_HIT     0x39   /* USER: "ai player takes a hit"             */
 #define SMK_SFX_MENU_MOVE  0x2C   /* USER                                      */
 #define SMK_SFX_MENU_OK    0x2E   /* USER                                      */
 #define SMK_SFX_MENU_BACK  0x2F   /* USER                                      */
@@ -1323,7 +1325,8 @@ const char *smk_sfx_hint(int id);   /* when the game fires an unnamed one */
 #define SMK_SFX_ITEMBOX    0x55   /* MEASURED: 16 of 22 with the item word     */
 #define SMK_SFX_SHRINK     0x5D   /* USER: the poison mushroom                 */
 #define SMK_SFX_GROW       0x5F   /* USER: back to full size                   */
-#define SMK_SFX_SPIN       0x66   /* USER: "AI player gets hit, banana spin"   */
+#define SMK_SFX_AI_FELL    0x66   /* USER: "ai player fell on something"       */
+#define SMK_SFX_BOO        0x57   /* USER: "this is boo"                       */
 #define SMK_SFX_FINISH     0x68   /* USER: "getting to the goal"               */
 
 /* ---- Coins and item boxes (src/pickup.c, NOTES 110) ----------------------
@@ -1835,6 +1838,8 @@ void smk_item_box(smk_item *it, const smk_itemtab *t, int track, int lap,
  * Returns the id fired this frame, or -1. */
 int  smk_item_step(smk_item *it, bool button, bool can_use);
 static inline bool smk_item_present(const smk_item *it) { return (it->word & 0x8000) != 0; }
+/* $81:B3AF sets $4000 when the roulette stops: the item is READY */
+static inline bool smk_item_ready(const smk_item *it) { return (it->word & 0x4000) != 0; }
 static inline int  smk_item_shown(const smk_item *it)   { return it->word & 0xFF; }
 /* $0D78 & 8 while held: the icon blinks */
 static inline bool smk_item_blink(const smk_item *it)

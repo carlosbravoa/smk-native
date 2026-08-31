@@ -847,7 +847,6 @@ static void step_kart(smk_kart *k, smk_track *trk,
              * rank are the HUD's, which are the race's own. */
             if (player.item_held && !had && itemtab.ok && !replay_path) {
                 smk_item_box(&item, &itemtab, cur_track, hud_lap, hud_rank - 1, item_roll());
-                smk_sfx_play(SMK_SFX_ITEMBOX);          /* MEASURED (NOTES 214) */
             }
         }
     }
@@ -866,7 +865,7 @@ static void step_kart(smk_kart *k, smk_track *trk,
         uint8_t surf_now = smk_track_surface(trk, smk_kart_px(k->x), smk_kart_px(k->y));
         bool spin = (st == 0x0A || st == 0x0C || st == 0x1A);
         bool was_spin = (was_state == 0x0A || was_state == 0x0C || was_state == 0x1A);
-        if (spin && !was_spin) smk_sfx_play(SMK_SFX_SPIN);
+        if (spin && !was_spin) smk_sfx_play(SMK_SFX_SHELL_HIT);
         if (player.hazard != was_hazard2 && player.hazard == 6)
             smk_sfx_play(SMK_SFX_FALL);              /* off the road   */
         if (player.mole_on && !was_mole) smk_sfx_play(SMK_SFX_MOLE);
@@ -3167,8 +3166,11 @@ int main(int argc, char **argv)
                             racers[1].squash_t = SMK_SQUASH_T;
                         }
                     }
+                    bool was_ready = smk_item_ready(&item);
                     int used = smk_item_step(&item, item_btn, can_use);
                     player.item_held = smk_item_present(&item);
+                    /* the user: "$55 = item selected from roulette" */
+                    if (!was_ready && smk_item_ready(&item)) smk_sfx_play(SMK_SFX_ITEMBOX);
                     if (used >= 0) {
                         item_used_once = true;
                         int ahead_idx = -1;                 /* the red shell's target */
@@ -3185,20 +3187,23 @@ int main(int argc, char **argv)
                          * shell fast and bouncing); button + DOWN leaves it
                          * behind you, static - the same for both */
                         case SMK_ITEM_BANANA:
+                            if (!in.dpad_down) smk_sfx_play(SMK_SFX_THROW);
                             smk_proj_throw(projs, SMK_PROJ_MAX, SMK_PROJ_BANANA, &kart,
                                            player.heading, 0, -1, false,
                                            !in.dpad_down && !getenv("SMK_BANANA_DOWN"));
                             break;
                         case SMK_ITEM_GREEN:
+                            if (!in.dpad_down) smk_sfx_play(SMK_SFX_THROW);
                             smk_proj_throw(projs, SMK_PROJ_MAX, SMK_PROJ_GREEN, &kart,
                                            player.heading, 0, -1,
                                            in.dpad_down || getenv("SMK_SHELL_DOWN"), false);
                             break;
                         case SMK_ITEM_RED:
+                            smk_sfx_play(SMK_SFX_THROW);
                             smk_proj_throw(projs, SMK_PROJ_MAX, SMK_PROJ_RED, &kart,
                                            player.heading, 0, ahead_idx, false, false);
                             break;
-                        case SMK_ITEM_BOO:       player.boo_t = 0x480; break;
+                        case SMK_ITEM_BOO:       player.boo_t = 0x480; smk_sfx_play(SMK_SFX_BOO); break;
                         case SMK_ITEM_COIN:
                             player.coins += 2; if (player.coins > 99) player.coins = 99;
                             smk_coinfx_pickup2(coins_fx, SMK_COINFX_MAX);
@@ -3296,6 +3301,7 @@ int main(int argc, char **argv)
                                    q, SMK_DRIVERS[racers[q].character % SMK_CHARACTERS].name,
                                    smk_kart_px(racers[q].k.x), smk_kart_px(racers[q].k.y), racers[q].rank, hq,
                                    smk_kart_px(kart.x), smk_kart_px(kart.y), racers[0].rank);
+                        if (hq) smk_sfx_play(SMK_SFX_AI_HIT);   /* the user's $39 */
                         if (hq == SMK_PROJ_BANANA) smk_racer_hit(&racers[q], 1, (int)(fx_ticks & 1));
                         else if (hq == SMK_PROJ_MUSHROOM) { if (racers[q].star_t <= 0) racers[q].shrink_t = racers[q].shrink_t > 0 ? 0 : 0x440; }   /* shrink only; a second one restores (bug 21) */
                         else if (hq != SMK_PROJ_NONE) smk_racer_hit(&racers[q], 2, (int)(fx_ticks & 1));

@@ -80,15 +80,13 @@ def main():
                     touched[v] = f
             elif t[3] != b[3] and t[3] not in live:
                 touched[v] = f
-    if not touched:
-        print('%s: the effect touched no voice' % os.path.basename(out_p)); return
     srcns = {test[(f, v)][3] for v, f in touched.items() for f in [f]}
     samples = brr.load_samples(spc)
     nout = int((f1 - f0 + 2) / FPS * OUT_SR)
     mix = np.zeros((nout, 2))
     for v, first in sorted(touched.items()):
         phase, cur_srcn = 0.0, None
-        quiet = 0
+        quiet = same = 0
         first_srcn = test[(first, v)][3]
         for f in range(first, f1 + 1):
             t = test.get((f, v))
@@ -96,17 +94,24 @@ def main():
                 continue
             vl, vr, pitch, srcn, envx = t
             b = base.get((f, v))
-            # the effect is over on this voice when its envelope has
-            # gone, or when it is playing exactly what the baseline
-            # plays again - the music has taken the voice back
+            # The effect is over on this voice only when the baseline is
+            # playing EXACTLY the same thing again, and stays that way -
+            # not at the first silent frame.  The user: "some sounds are
+            # just a part of the whole sound": several of these are two
+            # or three bursts with gaps between them, and stopping at the
+            # first gap cut them into fragments (NOTES 215).
+            if b is not None and t == b:
+                same += 1
+                if same >= 8 and f > first + 4:
+                    break                  # the music has the voice back
+            else:
+                same = 0
             if envx == 0 and f > first + 2:
                 quiet += 1
-                if quiet >= 2:
-                    break                  # the envelope has run out
+                if quiet >= 90:
+                    break                  # a second and a half of nothing
             else:
                 quiet = 0
-            if f > first + 3 and b is not None and srcn == b[3] and srcn != first_srcn:
-                break                      # the music has the voice back
             samp = samples.get(srcn)
             if samp is None:
                 continue

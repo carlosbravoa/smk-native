@@ -8871,3 +8871,39 @@ tools/labs/mame/revlog.lua) sits at a median of $39 and a maximum of
 $4E.  The port now walks the parameter toward speed * 0.07, at most 3 a
 frame up and 1 a frame down, which is a FIT to those frames rather than
 a transcription (S38) - and it puts the note where the game keeps it.
+
+## 215. "Some sounds are just a part of the whole sound"
+
+The user's second audition, and the sentence that matters: several of
+these renders are fragments.  Three things came out of chasing it.
+
+FIRST, the renders WERE cut short.  sfxrender stopped a voice at its
+first silent frame; several effects are two or three bursts with gaps
+between them, so the gap ended the render.  It now stops only when the
+baseline is playing exactly the same thing again and STAYS that way for
+eight frames.  Everything got longer - $48 0.97 -> 1.29 s, $5D 1.58 ->
+1.92, $61 1.84 -> 2.46, $20 and $21 tripled.
+
+SECOND, a sound can be SEVERAL IDS.  The recordings show ids firing
+within a few frames of each other at one event - $3C+$3F against a wall,
+$20+$42, $20+$21 - and, more often, an id firing again one frame later
+($25 in 120 bursts, median two requests; $48 once for 27 requests over
+12 frames, the whole boost).  But those composites CANNOT be rebuilt by
+poking: the driver answers every request on voice 3, so a second id -
+even three frames later - simply replaces the first.  The composite
+renders were all just the second sound, and were dropped.
+
+THIRD, and the real conclusion: an isolated 200 ms fragment is the wrong
+thing to ask a person about.  The user got through two passes and could
+place a third of them.  What they COULD name were the long, distinctive
+ones (the poison mushroom, Boo, the finish, the menu) - and what they
+could not are exactly the short ones the game layers under an engine.
+So the naming that is left belongs IN PLAY, with the effects wired to
+their events, which is now the case for fifteen of them.
+
+Their names, applied: $27 falling off the road, $29 hitting with a
+shell, $2B firing an item forward, $39 an AI kart taking a hit, $55 the
+item chosen off the roulette (not the box), $56/$57 Boo, $65 the
+feather, $66 an AI kart falling, $68 the finish, $5D/$5F the poison
+mushroom both ways, $4C mud, $4D menu scrolling, $2C/$2E/$2F the menu.
+And the engine, at last: "correct - the rev and its pitch".

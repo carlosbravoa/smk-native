@@ -15,16 +15,39 @@ end
 local function w16(a, v)
   mem:write_u8(0x7E0000 + a, v & 0xFF); mem:write_u8(0x7E0001 + a, (v >> 8) & 0xFF)
 end
-local id = os.getenv("SFX_ID")
+-- SFX_ID takes a LIST ("3C,3F"): the game fires several ids for one
+-- sound and the parts mean nothing alone (NOTES 215), so the queue -
+-- which holds three - is poked with the whole group at once.
+local ids = {}
+for tok in string.gmatch(os.getenv("SFX_ID") or "", "[^,]+") do
+  ids[#ids+1] = tonumber(tok, 16)
+end
 local start = tonumber(os.getenv("SFX_START") or "2200")
 local after = tonumber(os.getenv("SFX_AFTER") or "150")
 local n = 0
 print("frame,voice,voll,volr,pitch,srcn,envx")
 emu.register_frame_done(function()
   n = n + 1
-  if id and n == start then
-    w16(0x0E6C, tonumber(id, 16)); w16(0x0E74, 0); w16(0x0E6A, 2)
-    print("FIRE " .. n .. " " .. id)
+  -- SFX_GAPF spaces the list out over frames instead of queueing it in
+  -- one: two ids in the same frame land on the same voice and the
+  -- second simply replaces the first (NOTES 215).
+  if #ids > 0 then
+    local gap = tonumber(os.getenv("SFX_GAPF") or "0")
+    if gap > 0 then
+      for i, v in ipairs(ids) do
+        if n == start + (i - 1) * gap then
+          w16(0x0E6C, v); w16(0x0E74, 0); w16(0x0E6A, 2)
+          print("FIRE " .. n .. " " .. string.format("%02X", v))
+        end
+      end
+    elseif n == start then
+      for i, v in ipairs(ids) do
+        w16(0x0E6C + (i - 1) * 2, v)
+        w16(0x0E74 + (i - 1) * 2, 0)
+      end
+      w16(0x0E6A, #ids * 2)
+      print("FIRE " .. n .. " " .. (os.getenv("SFX_ID") or ""))
+    end
   end
   if n < start - 4 then return end
   if n > start + after then manager.machine:exit() end
