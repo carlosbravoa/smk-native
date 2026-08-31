@@ -426,12 +426,21 @@ static void draw_finish_flag(uint32_t *fb, int rw, int rh,
 /* Lakitu lowering a fished-out kart back onto the road (NOTES 168a).
  * Only during the DROP phase - through the carry his sprites are parked
  * off the side of the screen, which is the game not drawing him. */
+static int rescue_draw_lift;        /* the kart's drawn lift this frame */
 static void draw_rescue_lakitu(uint32_t *fb, int rw, int rh,
                                const uint32_t *palette, int t)
 {
     if (!hud_art.ok) return;
     int sc = rw >= 640 ? 3 : 2;
-    int y = smk_rescue_y(t);
+    /* LAKITU RIDES WITH THE KART (bug 3): through the whole drop his row
+     * is the kart's sprite top minus 27 and his block sits 15 px left of
+     * the kart's (NOTES 195's capture, both from the same frames).  The
+     * kart's drawn top = the player line minus its lift minus 32. */
+    int scale2 = rw / 256; if (scale2 < 1) scale2 = 1;
+    int kart_top = (int)(SMK_PLAYER_LINE * (float)rh / 112.0f) / sc
+                 - (rescue_draw_lift + 32 * scale2) / sc;
+    int y = kart_top - 27;
+    (void)t;
     static const struct { int dx, dy, tile; } PART[5] = {
         {  0,  0, SMK_RESCUE_TL }, { 16,  0, SMK_RESCUE_TR },
         {  0, 16, SMK_RESCUE_BL }, { 16, 16, SMK_RESCUE_BR },
@@ -982,6 +991,19 @@ static void settle_field(smk_racer *rs, const smk_track *t,
         for (int i = 1; i < SMK_CHARACTERS; i++)
             if (rs[i].finish_frame < 0) smk_racer_step(&rs[i], t, c, ph);
     }
+    /* whoever is STILL out there (stuck on an obstacle, off in the weeds)
+     * gets a time anyway - "the simulation needs them to arrive, with
+     * times" (bug 4).  Ordered by their progress; OURS, labelled. */
+    {
+        int left[SMK_CHARACTERS], nl = 0;
+        for (int i = 1; i < SMK_CHARACTERS; i++)
+            if (rs[i].finish_frame < 0) left[nl++] = i;
+        for (int a = 0; a < nl; a++)
+            for (int b = a + 1; b < nl; b++)
+                if (rs[left[b]].lap > rs[left[a]].lap) { int q = left[a]; left[a] = left[b]; left[b] = q; }
+        for (int a = 0; a < nl; a++)
+            rs[left[a]].finish_frame = now + CAP + (long)(a + 1) * 300;
+    }
 }
 
 /* The finishing order and everyone's total, for the results screen. */
@@ -1376,7 +1398,9 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
                 uint8_t v = obj_texel(obase, aw, tx, ty);
                 if (!v) continue;
                 fb[yy * rw + xx] =
-                    trk->palette[(smk_obj_pal(trk->theme) + v) & 0xFF];
+                    trk->palette[((unsigned)(trk->theme == 7
+                                    ? smk_obj_pal(trk->theme) ^ (int)(((fx_ticks >> 2) & 1u) << 4)
+                                    : smk_obj_pal(trk->theme)) + v) & 0xFF];
             }
         }
 }
@@ -1759,6 +1783,7 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
             if (rescue_t < 64) lift = 100000;                /* off-screen: not drawn */
             else lift = (70 - row) * scale;
         }
+        rescue_draw_lift = lift;
         /* Fallen through the track: the kart goes UNDER the plane, so it
          * is hidden by the track and shows only through the hole it fell
          * into - the SNES drops the sprite below BG1 (NOTES 128). */
@@ -2186,11 +2211,11 @@ int main(int argc, char **argv)
     if (!smk_coin_load(&rom, &coin_art))
         fprintf(stderr, "warning: coin sprite not loaded\n");
     if (smk_items_load(&rom, &itemtab)) smk_item_tables = &itemtab;
+    else fprintf(stderr, "warning: item tables not loaded\n");
     if (!smk_projart_load(&rom, &proj_art))
         fprintf(stderr, "warning: banana/shell sprites not loaded\n");
     if (!smk_itemicons_load(&rom, &item_icons))
         fprintf(stderr, "warning: item icons not loaded\n");
-    else fprintf(stderr, "warning: item tables not loaded\n");
     if (!smk_flag_load(&rom, &flag_art))
         fprintf(stderr, "warning: chequered flag not loaded\n");
 
@@ -2626,11 +2651,11 @@ int main(int argc, char **argv)
                 in.hop_held = false;
             }
             if (getenv("SMK_SPEED_TRACE") && race_state == RACE_RUN)
-                printf("spd f%ld speed %d surf $%02X type %d drive $%02X fc %d state $%02X target %d at %d,%d\n",
+                printf("spd f%ld speed %d surf $%02X type %d drive $%02X fc %d state $%02X target %d at %d,%d z %d air %d\n",
                        hud_race_frames, kart.speed,
                        smk_track_surface(&trk, smk_kart_px(kart.x), smk_kart_px(kart.y)),
                        player.type, player.drive, player.fc, player.state, player.target,
-                       smk_kart_px(kart.x), smk_kart_px(kart.y));
+                       smk_kart_px(kart.x), smk_kart_px(kart.y), (int)(kart.z >> 8), (int)kart.airborne);
             if (race_state == RACE_RUN || race_state == RACE_FINISH) {
                 hud_race_frames++;
                 smk_race_frame = hud_race_frames;   /* so a kart can stamp its own finish */
@@ -2832,6 +2857,11 @@ int main(int argc, char **argv)
                             break;
                         default: break;
                         }
+                        /* the feather launched `kart` AFTER the me->k sync
+                         * above; without this the collide pass copies the
+                         * stale grounded kart back and the flight is lost
+                         * the same frame (bug 6) */
+                        me->k = kart;
                     }
                     if (getenv("SMK_ITEM_TRACE")) {
                         printf("item f%ld word=$%04X t=%d used=%d | kart (%d,%d) spd %d st=%02X drv=%02X coins %d |",

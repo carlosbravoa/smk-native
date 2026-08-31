@@ -88,7 +88,7 @@ static void shell_checks(smk_rom *rom)
     check(ui.track == 1, "flower cup course 2 is track 1 (GHOST VALLEY 2)");
     check(!strcmp(smk_track_name(rom, ui.track), "GHOST VALLEY 2"), "and it is named so");
 
-    /* the three modes wrap, and Grand Prix is refused, not entered */
+    /* the three modes wrap, and Grand Prix ENTERS the cup (NOTES 198) */
     smk_ui_input up = { 0 }; up.up = true;
     smk_ui_init(&ui);
     smk_ui_step(&ui, rom, &go);
@@ -97,14 +97,18 @@ static void shell_checks(smk_rom *rom)
     smk_ui_step(&ui, rom, &down);          /* wraps to GRAND PRIX */
     check(ui.mode_sel == SMK_UI_MODE_GP, "and wraps to Grand Prix");
     smk_ui_step(&ui, rom, &go);
-    check(ui.screen == SMK_UI_MODE, "Grand Prix is disabled");
-    check(ui.denied, "and says so");
-    smk_ui_step(&ui, rom, &up);            /* wraps back to TIME TRIAL */
-    check(ui.mode_sel == SMK_UI_MODE_TT, "up wraps the other way");
+    check(ui.screen == SMK_UI_PLAYER, "Grand Prix is entered");
+    check(ui.gp, "and arms the cup");
+    smk_ui_init(&ui);
+    smk_ui_step(&ui, rom, &go);
+    smk_ui_step(&ui, rom, &up);            /* wraps straight up to GP */
+    check(ui.mode_sel == SMK_UI_MODE_GP, "up wraps the other way");
+    smk_ui_step(&ui, rom, &up);
     smk_ui_step(&ui, rom, &up);
     check(ui.mode_sel == SMK_UI_MODE_RACE, "and back to Single Race");
     smk_ui_step(&ui, rom, &go);
     check(ui.screen == SMK_UI_PLAYER, "a single race is entered");
+    check(!ui.gp, "with the cup unarmed");
     (void)none;
 }
 

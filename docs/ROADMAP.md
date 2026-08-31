@@ -64,6 +64,15 @@ and comes down toward the camera) and it inherits the kart's motion -
 thrown backwards it lands behind a forward-looking camera and is never
 drawn at all.
 
+**S34 — The known-bugs sweep (NOTES 203).** The feather's launch strength
+(`$01E0`) is OURS (the flight's pose roll, +$0800 a frame, is $80B6D1's
+rate); the Rainbow Road Thwomps' palette flash (every 4 frames, palette
+bit 4) is OURS from the user's "flashy color"; the deep-water crawl on
+themes 2/4/5 reuses the $22 fall-in measured in NOTES 120, by the user's
+rule, not a trace of those courses; the finish-time extrapolation for
+karts still out after 90 s is OURS (ordered by lap, +5 s a place); the
+rescue Lakitu's descent pacing is OURS around the measured sprite rows.
+
 **S33 — The track map (NOTES 200).** OURS by design: the corner, the size,
 the translucency and the dots; the picture is the course's own tilemap.
 M toggles it.
@@ -399,30 +408,42 @@ regression in them is noticed.
 
 ## Known bugs (the user's list, 2026-08-30)
 
-1. A long jump off the edge of Ghost Valley / Rainbow Road teleports you
-   to the other side - the WRAPPED WORLD again (NOTES 063/138).
-2. Bumping a player while invincible does nothing; it should trigger the
-   "banana roll" spin on the victim.
-3. Lakitu's drop-off is still wrong - not the kart, LAKITU's own position
-   through the whole process.
-4. AI karts finish as DNF; the simulation must bring them home with times.
-5. The tyre dust / water / mud comes out shifted to the left.
-6. The feather does nothing; it should jump with a 360 roll.
-7. Donut Plains water: sink at once but keep FULL control, very very
-   slow; after some seconds Lakitu rescues.
-8. Koopa Beach DEEP water (and likely Vanilla Lake): the same rule -
-   full control, super slow; shallow is fine.
-9. The kart is jumpy on sand; the original is not.
-10. Choco Island shows FOUR piranha plants where the game has one; the
-    same for Koopa Beach's cheep-cheeps.
-11. Rainbow Road Thwomps: touching one is the "banana roll", not a wall,
-    and they flash.
+1. ~~A long jump off the edge of Ghost Valley / Rainbow Road teleports you
+   to the other side - the WRAPPED WORLD again (NOTES 063/138).~~ FIXED:
+   the position clamps at the world's edge instead of wrapping.
+2. ~~Bumping a player while invincible does nothing; it should trigger the
+   "banana roll" spin on the victim.~~ FIXED, both directions (a starred
+   AI bumping you rolls you too).
+3. ~~Lakitu's drop-off is still wrong - not the kart, LAKITU's own position
+   through the whole process.~~ DONE - Lakitu is drawn from the KART's
+   screen row (kart_top - 27) for the whole descent - awaiting the user.
+4. ~~AI karts finish as DNF; the simulation must bring them home with
+   times.~~ DONE - any kart still out 90 s after the winner gets a time
+   extrapolated by lap order; a full autodrive race shows 8/8 times.
+5. ~~The tyre dust / water / mud comes out shifted to the left.~~ FIXED:
+   the puffs' base moved to the game's own average offset.
+6. ~~The feather does nothing; it should jump with a 360 roll.~~ FIXED
+   (NOTES 203): the launch was being overwritten the same frame by the
+   collide pass's stale copy-back; now a ~0.6 s flight with the roll.
+7. ~~Donut Plains water: sink at once but keep FULL control, very very
+   slow; after some seconds Lakitu rescues.~~ DONE (the $22 fall-in on
+   theme 2).
+8. ~~Koopa Beach DEEP water (and likely Vanilla Lake): the same rule -
+   full control, super slow; shallow is fine.~~ DONE (themes 4/5 too).
+9. ~~The kart is jumpy on sand; the original is not.~~ FIXED: shake only
+   on the classes the user confirmed ($50/$5A/$5C/$5E), absolute pixels.
+10. ~~Choco Island shows FOUR piranha plants where the game has one; the
+    same for Koopa Beach's cheep-cheeps.~~ FIXED: the ROM's own spawn set
+    only (show-all was left on).
+11. ~~Rainbow Road Thwomps: touching one is the "banana roll", not a wall,
+    and they flash.~~ DONE (S34 for the flash).
 12. Moles are not implemented: they rise from holes, and passing over
     one sticks it to your face.
 13. A Thwomp landing exactly on you SQUASHES you - the flattened racer
     sprites are in tmp/new/flattened-racers-after-thwomp.png.
 14. Bowser Castle 1 has one or two Thwomps in the wrong place.
-15. The track map shows the karts on the wrong track.
+15. The track map shows the karts on the wrong track. (Could not
+    reproduce on the keyboard map - which track/mode showed it?)
 
 ## Where to pick up next
 

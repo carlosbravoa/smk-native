@@ -8485,3 +8485,29 @@ spc-snapshot route. A missing map, key or file is silence, never an
 error; nothing derived from the ROM is committed (rom/music is
 git-ignored). N toggles the music. LABELLED (S8): loop points are
 whole-file; the engine and item SFX are still absent.
+
+## 203. The feather flew for one frame: the item switch runs after the field's sync
+
+Bug 6 of the user's list. `smk_player_feather` was right all along - zvel
+`$01E0`, drive 2, state $18 - and a trace showed the launch land in the
+kart (`air 1, zvel 480`) yet the very same frame's end read `air 0, z 0`.
+Not the physics: a gdb watchpoint on `kart.airborne` named the line. The
+main loop copies `me->k = kart` BEFORE the item switch, runs the item
+(which launches `kart`), then the kart-vs-kart collide pass copies
+`me->k` BACK - the pre-item snapshot, grounded, erasing the flight one
+line after it began. The next frame's pose machine saw a grounded $18 and
+settled out, so the feather "did nothing" while every piece of it worked.
+
+One line fixes it: re-sync `me->k = kart` after the item switch. The test
+rig (`SMK_ITEM_TEST=1:150`) now shows a ~37-frame arc, peak z ~16 px,
+the pose rolling +$0800 a frame - $80B6D1's rate, the 360 the user asked
+for - and a clean settle through $1C on landing. The launch strength is
+OURS (S34); the ROM's own feather arc is still unmeasured.
+
+The same batch, from the user's list: deep water on themes 2/4/5 routes
+class $24 into the $22 fall-in (full control, crawl, Lakitu - bugs 7/8);
+Rainbow Road's Thwomps spin you and flash (bug 11); the field extrapolates
+a time for anyone still out 90 s after the winner (bug 4); the rescue
+Lakitu is drawn from the kart's own screen row (bug 3). And one found on
+the way: a misplaced `else` printed "warning: item tables not loaded" on
+every SUCCESSFUL load since the line was written.

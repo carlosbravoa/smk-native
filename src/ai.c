@@ -135,7 +135,9 @@ void smk_collide_objects(smk_kart *k, const smk_course *crs)
         /* Choco Island's piranha plants and Koopa Beach's cheep-cheeps are
          * not walls: "if you touch it, it triggers the spinning animation"
          * (the user).  The kart reports the touch; the driver spins. */
-        if (crs->theme == 3 || crs->theme == 5) { k->hazard_hit = 1; continue; }
+        if (crs->theme == 3 || crs->theme == 5 || crs->theme == 7) { k->hazard_hit = 1; continue; }
+        /* (theme 7, Rainbow Road: "thwomps are invincible: if you touch
+         * them, you get the banana roll" - bug 11) */
         float d = sqrtf((float)d2);
         float nx2 = (float)dx / d, ny2 = (float)dy / d;
         float dot = (float)k->vx * nx2 + (float)k->vy * ny2;
