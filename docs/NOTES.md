@@ -9061,3 +9061,31 @@ three voices every eight frames - also plays at f2198-2267 and
 f4643-4734, where no roulette is spinning.  It is the song's own
 accompaniment.  What the game does play is $55 at the exact frame the
 roulette STOPS, which is the three beeps the user described.
+
+## 220. The roulette IS a sound - a HELD voice, which is why it looked absent
+
+The user, on being told the roulette makes no sound: "I think it is
+played as music.  When you dumped one of the songs, the roulette sound
+was baked in.  It is a cyclic sound rapidly going through 6 notes."
+
+Both halves right, and the second one is what found it.  NOTES 219
+looked for something QUEUED and for a voice that starts at the spin -
+and dismissed the repeating $0F/$0F/$0D figure because it also plays
+when nothing is spinning (it is the song's accompaniment).  What it
+missed is that the roulette is not fired, it is HELD: at the box hit,
+VOICE 5 keys sample $0D once and then the driver walks its PITCH,
+re-striking every six frames, until the roulette stops - one key-on, a
+tune inside it.  The cycle is eight notes of six distinct pitches:
+
+    $042F $0645 $085F $0C8B $10BE $0A8C $0C8B $10BE
+      340   520   700  1040  1400   880  1040  1400 Hz
+
+47 frames a turn, and it stops on the frame the $2000 bit clears - the
+same frame $55 (the three beeps) fires.  Rendering voice 5 alone over
+one turn gives rom/sfx/roulette.wav, which the port loops from the box
+hit to the stop.
+
+The lesson is general and worth keeping: a sound that is not in the
+queue may still be the driver's, HELD on a voice with its pitch walked -
+so "nothing is queued" is not "there is no sound".  The engine works
+exactly this way too (NOTES 213), and the skid may well be the next.

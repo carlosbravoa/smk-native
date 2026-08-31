@@ -1293,6 +1293,7 @@ void smk_music_toggle(void);
  * silence, never an error. */
 void smk_sfx_play(int id);
 void smk_sfx_play_name(const char *name);   /* rom/sfx/<name>.wav */
+void smk_sfx_loop(const char *name, bool on); /* a HELD sound: the roulette */
 void smk_sfx_toggle(void);
 int  smk_sfx_audition(void);      /* `smk --sfx`: play them all, named */
 /* the engine note: v is the game's own $42 (NOTES 212), 0 = silent */

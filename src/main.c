@@ -3232,6 +3232,13 @@ int main(int argc, char **argv)
                      * Hitting the box itself is silent. */
                     if (was_spin && !smk_item_spinning(&item) && smk_item_present(&item))
                         smk_sfx_play(SMK_SFX_ITEMBOX);
+                    /* THE ROULETTE ITSELF (NOTES 220): the game holds one
+                     * voice from the box hit to the stop, stepping its
+                     * pitch through eight notes - the user: "a cyclic
+                     * sound rapidly going through 6 notes".  It is not
+                     * queued, which is why it looked absent; it is held,
+                     * so the port holds it too. */
+                    smk_sfx_loop("roulette", smk_item_spinning(&item));
                     if (used >= 0) {
                         item_used_once = true;
                         int ahead_idx = -1;                 /* the red shell's target */

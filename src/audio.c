@@ -47,6 +47,7 @@ bool smk_audio_init(void)
     if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) return false;
     if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) != 0) return false;
     Mix_AllocateChannels(16);        /* several effects can overlap */
+    Mix_ReserveChannels(1);          /* channel 0 belongs to the loop */
     Mix_HookMusicFinished(on_music_done);
     ready = true;
     return true;
@@ -147,6 +148,40 @@ void smk_sfx_play_name(const char *name)
     Mix_PlayChannel(-1, chunks[slot], 0);
 }
 
+/* A sound the game HOLDS rather than fires: the item roulette is one
+ * voice keyed once and left running, its pitch stepped through eight
+ * notes until the roulette stops (NOTES 220).  Looped on a channel of
+ * its own so it can be started and stopped by the state that owns it. */
+#define SFX_LOOP_CHANNEL 0
+static Mix_Chunk *loop_chunk;
+static char       loop_name[24];
+static bool       loop_on;
+
+void smk_sfx_loop(const char *name, bool on)
+{
+    if (!ready || !sfx_on) return;
+    if (on) {
+        if (loop_on && !strcmp(loop_name, name)) return;
+        if (!loop_chunk || strcmp(loop_name, name)) {
+            if (loop_chunk) Mix_FreeChunk(loop_chunk);
+            char path[900];
+            snprintf(path, sizeof path, "%ssfx/%s.wav", map_dir, name);
+            loop_chunk = Mix_LoadWAV(path);
+            snprintf(loop_name, sizeof loop_name, "%s", name);
+            if (getenv("SMK_SFX_TRACE"))
+                printf("sfx: %s %s (loop)\n", path, loop_chunk ? "loaded" : "MISSING");
+            if (!loop_chunk) return;
+        }
+        Mix_PlayChannel(SFX_LOOP_CHANNEL, loop_chunk, -1);
+        loop_on = true;
+        if (getenv("SMK_SFX_TRACE")) printf("sfx: loop %s ON\n", name);
+    } else if (loop_on) {
+        Mix_HaltChannel(SFX_LOOP_CHANNEL);
+        loop_on = false;
+        if (getenv("SMK_SFX_TRACE")) printf("sfx: loop off\n");
+    }
+}
+
 void smk_sfx_play(int id)
 {
     if (!ready || !sfx_on || id < 0 || id >= SFX_SLOTS) return;
@@ -161,7 +196,7 @@ void smk_sfx_play(int id)
         if (!sfx[id]) return;
     }
     if (getenv("SMK_SFX_TRACE")) printf("sfx: play $%02X\n", id);
-    Mix_PlayChannel(-1, sfx[id], 0);
+    Mix_PlayChannel(-1, sfx[id], 0);   /* -1 skips reserved channels */
 }
 
 /* Play every captured effect in id order, announcing each - so a person
