@@ -64,6 +64,14 @@ and comes down toward the camera) and it inherits the kart's motion -
 thrown backwards it lands behind a forward-looking camera and is never
 drawn at all.
 
+**S35 — The Thwomp squash (bug 13, NOTES 204).** The art is the user's
+ripped flattened-racer sheet through each driver's OWN palette (fit
+near-zero error; the Yoshi/Koopa block assignment is by eye where two
+blocks share a palette family).  OURS: the rule (under ANY descending
+block = squashed - the drop takes ~15 frames, faster than a kart leaves
+the footprint), the 100-frame flatten with speed 0, and the straight
+pose always; the game's own squash length and pose choice are unread.
+
 **S34 — The known-bugs sweep (NOTES 203).** The feather's launch strength
 (`$01E0`) is OURS (the flight's pose roll, +$0800 a frame, is $80B6D1's
 rate); the Rainbow Road Thwomps' palette flash (every 4 frames, palette
@@ -439,8 +447,13 @@ regression in them is noticed.
     and they flash.~~ DONE (S34 for the flash).
 12. Moles are not implemented: they rise from holes, and passing over
     one sticks it to your face.
-13. A Thwomp landing exactly on you SQUASHES you - the flattened racer
-    sprites are in tmp/new/flattened-racers-after-thwomp.png.
+13. ~~A Thwomp landing exactly on you SQUASHES you - the flattened racer
+    sprites are in tmp/new/flattened-racers-after-thwomp.png.~~ DONE
+    (NOTES 204, S35): the sheet imported per driver, hazard kind 2,
+    flattened 100 frames.  Found on the way: the Thwomps NEVER left
+    their parked height in an autodrive race (the release counts the
+    player's crossings), so movers now clamp their climb and
+    SMK_MV_ON=1 releases them from frame 0 for testing.
 14. Bowser Castle 1 has one or two Thwomps in the wrong place.
 15. The track map shows the karts on the wrong track. (Could not
     reproduce on the keyboard map - which track/mode showed it?)

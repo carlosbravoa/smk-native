@@ -302,6 +302,7 @@ typedef struct {
     int      star_t;           /* $86: 512 frames of star                   */
     int      boo_t;            /* $82: 1152 frames invisible                */
     int      shrink_t;         /* $84: 1088 frames small after lightning    */
+    int      squash_t;         /* bug 13: frames flat under a Thwomp (OURS) */
     int      fc, ca;           /* $FC countdown, $CA hold counter           */
     /* hazards (NOTES 113): water = the $22 wade, fall = the $24/$26 drop
      * and Lakitu's rescue.  The caller supplies the rescue target - the
@@ -566,6 +567,12 @@ extern const smk_driver SMK_DRIVERS[SMK_CHARACTERS];
  * radius) is z ~ 900-1050; the recording crashed at 960 and passed at
  * 2880, and 960 is the lowest value both agree on (`>` passes above it). */
 #define SMK_MOVER_CLEAR    960
+/* Bug 13: a mover still FALLING below this z comes down ON the kart - the
+ * squash.  OURS, like CLEAR: the whole hittable stretch of the drop (a
+ * kart cannot bounce off the BOTTOM of a descending block; at 400 the
+ * band lasted one frame and nothing was ever squashed). */
+#define SMK_SQUASH_Z       SMK_MOVER_CLEAR
+#define SMK_SQUASH_T       100     /* frames flattened (OURS, ~1.7 s)     */
 enum { SMK_MV_PARK, SMK_MV_FALL, SMK_MV_HOLD, SMK_MV_RISE };
 typedef struct { int32_t z; int16_t zv; uint8_t phase; int16_t t; } smk_mover;
 
@@ -1108,6 +1115,7 @@ typedef struct {
     int16_t  spin_pose;     /* added to the drawn angle while tumbling   */
     int      hit_dir;
     int      shrink_t;      /* $84                                       */
+    int      squash_t;      /* bug 13: frames flat under a Thwomp (OURS) */
     int      coins;         /* $0E00,y for this kart: a bump costs one   */
     int      hit_kind;      /* what hit it: 1 banana 2 shell 3 lightning 4 coinless bump */
     int      weapon_cool;   /* frames until this AI may use its weapon again (NOTES 190) */

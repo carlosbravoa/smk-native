@@ -8511,3 +8511,31 @@ a time for anyone still out 90 s after the winner (bug 4); the rescue
 Lakitu is drawn from the kart's own screen row (bug 3). And one found on
 the way: a misplaced `else` printed "warning: item tables not loaded" on
 every SUCCESSFUL load since the line was written.
+
+## 204. The Thwomp squash (bug 13): the user's flattened sheet, per driver
+
+tools/labs/flatsheet.py imports tmp/new/flattened-racers-after-thwomp.png
+(the user's rip) into src/flatart.inc: 8 blocks of 3 poses in two sizes,
+each quantised against one of the four DRIVER palettes in the oracle's
+CGRAM - every block fits one palette with near-zero error (<=23 avg sq),
+which also NAMES the blocks: Mario, DK Jr, Bowser, Luigi across the top,
+Yoshi, Koopa, Peach, Toad below (the two green blocks assigned by eye
+within their palette family, S35).  Drawn through `trk->palette` so the
+per-theme re-tints apply, nearest-neighbour at the continuous scale,
+anchored at the wheels.
+
+The rule: `smk_collide_objects` flags hazard kind 2 when the kart stands
+in the footprint of a mover in its FALL phase, checked BEFORE the
+overhead skip - a kart cannot bounce off the underside of a descending
+block, and the drop takes ~15 frames, faster than any kart leaves a
+6 px footprint.  (First cut waited for z < 400: that band lasts ONE
+frame of the drop and nothing was ever squashed.)  Player and AI both:
+squash_t = 100 frames flattened at speed 0 (OURS, S35).
+
+Found on the way: in every autodrive race the Thwomps NEVER moved - the
+release is `crossings >= 2` and the autopilot never finished a BC lap,
+so 22,000-frame test races had zero falls.  SMK_MV_ON=1 now releases
+the movers from frame 0 for rigs; the climb is clamped at the parked
+height (the trace showed blocks rising to 7680 and falling from up
+there); and two selftest checks pin the squash and the overhead pass.
+SMK_SQUASH_TEST=frame flattens P1 and kart 1 for an eyeball shot.

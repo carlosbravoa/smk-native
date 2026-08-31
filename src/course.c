@@ -311,6 +311,9 @@ void smk_course_movers_step(smk_course *c, bool activated)
             break;
         case SMK_MV_RISE:
             m->z += SMK_MOVER_CLIMB;
+            /* back to the PARKED height and no further: the trace showed
+             * the climb overshooting to 7680 and falling from up there */
+            if (m->z > SMK_MOVER_PARK) m->z = SMK_MOVER_PARK;
             if (--m->t <= 0) { m->phase = SMK_MV_FALL; m->zv = SMK_MOVER_DROP0; }
             break;
         }

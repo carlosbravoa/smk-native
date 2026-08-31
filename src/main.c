@@ -1,6 +1,7 @@
 /* SDL2 host for the Super Mario Kart reimplementation. */
 #include "smk.h"
 #include "itemart.inc"
+#include "flatart.inc"
 
 #ifndef SMK_BUILD
 #define SMK_BUILD "dev"
@@ -781,7 +782,11 @@ static void step_kart(smk_kart *k, smk_track *trk,
     k->star = (player.flags & 2) ? 1 : 0;
     k->hazard_hit = 0;
     if (course_for_step && !player.hazard) smk_collide_objects(k, course_for_step);
-    if (k->hazard_hit) smk_player_hit_banana(&player, k);   /* a plant, a fish: the spin */
+    if (k->hazard_hit == 2) {                        /* bug 13: flattened */
+        player.squash_t = SMK_SQUASH_T;
+        if (getenv("SMK_SQUASH_TRACE")) printf("squash f%ld: the player\n", hud_race_frames);
+    } else if (k->hazard_hit) smk_player_hit_banana(&player, k);   /* a plant, a fish: the spin */
+    if (player.squash_t > 0) { player.squash_t--; k->speed = 0; k->speed_frac = 0; }
     /* the collector ($81B73B) serves ONE player per frame, alternating:
      * every P1 pickup in the demo lands on an odd frame, every P2 pickup
      * on an even one, with the cell the kart is on after that frame's
@@ -1406,6 +1411,34 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
 }
 
 /* One AI kart, split out for the same reason as draw_entity. */
+/* The SQUASHED racer (bug 13): the user's ripped flattened art, drawn like
+ * the road items - nearest-neighbour at a continuous scale, through the
+ * driver palette its block quantised to (tools/labs/flatsheet.py), anchored
+ * at the wheels like every kart sprite.  The big art always, by the pipe
+ * law; frame 1 is the straight pose. */
+static void draw_flat(uint32_t *fb, int rw, int rh, const uint32_t *palette,
+                      int ch, int frame, int cx, int cy, float s)
+{
+    if (ch < 0 || ch >= SMK_CHARACTERS || s <= 0.0f) return;
+    const smk_flat_tier *t = &SMK_FLATART[ch][frame];
+    int dw = (int)((float)t->w * s + 0.5f), dh = (int)((float)t->h * s + 0.5f);
+    if (dw < 1 || dh < 1) return;
+    int x0 = cx - dw / 2, y0 = cy - dh;          /* anchored at the wheels */
+    for (int yy = 0; yy < dh; yy++) {
+        int sy = y0 + yy;
+        if (sy < 0 || sy >= rh) continue;
+        int ty = yy * t->h / dh;
+        for (int xx = 0; xx < dw; xx++) {
+            int sx = x0 + xx;
+            if (sx < 0 || sx >= rw) continue;
+            int tx = xx * t->w / dw;
+            uint8_t v = t->px[ty * t->w + tx];
+            if (!v) continue;
+            fb[(size_t)sy * rw + sx] = palette[(t->pal + v) & 0xFF];
+        }
+    }
+}
+
 static void draw_ai_kart(const smk_rom *rom, const smk_track *trk,
                          const smk_camera *cam, uint16_t cam_heading,
                          const smk_racer *racers, int k,
@@ -1528,6 +1561,10 @@ static void draw_ai_kart(const smk_rom *rom, const smk_track *trk,
         int fdraw = mirror ? 0 : f;
         bool hf2 = hf;
         (void)kt;
+        if (racers[k].squash_t > 0) {              /* bug 13: flattened */
+            draw_flat(fb, rw, rh, trk->palette, ch, 1, (int)px, (int)py, ks);
+            return;
+        }
         {
             /* THE WINNER (NOTES 199, measured from a real finish): once the
              * camera has swung to the front the game shows frame 46 as its
@@ -1797,7 +1834,10 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
         if (lift > 0)
             draw_shadow(fb, rw, rh, (float)(rw / 2), (float)prow,
                         SMK_PROJ_LES * (float)rw / 256.0f / SMK_CAM_TRAIL);
-        if (frame == SMK_POSE_LEAN || frame == -SMK_POSE_LEAN)
+        if (player.squash_t > 0)                   /* bug 13: flattened */
+            draw_flat(fb, rw, rh, trk->palette, (int)(drv - SMK_DRIVERS), 1,
+                      rw / 2, prow - lift, (float)scale);
+        else if (frame == SMK_POSE_LEAN || frame == -SMK_POSE_LEAN)
             /* the SAME block as the straight pose, drawn UNFOLDED so its
              * own right half shows: that is the lean (NOTES 182) */
             smk_draw_sprite(karts, SMK_SPR_LEAN, trk->palette, ppal,
@@ -2206,6 +2246,14 @@ int main(int argc, char **argv)
     if (!smk_course_load(&rom, track, &crs)) {
         fprintf(stderr, "error: cannot load course data for track %d\n", track);
         return 1;
+    }
+    if (getenv("SMK_ENT_DUMP")) {      /* the decoded entity list (bug 14) */
+        printf("ents track %d: n %d live %d\n", track, crs.nent, crs.nlive);
+        for (int i = 0; i < crs.nent; i++)
+            printf("ent %2d: kind %02X x %4d y %4d\n",
+                   i, crs.ent[i].kind, crs.ent[i].x, crs.ent[i].y);
+        for (int i = 0; i < crs.nlive; i++)
+            printf("live %d: ent %d\n", i, crs.live[i]);
     }
     smk_hud_load(&rom, &hud_art);
     if (!smk_coin_load(&rom, &coin_art))
@@ -2724,7 +2772,16 @@ int main(int argc, char **argv)
             /* Thwomps are parked through lap one and released when it is
              * complete - crossing 2 is the first finished lap (NOTES
              * 148/152). */
-            smk_course_movers_step(&crs, crossings >= 2);
+            {   /* SMK_MV_ON=1: release the movers from frame 0 (testing) */
+                static int mv_on = -1;
+                if (mv_on < 0) mv_on = getenv("SMK_MV_ON") ? 1 : 0;
+                smk_course_movers_step(&crs, mv_on || crossings >= 2);
+            }
+            if (getenv("SMK_MV_TRACE") && (fx_ticks % 300) == 0)
+                printf("mv f%ld cross %d z0 %d p0 %d z1 %d p1 %d\n",
+                       hud_race_frames, crossings,
+                       smk_mover_z(&crs, 0), crs.mv[0].phase,
+                       smk_mover_z(&crs, 1), crs.mv[1].phase);
             step_kart(&kart, &trk, &phys, &in);
             if (replay_path && getenv("SMK_REPLAY_TRACE") && replay_i < replay.n) {
                 const smk_demo_frame *r = &replay.f[replay_i];
@@ -2814,6 +2871,15 @@ int main(int argc, char **argv)
                             else item.word = (uint16_t)(0xC000 | tid);
                         }
                         if (tid >= 0 && tid != 99 && hud_race_frames == tframe + 1) item_btn = true;
+                    }
+                    {   /* SMK_SQUASH_TEST=frame: flatten P1 and kart 1 on
+                         * that frame - bug 13's art, eyeballed headlessly */
+                        static int sqf = -2;
+                        if (sqf == -2) { const char *e = getenv("SMK_SQUASH_TEST"); sqf = e ? atoi(e) : -1; }
+                        if (sqf >= 0 && hud_race_frames == sqf) {
+                            player.squash_t = SMK_SQUASH_T;
+                            racers[1].squash_t = SMK_SQUASH_T;
+                        }
                     }
                     int used = smk_item_step(&item, item_btn, can_use);
                     player.item_held = smk_item_present(&item);
@@ -3024,6 +3090,10 @@ int main(int argc, char **argv)
                     smk_karts_collide(field, wt, SMK_CHARACTERS);
                 }
                 kart = me->k;
+                if (getenv("SMK_SQUASH_TRACE"))
+                    for (int q = 1; q < SMK_CHARACTERS; q++)
+                        if (racers[q].squash_t == SMK_SQUASH_T)
+                            printf("squash f%ld: kart %d\n", hud_race_frames, q);
                 /* a FRESH contact on the player costs one coin, and the
                  * coins are thrown out of him (NOTES 183) */
                 /* not while replaying: coins set the top speed

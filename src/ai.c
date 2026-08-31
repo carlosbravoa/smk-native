@@ -126,6 +126,16 @@ void smk_collide_objects(smk_kart *k, const smk_course *crs)
          * rule after seven rigs failed to measure the game's (NOTES 176).
          * It is validated against their recorded run rather than guessed:
          * every crash in it was below the line and every close pass above. */
+        /* Bug 13: a kart under a DESCENDING block is squashed - it cannot
+         * bounce off the block's underside, and the drop takes ~15 frames,
+         * faster than a kart leaves the footprint.  Checked BEFORE the
+         * overhead skip: a falling Thwomp spends most of the drop above
+         * CLEAR.  Hazard kind 2; the driver code flattens and freezes. */
+        if (!crs->dead[i] && !k->star && smk_theme_has_movers(crs->theme)
+            && i < 32 && crs->mv[i].phase == SMK_MV_FALL) {
+            k->hazard_hit = 2;
+            continue;
+        }
         if (smk_mover_z(crs, i) > SMK_MOVER_CLEAR) continue;
         if (crs->dead[i]) continue;
         if (k->star) {                /* OURS: a starred kart knocks it out */
@@ -480,9 +490,11 @@ void smk_racer_step(smk_racer *r, const smk_track *trk,
         smk_kart_gravity(&r->k);
         smk_kart_move(&r->k, trk);
         r->k.hazard_hit = 0; smk_collide_objects(&r->k, crs);
-        if (r->k.hazard_hit) smk_racer_hit(r, 1, 0);
+        if (r->k.hazard_hit == 2) r->squash_t = SMK_SQUASH_T;
+        else if (r->k.hazard_hit) smk_racer_hit(r, 1, 0);
         return;
     }
+    if (r->squash_t > 0) { r->squash_t--; target = 0; }   /* bug 13: flattened, going nowhere */
     if (r->shrink_t > 0) { r->shrink_t--; if (target > 0x200) target = 0x200; }   /* OURS: small is slow */
     int32_t accel;
     if (r->k.speed < target)
@@ -497,7 +509,8 @@ void smk_racer_step(smk_racer *r, const smk_track *trk,
     smk_kart_gravity(&r->k);
     smk_kart_move(&r->k, trk);
     r->k.hazard_hit = 0; smk_collide_objects(&r->k, crs);
-        if (r->k.hazard_hit) smk_racer_hit(r, 1, 0);
+    if (r->k.hazard_hit == 2) r->squash_t = SMK_SQUASH_T;
+    else if (r->k.hazard_hit) smk_racer_hit(r, 1, 0);
 }
 
 /* ---- The rubber band (NOTES 167) -------------------------------------- */

@@ -1616,6 +1616,27 @@ int main(int argc, char **argv)
         check("1P Mario: the rival in slot 1 is the row's 7th entry (Yoshi)", g[1] == 5 && g[7] == 4 && g[2] == 2, NULL);
     }
 
+    {
+        /* bug 13: a kart under a DESCENDING Thwomp is squashed (hazard
+         * kind 2), and a PARKED one overhead is driven under untouched */
+        smk_course c9;
+        if (smk_course_load(&rom, 9, &c9)) {
+            int e = c9.nlive ? c9.live[0] : 0;
+            smk_kart k = { 0 };
+            k.x = ((int32_t)c9.ent[e].x + 4) << SMK_POS_SHIFT;
+            k.y = (int32_t)c9.ent[e].y << SMK_POS_SHIFT;
+            c9.mv[e].phase = SMK_MV_FALL; c9.mv[e].z = 2000;
+            smk_collide_objects(&k, &c9);
+            check("a falling Thwomp squashes the kart under it (kind 2)",
+                  k.hazard_hit == 2, NULL);
+            k.hazard_hit = 0;
+            c9.mv[e].phase = SMK_MV_PARK; c9.mv[e].z = SMK_MOVER_PARK;
+            smk_collide_objects(&k, &c9);
+            check("a parked Thwomp overhead is not a hit and not a wall",
+                  k.hazard_hit == 0 && k.vx == 0 && k.vy == 0, NULL);
+        }
+    }
+
     printf("\n%d passed, %d failed\n", pass, fail);
     smk_rom_free(&rom);
     return fail ? 1 : 0;
