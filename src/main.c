@@ -2932,6 +2932,14 @@ int main(int argc, char **argv)
              * SMK_START_LAST and the drawing reads it the whole way. */
             if (race_count < SMK_START_LAST) race_count++;
             hud_countdown = race_count;
+            /* Lakitu's lights, measured off the game's own start passage
+             * (NOTES 217).  These are the cue a player times the turbo
+             * launch against, so they play whether the music is on or
+             * not - they are not part of the song. */
+            if (race_count == SMK_COUNT_BEEP1 || race_count == SMK_COUNT_BEEP2)
+                smk_sfx_play_name("count_beep");
+            else if (race_count == SMK_COUNT_GO)
+                smk_sfx_play_name("count_go");
             if (race_state == RACE_COUNTDOWN) {
                 /* The lights.  The kart is held, but the throttle is NOT
                  * ignored - it builds the rev, and where the rev sits when

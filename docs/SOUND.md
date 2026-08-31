@@ -128,3 +128,19 @@ answers land in `rom/sfx/names.txt` (`SMK_SFX_NAMES` overrides) -
 id, length, verdict, name - which is the file to hand back: the naming
 in the listener's own words, for the ids the ROM does not name and as a
 check on the ones it does.  The engine's sweep is asked about last.
+
+## The countdown's beeps (NOTES 217)
+
+They are not music and not a queued effect - they are three key-ons of
+voice 0 inside the start passage - so they are captured by rendering
+that one voice:
+
+    SFX_START=1282 SFX_AFTER=345 tools/labs/mame/replay.sh moles \
+        tools/labs/mame/voicedump.lua 45 > tmp/vd_count.log
+    # keep only voice 0's rows for the beep's own frames, then:
+    SFX_SKIP_VOICES=1234567 tools/labs/sfxrender.py tmp/snap_2400.spc - \
+        tmp/beep_lo.log rom/sfx/count_beep.wav
+
+The port fires them at countdown frames 187, 258 and 331 (SMK_COUNT_BEEP1
+/ BEEP2 / GO), which is where the game does - the last five frames before
+the lamp turns green.

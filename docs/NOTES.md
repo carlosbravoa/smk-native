@@ -8953,3 +8953,37 @@ true - the driver reuses samples - but the skid is in this family.)
 **"Menu items are playing two sounds."**  Not reproduced headlessly yet;
 the port makes exactly one call per menu action.  Needs SMK_SFX_TRACE=1
 from a menu to see which two ids actually play.
+
+## 217. Lakitu's lights, taken out of the music: three beeps at frames 187, 258, 331
+
+The user: "let's make Lakitu's countdown separate from music.  It is
+super important to have timings right for hinting the user when to push
+the accelerator for the turbo start."  Right - the turbo window is 95
+frames before the green lamp (NOTES 143) and the lamp itself is easy to
+miss, so the beeps ARE the cue.
+
+Found by watching the countdown on the chip.  `$0146` is the game's own
+start counter ($80:9FE1 loads it with -336 and it counts up to 0 at the
+green light), which puts the countdown at frames 1282-1618 of the moles
+recording.  Over that window the driver keeps five voices busy - it is a
+passage of music, not silence - but VOICE 0 keys on exactly THREE times:
+
+    countdown frame 187   sample $0E  pitch $0FD2     656 Hz
+    countdown frame 258   sample $0E  pitch $0FD2     656 Hz
+    countdown frame 331   sample $0E  pitch $1FB9    1320 Hz  (an octave up)
+
+That is the beep-beep-BEEP, and the last one lands five frames before
+the lamp goes green.  Rendering voice 0 alone over each of those gives
+the two sounds - rom/sfx/count_beep.wav and count_go.wav - with no music
+in them at all, and the port fires them off its own countdown counter at
+those frames, whether the music is on or off.
+
+Verified through the port's own output (SDL's disk driver, engine muted
+so the beeps stand alone): 662 Hz, +1.20 s, 662 Hz, +1.20 s, 1323 Hz -
+against the game's 1.18 and 1.21 s.  The turbo window opens at frame
+241, which is 17 frames before the second beep, so "press on the second
+beep" is now a cue a player can actually hear.
+
+(The renderer grew SFX_SKIP_VOICES for this: voice 7 is the engine and
+the port synthesises that itself, so a countdown capture must not carry
+a second engine inside it.)

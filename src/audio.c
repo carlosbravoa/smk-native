@@ -119,6 +119,34 @@ static bool       sfx_on = true;
 
 void smk_sfx_toggle(void) { sfx_on = !sfx_on; }
 
+/* Some sounds are not a game id at all - the countdown's beeps are three
+ * key-ons of one voice inside the start passage (NOTES 217) - so they
+ * live under a name rather than a number. */
+void smk_sfx_play_name(const char *name)
+{
+    if (!ready || !sfx_on || !name) return;
+    static char cached[4][24];
+    static Mix_Chunk *chunks[4];
+    static int8_t tried[4];
+    int slot = 0;
+    for (; slot < 4; slot++)
+        if (!cached[slot][0] || !strcmp(cached[slot], name)) break;
+    if (slot == 4) slot = 3;
+    if (!cached[slot][0]) snprintf(cached[slot], sizeof cached[slot], "%s", name);
+    if (!chunks[slot]) {
+        if (tried[slot]) return;
+        tried[slot] = 1;
+        char path[900];
+        snprintf(path, sizeof path, "%ssfx/%s.wav", map_dir, name);
+        chunks[slot] = Mix_LoadWAV(path);
+        if (getenv("SMK_SFX_TRACE"))
+            printf("sfx: %s %s\n", path, chunks[slot] ? "loaded" : "MISSING");
+        if (!chunks[slot]) return;
+    }
+    if (getenv("SMK_SFX_TRACE")) printf("sfx: play %s\n", name);
+    Mix_PlayChannel(-1, chunks[slot], 0);
+}
+
 void smk_sfx_play(int id)
 {
     if (!ready || !sfx_on || id < 0 || id >= SFX_SLOTS) return;

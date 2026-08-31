@@ -38,12 +38,18 @@ def read_log(path):
     return rows
 
 def render_all(spc, test, frames, out_p):
-    """Every voice, the whole window, mixed - no baseline, no filtering."""
+    """Every voice, the whole window, mixed - no baseline, no filtering.
+    SFX_SKIP_VOICES (e.g. "7") leaves voices out: the engine is voice 7
+    and the port synthesises that itself, so a countdown capture must
+    not carry a second engine inside it."""
+    skip = {int(c) for c in os.environ.get('SFX_SKIP_VOICES', '') if c.isdigit()}
     samples = brr.load_samples(spc)
     f0, f1 = frames[0], frames[-1]
     nout = int((f1 - f0 + 2) / FPS * OUT_SR)
     mix = np.zeros((nout, 2))
     for v in range(8):
+        if v in skip:
+            continue
         phase, cur = 0.0, None
         for f in frames:
             t = test.get((f, v))

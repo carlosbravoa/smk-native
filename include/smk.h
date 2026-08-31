@@ -1292,6 +1292,7 @@ void smk_music_toggle(void);
  * from the running game by tools/labs/mame/grab.sh.  A missing file is
  * silence, never an error. */
 void smk_sfx_play(int id);
+void smk_sfx_play_name(const char *name);   /* rom/sfx/<name>.wav */
 void smk_sfx_toggle(void);
 int  smk_sfx_audition(void);      /* `smk --sfx`: play them all, named */
 /* the engine note: v is the game's own $42 (NOTES 212), 0 = silent */
@@ -1304,6 +1305,14 @@ const char *smk_sfx_hint(int id);   /* when the game fires an unnamed one */
  * the strongest wins: MEASURED means the id was watched firing against
  * the game's own state in a recording; USER means the user named it by
  * ear; ROM means only the call site's address suggests it. */
+/* Lakitu's lights (NOTES 217): voice 0 keys sample $0E three times in
+ * the start passage - at countdown frames 187, 258 and 331, the last an
+ * octave up as the light goes green.  These are the timing a player
+ * reads for the turbo start, so they are their own sounds, not music. */
+#define SMK_COUNT_BEEP1   187
+#define SMK_COUNT_BEEP2   258
+#define SMK_COUNT_GO      331
+
 #define SMK_SFX_COIN       0x20   /* MEASURED: 41 of 63 with the coin count up */
 #define SMK_SFX_HOP        0x21   /* MEASURED: fires as jump_state goes to 2   */
 #define SMK_SFX_MOLE       0x22   /* MEASURED: at the mole's grab              */
