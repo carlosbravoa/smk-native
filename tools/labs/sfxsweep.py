@@ -137,6 +137,34 @@ def sweep_collisions(L):
     report('an object on top')
 
 
+def sweep_states(L):
+    """Force the states the port still wires by ear: being shrunk, being
+    spun, the star, the finish.  Poking the state runs the game's own
+    per-frame code for it, which is what plays the sound."""
+    sink = []
+    install(L, sink)
+    def go(what, pokes, frames=180):
+        L.pace(500)
+        del sink[:]
+        for a, v in pokes:
+            L.sw(a, v)
+        for _ in range(frames):
+            L.frame(0x80, 0)
+        got = {}
+        for a2, pc, caller in sink:
+            got.setdefault(a2 & 0xFF, set()).add(caller)
+        line = ', '.join('$%02X from %s' % (sid, ' '.join('$%02X:%04X' % (c >> 16, c & 0xFFFF)
+                                                          for c in sorted(got[sid])))
+                         for sid in sorted(got))
+        log('%-24s -> %s' % (what, line or 'nothing'))
+    go('shrunk ($84 = $440)',   [(0x1084, 0x0440)])
+    go('spun ($A6 = $1A)',      [(0x10A6, 0x001A), (0x10E4, 0x1000)])
+    go('star ($86 = $200)',     [(0x1086, 0x0200), (0x104E, 0x8000)])
+    go('boo ($82 = $480)',      [(0x1082, 0x0480)])
+    go('hazard 6 (the fall)',   [(0x10A0, 0x0006)])
+    go('hazard 8 (the water)',  [(0x10A0, 0x0008), (0x10CA, 0x00FF)])
+
+
 def sweep_menus():
     """The menus, driven from the title screen by the pad - no race."""
     import lab as _lab
@@ -291,5 +319,7 @@ def main():
         sweep_hazards(L)
     if what in ('collisions', 'all'):
         sweep_collisions(L)
+    if what in ('states', 'all'):
+        sweep_states(L)
 
 main()

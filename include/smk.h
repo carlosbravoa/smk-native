@@ -1323,7 +1323,14 @@ const char *smk_sfx_hint(int id);   /* when the game fires an unnamed one */
 #define SMK_SFX_FEATHER    0x24   /* USER + ROM $80:B57B                       */
 #define SMK_SFX_LAND       0x25   /* MEASURED: drive $02->$00 and z to 0       */
 #define SMK_SFX_FALL       0x27   /* USER: "falling down from the road"        */
-#define SMK_SFX_SHELL_HIT  0x29   /* USER: "hitting with a shell"              */
+/* $2A is BOTH, and they are the same id: $80:B75A plays it for the
+ * tumble (forced by poking $A6 = $1A, NOTES 233) and the user heard it
+ * as "shells do sound when bouncing" - a shell striking and a kart
+ * spinning share it. */
+#define SMK_SFX_SPIN_OUT   0x2A
+#define SMK_SFX_SHELL_BOUNCE SMK_SFX_SPIN_OUT
+#define SMK_SFX_SHELL_HIT  0x29   /* USER: "hitting with a shell" - four
+                                   * sites, none of them reached yet        */
 #define SMK_SFX_THROW      0x2B   /* $80:F442 - a SHELL thrown ahead.  A banana
                                    * thrown ahead is SILENT (forced in the
                                    * oracle, NOTES 232) */
@@ -1332,7 +1339,6 @@ const char *smk_sfx_hint(int id);   /* when the game fires an unnamed one */
 #define SMK_SFX_MENU_MOVE  0x2C   /* USER                                      */
 #define SMK_SFX_MENU_OK    0x2E   /* USER                                      */
 #define SMK_SFX_MENU_BACK  0x2F   /* USER                                      */
-#define SMK_SFX_SHELL_BOUNCE 0x2A /* USER: "shells do sound when bouncing"     */
 #define SMK_SFX_BRAKE      0x3C   /* USER: "braking hard, skids probably"      */
 /* $80:D818 picks between these two by the impact ($50,x vs $1200): a
  * KART-to-kart contact, hard or soft.  Forced in the oracle by dropping

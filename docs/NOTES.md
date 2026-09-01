@@ -9446,3 +9446,26 @@ was in the "never seen fired" list until the sweep pressed DOWN.
 Both fixed, and the throw direction and its sound now read ONE flag, so
 a debug override cannot make them disagree - which is how the first
 attempt at this looked like it had failed.
+
+## 233. The states, forced: being spun is $2A, and the shrink is not $5D
+
+The last of the guessed wirings, settled by poking the state itself -
+which runs the game's own per-frame code for it, and that is what makes
+the sound:
+
+    $A6 = $1A (the tumble)   -> $2A from $80:B75A
+    $84 = $440 (shrunk)      -> NOTHING
+    $86 = $200 (the star)    -> nothing of its own
+    $82 = $480 (Boo)         -> nothing of its own
+    hazard 6 / 8             -> nothing of their own
+
+So being spun out is $2A, and the port had $29 there by ear.  $2A turns
+out to be the id the user ALSO named "shells do sound when bouncing" -
+one sound for a shell striking and a kart spinning, which is why both
+readings were right.
+
+The shrink playing nothing matters too: $5D and $5F sit at $84:F55E and
+$84:F57C and remain the only ids a person has named that nothing has
+ever been seen to play.  Whatever reaches them, it is not the shrink
+state ticking - so the port keeps them on the user's ear alone, which
+is now the exception rather than the rule.

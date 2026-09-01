@@ -374,6 +374,7 @@ const char *smk_sfx_name(int id)
     case SMK_SFX_FEATHER:     return "feather             (you)";
     case SMK_SFX_LAND:        return "landing             (measured)";
     case SMK_SFX_FALL:        return "falling off the road (you)";
+    case SMK_SFX_SPIN_OUT:    return "being spun out      ($80:B75A)";
     case SMK_SFX_SHELL_HIT:   return "hitting with a shell (you)";
     case SMK_SFX_THROW:       return "a shell thrown ahead ($80:F442)";
     case SMK_SFX_DROP:        return "an item left behind ($84:D8F2)";
@@ -385,7 +386,6 @@ const char *smk_sfx_name(int id)
     case SMK_SFX_WALL:        return "scraping a wall     (forced in the oracle)";
     case SMK_SFX_BUMP_HARD:   return "a hard kart bump    (forced; you: barrier)";
     case SMK_SFX_BUMP_SOFT:   return "a soft kart bump    (forced in the oracle)";
-    case SMK_SFX_SHELL_BOUNCE: return "a shell bouncing    (you)";
     case SMK_SFX_BRAKE:       return "braking hard        (you)";
     case SMK_SFX_WALL2:       return "the wall, harder    (the $80:D7DA table)";
     case SMK_SFX_BOO_START:   return "Boo, starting       (you)";
@@ -425,7 +425,6 @@ const char *smk_sfx_hint(int id)
         return "(one of a TRIPLE - the same event at three intensities)";
     case 0x26: return "(unnamed - fires standing still)";
     case 0x28: return "(unnamed - the ROM plays it in the lava/pit handler)";
-    case 0x2B: return "(unnamed - fires at full speed on the road)";
     case 0x39: return "(unnamed - fires at speed on the road)";
     case 0x49: return "(you thought a skid - the road skid is a held voice, so this is another)";
     case 0x4A: return "(unnamed - the ROM plays it from bank $85's object code)";

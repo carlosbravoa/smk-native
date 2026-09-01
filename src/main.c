@@ -903,7 +903,10 @@ static void step_kart(smk_kart *k, smk_track *trk,
         uint8_t surf_now = smk_track_surface(trk, smk_kart_px(k->x), smk_kart_px(k->y));
         bool spin = (st == 0x0A || st == 0x0C || st == 0x1A);
         bool was_spin = (was_state == 0x0A || was_state == 0x0C || was_state == 0x1A);
-        if (spin && !was_spin) smk_sfx_play(SMK_SFX_SHELL_HIT);
+        /* MEASURED (NOTES 233): poking the tumble state ($A6 = $1A)
+         * makes the game play $2A from $80:B75A - so that is being spun
+         * out, whatever hit you.  The port had $29 here by ear. */
+        if (spin && !was_spin) smk_sfx_play(SMK_SFX_SPIN_OUT);
         if (player.hazard != was_hazard2 && player.hazard == 6)
             smk_sfx_play(SMK_SFX_FALL);              /* off the road   */
         if (player.mole_on && !was_mole) smk_sfx_play(SMK_SFX_MOLE);
