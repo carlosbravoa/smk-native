@@ -600,8 +600,12 @@ void smk_engine_voice(int voice, int chr, int v, float vol, float pan)
     if (!eng_pcm[kind]) return;
     if (v <= 0 || vol <= 0.0f || music_on) { eng[voice].vol_want = 0.0f; return; }
     if (eng[voice].kind != kind) {              /* a different driver here */
+        /* the nearest-three set changes hands often, so wrap the phase
+         * into the new sample rather than jumping it to zero: a jump is
+         * a click, and the timbre is already changing underneath it */
         eng[voice].kind = kind;
-        eng[voice].phase = 0.0;
+        if (eng_len[kind] > 0)
+            eng[voice].phase = fmod(eng[voice].phase, (double)eng_len[kind]);
     }
     int p = (eng_law[kind].base + eng_law[kind].slope * v) & 0x3FFF;  /* NOTES 234 */
     eng[voice].step = ((double)p / 4096.0 * 32000.0) / 44100.0;
