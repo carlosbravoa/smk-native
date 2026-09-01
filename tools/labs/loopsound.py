@@ -33,8 +33,14 @@ for i in range(n):
         phase = loop + (phase - len(pcm)); j = int(phase)
     buf[i] = pcm[j] / 32768.0
     phase += step
-peak = np.abs(buf).max() or 1.0
-buf *= 20000.0 / peak
+# LOOP_RAW=1 keeps the sample's OWN level.  Normalising every file to
+# one peak is what destroyed the game's balance the first time round: a
+# surface hiss is quiet in the ROM because the ROM means it to be.
+if os.environ.get('LOOP_RAW'):
+    buf *= 32768.0
+else:
+    peak = np.abs(buf).max() or 1.0
+    buf *= 20000.0 / peak
 st = np.stack([buf, buf], axis=1)
 w = wave.open(out, 'wb'); w.setnchannels(2); w.setsampwidth(2); w.setframerate(OUT_SR)
 w.writeframes(st.astype('<i2').tobytes()); w.close()

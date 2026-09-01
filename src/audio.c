@@ -20,7 +20,7 @@
 #include <math.h>
 #include <stdlib.h>
 
-#define SFX_LOOPS 4                 /* the roulette, the skid, the two off-road hisses */
+#define SFX_LOOPS 8                 /* the roulette, the skid, five surfaces, spare */
 
 static bool     ready;
 static Mix_Music *cur, *loop_next;
@@ -120,15 +120,24 @@ void smk_audio_pump(void) { /* SDL_mixer feeds itself */ }
 static Mix_Chunk *sfx[SFX_SLOTS];
 static int8_t     sfx_tried[SFX_SLOTS];
 static bool       sfx_on = true;
+static bool       sfx_checked;
 
 void smk_sfx_toggle(void) { sfx_on = !sfx_on; }
+
+/* SMK_SFX_OFF=1 silences the one-shot effects and leaves the engine
+ * mixer running - the only way to hear (or measure) the engines alone. */
+static bool sfx_enabled(void)
+{
+    if (!sfx_checked) { sfx_checked = true; if (getenv("SMK_SFX_OFF")) sfx_on = false; }
+    return sfx_on;
+}
 
 /* Some sounds are not a game id at all - the countdown's beeps are three
  * key-ons of one voice inside the start passage (NOTES 217) - so they
  * live under a name rather than a number. */
 void smk_sfx_play_name(const char *name)
 {
-    if (!ready || !sfx_on || !name) return;
+    if (!ready || !sfx_enabled() || !name) return;
     static char cached[4][24];
     static Mix_Chunk *chunks[4];
     static int8_t tried[4];
@@ -159,7 +168,7 @@ static struct { char name[24]; Mix_Chunk *chunk; bool on; } loops[SFX_LOOPS];
 
 void smk_sfx_loop(const char *name, bool on)
 {
-    if (!ready || !sfx_on || !name) return;
+    if (!ready || !sfx_enabled() || !name) return;
     int slot = -1, free_slot = -1;
     for (int i = 0; i < SFX_LOOPS; i++) {
         if (loops[i].name[0] && !strcmp(loops[i].name, name)) { slot = i; break; }
@@ -192,7 +201,7 @@ void smk_sfx_loop(const char *name, bool on)
 
 void smk_sfx_play(int id)
 {
-    if (!ready || !sfx_on || id < 0 || id >= SFX_SLOTS) return;
+    if (!ready || !sfx_enabled() || id < 0 || id >= SFX_SLOTS) return;
     if (!sfx[id]) {
         if (sfx_tried[id]) return;             /* one look per id, then quiet */
         sfx_tried[id] = 1;
@@ -622,10 +631,15 @@ void smk_engine_voice(int voice, int chr, int v, float vol, float pan)
     }
 }
 
-void smk_engine_set(int chr, int v)
+float smk_engine_base_volume(void)
 {
     const char *ev = getenv("SMK_ENGINE_VOL");
-    smk_engine_voice(0, chr, v, ev ? (float)atof(ev) : 0.40f, 0.0f);
+    return ev ? (float)atof(ev) : 0.40f;
+}
+
+void smk_engine_set(int chr, int v)
+{
+    smk_engine_voice(0, chr, v, smk_engine_base_volume(), 0.0f);
 }
 
 void smk_engine_off(void)

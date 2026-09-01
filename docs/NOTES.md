@@ -9653,3 +9653,53 @@ the player's own on voice 7.  The game really does give nearby karts
 their own engines, each with its driver's sample.  S39's placement
 (which karts, how they fade and pan) stays ours; that there are several,
 and that each is its driver's own, is the game's.
+
+## 237. Five surfaces, not two - and why a kart could go past in silence
+
+### The bridge, and Mario Circuit's own off-road
+
+NOTES 236 found the grass by looking for ONE sample.  That was too
+narrow: run each forced class against the road control and diff the whole
+voice picture, and five classes have a sound, each its own:
+
+    class          sample   pitch            how
+    $50 bridge      $16     $0300            held
+    $54 MC dirt     $00     $0280..$0400     held, pitch dithered
+    $58 sand        $04     $0400            re-keyed, 10-frame period
+    $5A grass       $04     $0600            re-keyed, 10-frame period
+    $5C mud         $12     $0A00            held
+    $44, $52        -       -                nothing
+
+The user named two of these from play - "we need the same for bridge, it
+had also a characteristic sound" and "mario circuit: running off road
+also generates a specific sound" - and both were already sitting in the
+sweep, unlooked-at, because the first pass only asked about sample `$04`.
+`$54` is the one Mario Circuit actually uses: its live `$0B00` holds only
+`$26`, `$40`, `$52` and `$54`.
+
+The three held ones are rendered as seamless loops of the sample's own
+loop region with `LOOP_RAW=1` - at the sample's OWN level.  Normalising
+each file to a common peak is exactly what wrecked the balance the first
+time round (NOTES 224): the grass hiss is quiet in the ROM because the
+ROM means it to be.
+
+### "passing nearby an AI player does not emit any engine sound"
+
+The port's AI engines were not silent - they were a sixth of the volume
+they should be, which is the same thing at a speaker.
+
+First, that the game really does play them, established without falling
+for the obvious trap: FOUR voices in a race carry an engine SAMPLE, but
+two of them sit at pitch `$07xx`-`$13xx`, an octave and more below the
+engine's own `$46xx`-`$51xx` band - the music playing `$03` and `$17` as
+instruments.  With the pitch range as the discriminator, voices 1, 3 and
+5 carry real engines beside the player's on 7, each with its driver's own
+sample.
+
+Then the balance, off the DSP's own volume registers: over 137 frames
+where the player's engine and at least one other sound together, another
+kart's engine is a **median 0.89** of the player's (395 samples, quartiles
+0.52 and 1.22, range 0.17..1.44).  The port had `0.14` against the
+player's `0.40`.  It is now the player's own level scaled `1.3 - d/220`,
+so a kart alongside is about as loud as you are, which is what the ROM
+does.  OURS, still: which three karts, the 220 px range and the falloff.

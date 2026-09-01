@@ -995,14 +995,33 @@ static void step_kart(smk_kart *k, smk_track *trk,
          * OURS: the speed gate (the measurement only ever saw it at one
          * speed, so whether it thins out slowly is untested). */
         {
+            /* Five of them, and each class has its OWN voice (NOTES 236,
+             * extended in 237 after the user asked for the bridge and
+             * named Mario Circuit's off-road).  Forced class by class
+             * and diffed against the road control:
+             *   $50 bridge          sample $16 at pitch $0300
+             *   $54 MC off-road     sample $00, pitch dithered $0280..$0400
+             *   $58 sand            sample $04 at pitch $0400  (pulsed)
+             *   $5A grass           sample $04 at pitch $0600  (pulsed)
+             *   $5C mud             sample $12 at pitch $0A00
+             * $44 and $52 have none.  The two pulsed ones re-key on a
+             * 10-frame period; the other three are held, so they are
+             * rendered as seamless loops of the sample's own loop region
+             * at its own level (LOOP_RAW - normalising them to a common
+             * peak is what wrecked the balance the first time). */
+            static const struct { uint8_t cls; const char *name; } ROUGH[] = {
+                { 0x50, "offroad50" }, { 0x54, "offroad54" },
+                { 0x58, "offroad58" }, { 0x5A, "offroad5A" },
+                { 0x5C, "offroad5C" },
+            };
             uint8_t sc = surf_now & 0xFE;
             bool rough = race_state == RACE_RUN && !k->airborne
                          && k->speed > 0x100;
             if (getenv("SMK_SFX_TRACE") && (fx_ticks % 60) == 0)
                 printf("surf: $%02X (class $%02X) speed %d state %d air %d\n",
                        surf_now, sc, k->speed, (int)race_state, (int)k->airborne);
-            smk_sfx_loop("offroad5A", rough && sc == 0x5A);
-            smk_sfx_loop("offroad58", rough && sc == 0x58);
+            for (int i = 0; i < (int)(sizeof ROUGH / sizeof ROUGH[0]); i++)
+                smk_sfx_loop(ROUGH[i].name, rough && sc == ROUGH[i].cls);
         }
         /* braking hard (the user's $3C): Y held and the speed really going */
         {
@@ -1113,10 +1132,24 @@ static void step_kart(smk_kart *k, smk_track *trk,
                 float dy = (float)(smk_kart_px(racers[q].k.y) - smk_kart_px(k->y));
                 float lat = -dx * sinf(ang) + dy * cosf(ang);
                 float pan = lat / 120.0f;
-                float vol = 0.14f * (1.0f - d / 220.0f);
+                /* MEASURED (NOTES 237): in the ROM another kart's engine
+                 * sits at a MEDIAN 0.89 of the player's OWN voice - 395
+                 * samples over the 137 frames of a race where two engines
+                 * sound at once, range 0.17..1.44, with the engine pitch
+                 * range as the discriminator (the music plays two of the
+                 * four engine samples as instruments an octave down, so
+                 * the sample alone counts the wrong voices).  The port had
+                 * 0.14 against the player's 0.40 - about a sixth - which
+                 * is why the user could not hear a kart go past at all.
+                 * OURS: the falloff, still linear over the same range. */
+                float vol = smk_engine_base_volume()
+                          * (1.3f - 1.0f * d / 220.0f);
                 if (vol < 0.0f) vol = 0.0f;
                 smk_engine_voice(j + 1, racers[q].character % SMK_CHARACTERS,
                                  vq, vol, pan);
+                if (getenv("SMK_ENGINE_TRACE") && (fx_ticks % 30) == 0)
+                    printf("  ai%d kart %d d %.0f vq %d vol %.3f pan %.2f\n",
+                           j, q, d, vq, vol, pan);
             }
         }
         if (getenv("SMK_ENGINE_TRACE") && (fx_ticks % 15) == 0)
