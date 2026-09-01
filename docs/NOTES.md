@@ -9147,3 +9147,28 @@ And two events that fire two sounds, from play:
 
 Still ambiguous: $65 and $24 are both "a feather" by ear, and $50 is
 half of something.  Neither is wired twice; $24 keeps the item.
+
+## 223. The skid belongs to the SMOKE, and the coin item is two coins seven frames apart
+
+The user, after driving with NOTES 221's skid: "it should sound exactly
+at the same times you are displaying some smoke from the tyres.  Right
+now it sounds only on hard turns, and sometimes it lasts longer than the
+real skid."  Also: it is the Mario Circuit ON-ROAD sound only - off the
+road is a different one.
+
+Both are the same correction, and the game already answers it.
+`$80:D37A` is the ground-effect picker's own road branch: on a ROAD
+class it asks for kind $24 while the deep-drift flag is up, and other
+surfaces have their own kinds ($2A for $54-$58, $12 for grass, $06 for
+mud, $0C for water).  So the skid is not "the slide lag is over 4000",
+it is exactly "kind $24" - the frames the port is already drawing tyre
+smoke on.  Wired to that, and the two thresholds I had invented are
+gone.  Off-road surfaces will need their own held sounds, which is why
+the user hears a different one there.
+
+THE COIN ITEM.  It gives two coins, so it makes the coin sound TWICE,
+and the recordings say how far apart: at both +2 pickups in the moles
+race the second $20 lands SEVEN FRAMES after the first (f3752: +0, +1,
++7; f15507: +0, +7, +8 - the doubled frames are the driver's own
+repeat).  The port now queues the second with a small delayed-sound
+queue, which is the first thing it has needed one for.

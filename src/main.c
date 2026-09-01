@@ -729,6 +729,14 @@ static bool obj_marks;   /* --obj-marks: show each object's ground point */
 static smk_autopilot autopilot;
 static int  crossings;              /* finish-line crossings this race */
 static bool engine_throttle;        /* B held: the rev, countdown included */
+static int  fx_kind_now = -1;       /* the ground effect this frame ($80:D37A) */
+/* sounds queued a few frames ahead: the game spaces some pairs out */
+static struct { int id, t; } sfx_later[4];
+static void smk_sfx_after(int id, int frames)
+{
+    for (int i = 0; i < (int)(sizeof sfx_later / sizeof sfx_later[0]); i++)
+        if (sfx_later[i].t <= 0) { sfx_later[i].id = id; sfx_later[i].t = frames; return; }
+}
 
 /* One frame of the player's kart: the DECODED control (src/player.c, NOTES
  * 103).  This function only translates the SDL input into the SNES pad word
@@ -859,6 +867,18 @@ static void step_kart(smk_kart *k, smk_track *trk,
      * a frame.  Which id belongs to which event is now mostly MEASURED -
      * the ids were watched firing against the game's own state in the
      * user's recordings - and the rest is the user's ear. */
+    {
+        uint8_t surf = smk_track_surface(trk, smk_kart_px(k->x), smk_kart_px(k->y));
+        fx_kind_now = smk_effects_pick(surf, !k->airborne && k->z == 0,
+                                       (player.flags & 0x0008) != 0,
+                                       (player.flags & 0x0020) != 0, k->speed);
+    }
+    {   /* sounds the game spaces out - the coin item is TWO coins, and
+         * the recording puts its two $20s seven frames apart */
+        for (int i = 0; i < (int)(sizeof sfx_later / sizeof sfx_later[0]); i++)
+            if (sfx_later[i].t > 0 && --sfx_later[i].t == 0)
+                smk_sfx_play(sfx_later[i].id);
+    }
     if (!replay_path) {
         static int was_state, was_hazard2, was_mole, was_air, was_shrink, was_drive;
         static int16_t was_speed;
@@ -879,20 +899,15 @@ static void step_kart(smk_kart *k, smk_track *trk,
         if (!k->airborne && was_air && player.state != 0x18)
             smk_sfx_play(SMK_SFX_LAND);
         if (k->bounce_hit) smk_sfx_play(SMK_SFX_WALL);
-        /* THE SKID (NOTES 221).  Not a queued effect at all - like the
-         * roulette it is HELD: through a slide the driver keeps one
-         * voice on sample $00 at full envelope and dithers its pitch
-         * every frame, which is why the user hears it as "quite more
-         * frequent, to the point that it is a continuous sound".  So
-         * the port holds it too, with hysteresis so it does not chatter
-         * on the edge (OURS: the two thresholds). */
-        {
-            static bool sliding;
-            int slip = player.vlag < 0 ? -player.vlag : player.vlag;
-            if (!sliding && slip > 4000 && !k->airborne) sliding = true;
-            else if (sliding && (slip < 2500 || k->airborne)) sliding = false;
-            smk_sfx_loop("skid", sliding && race_state == RACE_RUN);
-        }
+        /* THE SKID (NOTES 221/223).  A HELD voice, and the user pinned
+         * exactly when it should sound: "it should sound exactly at the
+         * same times you are displaying some smoke from the tyres" -
+         * which is the game's own condition, not a slide threshold of
+         * mine.  Effect kind $24 is the drift smoke on a ROAD class
+         * ($80:D37A's own branch); the other surfaces have their own
+         * kinds and their own sounds, which is why the user hears a
+         * different one off-road. */
+        smk_sfx_loop("skid", fx_kind_now == 0x24 && race_state == RACE_RUN);
         if (surf_now == 0x5E && was_surf != 0x5E) smk_sfx_play(SMK_SFX_MUD);
         if (surf_now == 0x52 && was_surf != 0x52) smk_sfx_play(SMK_SFX_GRAVEL);
         /* braking hard (the user's $3C): Y held and the speed really going */
@@ -977,11 +992,7 @@ static void step_kart(smk_kart *k, smk_track *trk,
     /* the ground effect object ($80CF7B..$80D4A3): what the surface under
      * the kart and the slide/spin state ask for this frame */
     {
-        uint8_t surf = smk_track_surface(trk, smk_kart_px(k->x), smk_kart_px(k->y));
-        int kind = smk_effects_pick(surf, !k->airborne && k->z == 0,
-                                    (player.flags & 0x0008) != 0,
-                                    (player.flags & 0x0020) != 0, k->speed);
-        smk_effects_step(&fx_state, kind, fx_frame_idx);
+        smk_effects_step(&fx_state, fx_kind_now, fx_frame_idx);
         fx_ticks++;
     }
 
@@ -3294,6 +3305,11 @@ int main(int argc, char **argv)
                         case SMK_ITEM_COIN:
                             player.coins += 2; if (player.coins > 99) player.coins = 99;
                             smk_coinfx_pickup2(coins_fx, SMK_COINFX_MAX);
+                            /* TWO coins, so two coin sounds - and the game
+                             * spaces them SEVEN FRAMES apart (measured at
+                             * two +2 pickups in the recordings) */
+                            smk_sfx_play(SMK_SFX_COIN);
+                            smk_sfx_after(SMK_SFX_COIN, 7);
                             break;
                         case SMK_ITEM_LIGHTNING:
                             for (int q = 1; q < SMK_CHARACTERS; q++)
