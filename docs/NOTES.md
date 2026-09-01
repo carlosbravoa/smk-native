@@ -9380,3 +9380,24 @@ world px.  OURS: the range, the falloff and the balance (0.40 for the
 player, 0.14 a kart); the pitch law and the sample are the game's.
 Verified through the port's own output: the mix is genuinely stereo and
 moves as karts pass, and clipping sits at 0.001% of samples.
+
+## 230. Three take-offs, kept apart the way the ROM keeps them
+
+The surface sweep, run over every hazard class, sorts the launches out:
+
+    class $2A (the bump)     -> $21 from $80:B68C, or $4E while boosting
+    class $2C (the launch)   -> $23 from $80:B66A
+    the shoulder hop         -> $21 from $80:B555
+    landing, hard ground     -> $25 from $80:B20E
+    landing, class $5C+ or water -> $4C, the same routine's other branch
+
+So a RAMP and a HOP are different sounds and the port had been playing
+the hop for both.  It now reads the class under the kart at the moment
+it leaves the ground, exactly as $80:B1F0 reads it at the moment it
+lands.
+
+Coverage after the sweeps: 35 of 71 sites, and the sweep log is counted
+alongside the recordings, so $80:D825 (the soft kart bump) is covered by
+a poke that no recording ever reached.  What is left is mostly the
+menus' per-screen sites and the item-hit variants - both reachable the
+same way, and neither needing anyone to play anything.

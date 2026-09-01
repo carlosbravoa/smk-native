@@ -908,9 +908,17 @@ static void step_kart(smk_kart *k, smk_track *trk,
             smk_sfx_play(SMK_SFX_FALL);              /* off the road   */
         if (player.mole_on && !was_mole) smk_sfx_play(SMK_SFX_MOLE);
         if (k->airborne && !was_air && player.state != 0x18) {
-            /* $80:B67C: a bump taken while BOOSTING (drive $10) has its
-             * own sound; otherwise it is the hop's */
-            smk_sfx_play(player.drive == 0x10 ? SMK_SFX_JUMP_BIG : SMK_SFX_HOP);
+            /* Three different take-offs, and the ROM keeps them apart
+             * (NOTES 229, each forced by filling the surface):
+             *   a RAMP  (class $2C, and the $10/$12/$1C launches) -> $23
+             *   the BUMP (class $2A)  -> $21, or $4E while boosting
+             *   a HOP    (the shoulder button) -> $21
+             */
+            uint8_t c = surf_now & 0xFE;
+            if (c == 0x2C || c == 0x10 || c == 0x12 || c == 0x1C)
+                smk_sfx_play(SMK_SFX_RAMP);
+            else
+                smk_sfx_play(player.drive == 0x10 ? SMK_SFX_JUMP_BIG : SMK_SFX_HOP);
         }
         if (!k->airborne && was_air && player.state != 0x18) {
             /* $80:B1F0 picks the landing sound off the surface: class
