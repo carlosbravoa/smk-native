@@ -31,6 +31,13 @@ emu.register_frame_done(function()
   -- SFX_GAPF spaces the list out over frames instead of queueing it in
   -- one: two ids in the same frame land on the same voice and the
   -- second simply replaces the first (NOTES 215).
+  -- SFX_ITEM=<hex>: hand the player that item READY and press A, so a
+  -- state nobody recorded (a star, a lightning) can still be watched.
+  local item = os.getenv("SFX_ITEM")
+  if item and n == start then
+    w16(0x0D70, 0xC000 | tonumber(item, 16))
+    mem:write_u8(0x7E0EA0, 0x80)     -- the pad's A, for the frame
+  end
   if #ids > 0 then
     local gap = tonumber(os.getenv("SFX_GAPF") or "0")
     if gap > 0 then

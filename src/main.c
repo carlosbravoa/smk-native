@@ -3313,7 +3313,10 @@ int main(int argc, char **argv)
                             break;
                         case SMK_ITEM_BOO:
                             player.boo_t = 0x480;
-                            smk_sfx_play(SMK_SFX_BOO_START);   /* the user: "boo starting" */
+                            /* MEASURED by forcing the item in the oracle
+                             * (NOTES 227): the Boo handler plays $57 from
+                             * $80:E9C1 - $56 is something else. */
+                            smk_sfx_play(SMK_SFX_BOO);
                             break;
                         case SMK_ITEM_COIN:
                             player.coins += 2; if (player.coins > 99) player.coins = 99;

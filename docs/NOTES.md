@@ -9280,3 +9280,38 @@ already agree on those.  What is course-specific is bank $85's object
 code (the plants, moles and Thwomps each have their own site) and the
 surface branches.  So the answer is: do not replay every course, play
 every EVENT - and the coverage list says which ones are still missing.
+
+## 227. Stop waiting for the game to happen: drive it there
+
+The user, on being asked for a recording containing a lightning bolt:
+"That is so improbable, it would mean hours and hours of playing for one
+sound.  While we have the code, deterministic code with all the
+combination trees."  Exactly right, and the tooling to act on it has
+been here the whole time.
+
+tools/labs/sfxsweep.py boots a race in the ORACLE - our own 65816
+interpreter - wraps the CPU's step so every arrival at the sound routine
+is caught, and then simply HANDS THE PLAYER each item in turn
+($0D70 = $C000|id) and presses A.  Nine items, one run, no luck
+involved.  The whole item map, with the routine that plays each:
+
+    mushroom  $48 $80:B48C      feather  $24 $80:B57B (then $25, landing)
+    green     $2B $80:F442      red      $2B $80:F442
+    Boo       $57 $80:E9C1      coin     $20 $85:E679
+    lightning $20 $85:E679 and $2A $80:B75A (the victim's tumble)
+    star      NOTHING           banana   NOTHING
+
+Two corrections straight away.  The Boo plays **$57**, not the $56 the
+port had from an ear guess - $80:E9C1 is the Boo handler's own call.
+And the star queues NO SOUND AT ALL, which is the fourth time this has
+meant the same thing: it is a HELD voice, like the engine, the roulette
+and the skid (NOTES 213/220/221).  The user's "$61 ... resembles
+mario/luigi invincibility, possible that it has the wrong pitch?" now
+reads as: $61 is one note of a walked pitch, exactly as $042F was one
+note of the roulette.
+
+The lesson is the user's, and it belongs at the top of the sound work:
+the game is a deterministic machine and we own an interpreter for it, so
+a state that is rare IN PLAY is not rare AT ALL - it is a poke away.
+Waiting for a recording is only for things the code cannot be told to
+do, which so far is nothing.
