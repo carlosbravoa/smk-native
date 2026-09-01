@@ -9201,3 +9201,47 @@ If the star is a held voice with its pitch walked - which is how the
 roulette, the engine and the skid all turned out - then a poke shows one
 note of it and the user's "wrong pitch" is exactly right.  It needs a
 recording with a star in it.
+
+## 225. Ask the GAME who plays each sound: a read tap on the call
+
+The user: "we need a better way to map sounds.  Can a MAME debug session
+help?  We cannot be action per action trying to find the right sound."
+Right - and the game will simply say, if asked properly.
+
+tools/labs/mame/sfxwho.lua installs a READ TAP on the opcode fetch at
+each entry of the play-sound routine ($81:F57A and its siblings).  When
+the CPU arrives there the JSL's return address is on the stack, so the
+tap logs the id in A AND THE ROUTINE THAT ASKED FOR IT.  Run over the
+twelve recordings, that is the whole map, from the game itself:
+
+    $20  $85:C1B7        the coin
+    $21  $80:B555 (hop), $80:B68C (a bump)
+    $4E  $80:B684        the SAME bump, taken while boosting (drive $10)
+    $22  $80:B6B9        a launch: sets z and the airborne flag
+    $23  $80:B66A        the ramp
+    $24  $80:B57B        the feather
+    $25  $80:B20E        LANDING - and $4C is $80:B201/$B1F7, the same
+                         routine choosing a different sound when the
+                         surface class is $5C+ or water: landing SOFT
+    $27  $80:B5BB water   $28  $80:B647 lava    $2A  $80:B75A the tumble
+    $48  $80:B48C mushroom  $55  $80:9B32 the item  $68  $80:8A2A
+    $2C/$2E  the menu ($85:853C, $85:885E, $84:FAF6, $85:94E2 ...)
+
+Two corrections fell straight out.  $4C is not "the mud surface" - it is
+the LANDING sound on soft ground, chosen by $80:B1F0 off the class under
+the kart, so the port now plays it when landing on $5C+ or water rather
+than when driving onto mud.  And $4E is not "the big ramp jump" - it is
+the bump at $80:B67C taken with the drive state at $10, i.e. while
+boosting.  Both had been named from correlation, and correlation put
+them in the right family but the wrong event.
+
+THE TRAP that cost an hour: a tap whose handle is garbage-collected
+stops firing.  The first run caught two calls at frames 0 and 177 and
+then nothing, which reads exactly like "the game never calls this
+again".  Keep the handles in a table (_G.__sfx_taps).
+
+This is the tool to reach for first from now on: it names a sound by the
+code that plays it, in one run, for every sound at once - rather than
+one id at a time by ear.  What it CANNOT name is the held voices (the
+engine, the roulette, the skid), which are never requested at all;
+those still want the voice-log route of NOTES 220/221.

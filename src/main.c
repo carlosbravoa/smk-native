@@ -900,11 +900,18 @@ static void step_kart(smk_kart *k, smk_track *trk,
             smk_sfx_play(SMK_SFX_FALL);              /* off the road   */
         if (player.mole_on && !was_mole) smk_sfx_play(SMK_SFX_MOLE);
         if (k->airborne && !was_air && player.state != 0x18) {
-            /* taking off: the ramp at speed is its own sound */
-            smk_sfx_play(k->speed > 0x500 ? SMK_SFX_JUMP_BIG : SMK_SFX_HOP);
+            /* $80:B67C: a bump taken while BOOSTING (drive $10) has its
+             * own sound; otherwise it is the hop's */
+            smk_sfx_play(player.drive == 0x10 ? SMK_SFX_JUMP_BIG : SMK_SFX_HOP);
         }
-        if (!k->airborne && was_air && player.state != 0x18)
-            smk_sfx_play(SMK_SFX_LAND);
+        if (!k->airborne && was_air && player.state != 0x18) {
+            /* $80:B1F0 picks the landing sound off the surface: class
+             * $5C and up, or water, land SOFT ($4C); everything else is
+             * $25.  One routine, two sounds - which is why $4C looked
+             * like "the mud surface" from correlation alone. */
+            uint8_t c = surf_now & 0xFE;
+            smk_sfx_play(c >= 0x5C || c == 0x22 ? SMK_SFX_LAND_SOFT : SMK_SFX_LAND);
+        }
         if (k->bounce_hit) smk_sfx_play(SMK_SFX_WALL);
         /* THE SKID (NOTES 221/223).  A HELD voice, and the user pinned
          * exactly when it should sound: "it should sound exactly at the
@@ -915,7 +922,6 @@ static void step_kart(smk_kart *k, smk_track *trk,
          * kinds and their own sounds, which is why the user hears a
          * different one off-road. */
         smk_sfx_loop("skid", fx_kind_now == 0x24 && race_state == RACE_RUN);
-        if (surf_now == 0x5E && was_surf != 0x5E) smk_sfx_play(SMK_SFX_MUD);
         if (surf_now == 0x52 && was_surf != 0x52) smk_sfx_play(SMK_SFX_GRAVEL);
         /* braking hard (the user's $3C): Y held and the speed really going */
         {

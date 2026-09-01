@@ -389,9 +389,9 @@ const char *smk_sfx_name(int id)
     case SMK_SFX_AI_ENGINE:   return "another kart's engine (you)";
     case SMK_SFX_FEATHER2:    return "a feather           (you) - $24 is one too";
     case SMK_SFX_BOOST:       return "mushroom boost      (you)";
-    case SMK_SFX_MUD:         return "mud / heavy off-road (measured)";
+    case SMK_SFX_LAND_SOFT:   return "landing on soft ground (the ROM)";
     case SMK_SFX_MENU_SCROLL: return "menu scrolling      (you)";
-    case SMK_SFX_JUMP_BIG:    return "the big ramp jump   (measured)";
+    case SMK_SFX_JUMP_BIG:    return "a bump taken boosting (the ROM)";
     case SMK_SFX_ITEMBOX:     return "the item picked from the roulette (you)";
     case SMK_SFX_SHRINK:      return "poison mushroom, shrinking (you)";
     case SMK_SFX_GROW:        return "back to full size   (you)";

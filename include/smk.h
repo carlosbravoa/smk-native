@@ -1339,9 +1339,11 @@ const char *smk_sfx_hint(int id);   /* when the game fires an unnamed one */
  * skid is a HELD voice, NOTES 221.  The user then named it by ear -
  * gravel - which fits: the game plays it on a surface, like $4C's mud.) */
 #define SMK_SFX_BOOST      0x48   /* USER + ROM $80:B48C                       */
-#define SMK_SFX_MUD        0x4C   /* MEASURED: every one on surface class $5E  */
+#define SMK_SFX_LAND_SOFT  0x4C   /* $80:B201/$B1F7 - landing on class >= $5C
+                                   * or on water: the SAME landing code as $25 */
 #define SMK_SFX_MENU_SCROLL 0x4D  /* USER: "menu scrolling"                    */
-#define SMK_SFX_JUMP_BIG   0x4E   /* MEASURED: airborne at speed ~1620         */
+#define SMK_SFX_JUMP_BIG   0x4E   /* $80:B684 - the $2A bump taken while the
+                                   * drive state is $10, i.e. BOOSTING        */
 #define SMK_SFX_ITEMBOX    0x55   /* MEASURED: 16 of 22 with the item word     */
 #define SMK_SFX_SHRINK     0x5D   /* USER: the poison mushroom                 */
 #define SMK_SFX_GROW       0x5F   /* USER: back to full size                   */
