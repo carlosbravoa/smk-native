@@ -1329,9 +1329,16 @@ const char *smk_sfx_hint(int id);   /* when the game fires an unnamed one */
 #define SMK_SFX_MENU_BACK  0x2F   /* USER                                      */
 #define SMK_SFX_SHELL_BOUNCE 0x2A /* USER: "shells do sound when bouncing"     */
 #define SMK_SFX_BRAKE      0x3C   /* USER: "braking hard, skids probably"      */
-#define SMK_SFX_WALL       0x42   /* USER: "hitting a barrier 100%" - and it
-                                   * MEASURED as the bump that costs a coin  */
-#define SMK_SFX_GRAVEL     0x40   /* USER: "sounds like going on gravel"      */
+/* $80:D818 picks between these two by the impact ($50,x vs $1200): a
+ * KART-to-kart contact, hard or soft.  Forced in the oracle by dropping
+ * another kart on the player (NOTES 228). */
+#define SMK_SFX_BUMP_HARD  0x42   /* $80:D81F - the user's "barrier", and
+                                   * the bump that costs you a coin        */
+#define SMK_SFX_BUMP_SOFT  0x54   /* $80:D825                              */
+/* $80:D7F1 reads a TABLE at $80:D7DA - $3F $40 $41 by ($AE,x & 7) - so
+ * the wall is one event at three intensities, not three sounds. */
+#define SMK_SFX_WALL       0x3F
+#define SMK_SFX_WALL2      0x40   /* the same table, one step up              */
 #define SMK_SFX_BOO_START  0x56   /* USER: "boo starting sound"               */
 #define SMK_SFX_AI_ENGINE  0x62   /* USER: "the engine of another player"     */
 #define SMK_SFX_FEATHER2   0x65   /* USER: "a feather" (twice) - the flight?  */

@@ -381,10 +381,12 @@ const char *smk_sfx_name(int id)
     case SMK_SFX_MENU_MOVE:   return "menu move           (you)";
     case SMK_SFX_MENU_OK:     return "menu confirm        (you)";
     case SMK_SFX_MENU_BACK:   return "menu back           (you)";
-    case SMK_SFX_WALL:        return "hitting a barrier   (you, and measured)";
+    case SMK_SFX_WALL:        return "scraping a wall     (forced in the oracle)";
+    case SMK_SFX_BUMP_HARD:   return "a hard kart bump    (forced; you: barrier)";
+    case SMK_SFX_BUMP_SOFT:   return "a soft kart bump    (forced in the oracle)";
     case SMK_SFX_SHELL_BOUNCE: return "a shell bouncing    (you)";
     case SMK_SFX_BRAKE:       return "braking hard        (you)";
-    case SMK_SFX_GRAVEL:      return "gravel              (you)";
+    case SMK_SFX_WALL2:       return "the wall, harder    (the $80:D7DA table)";
     case SMK_SFX_BOO_START:   return "Boo, starting       (you)";
     case SMK_SFX_AI_ENGINE:   return "another kart's engine (you)";
     case SMK_SFX_FEATHER2:    return "a feather           (you) - $24 is one too";

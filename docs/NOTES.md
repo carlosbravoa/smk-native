@@ -9315,3 +9315,36 @@ the game is a deterministic machine and we own an interpreter for it, so
 a state that is rare IN PLAY is not rare AT ALL - it is a poke away.
 Waiting for a recording is only for things the code cannot be told to
 do, which so far is nothing.
+
+## 228. Collisions and menus, forced - and sounds come in FAMILIES
+
+Extending NOTES 227's sweep to the rest, all of it driven rather than
+waited for.
+
+COLLISIONS, by dropping the thing on the kart in the oracle:
+
+  * a WALL (the surface filled with $80) -> $3F from $80:D7F4 - and that
+    site plays a COMPUTED id: $80:D7F1 reads a table at $80:D7DA, which
+    is `3F 00 40 00 41 00 41 00`, indexed by ($AE,x & 7).  So $3F/$40/$41
+    are ONE event at three intensities, not three sounds.  That is why
+    $40 sounded like "going on gravel" alone: it is the middle of a
+    scrape.
+  * ANOTHER KART, poked on top of the player -> $54 from $80:D825, plus
+    $20 from $85:E679 (the coin the contact costs).  $80:D818 chooses:
+    impact $50,x >= $1200 plays $42, under it $54.  So $42 and $54 are
+    kart contact HARD and SOFT - which is the user's "hitting a barrier
+    100%" heard from the hard side, and it is also why $42 always
+    coincided with a coin going.
+
+MENUS, driven from the title screen by the pad, no race at all:
+START -> $2E ($85:853C), UP/DOWN -> $2C ($85:885E).  So $2C is the move
+and $2E the screen change, both confirmed from the code that plays them.
+
+The FAMILIES matter beyond this one table.  Bank $84's stub list has the
+same shape - $30/$31/$32, $36/$37/$38, $3C/$3D/$3E, $44/$45/$46,
+$58/$59/$5A, each listed twice - so a good part of the id space is not
+distinct sounds at all but variants of a few events.  Naming ids one at
+a time by ear was always going to mislead here; the table says which
+belong together.
+
+Ported: the wall plays $3F, a kart contact $42 or $54 by the impact.

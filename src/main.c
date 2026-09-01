@@ -889,6 +889,7 @@ static void step_kart(smk_kart *k, smk_track *trk,
     if (!replay_path) {
         static int was_state, was_hazard2, was_mole, was_air, was_shrink, was_drive;
         static int16_t was_speed;
+        static int8_t was_bump;
         static int was_boo;
         static uint8_t was_surf;
         int st = player.state;
@@ -912,7 +913,12 @@ static void step_kart(smk_kart *k, smk_track *trk,
             uint8_t c = surf_now & 0xFE;
             smk_sfx_play(c >= 0x5C || c == 0x22 ? SMK_SFX_LAND_SOFT : SMK_SFX_LAND);
         }
+        /* a WALL is the $3F/$40/$41 family ($80:D7DA, indexed by
+         * $AE & 7); a KART is $42 or $54 by the impact ($80:D818).
+         * Both forced in the oracle (NOTES 228). */
         if (k->bounce_hit) smk_sfx_play(SMK_SFX_WALL);
+        if (k->bump_cool == SMK_BUMP_COOL && was_bump != SMK_BUMP_COOL)
+            smk_sfx_play(was_speed > 0x500 ? SMK_SFX_BUMP_HARD : SMK_SFX_BUMP_SOFT);
         /* THE SKID (NOTES 221/223).  A HELD voice, and the user pinned
          * exactly when it should sound: "it should sound exactly at the
          * same times you are displaying some smoke from the tyres" -
@@ -922,7 +928,6 @@ static void step_kart(smk_kart *k, smk_track *trk,
          * kinds and their own sounds, which is why the user hears a
          * different one off-road. */
         smk_sfx_loop("skid", fx_kind_now == 0x24 && race_state == RACE_RUN);
-        if (surf_now == 0x52 && was_surf != 0x52) smk_sfx_play(SMK_SFX_GRAVEL);
         /* braking hard (the user's $3C): Y held and the speed really going */
         {
             static int brake_cool;
@@ -943,7 +948,7 @@ static void step_kart(smk_kart *k, smk_track *trk,
         was_state = st; was_hazard2 = player.hazard;
         was_mole = player.mole_on; was_air = k->airborne;
         was_surf = surf_now; was_shrink = player.shrink_t > 0;
-        was_drive = player.drive; was_boo = player.boo_t;
+        was_drive = player.drive; was_boo = player.boo_t; was_bump = k->bump_cool;
     }
 
     /* THE ENGINE (NOTES 214/216).  $42 - the byte the driver gets every

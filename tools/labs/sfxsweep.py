@@ -76,8 +76,100 @@ def sweep_hazards(L):
         log('surface $%02X -> %s' % (cls, line or 'nothing'))
     L.surface_restore(snap)
 
+def sweep_collisions(L):
+    """A wall, another kart, and an object - each forced under the kart."""
+    sink = []
+    install(L, sink)
+    def report(what):
+        got = {}
+        for a, pc, caller in sink:
+            got.setdefault(a & 0xFF, set()).add(caller)
+        line = ', '.join('$%02X from %s' % (sid, ' '.join('$%02X:%04X' % (c >> 16, c & 0xFFFF)
+                                                          for c in sorted(got[sid])))
+                         for sid in sorted(got))
+        log('%-22s -> %s' % (what, line or 'nothing'))
+        del sink[:]
+
+    snap = L.surface_snapshot()
+    L.pace(600); del sink[:]
+    L.surface_fill(snap, 0x80)          # solid everywhere: a wall to run into
+    for _ in range(40):
+        L.frame(0x80, 0)
+    L.surface_restore(snap)
+    report('into a wall ($80)')
+
+    L.pace(600); del sink[:]
+    x, y = L.pos()                      # kart 2 dropped on top of the player
+    for _ in range(40):
+        L.sw(0x1118, x & 0xFFFF); L.sw(0x111C, y & 0xFFFF)
+        L.frame(0x80, 0)
+        x, y = L.pos()
+    report('another kart on top')
+
+    L.pace(600); del sink[:]
+    for _ in range(40):                 # and an object block moved onto it
+        x, y = L.pos()
+        for base in (0x1800, 0x1840, 0x1880, 0x18C0):
+            L.sw(base + 0x18, x & 0xFFFF); L.sw(base + 0x1C, y & 0xFFFF)
+        L.frame(0x80, 0)
+    report('an object on top')
+
+
+def sweep_menus():
+    """The menus, driven from the title screen by the pad - no race."""
+    import lab as _lab
+    from smktool.rom import Rom
+    from smktool.cpu import CPU, Bus, M_, X_
+    r = Rom.load(os.path.join(os.path.dirname(os.path.dirname(
+        os.path.dirname(os.path.abspath(__file__)))), 'rom', 'smk_usa.sfc'))
+    b = Bus(bytes(r.data)); c = CPU(b)
+    c.PB, c.PC = 0x80, r.vectors()['emu.RESET']; c.P = M_ | X_; c.S = 0x1FFF
+    c.run_to(0x80805C, budget=8_000_000)
+    b.reg_reads[0x4218] = 0; b.reg_reads[0x4219] = 0
+
+    class Shim:
+        pass
+    L = Shim(); L.c = c; L.b = b
+    sink = []
+    install(L, sink)
+
+    def frames(n, hi=0, lo=0):
+        b.reg_reads[0x4219] = hi; b.reg_reads[0x4218] = lo
+        c.run_frames_scanline(n)
+        b.reg_reads[0x4219] = 0; b.reg_reads[0x4218] = 0
+
+    def report(what):
+        got = {}
+        for a, pc, caller in sink:
+            got.setdefault(a & 0xFF, set()).add(caller)
+        line = ', '.join('$%02X from %s' % (sid, ' '.join('$%02X:%04X' % (cc >> 16, cc & 0xFFFF)
+                                                          for cc in sorted(got[sid])))
+                         for sid in sorted(got))
+        log('%-22s -> %s' % (what, line or 'nothing'))
+        del sink[:]
+
+    frames(240)
+    del sink[:]
+    for label, hi, lo in (('START (enter)', 0x10, 0x00),
+                          ('A (confirm)',  0x00, 0x80),
+                          ('DOWN',         0x04, 0x00),
+                          ('UP',           0x08, 0x00),
+                          ('LEFT',         0x02, 0x00),
+                          ('RIGHT',        0x01, 0x00),
+                          ('B (back)',     0x80, 0x00),
+                          ('A (confirm)',  0x00, 0x80),
+                          ('DOWN',         0x04, 0x00),
+                          ('A (confirm)',  0x00, 0x80)):
+        frames(4, hi, lo)
+        frames(40)
+        report('menu: ' + label)
+
+
 def main():
     what = sys.argv[1] if len(sys.argv) > 1 else 'all'
+    if what == 'menus':
+        sweep_menus()
+        return
     L = Lab(zero=(0x0E50, 0x0E51))
     L.reach_race()
     log('in a race; sweeping %s' % what)
@@ -85,5 +177,7 @@ def main():
         sweep_items(L)
     if what in ('hazards', 'all'):
         sweep_hazards(L)
+    if what in ('collisions', 'all'):
+        sweep_collisions(L)
 
 main()
