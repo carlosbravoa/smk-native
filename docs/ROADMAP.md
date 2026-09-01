@@ -70,7 +70,8 @@ copying them, and the selftest checks all sixteen entries against it.
 The rule is the ROM's too - $84:EF05's rank compare, and its $0A-frame
 cooldown. OURS: nothing.
 
-**S40 — Four engines, one per driver pair (NOTES 234).** The sample and
+**S40 — Four engines, one per driver pair (NOTES 234). CONFIRMED by
+the user, 2026-09-01: "engine sounds are correct".** The sample and
 the pitch law are both the game's, measured on the chip at eight rev
 values per driver ($02/34, $03/38, $18/29, $17/19). What stays OURS is
 what S39 already labelled - the placement of the AI voices - plus the
