@@ -1296,10 +1296,12 @@ void smk_sfx_play_name(const char *name);   /* rom/sfx/<name>.wav */
 void smk_sfx_loop(const char *name, bool on); /* a HELD sound: the roulette */
 void smk_sfx_toggle(void);
 int  smk_sfx_audition(void);      /* `smk --sfx`: play them all, named */
-/* the engine note: v is the game's own $42 (NOTES 212), 0 = silent */
-void smk_engine_set(int v);
+/* The engine note: v is the game's own $42 (NOTES 212), 0 = silent, and
+ * chr (an SMK_DRIVERS index) picks WHICH engine - the four driver pairs
+ * each key their own BRR sample at their own pitch law (NOTES 234). */
+void smk_engine_set(int chr, int v);
 /* one engine per kart: voice 0 is the player, 1.. are the nearest AI */
-void smk_engine_voice(int voice, int v, float vol, float pan);
+void smk_engine_voice(int voice, int chr, int v, float vol, float pan);
 void smk_engine_off(void);
 const char *smk_sfx_name(int id);
 const char *smk_sfx_hint(int id);   /* when the game fires an unnamed one */

@@ -1018,7 +1018,8 @@ static void step_kart(smk_kart *k, smk_track *trk,
         rev += d > 0.0f ? (d < 0.8f ? d : 0.8f) : (d > -3.0f ? d : -3.0f);
         int v = (int)(rev + 0.5f);
         bool racing = race_state == RACE_RUN || race_state == RACE_COUNTDOWN;
-        smk_engine_set(racing ? (v < 1 ? 1 : v) : 0);
+        smk_engine_set(racers[0].character % SMK_CHARACTERS,
+                       racing ? (v < 1 ? 1 : v) : 0);
         /* AND THE OTHER KARTS (NOTES 229).  The user named $5C and $62
          * as "the engine of another player": the game gives a nearby
          * kart its own engine, so the port now does too - the three
@@ -1041,7 +1042,7 @@ static void step_kart(smk_kart *k, smk_track *trk,
             for (int j = 0; j < 3; j++) {
                 int q = near[j].idx;
                 if (!racing || q < 0 || near[j].d2 > 220.0f * 220.0f) {
-                    smk_engine_voice(j + 1, 0, 0.0f, 0.0f);
+                    smk_engine_voice(j + 1, 0, 0, 0.0f, 0.0f);
                     continue;
                 }
                 float d = sqrtf(near[j].d2);
@@ -1056,13 +1057,15 @@ static void step_kart(smk_kart *k, smk_track *trk,
                 float pan = lat / 120.0f;
                 float vol = 0.14f * (1.0f - d / 220.0f);
                 if (vol < 0.0f) vol = 0.0f;
-                smk_engine_voice(j + 1, vq, vol, pan);
+                smk_engine_voice(j + 1, racers[q].character % SMK_CHARACTERS,
+                                 vq, vol, pan);
             }
         }
         if (getenv("SMK_ENGINE_TRACE") && (fx_ticks % 15) == 0)
-            printf("engine f%ld speed %4d thr %d -> $%02X (%.0f Hz)\n",
-                   hud_race_frames, k->speed, (int)thr, v,
-                   ((0x4700 + 34 * v) & 0x3FFF) / 4096.0 * 32000.0);
+            printf("engine f%ld %-6s speed %4d thr %d -> $%02X\n",
+                   hud_race_frames,
+                   SMK_DRIVERS[racers[0].character % SMK_CHARACTERS].name,
+                   k->speed, (int)thr, v);
     }
 
     /* the ground effect object ($80CF7B..$80D4A3): what the surface under

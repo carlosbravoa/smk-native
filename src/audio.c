@@ -230,6 +230,20 @@ static void audition_write(const char *path, const char *lines, int n)
     printf("\n  %d answered -> %s\n", n, path);
 }
 
+#define ENG_KINDS 4
+static const struct {
+    unsigned srcn;
+    int      base, slope;
+    const char *who;
+} eng_law[ENG_KINDS] = {
+    { 0x02, 0x4700, 34, "Mario, Luigi" },
+    { 0x03, 0x4800, 38, "Bowser, DK"   },
+    { 0x17, 0x4600, 19, "Peach, Toad"  },
+    { 0x18, 0x4600, 29, "Yoshi, Koopa" },
+};
+/* SMK_DRIVERS order: Mario Luigi Bowser Peach DK Yoshi Koopa Toad */
+static const unsigned char eng_kind_of[SMK_CHARACTERS] = { 0, 0, 1, 2, 1, 3, 3, 2 };
+
 int smk_sfx_audition(void)
 {
     if (!ready) return 0;
@@ -331,15 +345,22 @@ int smk_sfx_audition(void)
     }
     /* and the ENGINE, which is no file of notes at all: the ROM's rev law
      * driving the game's own looped sample (NOTES 213) */
+    /* all FOUR of them: the driver pairs do not share an engine
+     * (NOTES 234), so the audition sweeps each one's own sample and law */
+    static const int eng_demo[ENG_KINDS] = { 0, 2, 3, 5 };  /* Mario Bowser Peach Yoshi */
     while (!stopped) {
-        printf("  engine   the rev, $01 -> $4F -> $01  (SRCN $02 at the"
-               " game's own rate)\n");
-        fflush(stdout);
-        for (int v = 1; v <= 0x4F; v++) { smk_engine_set(v); SDL_Delay(28); }
-        for (int i = 0; i < 40; i++) { smk_engine_set(0x4F - (i & 7)); SDL_Delay(30); }
-        for (int v = 0x4F; v >= 1; v--) { smk_engine_set(v); SDL_Delay(22); }
-        smk_engine_off();
-        SDL_Delay(300);
+        for (int k = 0; k < ENG_KINDS && !stopped; k++) {
+            int chr = eng_demo[k];
+            printf("  engine   %-12s  the rev $01 -> $4F -> $01"
+                   "  (SRCN $%02X, $%04X + %d*v)\n",
+                   eng_law[k].who, eng_law[k].srcn, eng_law[k].base, eng_law[k].slope);
+            fflush(stdout);
+            for (int v = 1; v <= 0x4F; v++) { smk_engine_set(chr, v); SDL_Delay(24); }
+            for (int i = 0; i < 30; i++) { smk_engine_set(chr, 0x4F - (i & 7)); SDL_Delay(28); }
+            for (int v = 0x4F; v >= 1; v--) { smk_engine_set(chr, v); SDL_Delay(18); }
+            smk_engine_off();
+            SDL_Delay(400);
+        }
         if (!ask) break;
         printf("      > "); fflush(stdout);
         char line[512];
@@ -444,26 +465,37 @@ const char *smk_sfx_hint(int id)
     }
 }
 
-/* ---- The engine (NOTES 212/213) -------------------------------------
+/* ---- The engine (NOTES 212/213/234) ---------------------------------
  *
  * The engine is NOT a queued effect: the 65816 hands the driver a
  * parameter every frame - $42's low seven bits, written to APU port 2 at
  * $80:9643 - and the driver plays ONE LOOPED SAMPLE at a pitch set by
- * it.  Both halves are now read off the CHIP rather than the speaker
- * (NOTES 213): the engine is DSP voice 7, sample SRCN $02, and its DSP
- * pitch register is exactly
+ * it.  Both halves are read off the CHIP rather than the speaker
+ * (NOTES 213): the engine is DSP voice 7 and its pitch register is a
+ * straight line in that parameter.
  *
- *     P = $4700 + 34 * v        (masked to the DSP's 14 bits)
+ * And there is not ONE engine.  The user: "every pair of characters has
+ * their own engine sound".  Holding $1012 (the player's character, kept
+ * doubled) at each of the eight drivers with the rev word pinned, and
+ * reading voice 7 back, gives four samples and four laws (NOTES 234):
  *
- * measured at ten values of v, so the sample plays at
- * ((1792 + 34v) / 4096) * 32000 Hz.  rom/sfx/engine.wav is that sample's
- * own loop, decoded from the game's BRR by tools/labs/brr.py, so the
- * timbre and the pitch are both the game's.  (The first version
+ *     Mario, Luigi   SRCN $02   P = $4700 + 34 * v
+ *     Bowser, DK     SRCN $03   P = $4800 + 38 * v
+ *     Yoshi, Koopa   SRCN $18   P = $4600 + 29 * v
+ *     Peach, Toad    SRCN $17   P = $4600 + 19 * v
+ *
+ * Eight rev values each, dead linear, no scatter - and Peach's whole
+ * 1,400-frame in-play trace is identical to Toad's, frame for frame.
+ * Note the ENGINE pairs are not the STAT pairs: Peach rides with Toad
+ * here, not with Yoshi.  rom/sfx/engine<SRCN>.wav is each sample's own
+ * loop region, decoded from the game's BRR by tools/labs/enginesample.py
+ * and left RAW - $17 is the quietest of the four in the ROM too, and
+ * that is the game's decision, not ours.  (The first version of all this
  * synthesised a tone from a spectral peak and came out an octave and a
- * half high - the peak was the sample's 9th partial, not its pitch.)
- */
-static float  *eng_pcm;             /* the ROM's own loop, -1..1     */
-static int     eng_len;
+ * half high - the peak was the sample's 9th partial, not its pitch.) */
+
+static float  *eng_pcm[ENG_KINDS];  /* each pair's own loop, -1..1   */
+static int     eng_len[ENG_KINDS];
 static bool    eng_hooked, eng_tried;
 
 /* One voice per kart (NOTES 229).  The user, naming $5C and $62: "it is
@@ -475,6 +507,7 @@ static bool    eng_hooked, eng_tried;
 static struct {
     double phase, step;
     float  vol, vol_want, pan, pan_want;
+    int    kind;                    /* which pair's sample this voice plays */
 } eng[ENG_VOICES];
 
 static void engine_mix(void *ud, Uint8 *stream, int len)
@@ -482,7 +515,7 @@ static void engine_mix(void *ud, Uint8 *stream, int len)
     (void)ud;
     int16_t *out = (int16_t *)stream;
     int frames = len / 4;                       /* stereo, 16-bit */
-    if (!eng_pcm || eng_len < 2) { memset(stream, 0, (size_t)len); return; }
+    memset(stream, 0, (size_t)len);
     for (int i = 0; i < frames; i++) {
         float l = 0.0f, r = 0.0f;
         for (int v = 0; v < ENG_VOICES; v++) {
@@ -491,15 +524,18 @@ static void engine_mix(void *ud, Uint8 *stream, int len)
             eng[v].vol += (eng[v].vol_want - eng[v].vol) * 0.002f;
             eng[v].pan += (eng[v].pan_want - eng[v].pan) * 0.002f;
             if (eng[v].vol < 0.0005f) continue;
+            const float *pcm = eng_pcm[eng[v].kind];
+            int elen = eng_len[eng[v].kind];
+            if (!pcm || elen < 2) continue;
             int j = (int)eng[v].phase;
             float f = (float)(eng[v].phase - j);
-            float a = eng_pcm[j % eng_len], b = eng_pcm[(j + 1) % eng_len];
+            float a = pcm[j % elen], b = pcm[(j + 1) % elen];
             float s = (a + (b - a) * f) * eng[v].vol;
             float p = eng[v].pan;               /* -1 left .. +1 right */
             l += s * (p > 0.0f ? 1.0f - p * 0.8f : 1.0f);
             r += s * (p < 0.0f ? 1.0f + p * 0.8f : 1.0f);
             eng[v].phase += eng[v].step;
-            while (eng[v].phase >= eng_len) eng[v].phase -= eng_len;
+            while (eng[v].phase >= elen) eng[v].phase -= elen;
         }
         if (l > 1.0f) l = 1.0f; if (l < -1.0f) l = -1.0f;
         if (r > 1.0f) r = 1.0f; if (r < -1.0f) r = -1.0f;
@@ -508,41 +544,62 @@ static void engine_mix(void *ud, Uint8 *stream, int len)
     }
 }
 
-static void engine_load(void)
+/* One file per pair; a driver whose file is missing falls back to
+ * engine.wav, which IS SRCN $02 byte for byte (the port's old single
+ * engine was Mario's all along). */
+static bool engine_load_one(int kind)
 {
-    eng_tried = true;
     char path[900];
-    snprintf(path, sizeof path, "%ssfx/engine.wav", map_dir);
     SDL_AudioSpec spec;
     Uint8 *buf = NULL; Uint32 blen = 0;
+    snprintf(path, sizeof path, "%ssfx/engine%02X.wav", map_dir, eng_law[kind].srcn);
     if (!SDL_LoadWAV(path, &spec, &buf, &blen)) {
-        if (getenv("SMK_ENGINE_TRACE")) printf("engine: %s missing\n", path);
-        return;
+        snprintf(path, sizeof path, "%ssfx/engine.wav", map_dir);
+        if (!SDL_LoadWAV(path, &spec, &buf, &blen)) {
+            if (getenv("SMK_ENGINE_TRACE"))
+                printf("engine: SRCN $%02X missing (%s)\n", eng_law[kind].srcn, path);
+            return false;
+        }
     }
     int n = (int)(blen / 2);
     if (spec.format != AUDIO_S16LSB || spec.channels != 1 || n < 2) {
         SDL_FreeWAV(buf);
         if (getenv("SMK_ENGINE_TRACE")) printf("engine: unexpected wav format\n");
-        return;
+        return false;
     }
-    eng_pcm = malloc((size_t)n * sizeof *eng_pcm);
-    if (!eng_pcm) { SDL_FreeWAV(buf); return; }
+    eng_pcm[kind] = malloc((size_t)n * sizeof *eng_pcm[kind]);
+    if (!eng_pcm[kind]) { SDL_FreeWAV(buf); return false; }
     const int16_t *src = (const int16_t *)buf;
-    for (int i = 0; i < n; i++) eng_pcm[i] = (float)src[i] / 32768.0f;
-    eng_len = n;
+    for (int i = 0; i < n; i++) eng_pcm[kind][i] = (float)src[i] / 32768.0f;
+    eng_len[kind] = n;
     SDL_FreeWAV(buf);
-    if (getenv("SMK_ENGINE_TRACE")) printf("engine: loaded %d samples\n", n);
+    if (getenv("SMK_ENGINE_TRACE"))
+        printf("engine: SRCN $%02X (%s) %d samples\n",
+               eng_law[kind].srcn, eng_law[kind].who, n);
+    return true;
 }
 
-/* v is the game's own $42; vol and pan place the kart (voice 0 is the
+static void engine_load(void)
+{
+    eng_tried = true;
+    for (int k = 0; k < ENG_KINDS; k++) engine_load_one(k);
+}
+
+/* chr is an SMK_DRIVERS index - it picks the sample AND the law; v is
+ * the game's own $42; vol and pan place the kart (voice 0 is the
  * player, dead centre and loudest) */
-void smk_engine_voice(int voice, int v, float vol, float pan)
+void smk_engine_voice(int voice, int chr, int v, float vol, float pan)
 {
     if (!ready || voice < 0 || voice >= ENG_VOICES) return;
     if (!eng_tried) engine_load();
-    if (!eng_pcm) return;
+    int kind = (chr >= 0 && chr < SMK_CHARACTERS) ? eng_kind_of[chr] : 0;
+    if (!eng_pcm[kind]) return;
     if (v <= 0 || vol <= 0.0f || music_on) { eng[voice].vol_want = 0.0f; return; }
-    int p = (0x4700 + 34 * v) & 0x3FFF;         /* MEASURED (NOTES 213) */
+    if (eng[voice].kind != kind) {              /* a different driver here */
+        eng[voice].kind = kind;
+        eng[voice].phase = 0.0;
+    }
+    int p = (eng_law[kind].base + eng_law[kind].slope * v) & 0x3FFF;  /* NOTES 234 */
     eng[voice].step = ((double)p / 4096.0 * 32000.0) / 44100.0;
     eng[voice].vol_want = vol;
     eng[voice].pan_want = pan < -1.0f ? -1.0f : (pan > 1.0f ? 1.0f : pan);
@@ -554,10 +611,10 @@ void smk_engine_voice(int voice, int v, float vol, float pan)
     }
 }
 
-void smk_engine_set(int v)
+void smk_engine_set(int chr, int v)
 {
     const char *ev = getenv("SMK_ENGINE_VOL");
-    smk_engine_voice(0, v, ev ? (float)atof(ev) : 0.40f, 0.0f);
+    smk_engine_voice(0, chr, v, ev ? (float)atof(ev) : 0.40f, 0.0f);
 }
 
 void smk_engine_off(void)

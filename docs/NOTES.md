@@ -9469,3 +9469,52 @@ $84:F57C and remain the only ids a person has named that nothing has
 ever been seen to play.  Whatever reaches them, it is not the shrink
 state ticking - so the port keeps them on the user's ear alone, which
 is now the exception rather than the rule.
+
+## 234. Four engines, not one: each driver pair has its own sample and its own law
+
+The user: "every pair of characters has their own engine sound.  and
+that applies also to ai players".  They were right, and the port had a
+single engine for all eight.
+
+The player's character lives at the kart base + `$12` (`$1012` for P1),
+kept DOUBLED - 0 Mario, 2 Luigi, 4 Bowser, 6 Peach, 8 DK, 10 Yoshi,
+12 Koopa, 14 Toad (found at `$81:EE78 LDA $1012`).  So: hold `$1012` at
+each driver every frame, pin the rev word that `$80:9643` ships to the
+APU (`LDA $42 / STA $2142`, and `$43` to `$2143`) at eight values, and
+read DSP voice 7's SRCN and pitch back - with the character read back
+too, so a poke the game overwrites cannot look like a result:
+
+    Mario, Luigi   SRCN $02   P = $4700 + 34 * v
+    Bowser, DK     SRCN $03   P = $4800 + 38 * v
+    Yoshi, Koopa   SRCN $18   P = $4600 + 29 * v
+    Peach, Toad    SRCN $17   P = $4600 + 19 * v
+
+Dead linear - the slope is the same 34.0 / 38.0 / 29.0 / 19.0 between
+every consecutive pair of the eight points, no scatter at all - and the
+driver clamps the rev near $31, which is why the first sweep looked
+saturated rather than broken.
+
+**The engine pairs are not the stat pairs.**  The weight pairs are
+Mario/Luigi, Peach/Yoshi, Bowser/DK, Koopa/Toad; the ENGINE pairs put
+Peach with Toad and Yoshi with Koopa.  Peach took some settling: under
+the pinned-rev patch her voice sat frozen at $471D whatever the rev, so
+she was measured the other way instead - unpatched, in play, 1,400
+frames of (rev, pitch) logged per frame.  Her trace is IDENTICAL to
+Toad's, frame for frame, and both match `$4600 + 19 * rev` exactly once
+the driver's three-frame lag is allowed for (89% of frames land on it to
+the LSB; every miss is off by exactly one rev unit, at a frame where the
+rev is moving).
+
+`tools/labs/enginesample.py` writes each pair's loop region out of the
+game's own BRR as `rom/sfx/engine<SRCN>.wav`, RAW: no normalisation, so
+$17 staying the quietest of the four stays the ROM's decision.  A useful
+self-check fell out of it - the new `engine02.wav` is byte-identical to
+the old single `engine.wav`, i.e. the port's one engine had been Mario's
+all along, and six of eight drivers were wrong.
+
+In the port `smk_engine_voice()` now takes the driver, picks the sample
+and the law from it, and restarts the phase when a voice changes hands -
+so the player's engine AND each of the three nearest AI karts' engines
+are that kart's own.  Rendered headless, the four come out plainly
+different (dominant partial 357 / 131 / 114 / 100 Hz), and Peach's is
+quieter, as the ROM has it.
