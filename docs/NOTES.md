@@ -9639,6 +9639,11 @@ against `$0120`, and the table's entries 0 and 4 are null (out of range =
 no sound), 1..3 and 5..7 the bands for each player's side.  The port
 plays the near one, `$30`, and THAT CHOICE IS OURS.
 
+Only `$30` is captured.  The renders of `$31` and `$32` were thrown
+away: `$32` came back byte-identical to `$50` - Toad's overtake voice -
+so the baseline diff had latched the wrong voice, and a file that is
+provably somebody else's sound is worse than no file.
+
 ### "you can hear their original engine sounds"
 
 Confirmed on the chip, and it is not an embellishment: dumping all eight

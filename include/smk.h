@@ -1341,8 +1341,10 @@ const char *smk_sfx_hint(int id);   /* when the game fires an unnamed one */
  * $06,x and $0E,x (the two players' distances) against $0120; the port
  * plays the near one, and THAT CHOICE IS OURS. */
 #define SMK_SFX_OBJ_WALL    0x30  /* MEASURED: $84:D73A via $80:FBC5      */
-#define SMK_SFX_OBJ_WALL_2  0x31  /* the middle band                      */
-#define SMK_SFX_OBJ_WALL_3  0x32  /* the far band                         */
+#define SMK_SFX_OBJ_WALL_2  0x31  /* the middle band - NOT CAPTURED       */
+#define SMK_SFX_OBJ_WALL_3  0x32  /* the far band - NOT CAPTURED: the
+                                   * render came back byte-identical to
+                                   * $50, so it latched the wrong voice   */
 #define SMK_SFX_SHELL_BOUNCE SMK_SFX_OBJ_WALL
 #define SMK_SFX_SHELL_HIT  0x29   /* USER: "hitting with a shell" - four
                                    * sites, none of them reached yet        */
