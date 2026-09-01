@@ -249,10 +249,18 @@ def main():
     peak = np.abs(mix).max()
     if peak < 1e-4:
         print('%s: silent' % os.path.basename(out_p)); return
-    mix *= 22000.0 / peak
+    # A COMMON scale, not one per file: the render already carries the
+    # game's own gain (the voice's VOL times its envelope), so
+    # normalising each effect to the same peak would throw away exactly
+    # the balance the game chose - a coin as loud as a crash.
+    # 110000 puts the LOUDEST effect in the set near full scale while
+    # keeping every quieter one in proportion - the balance is the
+    # game's, the overall level is ours (S37).
+    mix *= 110000.0
+    np.clip(mix, -30000.0, 30000.0, out=mix)
     # trim the silence at both ends, then a short fade
     env = np.abs(mix).max(axis=1)
-    on = np.where(env > 22000 * 0.01)[0]
+    on = np.where(env > 1100.0)[0]
     if len(on):
         mix = mix[max(0, on[0] - 64): on[-1] + 256]
     fade = min(256, len(mix) // 8)

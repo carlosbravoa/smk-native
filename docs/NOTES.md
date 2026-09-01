@@ -9401,3 +9401,15 @@ alongside the recordings, so $80:D825 (the soft kart bump) is covered by
 a poke that no recording ever reached.  What is left is mostly the
 menus' per-screen sites and the item-hit variants - both reachable the
 same way, and neither needing anyone to play anything.
+
+## 231. The effects keep the game's own balance
+
+A late fix worth having before anyone listens: sfxrender was
+normalising EVERY effect to the same peak, which throws away exactly the
+thing the render had gone to the trouble of capturing - the voice's own
+VOL and envelope.  A coin came out as loud as a crash.
+
+It now applies ONE scale to all of them (110000, chosen so the loudest
+in the set sits near full), so the relative loudness is the game's and
+only the overall level is ours (S37).  The spread is real: the shell
+hit $29 peaks at 24156 and the quietest, $4B, at 732.
