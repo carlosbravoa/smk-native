@@ -322,4 +322,6 @@ def main():
     if what in ('states', 'all'):
         sweep_states(L)
 
-main()
+
+if __name__ == '__main__':      # importable: rankfx/aisound reuse install()
+    main()

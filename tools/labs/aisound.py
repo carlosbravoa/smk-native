@@ -14,6 +14,12 @@ every sound request in the same frame window, so "an AI threw and the
 game asked for nothing" is a measurement, not an absence of evidence.
 
     tools/labs/aisound.py            # FRAMES=6000 LAP=2
+
+SLOW: the tap wraps every instruction and an AI only attacks after a
+few thousand frames.  tools/labs/mame/aidropsfx.lua answers the same
+question on a real recording in a couple of minutes, and is what
+actually settled it (NOTES 235); keep this one for forcing a case a
+recording does not contain.
 """
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

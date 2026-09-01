@@ -411,10 +411,14 @@ const char *smk_sfx_name(int id)
     case SMK_SFX_WALL2:       return "the wall, harder    (the $80:D7DA table)";
     case SMK_SFX_BOO_START:   return "Boo, starting       (you)";
     case SMK_SFX_AI_ENGINE:   return "another kart's engine (you)";
+    case 0x4D: return "overtaking      ($84:D99B: Mario/Luigi/Peach/Yoshi/Koopa)";
+    case 0x50: return "Toad passing    ($84:D99B/$84:D9CA)";
+    case 0x51: return "Bowser passing  ($84:D99B/$84:D9CA)";
+    case 0x5C: return "DK Jr passing   ($84:D99B/$84:D9CA)";
     case SMK_SFX_FEATHER2:    return "a feather           (you) - $24 is one too";
     case SMK_SFX_BOOST:       return "mushroom boost      (you)";
     case SMK_SFX_LAND_SOFT:   return "landing on soft ground (the ROM)";
-    case SMK_SFX_MENU_SCROLL: return "menu scrolling      (you)";
+    case SMK_SFX_MENU_SCROLL: return "a menu click        ($84:D986, uncaptured)";
     case SMK_SFX_JUMP_BIG:    return "a bump taken boosting (the ROM)";
     case SMK_SFX_ITEMBOX:     return "the item picked from the roulette (you)";
     case SMK_SFX_SHRINK:      return "poison mushroom, shrinking (you)";

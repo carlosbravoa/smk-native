@@ -1361,7 +1361,23 @@ const char *smk_sfx_hint(int id);   /* when the game fires an unnamed one */
 #define SMK_SFX_BOOST      0x48   /* USER + ROM $80:B48C                       */
 #define SMK_SFX_LAND_SOFT  0x4C   /* $80:B201/$B1F7 - landing on class >= $5C
                                    * or on water: the SAME landing code as $25 */
-#define SMK_SFX_MENU_SCROLL 0x4D  /* USER: "menu scrolling"                    */
+/* The OVERTAKE voices (NOTES 235), read from the ROM's own two tables
+ * rather than listed here: $84:D99B is what a driver says when it gains
+ * a place, $84:D9CA what it says as it goes past you (0 = silent).  The
+ * ids that appear in them are $4D (Mario, Luigi, Peach, Yoshi, Koopa),
+ * $50 (Toad), $51 (Bowser), $5C (DK Jr) and, two-player, $52.  The
+ * user's ear had already put two of them in the right mouth: "$51
+ * bowser sound" and "$5C bowser engine?".
+ * character is an SMK_DRIVERS index; gaining picks which table. */
+int smk_sfx_pass_voice(const smk_rom *rom, int character, bool gaining);
+#define SMK_SFX_PASS_COOL   10    /* $84:EF1C sets $0042,y to $0B-1        */
+/* $4D is NOT the menu scroll: it is the generic overtake voice above.
+ * The menu family is $2C/$2E/$2F/$5B ($84:D971..$84:D989, all through
+ * $81:F5A7), so the second menu click is $5B. */
+#define SMK_SFX_MENU_SCROLL 0x5B  /* MEASURED: $84:D986, the menu group.
+                                   * NOT CAPTURED: poking an id during a
+                                   * race cannot render it, because the
+                                   * menus load their own sample bank. */
 #define SMK_SFX_JUMP_BIG   0x4E   /* $80:B684 - the $2A bump taken while the
                                    * drive state is $10, i.e. BOOSTING        */
 #define SMK_SFX_ITEMBOX    0x55   /* MEASURED: 16 of 22 with the item word     */

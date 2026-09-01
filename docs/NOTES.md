@@ -9518,3 +9518,70 @@ so the player's engine AND each of the three nearest AI karts' engines
 are that kart's own.  Rendered headless, the four come out plainly
 different (dominant partial 357 / 131 / 114 / 100 Hz), and Peach's is
 quieter, as the ROM has it.
+
+## 235. What a kart says as it goes past you - and what it says when it throws
+
+The other half of the user's question: "check the sound they make when
+passing by or when throwing an object".  Both halves are settled, and
+they go opposite ways.
+
+### Passing by: `$84:EF05`, and it is per character
+
+Per human kart the game compares the rank word `$00E6,y` with the one it
+remembered in `$0040,y`, and - only when the `$0042,y` cooldown has run
+out - has somebody speak:
+
+    rank IMPROVED   -> $84:D98D : the DRIVER'S OWN id, table $84:D99B
+    rank got WORSE  -> $84:D9AB : the kart now ONE RANK AHEAD is found
+                       through $010E,x and ITS id is played, table
+                       $84:D9CA - so the sound of being overtaken
+                       belongs to the overtaker, not to you
+    then $84:EF1C sets $0042,y = $0B-1 = $0A frames of quiet
+
+The two tables, read out of the ROM:
+
+    driver   overtakes ($84D99B)   goes past you ($84D9CA)
+    Mario         $4D                   silent
+    Luigi         $4D                   silent
+    Bowser        $51                   $51
+    Peach         $4D                   silent
+    DK Jr         $5C                   $5C
+    Yoshi         $4D                   silent
+    Koopa         $4D                   silent
+    Toad          $50                   $50
+
+Forced in the oracle (`tools/labs/rankfx.py`: poke the remembered rank so
+the comparison goes the way we want, clear the cooldown, catch the id off
+the 65816) - **all eight of the overtaking column reproduce exactly**,
+every one from the `$84:EF18` branch.  Losing a place reproduces for
+Toad, `$50` from the `$84:EF12` branch, which is the other branch and the
+other table; the five zeros are the ROM's own silence, and Bowser's and
+DK's entries are read but were not separately forced.
+
+Two of these the user had already half-named by ear, in
+`rom/sfx/names.txt`: "$51 bowser sound, half of it" and "$5C bowser
+engine?".  The ROM puts $51 in Bowser's mouth and $5C in DK's - the ear
+was right about the voice and one seat off about the driver.
+
+And `$4D` is therefore NOT "menu scrolling", which is what it had been
+called by ear and wired to on the course screen.  The menu family is
+`$2C`/`$2E`/`$2F`/`$5B` (`$84:D971`..`$84:D989`, all through `$81:F5A7`),
+so the fourth menu click is `$5B` - which cannot be captured by poking an
+id during a race, because the menus load their own sample bank.  Until it
+is, every screen clicks with the measured `$2C`.
+
+### Throwing: nothing, and that is the finding
+
+`$6C,x` on an object block is the CARRY counter: `$80:F3B6` decrements it
+and drags the object along behind its owner while it runs, which is the
+"ridden for a second, then let go" of NOTES 234's AI drop.  `$80:F442`
+plays `$2B` through `$84:D955` on the frame it reaches 1 - and that code
+is the OBJECT's, not the player's, so it looked as though an AI's release
+should sound too.
+
+It does not.  `tools/labs/mame/aidropsfx.lua` watches every object's
+carry counter and owner alongside the sound tap, over the `attack`
+recording: five AI releases (owners `$1600` and `$1700`), every one
+SILENT, and exactly one `$2B` in the whole run - at f4578, the player's.
+So the port playing nothing when `smk_proj_ai_drop` fires was right, and
+it stays that way, now on a measurement instead of an omission.

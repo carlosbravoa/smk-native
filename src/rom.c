@@ -83,3 +83,31 @@ void smk_rom_free(smk_rom *rom)
     rom->data = NULL;
     rom->size = 0;
 }
+
+/* The overtake voices (NOTES 235).  `$84:EF05` compares a human kart's
+ * rank word `$00E6,y` with the one it remembered in `$0040,y` and, when
+ * it has changed and the `$0042,y` cooldown has run out, has somebody
+ * speak:
+ *
+ *   rank IMPROVED  -> `$84:D98D`: the DRIVER'S OWN id, from the table at
+ *                     `$84:D99B` indexed by the character
+ *   rank got WORSE -> `$84:D9AB`: the kart now ONE RANK AHEAD is found
+ *                     through `$010E,x` and ITS id is played, from the
+ *                     table at `$84:D9CA` - so the sound of being passed
+ *                     belongs to whoever passed you, and a 0 there means
+ *                     that driver goes by in silence
+ *
+ * Both tables are read from the ROM rather than copied into the port. */
+#define SMK_PASS_GAIN_TABLE  0x84D99Bu
+#define SMK_PASS_LOSE_TABLE  0x84D9CAu
+
+int smk_sfx_pass_voice(const smk_rom *rom, int character, bool gaining)
+{
+    if (!rom || !rom->data || character < 0 || character >= SMK_CHARACTERS)
+        return 0;
+    uint32_t snes = (gaining ? SMK_PASS_GAIN_TABLE : SMK_PASS_LOSE_TABLE)
+                  + (uint32_t)character * 2u;
+    uint32_t off = smk_snes_to_pc(rom, snes);
+    if (off >= rom->size) return 0;
+    return rom->data[off];           /* 0 = this driver says nothing */
+}

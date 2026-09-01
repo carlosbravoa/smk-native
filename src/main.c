@@ -646,6 +646,9 @@ static smk_course   crs;
 static smk_physics  phys;
 static smk_sprites  karts;
 static smk_racer    racers[SMK_CHARACTERS];
+/* the loaded ROM, so the per-frame sound code can read its tables
+ * (the overtake voices, NOTES 235) without threading it through */
+static const smk_rom *the_rom;
 static const smk_driver *drv;
 static smk_kart     kart;
 static int          grid[8];
@@ -934,6 +937,39 @@ static void step_kart(smk_kart *k, smk_track *trk,
         /* a WALL is the $3F/$40/$41 family ($80:D7DA, indexed by
          * $AE & 7); a KART is $42 or $54 by the impact ($80:D818).
          * Both forced in the oracle (NOTES 228). */
+        /* THE OVERTAKE VOICES (NOTES 235).  The user: "check the sound
+         * they make when passing by".  $84:EF05 is the whole rule -
+         * compare the rank with the remembered one, and if it moved
+         * (and the $0042 cooldown has run out) somebody speaks: your
+         * own voice when you gain a place, and when you LOSE one the
+         * voice of the driver who has just gone past.  Only Bowser, DK
+         * Jr and Toad have one of those; the rest overtake in silence,
+         * which is the ROM's own 0 in the table, not a gap in ours. */
+        {
+            static int rank_prev = -1, rank_cool;
+            if (race_state != RACE_RUN) { rank_prev = -1; rank_cool = 0; }
+            else if (rank_cool > 0) rank_cool--;
+            else {
+                int r = racers[0].rank;
+                if (rank_prev >= 0 && r != rank_prev) {
+                    int id = 0;
+                    if (r < rank_prev) {          /* we passed somebody */
+                        id = smk_sfx_pass_voice(the_rom,
+                                 racers[0].character % SMK_CHARACTERS, true);
+                    } else {                       /* somebody passed us */
+                        for (int q = 0; q < SMK_CHARACTERS; q++)
+                            if (racers[q].rank == r - 1) {
+                                id = smk_sfx_pass_voice(the_rom,
+                                         racers[q].character % SMK_CHARACTERS, false);
+                                break;
+                            }
+                    }
+                    if (id) smk_sfx_play(id);
+                    rank_cool = SMK_SFX_PASS_COOL;
+                }
+                rank_prev = r;
+            }
+        }
         if (k->bounce_hit) smk_sfx_play(SMK_SFX_WALL);
         if (k->bump_cool == SMK_BUMP_COOL && was_bump != SMK_BUMP_COOL)
             smk_sfx_play(was_speed > 0x500 ? SMK_SFX_BUMP_HARD : SMK_SFX_BUMP_SOFT);
@@ -2585,6 +2621,7 @@ int main(int argc, char **argv)
             "Pass a path with --rom.\n", err, SMK_SHA1_USA);
         return 1;
     }
+    the_rom = &rom;
     if (!rom.recognised)
         fprintf(stderr, "warning: %s\ncontinuing anyway; assets may be wrong.\n\n", err);
 
@@ -2993,9 +3030,14 @@ int main(int argc, char **argv)
                                      in.back || in.item };
                 if (ui.screen == SMK_UI_TITLE && in.back) in.quit = true;
                 /* the shell's own clicks, on the ROM's menu ids */
+                /* one click for every screen: $4D used to be the
+                 * course screen's, and $4D is not a menu sound at all
+                 * (NOTES 235).  The ROM's fourth menu id IS $5B, but
+                 * that one cannot be captured by poking during a race -
+                 * the menus load their own sample bank - so until it is,
+                 * the measured $2C serves everywhere. */
                 if (nav.up || nav.down || nav.left || nav.right)
-                    smk_sfx_play(ui.screen == SMK_UI_COURSE
-                                 ? SMK_SFX_MENU_SCROLL : SMK_SFX_MENU_MOVE);
+                    smk_sfx_play(SMK_SFX_MENU_MOVE);
                 else if (nav.confirm) smk_sfx_play(SMK_SFX_MENU_OK);
                 else if (nav.back)    smk_sfx_play(SMK_SFX_MENU_BACK);
                 if (smk_ui_step(&ui, &rom, &nav)) {
