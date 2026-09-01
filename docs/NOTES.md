@@ -9348,3 +9348,35 @@ a time by ear was always going to mislead here; the table says which
 belong together.
 
 Ported: the wall plays $3F, a kart contact $42 or $54 by the impact.
+
+## 229. The object sounds, forced per theme - and an engine for every kart
+
+Finishing the coverage the user asked for, all of it driven rather than
+played.  tools/labs/sfxsweep.py grew an `objects` mode: it boots each
+course through the $0150/$0152 hook, puts a live entity block 24 px
+straight ahead of the kart, and drives into it.
+
+    Donut Plains   the MOLE      $22 from $80:B6B9 (the launch)
+    Choco Island   a PLANT       $23 from $80:B66A - the RAMP's own
+                                 routine, because a plant throws you
+    Koopa Beach    a CHEEP-CHEEP $23, the same
+    Bowser Castle  a THWOMP      $21 from $80:B68C (the bump), plus the
+                                 $3F/$40/$41 scrape when you slide on it
+    Rainbow Road   its THWOMP    $27 from $80:B5BB - which is the FALL:
+                                 on Rainbow Road it just puts you off the
+                                 edge, and $27 is what the user named
+                                 "falling down from the road"
+
+So the plants and the fish share the ramp's sound, which no amount of
+listening would have suggested and the call site settles in one line.
+Ported: a plant or fish contact plays $23; the mole keeps $22.
+
+AN ENGINE PER KART (the user's $5C and $62, "the engine of another
+player").  The audio layer now mixes FOUR engine voices instead of one:
+voice 0 is the player's, and the three nearest AI karts get their own,
+each pitched by its OWN speed through the measured law (NOTES 219),
+panned by where it sits in the kart's own frame and fading out past 220
+world px.  OURS: the range, the falloff and the balance (0.40 for the
+player, 0.14 a kart); the pitch law and the sample are the game's.
+Verified through the port's own output: the mix is genuinely stereo and
+moves as karts pass, and clipping sits at 0.001% of samples.

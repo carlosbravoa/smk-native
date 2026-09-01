@@ -165,10 +165,82 @@ def sweep_menus():
         report('menu: ' + label)
 
 
+def course_lab(cup, course, zero=(0x0E50, 0x0E51)):
+    """A Lab, but booted into a chosen cup/course - the object sounds are
+    per theme (the plants, the moles, the Thwomps each have their own
+    call site in bank $85), so each one has to be reached."""
+    from smktool.rom import Rom
+    from smktool.cpu import CPU, Bus, M_, X_
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    r = Rom.load(os.path.join(root, 'rom', 'smk_usa.sfc'))
+    b = Bus(bytes(r.data)); c = CPU(b)
+    c.PB, c.PC = 0x80, r.vectors()['emu.RESET']; c.P = M_ | X_; c.S = 0x1FFF
+    c.run_to(0x80805C, budget=8_000_000)
+    orig = b.read
+    def rd(bank, addr):
+        lo = bank & 0x7F
+        if lo <= 0x3F or bank == 0x7E:
+            if addr in (0x0E32, 0x0E33) or addr in zero: return 0
+            if addr == 0x0150: return cup
+            if addr == 0x0152: return course
+        return orig(bank, addr)
+    b.read = rd
+    b.reg_reads[0x4218] = 0; b.reg_reads[0x4219] = 0
+    L = Lab.__new__(Lab)
+    L.r, L.b, L.c = r, b, c
+    L.reach_race()
+    c.run_frames_scanline(200)
+    return L
+
+
+def sweep_objects(cup, course, label):
+    """Drive the kart into each live entity of a course, one at a time."""
+    L = course_lab(cup, course)
+    sink = []
+    install(L, sink)
+    track = L.b.wram[0x0124]
+    log('%s: cup %d course %d -> track $%02X theme $%02X'
+        % (label, cup, course, track, L.b.wram[0x0126]))
+    for base in (0x1800, 0x1840, 0x1880, 0x18C0):
+        if L.w(base) == 0:
+            continue
+        L.pace(500)
+        del sink[:]
+        for _ in range(80):
+            x, y = L.pos()
+            h = L.heading()
+            import math
+            a = h * 2 * math.pi / 65536.0
+            # a few pixels straight ahead, so the kart drives into it
+            ex = int(x + math.sin(a) * 24) & 0xFFFF
+            ey = int(y - math.cos(a) * 24) & 0xFFFF
+            L.sw(base + 0x18, ex); L.sw(base + 0x1C, ey)
+            L.frame(0x80, 0)
+        got = {}
+        for a2, pc, caller in sink:
+            got.setdefault(a2 & 0xFF, set()).add(caller)
+        line = ', '.join('$%02X from %s' % (sid, ' '.join('$%02X:%04X' % (cc >> 16, cc & 0xFFFF)
+                                                          for cc in sorted(got[sid])))
+                         for sid in sorted(got))
+        log('  block $%04X (type $%04X) -> %s' % (base, L.w(base), line or 'nothing'))
+
+
 def main():
     what = sys.argv[1] if len(sys.argv) > 1 else 'all'
     if what == 'menus':
         sweep_menus()
+        return
+    if what == 'objects':
+        # cup, course, what lives there
+        for cup, course, label in ((1, 2, 'Donut Plains - moles'),
+                                   (1, 0, 'Choco Island - plants'),
+                                   (0, 3, 'Bowser Castle - Thwomps'),
+                                   (3, 4, 'Rainbow Road - Thwomps'),
+                                   (2, 1, 'Koopa Beach - cheep-cheeps')):
+            try:
+                sweep_objects(cup, course, label)
+            except Exception as e:
+                log('%s: FAILED %s' % (label, e))
         return
     L = Lab(zero=(0x0E50, 0x0E51))
     L.reach_race()

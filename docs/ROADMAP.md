@@ -64,6 +64,12 @@ and comes down toward the camera) and it inherits the kart's motion -
 thrown backwards it lands behind a forward-looking camera and is never
 drawn at all.
 
+**S39 — An engine per kart (NOTES 229).** The game gives a nearby kart
+its own engine and the port now does too, but everything about the
+PLACEMENT is ours: which three karts (the nearest), how far they carry
+(220 world px), how they fade, how they pan, and the balance against the
+player's own. The pitch law and the sample are the game's.
+
 **S38 — The engine note (NOTES 212/213).** Now the game's own sample
 (SRCN $02's loop, decoded from BRR) played at the game's own rate: the
 DSP pitch register is exactly $4700 + 34*v, measured at ten values, and

@@ -1298,6 +1298,8 @@ void smk_sfx_toggle(void);
 int  smk_sfx_audition(void);      /* `smk --sfx`: play them all, named */
 /* the engine note: v is the game's own $42 (NOTES 212), 0 = silent */
 void smk_engine_set(int v);
+/* one engine per kart: voice 0 is the player, 1.. are the nearest AI */
+void smk_engine_voice(int voice, int v, float vol, float pan);
 void smk_engine_off(void);
 const char *smk_sfx_name(int id);
 const char *smk_sfx_hint(int id);   /* when the game fires an unnamed one */

@@ -809,7 +809,14 @@ static void step_kart(smk_kart *k, smk_track *trk,
             player.mole_on = 1; player.mole_hops = 0;
             if (getenv("SMK_MOLE_TRACE")) printf("mole ON f%ld\n", hud_race_frames);
         }
-    } else if (k->hazard_hit) smk_player_hit_banana(&player, k);   /* a plant, a fish: the spin */
+    } else if (k->hazard_hit) {
+        /* a plant or a fish: MEASURED by driving into one in the oracle
+         * (NOTES 229) - Choco's plants play $23, from $80:B66A, the
+         * same routine the ramps use, because they throw you as a ramp
+         * does */
+        smk_sfx_play(SMK_SFX_RAMP);
+        smk_player_hit_banana(&player, k);
+    }
     /* a mole on the kart drags it to a crawl - it "sticks forever" until
      * shaken (the recording's rides sit at crawl speeds; the cap and the
      * three-hop shake-off are OURS) */
@@ -1001,6 +1008,46 @@ static void step_kart(smk_kart *k, smk_track *trk,
         int v = (int)(rev + 0.5f);
         bool racing = race_state == RACE_RUN || race_state == RACE_COUNTDOWN;
         smk_engine_set(racing ? (v < 1 ? 1 : v) : 0);
+        /* AND THE OTHER KARTS (NOTES 229).  The user named $5C and $62
+         * as "the engine of another player": the game gives a nearby
+         * kart its own engine, so the port now does too - the three
+         * closest, each pitched by its OWN speed through the same law,
+         * panned by where it sits relative to the camera and fading out
+         * with distance.  OURS: the range and the falloff. */
+        {
+            struct { float d2; int idx; } near[3] = {{1e18f,-1},{1e18f,-1},{1e18f,-1}};
+            for (int q = 1; q < SMK_CHARACTERS; q++) {
+                float dx = (float)(smk_kart_px(racers[q].k.x) - smk_kart_px(k->x));
+                float dy = (float)(smk_kart_px(racers[q].k.y) - smk_kart_px(k->y));
+                float d2 = dx * dx + dy * dy;
+                for (int j = 0; j < 3; j++)
+                    if (d2 < near[j].d2) {
+                        for (int m = 2; m > j; m--) near[m] = near[m - 1];
+                        near[j].d2 = d2; near[j].idx = q;
+                        break;
+                    }
+            }
+            for (int j = 0; j < 3; j++) {
+                int q = near[j].idx;
+                if (!racing || q < 0 || near[j].d2 > 220.0f * 220.0f) {
+                    smk_engine_voice(j + 1, 0, 0.0f, 0.0f);
+                    continue;
+                }
+                float d = sqrtf(near[j].d2);
+                int vq = (int)(20.0f + (float)racers[q].k.speed * 0.048f);
+                if (vq > 63) vq = 63;
+                if (vq < 1) vq = 1;
+                /* where it is, left to right, in the camera's frame */
+                float ang = (float)k->angle * (float)(2.0 * M_PI) / 65536.0f;
+                float dx = (float)(smk_kart_px(racers[q].k.x) - smk_kart_px(k->x));
+                float dy = (float)(smk_kart_px(racers[q].k.y) - smk_kart_px(k->y));
+                float lat = -dx * sinf(ang) + dy * cosf(ang);
+                float pan = lat / 120.0f;
+                float vol = 0.14f * (1.0f - d / 220.0f);
+                if (vol < 0.0f) vol = 0.0f;
+                smk_engine_voice(j + 1, vq, vol, pan);
+            }
+        }
         if (getenv("SMK_ENGINE_TRACE") && (fx_ticks % 15) == 0)
             printf("engine f%ld speed %4d thr %d -> $%02X (%.0f Hz)\n",
                    hud_race_frames, k->speed, (int)thr, v,

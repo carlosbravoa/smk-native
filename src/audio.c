@@ -452,9 +452,18 @@ const char *smk_sfx_hint(int id)
  */
 static float  *eng_pcm;             /* the ROM's own loop, -1..1     */
 static int     eng_len;
-static double  eng_phase, eng_step;
-static float   eng_vol, eng_vol_want;
 static bool    eng_hooked, eng_tried;
+
+/* One voice per kart (NOTES 229).  The user, naming $5C and $62: "it is
+ * the engine of another player" - the game gives a NEARBY kart its own
+ * engine, and the port had exactly one.  Voice 0 is the player's; the
+ * rest are the closest AI karts, pitched by their own speed, panned by
+ * where they are and quieter with distance. */
+#define ENG_VOICES 4
+static struct {
+    double phase, step;
+    float  vol, vol_want, pan, pan_want;
+} eng[ENG_VOICES];
 
 static void engine_mix(void *ud, Uint8 *stream, int len)
 {
@@ -463,16 +472,27 @@ static void engine_mix(void *ud, Uint8 *stream, int len)
     int frames = len / 4;                       /* stereo, 16-bit */
     if (!eng_pcm || eng_len < 2) { memset(stream, 0, (size_t)len); return; }
     for (int i = 0; i < frames; i++) {
-        /* the wanted volume is approached, never jumped to: a step in
-         * gain is a click, and the rev moves every frame */
-        eng_vol += (eng_vol_want - eng_vol) * 0.002f;
-        int j = (int)eng_phase;
-        float f = (float)(eng_phase - j);
-        float a = eng_pcm[j % eng_len], b = eng_pcm[(j + 1) % eng_len];
-        int16_t s = (int16_t)((a + (b - a) * f) * eng_vol * 32767.0f);
-        out[i * 2] = s; out[i * 2 + 1] = s;
-        eng_phase += eng_step;
-        while (eng_phase >= eng_len) eng_phase -= eng_len;
+        float l = 0.0f, r = 0.0f;
+        for (int v = 0; v < ENG_VOICES; v++) {
+            /* the wanted volume is approached, never jumped to: a step
+             * in gain is a click, and the rev moves every frame */
+            eng[v].vol += (eng[v].vol_want - eng[v].vol) * 0.002f;
+            eng[v].pan += (eng[v].pan_want - eng[v].pan) * 0.002f;
+            if (eng[v].vol < 0.0005f) continue;
+            int j = (int)eng[v].phase;
+            float f = (float)(eng[v].phase - j);
+            float a = eng_pcm[j % eng_len], b = eng_pcm[(j + 1) % eng_len];
+            float s = (a + (b - a) * f) * eng[v].vol;
+            float p = eng[v].pan;               /* -1 left .. +1 right */
+            l += s * (p > 0.0f ? 1.0f - p * 0.8f : 1.0f);
+            r += s * (p < 0.0f ? 1.0f + p * 0.8f : 1.0f);
+            eng[v].phase += eng[v].step;
+            while (eng[v].phase >= eng_len) eng[v].phase -= eng_len;
+        }
+        if (l > 1.0f) l = 1.0f; if (l < -1.0f) l = -1.0f;
+        if (r > 1.0f) r = 1.0f; if (r < -1.0f) r = -1.0f;
+        out[i * 2]     = (int16_t)(l * 32767.0f);
+        out[i * 2 + 1] = (int16_t)(r * 32767.0f);
     }
 }
 
@@ -487,7 +507,6 @@ static void engine_load(void)
         if (getenv("SMK_ENGINE_TRACE")) printf("engine: %s missing\n", path);
         return;
     }
-    /* the decode is 16-bit mono, the game's own 32 kHz sample */
     int n = (int)(blen / 2);
     if (spec.format != AUDIO_S16LSB || spec.channels != 1 || n < 2) {
         SDL_FreeWAV(buf);
@@ -503,28 +522,33 @@ static void engine_load(void)
     if (getenv("SMK_ENGINE_TRACE")) printf("engine: loaded %d samples\n", n);
 }
 
-void smk_engine_set(int v)
+/* v is the game's own $42; vol and pan place the kart (voice 0 is the
+ * player, dead centre and loudest) */
+void smk_engine_voice(int voice, int v, float vol, float pan)
 {
-    if (!ready) return;
+    if (!ready || voice < 0 || voice >= ENG_VOICES) return;
     if (!eng_tried) engine_load();
     if (!eng_pcm) return;
-    /* the driver's own silence: $42 = 0 is what $81:A26F writes to stop
-     * the sound, and an idle kart sits at 1 */
-    if (v <= 0 || music_on) { eng_vol_want = 0.0f; return; }
+    if (v <= 0 || vol <= 0.0f || music_on) { eng[voice].vol_want = 0.0f; return; }
     int p = (0x4700 + 34 * v) & 0x3FFF;         /* MEASURED (NOTES 213) */
-    double rate = (double)p / 4096.0 * 32000.0;
-    eng_step = rate / 44100.0;
-    const char *ev = getenv("SMK_ENGINE_VOL");
-    eng_vol_want = ev ? (float)atof(ev) : 0.5f;
+    eng[voice].step = ((double)p / 4096.0 * 32000.0) / 44100.0;
+    eng[voice].vol_want = vol;
+    eng[voice].pan_want = pan < -1.0f ? -1.0f : (pan > 1.0f ? 1.0f : pan);
     if (!eng_hooked) {
         Mix_HookMusic(engine_mix, NULL);
         eng_hooked = true;
         if (getenv("SMK_ENGINE_TRACE"))
-            printf("engine: hook installed (v %d, %.0f Hz sample rate)\n", v, rate);
+            printf("engine: hook installed (v %d)\n", v);
     }
+}
+
+void smk_engine_set(int v)
+{
+    const char *ev = getenv("SMK_ENGINE_VOL");
+    smk_engine_voice(0, v, ev ? (float)atof(ev) : 0.40f, 0.0f);
 }
 
 void smk_engine_off(void)
 {
-    eng_vol_want = 0.0f;
+    for (int v = 0; v < ENG_VOICES; v++) eng[v].vol_want = 0.0f;
 }
