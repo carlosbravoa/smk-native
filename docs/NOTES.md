@@ -9245,3 +9245,38 @@ code that plays it, in one run, for every sound at once - rather than
 one id at a time by ear.  What it CANNOT name is the held voices (the
 engine, the roulette, the skid), which are never requested at all;
 those still want the voice-log route of NOTES 220/221.
+
+## 226. Coverage, answered with a number: 34 of 71 call sites
+
+The user: "do we need to repeat it for each course type?  How do we know
+coverage?"  Both have answers now, from tools/labs/sfxcoverage.py.
+
+FIRST, the map is bigger than NOTES 225 knew.  Most of the game does NOT
+call $81:F57A directly: bank $84 holds 65 tiny stubs - `LDA #id` then a
+JML through the sound vector - and the rest of the ROM calls THOSE.
+They cover 37 distinct ids ($20 $26 $29 $2B $2C $2E $2F $30-$3F $42-$47
+$4F $53 $54 $55 $58-$5B $66), and they come in TRIPLES ($30/$31/$32,
+$36/$37/$38, $3C/$3D/$3E, $44/$45/$46, $58/$59/$5A), each triple listed
+twice - one sound with three variants, chosen per kart or per voice.
+That is why single ids sometimes sounded like a fragment of something.
+
+SECOND, coverage is now a number: 71 call sites whose id is known
+statically, 34 of them seen firing across the twelve recordings.  The
+tool prints the missing 37 with their addresses, so the gap is a list
+rather than a feeling:
+
+  * $84:F55E and $84:F57C - $5D and $5F, the poison mushroom shrinking
+    and growing back.  The user named both by EAR and no recording has
+    ever fired them: nobody has been shrunk on tape.
+  * four $29 sites ($81:BE57, $81:C1E9, $84:FDBC, $85:A796) - a shell
+    connecting, from four different places.
+  * five $20 sites besides the two we see - coins from other paths.
+  * a dozen menu $2C/$2E/$2F sites in bank $81, one per screen.
+
+THIRD, the course question.  Coverage is driven by EVENTS, not by
+courses: the landing, hop, ramp, bump and item sounds live in shared
+bank-$80/$81 code and any race exercises them - the twelve recordings
+already agree on those.  What is course-specific is bank $85's object
+code (the plants, moles and Thwomps each have their own site) and the
+surface branches.  So the answer is: do not replay every course, play
+every EVENT - and the coverage list says which ones are still missing.
