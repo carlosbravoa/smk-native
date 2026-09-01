@@ -64,14 +64,27 @@ and comes down toward the camera) and it inherits the kart's motion -
 thrown backwards it lands behind a forward-looking camera and is never
 drawn at all.
 
+**S41 — The overtake voices (NOTES 235).** MEASURED, not labelled: the
+port reads the ROM's own two tables ($84:D99B and $84:D9CA) rather than
+copying them, and the selftest checks all sixteen entries against it.
+The rule is the ROM's too - $84:EF05's rank compare, and its $0A-frame
+cooldown. OURS: nothing.
+
+**S40 — Four engines, one per driver pair (NOTES 234).** The sample and
+the pitch law are both the game's, measured on the chip at eight rev
+values per driver ($02/34, $03/38, $18/29, $17/19). What stays OURS is
+what S39 already labelled - the placement of the AI voices - plus the
+volumes.
+
 **S39 — An engine per kart (NOTES 229).** The game gives a nearby kart
 its own engine and the port now does too, but everything about the
 PLACEMENT is ours: which three karts (the nearest), how far they carry
 (220 world px), how they fade, how they pan, and the balance against the
 player's own. The pitch law and the sample are the game's.
 
-**S38 — The engine note (NOTES 212/213).** Now the game's own sample
-(SRCN $02's loop, decoded from BRR) played at the game's own rate: the
+**S38 — The engine note (NOTES 212/213; superseded in part by S40).**
+Now the game's own sample (Mario's SRCN $02 loop, decoded from BRR - and
+since NOTES 234 one of four, chosen by driver) played at the game's own rate: the
 DSP pitch register is exactly $4700 + 34*v, measured at ten values, and
 the REV that drives v is the ROM's $80:9543. OURS: the volume, and the
 PARAMETER - $42 is written from $C2 inside the sound update and the

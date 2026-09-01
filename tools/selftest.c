@@ -1076,6 +1076,34 @@ int main(int argc, char **argv)
 
     test_player_replay(&rom);
     {
+        /* The overtake voices (NOTES 235): the port reads $84:D99B and
+         * $84:D9CA out of the ROM, and every one of these sixteen was
+         * reproduced by forcing the rank change in the oracle, so a
+         * silent drift in the table or the mapping is a failure here. */
+        static const struct { const char *who; int gain, lose; } V[SMK_CHARACTERS] = {
+            { "Mario",  0x4D, 0x00 }, { "Luigi",  0x4D, 0x00 },
+            { "Bowser", 0x51, 0x51 }, { "Peach",  0x4D, 0x00 },
+            { "DK Jr",  0x5C, 0x5C }, { "Yoshi",  0x4D, 0x00 },
+            { "Koopa",  0x4D, 0x00 }, { "Toad",   0x50, 0x50 },
+        };
+        int ok = 1;
+        char why[160] = "";
+        for (int c = 0; c < SMK_CHARACTERS; c++) {
+            int g = smk_sfx_pass_voice(&rom, c, true);
+            int l = smk_sfx_pass_voice(&rom, c, false);
+            if (g != V[c].gain || l != V[c].lose) {
+                ok = 0;
+                snprintf(why, sizeof why, "%s: got $%02X/$%02X want $%02X/$%02X",
+                         V[c].who, g, l, V[c].gain, V[c].lose);
+                break;
+            }
+        }
+        check("overtake voices match the ROM's own two tables", ok, why);
+        check("an out-of-range driver asks for nothing",
+              smk_sfx_pass_voice(&rom, -1, true) == 0
+              && smk_sfx_pass_voice(&rom, SMK_CHARACTERS, false) == 0, NULL);
+    }
+    {
         /* The start rev, the turbo band and the wheelspin (NOTES 143/145),
          * over the MEASURED 336-frame countdown.  The last two rows are
          * the user's own recording: their normal start read 11008 at the
