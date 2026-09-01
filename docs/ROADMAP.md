@@ -616,8 +616,18 @@ of them changes how every race feels.
 
 In rough order of value:
 
-1. **Sound (S8, P7) — music PARKED and now OFF by default; the SFX are
-   IN (NOTES 211).** 31 of the game's own effects are captured from the
+1. **Sound (S8, P7) — music PARKED and OFF by default; the SFX are IN
+   and now DECODED rather than guessed (NOTES 211-230).** Three tools
+   cover it and none of them need anyone to play anything:
+   `sfxwho.lua` taps the call and says which ROUTINE plays each sound;
+   `sfxsweep.py` forces any item, surface, collision, object or menu in
+   our own interpreter and logs what the game asks for; `voicedump.lua`
+   plus `sfxrender.py` rebuild the sounds from the game's own BRR
+   samples, including the HELD voices (the engine, the roulette, the
+   skid) that are never queued at all. `sfxcoverage.py` counts it: 71
+   call sites with a known id, 35 seen. What is left is the menus'
+   per-screen sites and the item-hit variants, both reachable the same
+   way. Old text (the capture route, superseded):** 31 of the game's own effects are captured from the
    running game by subtracting two deterministic MAME replays, cut by
    tools/labs/sfxcut.py into rom/sfx/<ID>.wav, and played by the GAME'S
    own ids so every call site reads like the ROM's. A dozen are named by

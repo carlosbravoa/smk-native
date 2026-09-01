@@ -167,7 +167,22 @@ def sweep_menus():
 
     frames(240)
     del sink[:]
+    # walk deeper: every confirm lands on another screen, and each screen
+    # has its own call site in bank $81 (NOTES 226's uncovered list)
     for label, hi, lo in (('START (enter)', 0x10, 0x00),
+                          ('A -> mode',    0x00, 0x80),
+                          ('DOWN in mode', 0x04, 0x00),
+                          ('A -> driver',  0x00, 0x80),
+                          ('RIGHT driver', 0x01, 0x00),
+                          ('DOWN driver',  0x04, 0x00),
+                          ('A -> class',   0x00, 0x80),
+                          ('DOWN class',   0x04, 0x00),
+                          ('A -> course',  0x00, 0x80),
+                          ('RIGHT course', 0x01, 0x00),
+                          ('DOWN course',  0x04, 0x00),
+                          ('B back',       0x80, 0x00),
+                          ('B back again', 0x80, 0x00),
+                          ('A again',      0x00, 0x80),
                           ('A (confirm)',  0x00, 0x80),
                           ('DOWN',         0x04, 0x00),
                           ('UP',           0x08, 0x00),
