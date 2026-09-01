@@ -53,25 +53,30 @@ def install(L, sink):
         orig()
     cpu.step = step
 
-def sweep_items(L):
+def sweep_items(L, down=False):
+    """Each item used.  down=True holds DOWN with the button, which is
+    how a banana or a shell is LEFT BEHIND rather than thrown - the two
+    are different actions and the user says they sound different."""
     sink = []
     install(L, sink)
     L.pace(500)
     for item, name in ITEMS.items():
         del sink[:]
         L.sw(0x0D70, 0xC000 | item)        # the item, READY
-        L.frame(0x80, 0x80)                # B held, A pressed: use it
+        # B held, A pressed, and DOWN too when leaving it behind
+        L.frame(0x80 | (0x04 if down else 0), 0x80)
         for _ in range(150):
             L.frame(0x80, 0)
         got = {}
         for a, pc, caller in sink:
             got.setdefault(a & 0xFF, set()).add(caller)
+        tag = 'DOWN+button' if down else 'button'
         if got:
             for sid in sorted(got):
                 sites = ' '.join('$%02X:%04X' % (c >> 16, c & 0xFFFF) for c in sorted(got[sid]))
-                log('item %d (%-11s) -> $%02X  from %s' % (item, name, sid, sites))
+                log('%-11s item %d (%-11s) -> $%02X  from %s' % (tag, item, name, sid, sites))
         else:
-            log('item %d (%-11s) -> nothing' % (item, name))
+            log('%-11s item %d (%-11s) -> nothing' % (tag, item, name))
 
 def sweep_hazards(L):
     sink = []
@@ -280,7 +285,8 @@ def main():
     L.reach_race()
     log('in a race; sweeping %s' % what)
     if what in ('items', 'all'):
-        sweep_items(L)
+        sweep_items(L, down=False)
+        sweep_items(L, down=True)
     if what in ('hazards', 'all'):
         sweep_hazards(L)
     if what in ('collisions', 'all'):

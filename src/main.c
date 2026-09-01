@@ -3352,20 +3352,27 @@ int main(int argc, char **argv)
                         /* the user: the button alone THROWS (banana in an arc,
                          * shell fast and bouncing); button + DOWN leaves it
                          * behind you, static - the same for both */
-                        case SMK_ITEM_BANANA:
-                            if (!in.dpad_down) smk_sfx_play(SMK_SFX_THROW);
+                        case SMK_ITEM_BANANA: {
+                            /* MEASURED (NOTES 232): a banana thrown ahead
+                             * makes NO sound at all; left behind it is $58
+                             * from $84:D8F2.  One flag for both the throw
+                             * and its sound, so a debug override cannot
+                             * make them disagree. */
+                            bool behind = in.dpad_down || getenv("SMK_BANANA_DOWN") != NULL;
+                            if (behind) smk_sfx_play(SMK_SFX_DROP);
                             smk_proj_throw(projs, SMK_PROJ_MAX, SMK_PROJ_BANANA, &kart,
-                                           player.heading, 0, -1, false,
-                                           !in.dpad_down && !getenv("SMK_BANANA_DOWN"));
+                                           player.heading, 0, -1, false, !behind);
                             break;
-                        case SMK_ITEM_GREEN:
-                            /* the user: "shooting a shell should also launch
-                             * the sound of forward-throwing a banana" */
-                            smk_sfx_play(SMK_SFX_THROW);
+                        }
+                        case SMK_ITEM_GREEN: {
+                            /* thrown ahead it is $80:F442's $2B; left behind
+                             * it is the drop (NOTES 232) */
+                            bool behind = in.dpad_down || getenv("SMK_SHELL_DOWN") != NULL;
+                            smk_sfx_play(behind ? SMK_SFX_DROP : SMK_SFX_THROW);
                             smk_proj_throw(projs, SMK_PROJ_MAX, SMK_PROJ_GREEN, &kart,
-                                           player.heading, 0, -1,
-                                           in.dpad_down || getenv("SMK_SHELL_DOWN"), false);
+                                           player.heading, 0, -1, behind, false);
                             break;
+                        }
                         case SMK_ITEM_RED:
                             smk_sfx_play(SMK_SFX_THROW);
                             smk_proj_throw(projs, SMK_PROJ_MAX, SMK_PROJ_RED, &kart,

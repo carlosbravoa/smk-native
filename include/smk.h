@@ -1324,7 +1324,10 @@ const char *smk_sfx_hint(int id);   /* when the game fires an unnamed one */
 #define SMK_SFX_LAND       0x25   /* MEASURED: drive $02->$00 and z to 0       */
 #define SMK_SFX_FALL       0x27   /* USER: "falling down from the road"        */
 #define SMK_SFX_SHELL_HIT  0x29   /* USER: "hitting with a shell"              */
-#define SMK_SFX_THROW      0x2B   /* USER: "forward firing an item"            */
+#define SMK_SFX_THROW      0x2B   /* $80:F442 - a SHELL thrown ahead.  A banana
+                                   * thrown ahead is SILENT (forced in the
+                                   * oracle, NOTES 232) */
+#define SMK_SFX_DROP       0x58   /* $84:D8F2 - leaving an item BEHIND you   */
 #define SMK_SFX_AI_HIT     0x39   /* USER: "ai player takes a hit"             */
 #define SMK_SFX_MENU_MOVE  0x2C   /* USER                                      */
 #define SMK_SFX_MENU_OK    0x2E   /* USER                                      */

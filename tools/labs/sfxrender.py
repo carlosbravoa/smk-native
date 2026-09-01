@@ -91,7 +91,13 @@ def render_all(spc, test, frames, out_p):
     peak = np.abs(mix).max()
     if peak < 1e-4:
         print('%s: silent' % os.path.basename(out_p)); return
-    mix *= 22000.0 / peak
+    # the SAME common scale the one-shots use (NOTES 231): a held sound
+    # rendered to its own peak comes out at a level the game never gave
+    # it, which is exactly how the skid ended up louder than everything
+    # around it (the user: "sounds in a different volume/intensity than
+    # the rest").
+    mix *= 110000.0
+    np.clip(mix, -30000.0, 30000.0, out=mix)
     fade = min(512, len(mix) // 8)
     if fade > 1:
         r = np.linspace(0, 1, fade)[:, None]

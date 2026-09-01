@@ -375,7 +375,8 @@ const char *smk_sfx_name(int id)
     case SMK_SFX_LAND:        return "landing             (measured)";
     case SMK_SFX_FALL:        return "falling off the road (you)";
     case SMK_SFX_SHELL_HIT:   return "hitting with a shell (you)";
-    case SMK_SFX_THROW:       return "firing an item forward (you)";
+    case SMK_SFX_THROW:       return "a shell thrown ahead ($80:F442)";
+    case SMK_SFX_DROP:        return "an item left behind ($84:D8F2)";
     case SMK_SFX_AI_HIT:      return "an AI kart takes a hit (you)";
     case SMK_SFX_BOO:         return "Boo                 (you)";
     case SMK_SFX_MENU_MOVE:   return "menu move           (you)";
@@ -436,6 +437,7 @@ const char *smk_sfx_hint(int id)
     case 0x54: return "(a SOFT kart bump - $80:D825, forced in the oracle)";
     case 0x57: return "(unnamed - the ROM's other Boo id)";
     case 0x5E: return "(unnamed - never seen fired anywhere)";
+    case 0x5B: return "(one of $58's family - leaving an item)";
     case 0x5C: return "(you: another kart's engine - the port now mixes four)";
     case 0x61: return "(you: Mario/Luigi invincibility, maybe the wrong pitch)";
     case 0x64: return "(unnamed - the ROM plays it from bank $85's object code)";

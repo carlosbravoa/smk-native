@@ -9413,3 +9413,36 @@ It now applies ONE scale to all of them (110000, chosen so the loudest
 in the set sits near full), so the relative loudness is the game's and
 only the overall level is ours (S37).  The spread is real: the shell
 hit $29 peaks at 24156 and the quietest, $4B, at 732.
+
+## 232. The hardcoded ones, done properly: the drop, the throw, and the skid's level
+
+The user: "apply the same approach to solve the sounds we hardcoded
+before... the skid sounds in a different volume/intensity than the rest.
+Also there are others that are not the right thing, like throwing an
+item, leaving it on the ground, the item selection."
+
+THE LEVEL first, because it was one bug for all the held sounds: the
+skid, the roulette and the countdown beeps were rendered BEFORE NOTES
+231's common scale and each was normalised to its own peak, which is a
+level the game never gave them.  Re-rendered on the same scale as the
+one-shots, the skid drops from 22000 to 6672 - quieter than the hop,
+which is where the game puts it - and the roulette to 16670.
+
+THE ITEM ACTIONS, forced in the oracle with and without DOWN held (the
+sweep now does both passes, since throwing and leaving behind are two
+different actions):
+
+    banana, thrown ahead   NOTHING AT ALL
+    banana, left behind    $58 from $84:D8F2
+    green shell, ahead     $2B from $80:F442
+    green shell, behind    the drop, not the throw
+    red shell              $2B
+    the roulette landing   $55 from $80:9B32 (unchanged, and right)
+
+So the port had been playing a throw sound for a banana the game throws
+silently, and nothing at all for the drop that has its own sound.  $58
+was in the "never seen fired" list until the sweep pressed DOWN.
+
+Both fixed, and the throw direction and its sound now read ONE flag, so
+a debug override cannot make them disagree - which is how the first
+attempt at this looked like it had failed.
