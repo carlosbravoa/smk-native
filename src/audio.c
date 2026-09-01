@@ -20,7 +20,7 @@
 #include <math.h>
 #include <stdlib.h>
 
-#define SFX_LOOPS 2                 /* the roulette and the skid at once */
+#define SFX_LOOPS 4                 /* the roulette, the skid, the two off-road hisses */
 
 static bool     ready;
 static Mix_Music *cur, *loop_next;
@@ -411,6 +411,9 @@ const char *smk_sfx_name(int id)
     case SMK_SFX_WALL2:       return "the wall, harder    (the $80:D7DA table)";
     case SMK_SFX_BOO_START:   return "Boo, starting       (you)";
     case SMK_SFX_AI_ENGINE:   return "another kart's engine (you)";
+    case SMK_SFX_OBJ_WALL:    return "a shell off a wall  ($84:D73A, near)";
+    case SMK_SFX_OBJ_WALL_2:  return "a shell off a wall  ($84:D73A, middle)";
+    case SMK_SFX_OBJ_WALL_3:  return "a shell off a wall  ($84:D73A, far)";
     case 0x4D: return "overtaking      ($84:D99B: Mario/Luigi/Peach/Yoshi/Koopa)";
     case 0x50: return "Toad passing    ($84:D99B/$84:D9CA)";
     case 0x51: return "Bowser passing  ($84:D99B/$84:D9CA)";

@@ -9585,3 +9585,66 @@ recording: five AI releases (owners `$1600` and `$1700`), every one
 SILENT, and exactly one `$2B` in the whole run - at f4578, the player's.
 So the port playing nothing when `smk_proj_ai_drop` fires was right, and
 it stays that way, now on a measurement instead of an omission.
+
+## 236. The off-road hiss, the shell off a wall, and a second engine voice
+
+Three reports in one message, and all three answered by FORCING the state
+rather than hunting for a recording that happens to contain it.  The lever
+in two of them is the same: RAM `$0B00` is the tilemap-byte -> surface-class
+table (NOTES 011), so overwriting all 256 entries makes the WHOLE course one
+class and the same recorded inputs can be run over each in turn
+(`tools/labs/mame/surfhiss.lua`).
+
+### "when driving on grass there is a sound coming up, like S-S-S"
+
+It is never queued, which is why tapping the sound entry never found it:
+it is DSP **voice 5 keying sample `$04`** over and over.  Of fourteen
+classes forced in turn, exactly two hiss, and at their own pitches:
+
+    class $5A (grass)   sample $04 at pitch $0600   (12000 Hz)   327/540 frames
+    class $58 (sand)    sample $04 at pitch $0400   ( 8000 Hz)   214/540 frames
+    $40 $42 $44 $4A $50 $52 $54 $5C $5E $22 $1A $10   never
+
+Logging ENVX every frame shows the re-key: a 4-frame attack to 118, a
+decay, a zero, and round again on a **10-frame period** - six pulses a
+second, which is the S-S-S.  `tools/labs/hisssound.py` builds one whole
+period from the game's own sample, that pitch and that measured envelope,
+and the port loops it (`rom/sfx/offroad5A.wav`, `offroad58.wav`).
+
+A first attempt cycled all fourteen classes inside ONE run, 200 frames
+each, and reported only `$58` - because the kart's speed carries across
+the windows, so each class met a different kart.  Separate runs from the
+identical frame, and it comes out clean.  The same trap as ever
+(NOTES 196): change one thing, not two.
+
+### "bouncing shells don't sound like that"
+
+They did not: the port was playing `$2A`, which NOTES 233 had already
+MEASURED as the kart's own spin-out.  The real one is a sibling of the
+wall scrape, and `$80:FBC1` picks between them on one bit:
+
+    BIT $12,x / BPL  ->  a KART: $12 is the CHARACTER, bit 15 clear,
+                         so $84:D77A's family plays - $3C/$3D/$3E
+                     ->  an OBJECT: $12 is the live word, bit 15 SET,
+                         so $84:D73A's family plays - $30/$31/$32
+
+Forced by filling every tile with class `$80` - the class a shell
+reflects off - `$30` fires 125 times and the road control not once, next
+to the kart's own `$3C/$3D/$3E` in the same run.  Two more families hang
+off the same site, `$33/$34/$35` and `$36/$37/$38`.
+
+Each family's three are NOT intensities but **distance bands**:
+`$84:D9DA` weighs `$06,x` and `$0E,x` - the two players' distances -
+against `$0120`, and the table's entries 0 and 4 are null (out of range =
+no sound), 1..3 and 5..7 the bands for each player's side.  The port
+plays the near one, `$30`, and THAT CHOICE IS OURS.
+
+### "you can hear their original engine sounds"
+
+Confirmed on the chip, and it is not an embellishment: dumping all eight
+DSP voices through a race shows `$02`, `$03`, `$17` and `$18` - the four
+engine samples of NOTES 234 - keyed on voices 1..6 SIMULTANEOUSLY with
+the player's own on voice 7.  The game really does give nearby karts
+their own engines, each with its driver's sample.  S39's placement
+(which karts, how they fade and pan) stays ours; that there are several,
+and that each is its driver's own, is the game's.

@@ -982,6 +982,28 @@ static void step_kart(smk_kart *k, smk_track *trk,
          * kinds and their own sounds, which is why the user hears a
          * different one off-road. */
         smk_sfx_loop("skid", fx_kind_now == 0x24 && race_state == RACE_RUN);
+        /* THE OFF-ROAD HISS (NOTES 236).  The user: "when driving on
+         * grass there is a sound coming up, like S-S-S".  It is never
+         * queued, so no amount of tapping the sound entry finds it -
+         * DSP voice 5 keys sample $04 over and over while the kart is on
+         * rough ground.  FORCED rather than hunted: RAM $0B00 is the
+         * tilemap-byte -> class table, so the whole course can be made
+         * one class and the same recorded inputs run over each in turn.
+         * Of fourteen classes exactly two hiss, at their own pitches -
+         * $5A at $0600, $58 at $0400 - and the voice is re-keyed about
+         * every 10 frames, which is the loop file's own length.
+         * OURS: the speed gate (the measurement only ever saw it at one
+         * speed, so whether it thins out slowly is untested). */
+        {
+            uint8_t sc = surf_now & 0xFE;
+            bool rough = race_state == RACE_RUN && !k->airborne
+                         && k->speed > 0x100;
+            if (getenv("SMK_SFX_TRACE") && (fx_ticks % 60) == 0)
+                printf("surf: $%02X (class $%02X) speed %d state %d air %d\n",
+                       surf_now, sc, k->speed, (int)race_state, (int)k->airborne);
+            smk_sfx_loop("offroad5A", rough && sc == 0x5A);
+            smk_sfx_loop("offroad58", rough && sc == 0x58);
+        }
         /* braking hard (the user's $3C): Y held and the speed really going */
         {
             static int brake_cool;

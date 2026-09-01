@@ -1330,7 +1330,20 @@ const char *smk_sfx_hint(int id);   /* when the game fires an unnamed one */
  * as "shells do sound when bouncing" - a shell striking and a kart
  * spinning share it. */
 #define SMK_SFX_SPIN_OUT   0x2A
-#define SMK_SFX_SHELL_BOUNCE SMK_SFX_SPIN_OUT
+/* An OBJECT off a wall - a shell bouncing (NOTES 236).  NOT $2A: $2A is
+ * the kart's own spin-out, and the port had been playing that.  $80:FBC1
+ * splits the wall response on `BIT $12,x` - for a KART $12 is the
+ * character, so bit 15 is clear and the scrape family $3C/$3D/$3E plays;
+ * for an OBJECT $12 is the live word with bit 15 SET, so $84:D73A's
+ * family plays instead.  MEASURED by forcing every tile to class $80 -
+ * the class a shell reflects on: $30 fired 125 times, and not once in
+ * the road control.  The three are DISTANCE bands, $84:D9DA weighing
+ * $06,x and $0E,x (the two players' distances) against $0120; the port
+ * plays the near one, and THAT CHOICE IS OURS. */
+#define SMK_SFX_OBJ_WALL    0x30  /* MEASURED: $84:D73A via $80:FBC5      */
+#define SMK_SFX_OBJ_WALL_2  0x31  /* the middle band                      */
+#define SMK_SFX_OBJ_WALL_3  0x32  /* the far band                         */
+#define SMK_SFX_SHELL_BOUNCE SMK_SFX_OBJ_WALL
 #define SMK_SFX_SHELL_HIT  0x29   /* USER: "hitting with a shell" - four
                                    * sites, none of them reached yet        */
 #define SMK_SFX_THROW      0x2B   /* $80:F442 - a SHELL thrown ahead.  A banana
