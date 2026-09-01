@@ -217,6 +217,7 @@ void smk_proj_step(smk_proj *list, int n, const smk_track *trk,
             if (by) p->vy = (int16_t)(-p->vy * SMK_PROJ_BOUNCE_NUM / 8);
             p->heading = bearing(0, 0, p->vx, -p->vy);
             if (++p->bounces >= SMK_PROJ_MAX_BOUNCE) { p->dying = true; p->zv = SMK_PROJ_DIE_HOP; }
+            p->bounced = 1;             /* the caller makes the sound */
             continue;
         }
         if ((here & 0x20) && p->kind != SMK_PROJ_BANANA_AIR) {

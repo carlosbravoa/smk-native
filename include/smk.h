@@ -1327,6 +1327,7 @@ const char *smk_sfx_hint(int id);   /* when the game fires an unnamed one */
 #define SMK_SFX_MENU_MOVE  0x2C   /* USER                                      */
 #define SMK_SFX_MENU_OK    0x2E   /* USER                                      */
 #define SMK_SFX_MENU_BACK  0x2F   /* USER                                      */
+#define SMK_SFX_SHELL_BOUNCE 0x2A /* USER: "shells do sound when bouncing"     */
 #define SMK_SFX_BRAKE      0x3C   /* USER: "braking hard, skids probably"      */
 #define SMK_SFX_WALL       0x42   /* USER: "hitting a barrier 100%" - and it
                                    * MEASURED as the bump that costs a coin  */
@@ -1977,6 +1978,7 @@ typedef struct {
     int      t;             /* age in frames                             */
     int      delay;         /* red: $40 countdown                        */
     int      bounces;
+    uint8_t  bounced;          /* set on the frame it hit a wall (for the sound) */
     bool     dying;         /* hopping out of existence                  */
     int      carry;         /* AI drop: frames still riding behind its kart */
     int32_t  wx, wy;        /* the fireball's weave offset, kart units       */

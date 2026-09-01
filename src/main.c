@@ -873,6 +873,13 @@ static void step_kart(smk_kart *k, smk_track *trk,
                                        (player.flags & 0x0008) != 0,
                                        (player.flags & 0x0020) != 0, k->speed);
     }
+    {   /* a shell off a wall (the user: "shells do sound when bouncing") */
+        for (int i = 0; i < SMK_PROJ_MAX; i++)
+            if (projs[i].bounced) {
+                projs[i].bounced = 0;
+                smk_sfx_play(SMK_SFX_SHELL_BOUNCE);
+            }
+    }
     {   /* sounds the game spaces out - the coin item is TWO coins, and
          * the recording puts its two $20s seven frames apart */
         for (int i = 0; i < (int)(sizeof sfx_later / sizeof sfx_later[0]); i++)

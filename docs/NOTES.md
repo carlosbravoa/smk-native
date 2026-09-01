@@ -9172,3 +9172,32 @@ race the second $20 lands SEVEN FRAMES after the first (f3752: +0, +1,
 +7; f15507: +0, +7, +8 - the doubled frames are the driver's own
 repeat).  The port now queues the second with a small delayed-sound
 queue, which is the first thing it has needed one for.
+
+## 224. Five more names, and the two the recordings cannot settle
+
+    $2A  shells sound when they bounce      $49  "skid?"
+    $51  Bowser, half of a sound            $5C  Bowser's engine?
+    $61  Mario/Luigi invincibility - "possible that it has the wrong pitch?"
+
+$2A is wired: the projectile step already knows when a shell reflects
+off a class-$80 wall, so it now says so and the caller makes the sound.
+
+$49 is interesting BECAUSE the user hedged.  The road skid is a held
+voice (NOTES 221/223), so a one-shot cannot be it - but the off-road
+surfaces each pick their own effect kind and so want their own sounds,
+and $49 may well be one of those.  Left unwired until it can be heard in
+the right place.
+
+$5C and $62 are both "another kart's engine" by ear, and $5C fires four
+times in the `attack` recording at full speed with nothing else going on
+- exactly what a kart passing you would do.  The port models ONE engine.
+Giving the AI karts their own, pitched by their own speed and panned by
+where they are, is a real feature and it is now on the list.
+
+$61 CANNOT be settled from what we have: no recording in
+tools/labs/mame/sessions ever uses a star, so the id is only ever heard
+from a poke, and a poke gives whatever pitch the driver's default is.
+If the star is a held voice with its pitch walked - which is how the
+roulette, the engine and the skid all turned out - then a poke shows one
+note of it and the user's "wrong pitch" is exactly right.  It needs a
+recording with a star in it.
