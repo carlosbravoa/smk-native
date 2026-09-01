@@ -18,6 +18,22 @@ ENTRIES = {0x81F57A, 0x81F5A7, 0x81F5C2, 0x81F504, 0x81F5F8, 0x81F5E2}
 ITEMS = {0: 'mushroom', 1: 'feather', 2: 'star', 3: 'banana', 4: 'green shell',
          5: 'red shell', 6: 'Boo', 7: 'coin', 8: 'lightning'}
 
+CSV = []
+
+def record(sid, caller):
+    CSV.append('0,%04X,%02X:%04X,FSWEEP' % (sid, caller >> 16, caller & 0xFFFF))
+
+
+def flush_csv(name='tmp/who2/sweep.log'):
+    if not CSV:
+        return
+    os.makedirs(os.path.dirname(name), exist_ok=True)
+    with open(name, 'a') as f:
+        f.write('\n'.join(CSV) + '\n')
+    log('%d calls appended to %s' % (len(CSV), name))
+    del CSV[:]
+
+
 def install(L, sink):
     """watch every instruction for an arrival at the sound routine"""
     cpu = L.c
@@ -33,6 +49,7 @@ def install(L, sink):
             lo, hi, bk = rd[(base + 1) & 0x1FFF], rd[(base + 2) & 0x1FFF], rd[(base + 3) & 0x1FFF]
             caller = (bk << 16) | (((hi << 8 | lo) - 3) & 0xFFFF)
             sink.append((a, pc, caller))
+            record(a & 0xFF, caller)
         orig()
     cpu.step = step
 
@@ -227,6 +244,8 @@ def sweep_objects(cup, course, label):
 
 def main():
     what = sys.argv[1] if len(sys.argv) > 1 else 'all'
+    import atexit
+    atexit.register(flush_csv)
     if what == 'menus':
         sweep_menus()
         return

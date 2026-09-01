@@ -409,11 +409,22 @@ const char *smk_sfx_name(int id)
  * hint that makes it placeable. */
 const char *smk_sfx_hint(int id)
 {
+    /* Several of these are not whole sounds: $80:D7DA is a table of
+     * $3F/$40/$41 chosen by ($AE & 7), and bank $84's stub list is full
+     * of triples ($30/$31/$32, $36/$37/$38, $3C/$3D/$3E, $44/$45/$46,
+     * $58/$59/$5A).  One event at three intensities - so a member on
+     * its own is meant to sound like part of something (NOTES 228). */
     switch (id) {
+    case 0x30: case 0x31: case 0x32:
+    case 0x33: case 0x34: case 0x35:
+    case 0x36: case 0x37: case 0x38:
+    case 0x3D: case 0x3E:
+    case 0x41: case 0x44: case 0x45: case 0x46:
+    case 0x58: case 0x59: case 0x5A:
+        return "(one of a TRIPLE - the same event at three intensities)";
     case 0x26: return "(unnamed - fires standing still)";
     case 0x28: return "(unnamed - the ROM plays it in the lava/pit handler)";
     case 0x2B: return "(unnamed - fires at full speed on the road)";
-    case 0x37: return "(unnamed - the ROM plays it from bank $85's object code)";
     case 0x39: return "(unnamed - fires at speed on the road)";
     case 0x49: return "(you thought a skid - the road skid is a held voice, so this is another)";
     case 0x4A: return "(unnamed - the ROM plays it from bank $85's object code)";
@@ -422,10 +433,10 @@ const char *smk_sfx_hint(int id)
     case 0x50: return "(HALF a sound - you: yoshi passing, or firing an object)";
     case 0x51: return "(HALF a sound - you: Bowser)";
     case 0x53: return "(unnamed - fires at speed, on and off the road)";
-    case 0x54: return "(unnamed - once, losing a lot of speed at once)";
+    case 0x54: return "(a SOFT kart bump - $80:D825, forced in the oracle)";
     case 0x57: return "(unnamed - the ROM's other Boo id)";
-    case 0x58: case 0x5E: return "(unnamed - never seen fired in a recording)";
-    case 0x5C: return "(you: Bowser's engine? - the port has one engine)";
+    case 0x5E: return "(unnamed - never seen fired anywhere)";
+    case 0x5C: return "(you: another kart's engine - the port now mixes four)";
     case 0x61: return "(you: Mario/Luigi invincibility, maybe the wrong pitch)";
     case 0x64: return "(unnamed - the ROM plays it from bank $85's object code)";
     default:   return "(unnamed - never seen fired, and nobody has named it)";
