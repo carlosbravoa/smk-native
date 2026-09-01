@@ -883,11 +883,29 @@ static void step_kart(smk_kart *k, smk_track *trk,
                                        (player.flags & 0x0008) != 0,
                                        (player.flags & 0x0020) != 0, k->speed);
     }
-    {   /* a shell off a wall (the user: "shells do sound when bouncing") */
+    {   /* A shell off a wall.  The DISTANCE rule is measured and is in:
+         * $84:D9DA weighs each player's distance to the object against
+         * $0120 = 288, and the table entries for "out of range" are ZERO,
+         * i.e. a bounce you are far from is silent.  The port had no gate
+         * at all - the user: "right now you hear them bouncing no matter
+         * how far you are".
+         *
+         * The SOUND is not settled.  $2A was wrong (it is the kart's own
+         * spin-out, NOTES 233) and $30 is wrong too: rendered, it comes
+         * back the same length, the same 2410 Hz and the same rising
+         * sweep as $48, the mushroom boost - which is exactly what the
+         * user heard.  The baseline-diff renderer has now produced two
+         * such collisions ($32 came back as $50), so the id stays
+         * UNRESOLVED and the port plays nothing rather than something
+         * known to be wrong. */
         for (int i = 0; i < SMK_PROJ_MAX; i++)
             if (projs[i].bounced) {
                 projs[i].bounced = 0;
-                smk_sfx_play(SMK_SFX_SHELL_BOUNCE);
+                float dx = (float)(smk_kart_px(projs[i].x) - smk_kart_px(kart.x));
+                float dy = (float)(smk_kart_px(projs[i].y) - smk_kart_px(kart.y));
+                if (dx * dx + dy * dy > (float)(SMK_SFX_OBJ_RANGE * SMK_SFX_OBJ_RANGE))
+                    continue;                       /* out of range: silent */
+                /* smk_sfx_play(SMK_SFX_SHELL_BOUNCE);  <- id unresolved */
             }
     }
     {   /* sounds the game spaces out - the coin item is TWO coins, and

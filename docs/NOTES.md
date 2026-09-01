@@ -9703,3 +9703,43 @@ kart's engine is a **median 0.89** of the player's (395 samples, quartiles
 player's `0.40`.  It is now the player's own level scaled `1.3 - d/220`,
 so a kart alongside is about as loud as you are, which is what the ROM
 does.  OURS, still: which three karts, the 220 px range and the falloff.
+
+## 238. Four dings, not two and a half - and $30 is the mushroom boost
+
+### The item locking in
+
+`$55` is three key-ons of voice 3 (sample `$0B` at pitch `$3000`) at
+f2206, f2224 and f2244 - about 19 frames apart - running to f2263 before
+the music takes the voice back.  The port's file held only 0.672 s of
+that, because `sfxrender.py` breaks after two "strikes": a third re-key
+of the same sample is usually the music coming back, and rendering it had
+once made the coin "sound three times" (the user, NOTES 216).
+
+Here it is not the music, it is the sound.  `SFX_STRIKES` now raises that
+cap per id, and `$55` re-renders at 1.105 s with four evenly spaced peaks
+- 0.01, 0.31, 0.64, 1.00 s - which is the user's "four short dings".  The
+default stays 2.
+
+### The shell off a wall: still unresolved, and now silent
+
+Two things were wrong and only one is fixed.
+
+The DISTANCE rule is measured and is in.  `$84:D9DA` weighs each player's
+distance to the object against `$0120`, and the "out of range" entries of
+every one of these tables are ZERO - a bounce far away is silent.  The
+port had no gate at all; the user: "right now you hear them bouncing no
+matter how far you are".
+
+The SOUND is wrong again.  `$2A` was the kart's own spin-out (NOTES 233).
+`$30` is no better: rendered and measured against `$48`, the mushroom
+boost, the two come back the same length (0.640 / 0.662 s), the same
+dominant 2410 Hz and the same rising sweep (2176->2781 vs 2153->2774 Hz).
+The user heard it exactly: "the shell bouncing sounds like a mushroom
+boost".
+
+That is the SECOND collision out of the baseline-diff renderer - `$32`
+came back byte-identical to `$50`, Toad's overtake voice - so the
+renderer is not to be trusted on an id that has not been watched firing
+in its own event.  Until the bounce is captured from a real bounce rather
+than a poke, the port plays nothing there: a known-wrong sound is worse
+than a missing one.

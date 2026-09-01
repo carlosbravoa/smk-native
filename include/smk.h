@@ -1341,7 +1341,15 @@ const char *smk_sfx_hint(int id);   /* when the game fires an unnamed one */
  * the road control.  The three are DISTANCE bands, $84:D9DA weighing
  * $06,x and $0E,x (the two players' distances) against $0120; the port
  * plays the near one, and THAT CHOICE IS OURS. */
-#define SMK_SFX_OBJ_WALL    0x30  /* MEASURED: $84:D73A via $80:FBC5      */
+/* MEASURED: $84:D9DA weighs each player's distance to the object against
+ * $0120 and plays NOTHING when both are past it - so a bounce far away is
+ * silent, which the port now honours. */
+#define SMK_SFX_OBJ_RANGE   0x0120
+/* UNRESOLVED: $30 renders identical to $48, the mushroom boost - same
+ * length, same 2410 Hz, same rising sweep - so it is not the bounce, or
+ * the baseline-diff render of it is contaminated (as $32's was: it came
+ * back byte-identical to $50).  Nothing is played until this is settled. */
+#define SMK_SFX_OBJ_WALL    0x30  /* $84:D73A via $80:FBC5 - see above    */
 #define SMK_SFX_OBJ_WALL_2  0x31  /* the middle band - NOT CAPTURED       */
 #define SMK_SFX_OBJ_WALL_3  0x32  /* the far band - NOT CAPTURED: the
                                    * render came back byte-identical to

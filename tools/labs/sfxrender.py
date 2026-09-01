@@ -206,9 +206,14 @@ def main():
             # sample keyed low then a fourth higher - but a THIRD strike
             # is the music taking the sample back, and rendering it made
             # the coin "sound three times" (the user).
+            # SFX_STRIKES raises the cap for a sound that really does
+            # repeat: $55, the item locking in, is THREE key-ons about 19
+            # frames apart, and stopping at two cut it to "2 and a half"
+            # (the user).  The default stays 2 - for most effects a third
+            # strike IS the music taking the sample back.
             if envx > last_env + 8:
                 strikes += 1
-                if strikes > 2 and f > first + 4:
+                if strikes > int(os.environ.get('SFX_STRIKES', '2')) and f > first + 4:
                     break
             last_env = envx
             if envx == 0 and f > first + 2:
