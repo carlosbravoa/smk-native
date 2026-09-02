@@ -9967,3 +9967,47 @@ for everything would let music into the effects that do not need it.
 The file ends at 62% of its peak, and that is the game's doing, not a
 cut: `$0F`'s envelope is still at 77 of 127 when the driver keys the
 voice off.
+
+## 244. Eight more effects were cut, found by machine rather than by ear
+
+`$2B` was cut to a fifth of its length and it took the user's ear to
+notice (NOTES 243).  Nothing about that needed an ear, so
+`tools/labs/sfxaudit.py` now checks every capture against the span the
+CHIP gives it: find the voice the poke keyed, walk it while it is playing
+a sample the baseline is NOT and its envelope is above zero, and compare
+that span with the length of `rom/sfx/<ID>.wav`.
+
+Two refinements were needed before the numbers meant anything.  Comparing
+whole rows rather than samples counts the music's own pitch drift as part
+of the effect and inflated every span - half the list looked truncated
+when it was not.  And counting frames where the voice still HOLDS its
+sample after the driver has keyed it off turned a four-frame blip into a
+fifty-frame sound.  Sample-differs AND envelope-above-zero is the test
+that matches what the renderer should produce.
+
+Eight were genuinely short, all cut by the "three strikes" rule - a long
+sound that is re-keyed many times looks like the music taking the sample
+back:
+
+    $2A  spin-out          0.223 -> 0.949 s   (the sound of being hit)
+    $39  AI hit            0.286 -> 0.851
+    $56  Boo start         0.157 -> 0.687
+    $57  Boo               0.159 -> 0.688
+    $5D  poison mushroom   0.402 -> 1.577
+    $5F  poison mushroom   0.080 -> 0.958
+    $61  (unnamed)         0.192 -> 1.939
+    $62  (unnamed)         0.080 -> 0.958
+
+All eight now land within 1% of the chip's own span except `$61` at 1.07.
+`$2A` is the one that matters most in play: it is what you hear every
+time a shell or a kart spins you out, and the port had a quarter of it.
+
+Also cleaned up: `tmp/vdump/30.log`, `31` and `32` were the captures made
+with the decimal-for-hex bug of NOTES 239 - they held `$48`, `$49` and
+`$50` - and have been replaced by the correct ones.  `SFX_DEBUG=1` now
+prints which rule ended a render, which is how `$48`'s remaining 0.67
+was traced to the music genuinely taking the voice back at f2265.
+
+The audit is a good SHORT detector and a poor LONG one: for effects only
+a few frames long it picks the wrong voice and reports a span far under
+the file, so the ratios above 1 in its output are not findings.

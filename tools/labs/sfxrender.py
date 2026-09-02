@@ -23,6 +23,10 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import brr
 
+def _dbg(why, v, f):
+    if os.environ.get('SFX_DEBUG'):
+        print('  [stop] voice %d at frame %d: %s' % (v, f, why))
+
 FPS = 60.0988
 SR = 32000.0          # the DSP's own output rate; pitch $1000 = 1:1
 OUT_SR = 32000
@@ -200,7 +204,7 @@ def main():
             if b is not None and t == b:
                 same += 1
                 if same >= 8 and f > first + 4:
-                    break                  # the music has the voice back
+                    _dbg('same', v, f); break                  # the music has the voice back
                 continue
             same = 0
             # The effect is what this voice plays with the SAMPLE it
@@ -210,7 +214,7 @@ def main():
             # baseline says, and rendering on from there put a musical
             # tail on everything (NOTES 216).
             if f > first + 3 and srcn not in kit:
-                break
+                _dbg('kit srcn $%02X' % srcn, v, f); break
             # An effect may strike its sample twice - the coin is one
             # sample keyed low then a fourth higher - but a THIRD strike
             # is the music taking the sample back, and rendering it made
@@ -223,12 +227,12 @@ def main():
             if envx > last_env + 8:
                 strikes += 1
                 if strikes > int(os.environ.get('SFX_STRIKES', '2')) and f > first + 4:
-                    break
+                    _dbg('strikes', v, f); break
             last_env = envx
             if envx == 0 and f > first + 2:
                 quiet += 1
                 if quiet >= 8:
-                    break                  # a moment of nothing: it is over
+                    _dbg('quiet', v, f); break                  # a moment of nothing: it is over
             else:
                 quiet = 0
             samp = samples.get(srcn)
