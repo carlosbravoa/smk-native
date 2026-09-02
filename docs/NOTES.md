@@ -10319,3 +10319,108 @@ sign, the number - and no total: "don't add the total laps, it looks
 weird and every race has 5 laps in total" (the user).  So the two lines
 read as a pair, `<coin> x N` over `<track> x N`, with the ring sized down
 to sit inside its cell rather than fill it.
+
+## 254. Acceleration and grip, measured on both sides: it is ACCELERATION,
+and our port already has the original's, to the unit
+
+The user: *"In the original game, it is hard to sustain top speed for long
+time.  I don't know whether because grip is not that tight as in our
+implementation, or if is acceleration.  But we need to measure rather than
+guess."*
+
+Two rigs, the same batteries in the same order, so the logs diff line for
+line: `tools/labs/accelgrip.py` drives the ROM in the Python oracle with a
+forced pad word on a surface we choose, `tools/accelgrip.c` drives OUR
+`smk_player_step` with the identical pads on the identical surface
+(`tools/labs/accelgrip_g.py` / `_a0.py` are two of the batteries split out
+so they can be re-run alone).  Nothing here is a model of the ROM's answer.
+
+**1. The ceiling is asymptotic, and that is the whole story.**  The
+acceleration table is indexed by CURRENT SPEED, and its top entries are
+nearly zero.  From a standstill, throttle held, plain road, Mario:
+
+    class  coins   $D6   0 -> top      last-64 gain/f   recover from -100
+     50cc      0   784   205 f (3.4 s)     1.031        69 f (1.1 s)
+     50cc     10   864   316 f (5.3 s)     0.667       130 f (2.2 s)
+    100cc      0   912   444 f (7.4 s)     0.317       212 f (3.5 s)
+    100cc     10   992   764 f (12.7 s)    0.259       392 f (6.5 s)
+    150cc      0  1072   722 f (12.0 s)    0.414       267 f (4.5 s)
+    150cc     10  1152   898 f (15.0 s)    0.374       267 f (4.5 s)
+
+Every column of that table is the answer to the user's question.  The last
+64 units cost a QUARTER of a unit a frame at 100cc; a 100-unit loss - a
+brush of dust, one lift off the throttle - costs three to six and a half
+SECONDS of climbing back.  Nothing on Mario Circuit 1 is straight for six
+seconds.  And note the direction of the coin rule: coins raise the
+ceiling, so ten coins make top speed harder to hold, not easier.
+
+**2. Grip is not a drag, it is a cliff.**  Sweeping a full-lock turn
+across speed (battery G, 120 frames of B + Left) the turn rate is
+CONSTANT - about 1.68 deg/frame at every speed - so the radius is simply
+proportional to speed: 26 px at 200, 103 px at 784, 127 px at the top.
+Steering costs no speed at all: 360 frames of hold-20/release-20
+cornering at the ceiling ends at 951 out of 952.
+
+What changes at the top is the slide machine.  Once speed reaches `$B4`
+(the class top before coins) the kart is permanently in slide state 2, and
+holding the turn there (a) lags the velocity behind the heading by up to
+33.8 deg, so the kart tracks wide of where it points, and (b) winds `$FA`
+toward the spin-out.  Held at full lock it spins out at about frame 130 -
+952 down to 163, then nine seconds to get back.  Below `$B4` there is no
+slide state, no lag, and no spin: full grip.
+
+So the original's difficulty is: the ceiling takes ten seconds to reach,
+sitting on it puts you in a permanent drift, and any mistake costs seconds
+of the flattest part of the acceleration curve.
+
+**3. Our port is the same, to the unit.**  Acceleration: identical band by
+band, identical 50/75/90/95/99/100% frames (offset by exactly one frame,
+which battery A0 traced to the ORACLE - the ROM lab's first forced pad
+word only reaches the game the next frame, because `$C4` is composed at
+the end of a frame; the ROM's frame 0 carries `$EE = -4` and speed 0,
+ours starts at +2).  Grip curve: identical in every column including the
+radius to one decimal.  Full-lock hold at the top: same spin-out, min 163,
+final 844, mean 741.4 on both sides.
+
+**4. And under a real person's hands.**  The user's own recorded races
+(`sessions/flag` 50cc, `sessions/cc100` 100cc) were re-logged with
+`demolog.lua` and replayed through the port: speed differs by more than 2
+units on 6.3% / 6.1% of frames over ~90 seconds each.
+
+Those logs also say what the original actually feels like, per class:
+
+    50cc  : 66.7% of frames within 5% of the ceiling, longest unbroken
+            stretch at >=98% is 36.3 s
+    100cc : 21.2% within 5%, 2.8% at it, longest stretch 8.0 s
+
+That is the finding to hold on to.  **"Hard to sustain top speed" is a
+100/150cc statement; at 50cc it is easy in the original too** - and our
+port's default class is 50cc (`--class 0`, and the menu opens there, as
+the game's own does).  A comparison of our 50cc against a memory of the
+original's 100cc will always say our grip is too tight.
+
+`tools/labs/speedloss.py` attributes every loss in a logged race.  In the
+100cc run the biggest single cause is the DRIVER: seven throttle lifts
+(1772 units) and five brake applications (885), against one banana.  The
+user's own note on that session was *"Emulator has so much input lag"*.
+
+**5. Also measured: our surface map IS the game's.**  `smk_accelgrip
+--surfcheck LOG --gate` reads our map at the position the GAME had each
+frame and compares it with the class the game itself read (`$AE`), so
+trajectory drift cannot contaminate it.  Track 7 over four logs (~13,000
+frames) and track 19: **0 differences**.  Now in `make check`.
+
+Two known non-zero cases, both about STAMPS and not the table: track 16
+(gv1) disagrees where the recording had already broken the blocks, and
+track 18 differs on 26 of 1168 frames where the game is standing on an
+object stamp ($D0-$DF, class $40) and we have the road tile under it
+($4C) - 21 of those change the surface TYPE, 6 instead of 0.  Left open
+and labelled; it is a stamp-placement difference on one course, not the
+surface table (the live `$0B00` for track 18 agrees with ours).
+
+Negative worth keeping: a flow-field drive logged out of the Python oracle
+scores far worse on the replay gate (31% within 1 px) than the same track
+driven by a person (76-82%), and the surfcheck on it shows a SYMMETRIC
+±1-tile disagreement at road/dust boundaries.  That is the lab's logging
+phase, not the port: the game's own logger gives 0 differences on the same
+track.  Log with `demolog.lua` when the number has to be believed.

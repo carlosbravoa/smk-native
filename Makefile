@@ -132,5 +132,8 @@ check: $(BASE)
 	@./build-native/smk_demoreplay rom/smk_usa.sfc tools/labs/mame/demo_tt_track19.csv 1000 --gate | tail -1
 	@./build-native/smk_demoreplay rom/smk_usa.sfc tools/labs/mame/crash_run.csv 1000 --gate --min 85 --resync 250 | tail -1
 	@./build-native/smk_demoreplay rom/smk_usa.sfc tools/labs/mame/gv1_run.csv 1000 --gate --min 88 --resync 80 | tail -1
+	@./build-native/smk_accelgrip --surfcheck tools/labs/mame/demo_race.csv rom/smk_usa.sfc --gate | tail -1
+	@./build-native/smk_accelgrip --surfcheck tools/labs/mame/crash_run.csv rom/smk_usa.sfc --gate | tail -1
+	@./build-native/smk_accelgrip --surfcheck tools/labs/mame/demo_tt_track19.csv rom/smk_usa.sfc --gate | tail -1
 	@$(PY) tools/test.py | tail -1
 	@SDL_VIDEODRIVER=dummy ./build-native/smk --frames 60 >/dev/null && echo "smoke: game binary runs"
