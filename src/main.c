@@ -995,7 +995,17 @@ static void step_kart(smk_kart *k, smk_track *trk,
                 rank_prev = r;
             }
         }
-        if (k->bounce_hit) smk_sfx_play(SMK_SFX_WALL);
+        /* A wall is TWO sounds, not one (NOTES 245).  Over the 'crash'
+         * session every one of 17 wall hits fires $3C from $84:D77F and
+         * then $3F from $80:D7F4 one frame later - 17 of 17, never one
+         * without the other.  The port had only $3F, which is why the
+         * user heard bumping into walls and pipes as thin or missing.
+         * $3C is the OBJECT-vs-wall family's kart sibling ($80:FBCA,
+         * NOTES 239); $3F is $80:D7DA's own table. */
+        if (k->bounce_hit) {
+            smk_sfx_play(SMK_SFX_WALL_THUD);
+            smk_sfx_play(SMK_SFX_WALL);
+        }
         if (k->bump_cool == SMK_BUMP_COOL && was_bump != SMK_BUMP_COOL)
             smk_sfx_play(was_speed > 0x500 ? SMK_SFX_BUMP_HARD : SMK_SFX_BUMP_SOFT);
         /* THE SKID (NOTES 221/223).  A HELD voice, and the user pinned
@@ -1036,8 +1046,8 @@ static void step_kart(smk_kart *k, smk_track *trk,
              * peak is what wrecked the balance the first time). */
             static const struct { uint8_t cls; const char *name; } ROUGH[] = {
                 { 0x50, "offroad50" }, { 0x54, "offroad54" },
-                { 0x58, "offroad58" }, { 0x5A, "offroad5A" },
-                { 0x5C, "offroad5C" },
+                { 0x56, "offroad56" }, { 0x58, "offroad58" },
+                { 0x5A, "offroad5A" }, { 0x5C, "offroad5C" },
             };
             uint8_t sc = surf_now & 0xFE;
             bool rough = race_state == RACE_RUN && !k->airborne
@@ -3277,6 +3287,11 @@ int main(int argc, char **argv)
                 lap_sign_t = -1;
             /* his own clock for the drop, so the path plays at the rate
              * it was captured at rather than off the kart's height */
+            /* $28 is the RESCUE (NOTES 245): $80:B644 plays it and then
+             * falls straight into $80:B373, the routine that picks the
+             * rescue waypoint.  $27 is the fall; $28 is Lakitu taking
+             * hold, and the port had never played it. */
+            if (player.hazard == 0x0E && rescue_t == 0) smk_sfx_play(SMK_SFX_RESCUE);
             rescue_t = (player.hazard == 0x0E) ? rescue_t + 1 : 0;
             if (replay_path) {
                 /* the recorded pad word replaces the player's input, and

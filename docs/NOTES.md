@@ -10011,3 +10011,53 @@ was traced to the music genuinely taking the voice back at f2265.
 The audit is a good SHORT detector and a poor LONG one: for effects only
 a few frames long it picks the wrong voice and reports a span far under
 the file, so the ratios above 1 in its output are not findings.
+
+## 245. A wall is two sounds; class $56; the rescue; and what the port never plays
+
+The user: "there were many sounds missing still, like bumping into
+pipes, 'walls', and some terrains."  All three, found by machine.
+
+### A wall hit is a PAIR
+
+Over the whole `crash` session every wall hit fires **two** sounds one
+frame apart:
+
+    $3C from $84:D77F   then   $3F from $80:D7F4
+
+17 of 17, never one without the other.  `$3F` is `$80:D7DA`'s own table
+(`$3F $40 $41` by `$AE & 7`) and is what the port already had; `$3C` is
+the kart's branch of the object-vs-wall family (`$80:FBCA`, NOTES 239),
+and the port had never played it.  Half of every wall and pipe was
+missing, which is exactly what a thin bump sounds like.
+
+### The terrains: five never swept, and one of them sounds
+
+Of the sixteen surface classes actually used across the twenty tracks,
+five had never been forced: `$46 $48 $4C $4E $56`.  Four are silent.
+`$56` is a SIXTH rough surface - sample `$00` with the pitch dithered
+through `$0280 $0300 $0380 $0400`, the same voice as `$54` - and it is
+the ground on tracks 10 and 18.  `rom/sfx/offroad56.wav` renders it and
+the port now plays it.
+
+### `$28` is the rescue
+
+`$80:B644` plays it and falls straight into `$80:B373`, the routine that
+picks the rescue waypoint, then lifts the kart to `$3000`.  So `$27` is
+the fall and `$28` is Lakitu taking hold - and the port played only the
+first.  Forced with every tile solid, the two now fire together, four
+times each, as the ROM does.
+
+### The cross-check that found them
+
+Every id the port can play, against every id the game has been SEEN to
+play with its caller, against the files that exist.  It also turned up
+`$4F` (`$80:F0CC`, an object struck - it sets a `$012C` timer on the
+object) and `$53` (`$80:F809`, an object's `$66` timer expiring), both
+captured, both played by the game, neither played by the port.  Those two
+still need their event identified before they can be wired.
+
+And a duplicate sweep across every captured file: `$5F` and `$62` are the
+same sound (their voice logs are identical frame for frame, so that is
+the game's doing, not a capture fault), and `$5E`, `$60` and `$63` render
+byte-identical to each other from music alone - the port plays none of
+them and the game has never been seen to.

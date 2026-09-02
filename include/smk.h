@@ -1376,6 +1376,12 @@ const char *smk_sfx_hint(int id);   /* when the game fires an unnamed one */
 #define SMK_SFX_BUMP_SOFT  0x54   /* $80:D825                              */
 /* $80:D7F1 reads a TABLE at $80:D7DA - $3F $40 $41 by ($AE,x & 7) - so
  * the wall is one event at three intensities, not three sounds. */
+/* A wall hit is a PAIR (NOTES 245): $3C from $84:D77F and then $3F
+ * from $80:D7F4 one frame later, 17 of 17 hits in the recording. */
+#define SMK_SFX_WALL_THUD  0x3C  /* MEASURED: $84:D77F, with $3F  */
+/* $28 is the RESCUE - $80:B644, immediately before $80:B373 picks
+ * the rescue waypoint.  $27 is the fall that precedes it. */
+#define SMK_SFX_RESCUE     0x28  /* MEASURED: $80:B647           */
 #define SMK_SFX_WALL       0x3F
 #define SMK_SFX_WALL2      0x40   /* the same table, one step up              */
 #define SMK_SFX_BOO_START  0x56   /* USER: "boo starting sound"               */
