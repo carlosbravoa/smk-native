@@ -10251,10 +10251,14 @@ arc between the two.
 The corner: the dial takes the bottom left, and the metrics that were
 there - raw speed, the surface byte, the slip angle, the class-top bar
 and the live input state - are all diagnostics, so they moved behind
-**H** together (`SMK_TELEMETRY=1` to start with them on).  The lap sits
-above the dial as `1'5`, and deliberately WITHOUT the kart icon: in this
-game that icon means LIVES (NOTES 249), so beside a lap count it would
-say the wrong thing.
+**H** together (`SMK_TELEMETRY=1` to start with them on).
+
+The lap went above the dial first and came straight back off it - the
+user: "you moved two numbers and put them on top of the dial, let's move
+them back to where they were".  It sits under the coin row now with the
+rest of the numbers, as `1'5`, and deliberately WITHOUT the kart icon: in
+this game that icon means LIVES (NOTES 249), so beside a lap count it
+would say the wrong thing.  The dial is left with nothing on it.
 
 The dial half-darkens what is under it.  Over tarmac it read on its own;
 over a row of item boxes it did not.

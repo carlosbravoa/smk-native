@@ -519,7 +519,7 @@ static void draw_clock(uint32_t *fb, int rw, int rh, const uint32_t *palette,
  * SPEED is the user's own addition and the original never had it, so it
  * sits under the block in the same digits with no icon. */
 static void draw_hud(uint32_t *fb, int rw, int rh, const uint32_t *palette,
-                     int coins, int rank, int speed)
+                     int coins, int rank, int speed, int lap)
 {
     if (!hud_art.ok) return;
     int sc  = rw >= 640 ? 3 : 2;
@@ -542,6 +542,18 @@ static void draw_hud(uint32_t *fb, int rw, int rh, const uint32_t *palette,
     int r = rank < 1 ? 1 : (rank > 8 ? 8 : rank);
     hud_tile(fb, rw, rh, x + adv * 5, y - sc * 2, smk_hud_digit(r), palette, sc * 2);
 
+    /* The LAP, back with the other numbers rather than sitting on the
+     * dial (the user).  It is OURS - the game shows no lap at all, Lakitu
+     * announces it (NOTES 249) - and it goes UNDER the coins, with no
+     * kart icon: that icon means LIVES here. */
+    if (lap > 0) {
+        int ld = lap > 9 ? 9 : lap;
+        int ly = y + adv;
+        hud_tile(fb, rw, rh, x + adv,     ly, smk_hud_digit(ld), palette, sc);
+        hud_tile(fb, rw, rh, x + adv * 2, ly, 0xA2 - SMK_HUD_TILE0, palette, sc);
+        hud_tile(fb, rw, rh, x + adv * 3, ly,
+                 smk_hud_digit(SMK_RACE_LAPS), palette, sc);
+    }
     (void)speed;    /* the speed is a NEEDLE now, drawn by draw_gauge */
 }
 
@@ -2511,7 +2523,7 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
         smk_draw_set_clip_mask(NULL, 0);
     }
     if (!celebrating) {
-        draw_hud(fb, rw, rh, trk->palette, player.coins, hud_rank, kart.speed);
+        draw_hud(fb, rw, rh, trk->palette, player.coins, hud_rank, kart.speed, hud_lap);
         {   /* The needle lives in the BOTTOM-LEFT corner, where the raw
              * metrics used to be - the user: "move the dial to the bottom
              * left corner instead of current metrics that are not needed
@@ -2524,20 +2536,7 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
                                            smk_kart_px(kart.y));
             draw_gauge(fb, rw, rh, gx, gy, gr, kart.speed, player.target,
                        smk_surface_cap_frac(su));
-            /* The lap, above the dial.  NO kart icon: in this game that
-             * icon means LIVES (NOTES 249), so putting it beside a lap
-             * count would say the wrong thing.  Just the number, and the
-             * total after the clock's own separator. */
-            if (hud_lap > 0) {
-                int ld = hud_lap > 9 ? 9 : hud_lap;
-                int ly = gy - gr - adv2 - 10;
-                int lx = gx - gr - 4;
-                hud_tile(fb, rw, rh, lx, ly, smk_hud_digit(ld), trk->palette, sc2);
-                hud_tile(fb, rw, rh, lx + adv2, ly, 0xA2 - SMK_HUD_TILE0,
-                         trk->palette, sc2);
-                hud_tile(fb, rw, rh, lx + adv2 * 2, ly,
-                         smk_hud_digit(SMK_RACE_LAPS), trk->palette, sc2);
-            }
+
         }
         draw_track_map(fb, rw, rh, &kart, racers, SMK_CHARACTERS);
         draw_clock(fb, rw, rh, trk->palette, hud_race_frames);
@@ -3124,7 +3123,7 @@ int main(int argc, char **argv)
                 int scoin = 12, srank = 2, sspd = 583;
                 const char *hs = getenv("SMK_SHOT_HUD");
                 if (hs) sscanf(hs, "%d,%d,%d", &scoin, &srank, &sspd);
-                draw_hud(px, sw, sh, trk.palette, scoin, srank, sspd);
+                draw_hud(px, sw, sh, trk.palette, scoin, srank, sspd, 1);
             }
         }
         if (SDL_Init(SDL_INIT_VIDEO) != 0 && SDL_Init(0) != 0) {
