@@ -508,14 +508,14 @@ static void draw_clock(uint32_t *fb, int rw, int rh, const uint32_t *palette,
  * One byte a row, bit 7 leftmost, drawn dark-then-light so it reads over
  * sky, sand and tarmac alike. */
 static const uint8_t TRACK_ICON[8] = {
+    0x00,   /* ........ */
     0x3C,   /* ..####.. */
     0x42,   /* .#....#. */
-    0x81,   /* #......# */
-    0x81,   /* #......# */
-    0x99,   /* #..##..# */
-    0x81,   /* #......# */
+    0x42,   /* .#....#. */
+    0x62,   /* .##...#. */
     0x42,   /* .#....#. */
     0x3C,   /* ..####.. */
+    0x00,   /* ........ */
 };
 
 static void draw_track_icon(uint32_t *fb, int rw, int rh, int x, int y, int sc)
@@ -536,7 +536,7 @@ static void draw_track_icon(uint32_t *fb, int rw, int rh, int x, int y, int sc)
             }
             /* ...and never INSIDE the loop: an outline there closes the
              * hole and the icon reads as a solid blob. */
-            if (!on && (r >= 2 && r <= 5 && c >= 2 && c <= 5)) continue;
+            if (!on && (r >= 2 && r <= 5 && c >= 2 && c <= 5)) continue;  /* the loop's hole */
             if (!on && !near) continue;
             uint32_t col = on ? 0xFFF0F0F8u : 0xFF201820u;
             for (int dy = 0; dy < sc; dy++)
@@ -595,13 +595,14 @@ static void draw_hud(uint32_t *fb, int rw, int rh, const uint32_t *palette,
      * announces it (NOTES 249) - and it goes UNDER the coins, with no
      * kart icon: that icon means LIVES here. */
     if (lap > 0) {
+        /* the SAME shape as the coin row - icon, the game's multiply sign,
+         * the number - and no total: every race is five laps, so "of 5"
+         * was noise (the user) */
         int ld = lap > 9 ? 9 : lap;
         int ly = y + adv;
         draw_track_icon(fb, rw, rh, x + adv, ly, sc);
-        hud_tile(fb, rw, rh, x + adv * 2, ly, smk_hud_digit(ld), palette, sc);
-        hud_tile(fb, rw, rh, x + adv * 3, ly, 0xA2 - SMK_HUD_TILE0, palette, sc);
-        hud_tile(fb, rw, rh, x + adv * 4, ly,
-                 smk_hud_digit(SMK_RACE_LAPS), palette, sc);
+        hud_tile(fb, rw, rh, x + adv * 2, ly, 0x4E - SMK_HUD_TILE0, palette, sc);
+        hud_tile(fb, rw, rh, x + adv * 3, ly, smk_hud_digit(ld), palette, sc);
     }
     (void)speed;    /* the speed is a NEEDLE now, drawn by draw_gauge */
 }

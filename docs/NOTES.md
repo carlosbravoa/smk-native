@@ -10314,5 +10314,8 @@ than a letter:
   it.  The interior is excluded by hand - the shape is fixed, so a flood
   fill would be ceremony.
 
-It sits where the coin icon sits on the row above, so the two lines read
-as a pair: coins on top, `<track> 1'5` under it.
+It takes the SAME shape as the coin row - icon, the game's own multiply
+sign, the number - and no total: "don't add the total laps, it looks
+weird and every race has 5 laps in total" (the user).  So the two lines
+read as a pair, `<coin> x N` over `<track> x N`, with the ring sized down
+to sit inside its cell rather than fill it.
