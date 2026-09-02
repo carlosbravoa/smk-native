@@ -17,7 +17,44 @@
 #define VW 256
 #define VH 224
 
-static int scale_for(int w) { int s = w / VW; return s < 1 ? 1 : s; }
+/* WHERE THE 256x224 SCREEN SITS IN THE WINDOW.
+ *
+ * Every screen below is laid out in the SNES's own 256x224 and scaled up.
+ * The scale used to come from the width alone and the origin was always
+ * (0, 0), which is right for a 8:7 window and wrong for anything else: on
+ * a widescreen fullscreen the menu hugged the left edge (the user), and a
+ * scale taken from the width can also run off the bottom.  So: the
+ * largest whole scale that fits BOTH ways, and the result centred.
+ *
+ * The in-race panels (the splits) are NOT centred - they belong to the
+ * race view's own top-left corner, beside the HUD - so they set the
+ * origin to zero through layout(..., false). */
+static int ui_sc = 1, ui_ox, ui_oy;
+
+static int scale_for(int w, int h)
+{
+    int s = w / VW, t = h / VH;
+    if (t < s) s = t;
+    return s < 1 ? 1 : s;
+}
+
+static void layout(int w, int h, bool centred)
+{
+    if (!centred) {
+        /* an in-race panel shares the HUD's own scale, which main.c takes
+         * from the width alone - so it stays beside it whatever shape the
+         * window is */
+        ui_sc = w / VW;
+        if (ui_sc < 1) ui_sc = 1;
+        ui_ox = ui_oy = 0;
+        return;
+    }
+    ui_sc = scale_for(w, h);
+    ui_ox = (w - VW * ui_sc) / 2;
+    ui_oy = (h - VH * ui_sc) / 2;
+    if (ui_ox < 0) ui_ox = 0;
+    if (ui_oy < 0) ui_oy = 0;
+}
 
 /* Colour ramps for the 2bpp font.  Index 1/2 are the glyph's body, index
  * 3 its outline (src/font.c); the ROM's menu palettes supply all three.
@@ -64,8 +101,8 @@ static void dim(uint32_t c[4])
 static void text(const smk_font *f, uint32_t *fb, int w, int h,
                  int vx, int vy, const char *s, const uint32_t col[4])
 {
-    int sc = scale_for(w);
-    smk_font_draw(f, fb, w, h, vx * sc, vy * sc, s, sc, col);
+    smk_font_draw(f, fb, w, h, ui_ox + vx * ui_sc, ui_oy + vy * ui_sc,
+                  s, ui_sc, col);
 }
 
 static void text_c(const smk_font *f, uint32_t *fb, int w, int h,
@@ -79,12 +116,11 @@ static void text_c(const smk_font *f, uint32_t *fb, int w, int h,
 static void fill(uint32_t *fb, int w, int h, int vx, int vy, int vw, int vh,
                  uint32_t c)
 {
-    int sc = scale_for(w);
     unsigned a = (c >> 24) & 255;
     unsigned cr = (c >> 16) & 255, cg = (c >> 8) & 255, cb = c & 255;
-    for (int y = vy * sc; y < (vy + vh) * sc; y++) {
+    for (int y = ui_oy + vy * ui_sc; y < ui_oy + (vy + vh) * ui_sc; y++) {
         if (y < 0 || y >= h) continue;
-        for (int x = vx * sc; x < (vx + vw) * sc; x++) {
+        for (int x = ui_ox + vx * ui_sc; x < ui_ox + (vx + vw) * ui_sc; x++) {
             if (x < 0 || x >= w) continue;
             uint32_t d = fb[(size_t)y * (size_t)w + x];
             unsigned r = ((d >> 16) & 255) * (255 - a) / 255 + cr * a / 255;
@@ -395,8 +431,6 @@ static void draw_player(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
     ramp(f, TEXT_HI, hi, 0xFFFFFFFF, 0xFF7A5A18);
     ramp(f, TEXT_PAL, lo, 0xFFFFFFFF, 0xFF2A3E78);
     ramp(f, TEXT_HI, sel, 0xFFFFFFFF, 0xFF7A5A18);
-    int sc = scale_for(w);
-
     const char *who = ui->players == SMK_PLAYERS_1 ? "SELECT DRIVER"
                     : ui->picking_p2
                       ? (ui->players == SMK_PLAYERS_CPU ? "SELECT THE CPU"
@@ -420,7 +454,8 @@ static void draw_player(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
         const smk_sprites *s = driver_art(rom, i);
         if (s && palette)
             smk_draw_sprite(s, SMK_SPR_REAR, palette, SMK_DRIVERS[i].pal,
-                            (vx + 20) * sc, (vy + 20) * sc, sc, false,
+                            ui_ox + (vx + 20) * ui_sc, ui_oy + (vy + 20) * ui_sc,
+                            ui_sc, false,
                             fb, w, h, w);
         char nm[16];
         snprintf(nm, sizeof nm, "%s", SMK_DRIVERS[i].name);
@@ -512,6 +547,7 @@ void smk_ui_draw(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
                  uint32_t *fb, int w, int h)
 {
     if (!f->ok) return;
+    layout(w, h, true);
     backdrop(fb, w, h, f);
     switch (ui->screen) {
     case SMK_UI_TITLE:   draw_title(ui, f, fb, w, h); break;
@@ -527,6 +563,7 @@ void smk_ui_draw_result(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
                         const smk_records *rec, const smk_ui_result *res,
                         uint32_t *fb, int w, int h)
 {
+    layout(w, h, true);
     if (!f->ok) return;
     backdrop(fb, w, h, f);
     uint32_t hi[4], lo[4], gold[4], off[4];
@@ -623,6 +660,7 @@ void smk_ui_draw_result(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
 void smk_ui_draw_standings(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
                            uint32_t *fb, int w, int h)
 {
+    layout(w, h, true);
     if (!f->ok) return;
     backdrop(fb, w, h, f);
     uint32_t hi[4], lo[4], gold[4], off[4];
@@ -692,6 +730,7 @@ void smk_ui_draw_splits(const smk_font *f, const smk_ui_result *res,
                         long cur_lap_frames, int lap, bool mushroom,
                         uint32_t *fb, int w, int h)
 {
+    layout(w, h, false);
     if (!f->ok) return;
     uint32_t hi[4], lo[4], gold[4];
     ramp(f, TEXT_HI, hi, 0xFFFFFFFF, 0xFF7A5A18);

@@ -2764,8 +2764,14 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
             int len = kc->kind ? SMK_COINUP_PATH_LEN : SMK_COIN_PATH_LEN;
             if (step < 0 || step >= len) continue;
             const smk_coin_step *st = &(kc->kind ? SMK_COINUP_PATH : SMK_COIN_PATH)[step];
-            int cx = kx + (kc->kind ? st->dx : st->dx * kc->side) * scale,   /* the 2-coin item: same X (the user) */
-                cy = ky + st->dy * scale;
+            /* Where it hops.  A spilled coin fans by its side; a road
+             * pickup follows the capture exactly, offset and all; the
+             * ITEM's pair is centred on the kart and fanned, because the
+             * capture's own offset is where that one road coin was. */
+            int cx = kc->kind == 2 ? kx + kc->side * SMK_COIN_ITEM_SEP * scale
+                   : kc->kind == 1 ? kx + st->dx * scale
+                                   : kx + st->dx * kc->side * scale;
+            int cy = ky + st->dy * scale;
             if (getenv("SMK_COIN_TRACE"))
                 printf("coin t%d screen (%d,%d)\n", kc->t, cx * 256 / rw, cy * 224 / rh);
             const uint8_t *art = coin_art.px[st->frame];

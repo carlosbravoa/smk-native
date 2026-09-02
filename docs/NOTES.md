@@ -10783,3 +10783,40 @@ over, and the ROM's own tables say so:
 Rendering the icon table settled it in one look; reading the table's
 bytes had not, because the entry is only a tile number.  The lesson is
 the older one: when the question is "what does this look like", draw it.
+
+## 260. The shell, centred; and the item's two coins, told apart
+
+Two sightings from the user, both about where something is drawn.
+
+**The menus hugged the left edge in fullscreen.**  Every shell screen is
+laid out in the SNES's own 256x224 and scaled up, and the scale came from
+the WIDTH alone with the origin always (0, 0).  That is right for an 8:7
+window and wrong for anything else: at 1920x1080 with `--pixel 2` the
+window is 960x540, `960 / 256` is 3, and 256x224 at scale 3 is 768x672 -
+so the menu sat against the left edge AND ran 132 lines off the bottom.
+
+Now `scale_for()` takes the largest whole scale that fits BOTH ways and
+`layout()` centres the result: at that size, scale 2 with the block at
+(224, 46).  Measured on the rendered frame, the text now spans x 296..662
+- centre 479 against the window's 480.  An 8:7 window is unchanged (scale
+2, origin 0,0), which is what every existing screenshot was taken at.
+
+The in-race panels are deliberately NOT centred: the splits sit beside
+the HUD, which main.c scales from the width alone, so `layout(w, h,
+false)` keeps them exactly where they were.  That distinction is the
+whole reason the origin is a parameter rather than a global rule.
+
+**And the coin item's two coins landed on top of each other, to the
+left.**  The user: *"the two coins are too close, almost
+indistinguishable and shifted to the left and not in the middle."*  Both
+were true, and both come from the same place: the picked-up coin's hop is
+a CAPTURE of one real road coin (NOTES 189), and that coin was 9 px left
+of the kart - every step of the path carries `dx = -9`.  The item's pair
+was drawn with the same path and with `side` ignored, so they sat one
+frame apart at the same x, nine pixels off centre.
+
+The pair is now its own kind: centred on the kart and fanned to either
+side by half the sprite plus two, with the one-frame stagger kept.  A
+road pickup still follows its capture exactly, offset and all, because
+that is what was measured.  Labelled: the fan is ours - the capture only
+ever had one coin in it.

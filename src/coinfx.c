@@ -21,14 +21,18 @@ const smk_coin_step SMK_COINUP_PATH[] =
 const int SMK_COINUP_PATH_LEN = (int)(sizeof SMK_COINUP_PATH / sizeof SMK_COINUP_PATH[0]);
 
 /* the coin you just drove over hops straight up off the road (NOTES 189) */
-/* the 2-coin item: "the same as picking up one coin from the floor, but
- * doubled" (the user) - two hops, a few px apart, the second a frame late */
+/* The 2-coin item: "the same as picking up one coin from the floor, but
+ * doubled" (the user) - two hops, one either side of the kart and the
+ * second a frame late.  Kind 2, not 1, because the captured hop carries
+ * the lateral offset of the road coin it was captured from (-9 px): for a
+ * pair that has to go, or they land on top of each other, off to the
+ * left of the kart. */
 void smk_coinfx_pickup2(smk_coin *c, int n)
 {
     int got = 0;
     for (int s = 0; s < n && got < 2; s++) if (!c[s].live) {
         memset(&c[s], 0, sizeof c[s]);
-        c[s].live = 1; c[s].kind = 1; c[s].side = got ? 1 : -1; c[s].t = -got;
+        c[s].live = 1; c[s].kind = 2; c[s].side = got ? 1 : -1; c[s].t = -got;
         got++;
     }
 }
