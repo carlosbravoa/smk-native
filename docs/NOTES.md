@@ -10198,3 +10198,27 @@ A layout note that cost a screenshot: the block is seven tiles wide, not
 five.  Five is the coin row; the big position digit needs two more, and
 at five the doubled glyph drew off the right edge of the window
 altogether.
+
+## 250. The speedometer is a needle, and what it measures is the CLASS TOP
+
+The user: "can we implement a needle instead a raw number? because that
+number doesn't mean much."  Right - the game's speed is an internal
+0..~1000 in no units a person could read, and a bare 498 tells a driver
+nothing.
+
+A needle needs no units.  What this one shows is speed against `$D6` -
+the class top adjusted for coins, which the port already tracks as
+`player.target` - so full deflection means "as fast as this engine class
+goes here", which IS the number that matters.
+
+The dial sweeps 200 degrees, 190 round to -10, with five ticks.  The arc
+beyond the SURFACE CAP is drawn amber (`smk_surface_cap_frac`), and the
+needle turns amber as it reaches it - so off-road reads as a needle
+pinned against a wall it cannot pass, which is exactly what off-road is.
+On tarmac the cap is 1000 and no amber appears at all.
+
+ENTIRELY OURS, and ledgered as such: the original has no speedometer.
+The dashboard beside it stays the game's - the coin row in the game's own
+shape, the position as its big number.  The raw figure survives in the
+telemetry block (H), where an exact number is occasionally what a decode
+needs.

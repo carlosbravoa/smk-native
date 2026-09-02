@@ -542,16 +542,79 @@ static void draw_hud(uint32_t *fb, int rw, int rh, const uint32_t *palette,
     int r = rank < 1 ? 1 : (rank > 8 ? 8 : rank);
     hud_tile(fb, rw, rh, x + adv * 5, y - sc * 2, smk_hud_digit(r), palette, sc * 2);
 
-    /* SPEED, the user's addition, under the block */
-    int sp = speed < 0 ? 0 : (speed > 9999 ? 9999 : speed);
-    int sy = y + adv + sc * 2, sx = x + adv;
-    int div = 1000;
-    for (int i = 0; i < 4; i++, div /= 10) {
-        int d2 = (sp / div) % 10;
-        if (div > 1 && sp < div) continue;      /* no leading zeroes */
-        hud_tile(fb, rw, rh, sx, sy, smk_hud_digit(d2), palette, sc);
-        sx += adv;
+    (void)speed;    /* the speed is a NEEDLE now, drawn by draw_gauge */
+}
+
+/* ---- the speedometer, which is entirely OURS ------------------------
+ *
+ * The user: "can we implement a needle instead a raw number? because
+ * that number doesn't mean much" - and they are right, the game's own
+ * speed is an internal 0..~1000 with no units anyone could read.  A
+ * needle needs no units: what it shows is speed AGAINST THIS CLASS'S TOP,
+ * which is the number that actually matters to a driver.
+ *
+ * The dial sweeps 200 degrees, from 190 (lower left) round to -10 (lower
+ * right).  The arc past the SURFACE CAP is drawn in amber, so driving
+ * off-road shows as a needle pinned against a wall it cannot pass.
+ * `top` is $D6, the class top adjusted for coins; `capfrac` is the
+ * surface's own fraction of it, per mille. */
+static void gauge_px(uint32_t *fb, int rw, int rh, int x, int y, uint32_t c)
+{
+    if (x >= 0 && x < rw && y >= 0 && y < rh) fb[y * rw + x] = c;
+}
+
+static void gauge_line(uint32_t *fb, int rw, int rh, float cx, float cy,
+                       float a, float r0, float r1, uint32_t col, int thick)
+{
+    float dx = cosf(a), dy = -sinf(a);
+    int steps = (int)(r1 - r0) + 1;
+    for (int i = 0; i <= steps; i++) {
+        float r = r0 + (r1 - r0) * (float)i / (float)steps;
+        for (int t = 0; t < thick; t++) {
+            float o = (float)t - (float)(thick - 1) * 0.5f;
+            gauge_px(fb, rw, rh, (int)(cx + dx * r - dy * o),
+                     (int)(cy + dy * r + dx * o), col);
+        }
     }
+}
+
+#define GAUGE_A0  (190.0f * (float)M_PI / 180.0f)   /* the zero end   */
+#define GAUGE_A1  (-10.0f * (float)M_PI / 180.0f)   /* the full end   */
+
+static void draw_gauge(uint32_t *fb, int rw, int rh, int cx, int cy, int rad,
+                       int speed, int top, int capfrac)
+{
+    if (top <= 0) return;
+    float frac = (float)speed / (float)top;
+    if (frac < 0.0f) frac = 0.0f;
+    if (frac > 1.0f) frac = 1.0f;
+    float capf = capfrac >= 1000 ? 1.0f : (float)capfrac / 1000.0f;
+
+    /* the arc: dark where the class can go, amber past the surface cap */
+    for (int i = 0; i <= 120; i++) {
+        float u = (float)i / 120.0f;
+        float a = GAUGE_A0 + (GAUGE_A1 - GAUGE_A0) * u;
+        uint32_t col = u > capf ? 0xFFB07020u : 0xFF303038u;
+        gauge_line(fb, rw, rh, (float)cx, (float)cy, a,
+                   (float)rad - 2.0f, (float)rad, col, 1);
+    }
+    /* five ticks */
+    for (int i = 0; i <= 4; i++) {
+        float u = (float)i / 4.0f;
+        float a = GAUGE_A0 + (GAUGE_A1 - GAUGE_A0) * u;
+        gauge_line(fb, rw, rh, (float)cx, (float)cy, a,
+                   (float)rad * 0.72f, (float)rad - 2.0f, 0xFFE0E0E8u, 1);
+    }
+    /* the needle, and a hub so its pivot reads as one */
+    float na = GAUGE_A0 + (GAUGE_A1 - GAUGE_A0) * frac;
+    uint32_t ncol = frac >= capf - 0.02f && capfrac < 1000
+                  ? 0xFFFFA030u : 0xFFFF4040u;
+    gauge_line(fb, rw, rh, (float)cx, (float)cy, na, 0.0f,
+               (float)rad * 0.80f, ncol, 3);
+    for (int dy2 = -2; dy2 <= 2; dy2++)
+        for (int dx2 = -2; dx2 <= 2; dx2++)
+            if (dx2 * dx2 + dy2 * dy2 <= 4)
+                gauge_px(fb, rw, rh, cx + dx2, cy + dy2, 0xFFE0E0E8u);
 }
 /* OURS, and marked as such (ROADMAP item 11): speed, surface, slip and
  * the class-top bar are telemetry the original never had.  H toggles
@@ -2417,6 +2480,14 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
     }
     if (!celebrating) {
         draw_hud(fb, rw, rh, trk->palette, player.coins, hud_rank, kart.speed);
+        {   /* the needle, under the coin row and the position */
+            int sc2 = rw >= 640 ? 3 : 2, adv2 = 8 * sc2;
+            uint8_t su = smk_track_surface(trk, smk_kart_px(kart.x),
+                                           smk_kart_px(kart.y));
+            draw_gauge(fb, rw, rh, rw - adv2 * 4 - 8, 8 + adv2 * 3,
+                       adv2 * 2, kart.speed, player.target,
+                       smk_surface_cap_frac(su));
+        }
         draw_track_map(fb, rw, rh, &kart, racers, SMK_CHARACTERS);
         draw_clock(fb, rw, rh, trk->palette, hud_race_frames);
         /* THE ITEM SLOT: the game's own BG3 icon, 2x2 tiles at the top left
