@@ -754,11 +754,23 @@ In rough order of value:
     The third is the chequered flag's neighbour - Lakitu's third job is
     still unstarted, and the art is the checker across `$68`-`$9F`.
 
-11. **The dashboard (user's list).** Laps, position, coins, speed. The
-    first three are the ROM's own HUD and belong where the ROM puts them;
-    **the speedometer never existed** and is ours. DECIDED with the user:
-    faithful base, our extras clearly marked and toggleable, each one
-    ledgered.
+11. **~~The dashboard (user's list)~~ — IN (NOTES 248).** Laps, position
+    and coins are the ROM's own art in the ROM's own FORM, read off the
+    game's OAM in a race rather than invented (`tools/labs/hudlayout.py`):
+    a kart icon then the multiply sign then the lap digit, and under it a
+    coin icon, the sign and up to two digits - the coin row one tile right
+    of the kart's icon, eight pixels below, sharing a column with the lap
+    digit. Coins had never been drawn at all: `draw_hud` took them and
+    threw them away.
+
+    OURS and ledgered: the corner it hangs in (the window is not 256x224 -
+    the standing rule is ROM art, our layout), the position's placement
+    (the game draws its own on a background layer this renderer has no
+    equivalent of), and the whole telemetry overlay - speed, surface,
+    slip angle, the class-top bar - which the original never had. That
+    overlay is now TOGGLEABLE on **H**, with `SMK_NO_TELEMETRY=1` to start
+    without it, and it no longer repeats the lap and position in the
+    corner.
 
 12. **~~The track map (user's list)~~ — IN (NOTES 200, S33).** The
     course's own tilemap in the bottom-right corner, every kart a dot, M

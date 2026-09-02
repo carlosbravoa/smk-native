@@ -10121,3 +10121,46 @@ wrong was the hop, and only half of it: the countdown block cleared
 the PRESS that hops.  So the countdown could still be hopped through.
 One field, and the gates are unmoved: 94 selftests, both human runs at
 86.2% and 92.8%.
+
+## 248. The dashboard: the game's own form, read off its own OAM
+
+ROADMAP item 11 - "laps, position, coins, speed" - with the standing
+split: the first three are the game's and belong in the game's shape, the
+fourth never existed and is ours.
+
+The port had grown a layout of its own: the word LAP in tiles `$B0`/`$B1`
+with a digit beside it, the position under that, and **coins not drawn at
+all** - `draw_hud` took `player.coins` as an argument and did `(void)`
+it. So the counter the coin system feeds, and which every pickup and
+every Lakitu fee moves, was invisible.
+
+Rather than invent a second layout, read the real one.
+`tools/labs/hudlayout.py` boots a race in the oracle and dumps the OAM
+shadow, and a MAME snapshot of the same moment says what the sprites
+look like:
+
+    LAP    y 84   kart icon $5E $5F at x 182, 190
+                  the multiply sign $4E at 198
+                  the lap digit         at 206
+    COINS  y 92   coin icon $4F         at 190
+                  $4E                   at 198
+                  two digits            at 206, 214
+
+So it is not the word "LAP" at all - it is a KART, a times sign and a
+number, with the coins in the same shape one row below, the coin icon a
+tile right of the kart's left half so the two numbers share a column.
+That is now what the port draws, on the ROM's own tiles.
+
+OURS, and ledgered: the corner the block hangs in (the window is not
+256x224), and the position's placement - the game draws its own on a
+background layer this renderer has no equivalent of.
+
+The telemetry - speed, surface class, slip angle, the class-top bar - was
+drawn unconditionally and repeated the lap and position in the opposite
+corner. It is ours, so it is now marked as such and toggles on **H**
+(`SMK_NO_TELEMETRY=1` starts without it), and the duplicate readout is
+gone: the dashboard owns the lap and the position now.
+
+`--shot` also draws the dashboard, so a still can be put beside the
+game's - though its plane and palette are unloaded on that path, so a
+live `SMK_SHOT=frame:path` is the one to compare with.

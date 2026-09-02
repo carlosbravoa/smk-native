@@ -37,7 +37,8 @@ typedef struct {
     bool nav_up, nav_down, nav_left, nav_right, confirm, back;
     bool dpad_down;         /* the d-pad held DOWN (level): item + DOWN drops it behind */
     bool dpad_up;           /* the d-pad held UP (level): item + UP throws it AHEAD */
-    bool toggle_map;        /* M: the track map on / off */
+    bool toggle_map;
+    bool toggle_speedo;      /* H: the telemetry overlay, which is OURS */        /* M: the track map on / off */
     bool item;
 } input_state;
 
@@ -135,6 +136,7 @@ static void pump(input_state *in)
             case SDLK_UP:    case SDLK_w: in->nav_up = true; break;
             case SDLK_DOWN:  case SDLK_s: in->nav_down = true; break;
             case SDLK_m: in->toggle_map = true; break;
+            case SDLK_h: in->toggle_speedo = true; break;
             case SDLK_n: smk_music_toggle(); break;
             case SDLK_LEFT:  case SDLK_a: in->nav_left = true; break;
             case SDLK_RIGHT: case SDLK_d: in->nav_right = true; break;
@@ -498,24 +500,57 @@ static void draw_clock(uint32_t *fb, int rw, int rh, const uint32_t *palette,
 }
 
 /* "LAP n/N" in the game's own art, top-right like the original. */
+/* The dashboard, in the GAME'S own form (NOTES 248).  Read straight off
+ * the ROM's OAM in a race (tools/labs/hudlayout.py) rather than invented:
+ *
+ *   LAP    y 84   kart icon $5E $5F   at x 182,190
+ *                 the multiply sign $4E at 198
+ *                 the lap digit        at 206
+ *   COINS  y 92   coin icon $4F        at 190
+ *                 $4E                  at 198
+ *                 two digits           at 206, 214
+ *
+ * so the coin row sits one tile RIGHT of the lap's icon and eight pixels
+ * below it, and the lap digit and the coins' TENS digit share a column.
+ * That shape is the game's; the corner it hangs in is OURS, because the
+ * window is not 256x224 (the standing rule: ROM art, our layout).
+ *
+ * The POSITION is the ROM's digit art in a place of our choosing - the
+ * game draws its own on a background layer, which this renderer has no
+ * equivalent of. */
 static void draw_hud(uint32_t *fb, int rw, int rh, const uint32_t *palette,
-                     int lap, int laps, int rank)
+                     int lap, int coins, int rank)
 {
     if (!hud_art.ok) return;
-    int sc = rw >= 640 ? 3 : 2;
-    int x = rw - 8 * sc * 5 - 8, y = 8;
-    /* the LAP word: tiles $B0/$B1 (the strip the ROM draws beside the
-     * digit), then the lap number */
-    hud_tile(fb, rw, rh, x, y, 0xB0 - SMK_HUD_TILE0, palette, sc);
-    hud_tile(fb, rw, rh, x + 8 * sc, y, 0xB1 - SMK_HUD_TILE0, palette, sc);
+    int sc  = rw >= 640 ? 3 : 2;
+    int adv = 8 * sc;
+    int x = rw - adv * 5 - 8, y = 8;
+
+    /* LAP: the kart, the cross, the number */
+    hud_tile(fb, rw, rh, x,           y, 0x5E - SMK_HUD_TILE0, palette, sc);
+    hud_tile(fb, rw, rh, x + adv,     y, 0x5F - SMK_HUD_TILE0, palette, sc);
+    hud_tile(fb, rw, rh, x + adv * 2, y, 0x4E - SMK_HUD_TILE0, palette, sc);
     int d = lap < 1 ? 1 : (lap > 9 ? 9 : lap);
-    hud_tile(fb, rw, rh, x + 8 * sc * 3, y, smk_hud_digit(d), palette, sc);
-    /* position, under it */
+    hud_tile(fb, rw, rh, x + adv * 3, y, smk_hud_digit(d), palette, sc);
+
+    /* COINS, the row under it */
+    int cy = y + adv;
+    int c  = coins < 0 ? 0 : (coins > 99 ? 99 : coins);
+    hud_tile(fb, rw, rh, x + adv,     cy, 0x4F - SMK_HUD_TILE0, palette, sc);
+    hud_tile(fb, rw, rh, x + adv * 2, cy, 0x4E - SMK_HUD_TILE0, palette, sc);
+    if (c >= 10)
+        hud_tile(fb, rw, rh, x + adv * 3, cy, smk_hud_digit(c / 10), palette, sc);
+    hud_tile(fb, rw, rh, x + adv * (c >= 10 ? 4 : 3), cy,
+             smk_hud_digit(c % 10), palette, sc);
+
+    /* POSITION, a row lower again */
     int r = rank < 1 ? 1 : (rank > 8 ? 8 : rank);
-    hud_tile(fb, rw, rh, x + 8 * sc * 3, y + 9 * sc, smk_hud_digit(r),
-             palette, sc);
-    (void)laps;
+    hud_tile(fb, rw, rh, x + adv * 3, cy + adv, smk_hud_digit(r), palette, sc);
 }
+/* OURS, and marked as such (ROADMAP item 11): speed, surface, slip and
+ * the class-top bar are telemetry the original never had.  H toggles
+ * it; SMK_NO_TELEMETRY=1 starts with it off. */
+static bool show_speedo = true;
 static int player_height_px;
 /* Sprite priority against the plane (NOTES 128): filled by the ground
  * renderer, one byte a pixel, non-zero where the plane is opaque. */
@@ -592,14 +627,8 @@ static void draw_speedo(uint32_t *fb, int rw, int rh,
                                              : 0xFF808088;
         hud_number(fb, rw, rh, x + 38 * sc, y, deg > 99 ? 99 : deg, 2, sc2, sc);
     }
-    if (hud_lap > 0) {          /* lap and position: "L-P" in the corner */
-        int lx = rw - 30 * sc, ly = 8;
-        hud_number(fb, rw, rh, lx, ly, hud_lap > 9 ? 9 : hud_lap, 1,
-                   0xFFFFFFFF, sc);
-        hud_glyph(fb, rw, rh, lx + 6 * sc, ly, 15, 0xFF808088, sc); /* F as dash */
-        hud_number(fb, rw, rh, lx + 12 * sc, ly, hud_rank, 1,
-                   0xFFFFD040, sc);
-    }
+    /* the lap and the position used to be repeated here in the corner;
+     * they belong to draw_hud now, on the game's own art (NOTES 248) */
 
     /* bar: speed vs this class's top, cap marked */
     int bx = x, by = y + 7 * sc, bw = 60 * sc, bh = 3 * sc;
@@ -1317,6 +1346,7 @@ static bool load_race(const smk_rom *rom, int track, int theme, int character,
     racer_draw_mask = (mode == SMK_MODE_TT) ? 0x00 : 0xFE;
 
     race_mode = mode;
+    if (getenv("SMK_NO_TELEMETRY")) show_speedo = false;
     race_state = RACE_COUNTDOWN;
     race_count = 0;
     hud_race_frames = 0;
@@ -2951,9 +2981,16 @@ int main(int argc, char **argv)
                        heading, shot_racers, &crs);
             {
                 smk_kart shotk = { .speed = 583 };   /* sample readout */
-                draw_speedo(px, sw, sh, &shotk,
-                            smk_track_surface(&trk, (int)shot_x, (int)shot_y),
-                            672);
+                if (show_speedo)
+                    draw_speedo(px, sw, sh, &shotk,
+                                smk_track_surface(&trk, (int)shot_x, (int)shot_y),
+                                672);
+                /* the dashboard too, so a still can be checked against the
+                 * game's own (SMK_SHOT_HUD=lap,coins,rank) */
+                int slap = 3, scoin = 12, srank = 2;
+                const char *hs = getenv("SMK_SHOT_HUD");
+                if (hs) sscanf(hs, "%d,%d,%d", &slap, &scoin, &srank);
+                draw_hud(px, sw, sh, trk.palette, slap, scoin, srank);
             }
         }
         if (SDL_Init(SDL_INIT_VIDEO) != 0 && SDL_Init(0) != 0) {
@@ -3203,6 +3240,7 @@ int main(int argc, char **argv)
                 }
             }
             if (in.toggle_map) { show_map = !show_map; in.toggle_map = false; }
+            if (in.toggle_speedo) { show_speedo = !show_speedo; in.toggle_speedo = false; }
             if (in.toggle_filter) {
                 filter = !filter;
                 SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, filter ? "1" : "0");
@@ -3996,7 +4034,7 @@ int main(int argc, char **argv)
             draw_scene(&rom, &trk, &karts, drv, &cam, fb, rw, rh,
                        show_grid, show_kart, pframe,
                        (uint16_t)(kart.angle + finish_yaw), racers, &crs);
-            if (!celebrating)
+            if (!celebrating && show_speedo)
                 draw_speedo(fb, rw, rh, &kart,
                             smk_track_surface(&trk, smk_kart_px(kart.x),
                                               smk_kart_px(kart.y)),
