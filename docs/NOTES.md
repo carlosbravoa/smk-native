@@ -9743,3 +9743,63 @@ renderer is not to be trusted on an id that has not been watched firing
 in its own event.  Until the bounce is captured from a real bounce rather
 than a poke, the port plays nothing there: a known-wrong sound is worse
 than a missing one.
+
+## 239. The bounce is a clack at three volumes; the banana is silent; and a bug of mine
+
+### My own bug, first, because it invalidated two earlier readings
+
+`voicedump.lua` parses `SFX_ID` with `tonumber(tok, 16)` - a bare hex
+string.  The capture loop was passing `SFX_ID=$((16#$id))`, which turns
+`30` into the DECIMAL string `48`, which the script then read back as hex
+`$48`.  So "sound `$30`" was captured as `$48`, the mushroom boost - which
+is exactly what the user heard - and `$32` came back as `$50`, Toad's
+overtake voice.  Two "renderer collisions" blamed on the renderer in
+NOTES 235/238 were this, in the shell script.  `SFX_ID=30` is correct.
+
+### The object off a wall
+
+Captured properly, `$30`, `$31` and `$32` are ONE sound: sample `$16`,
+0.07 s, falling 839 -> 280 Hz - a short clack - at three peak levels,
+15585 / 9503 / 5702.  A distance ladder, not three sounds.
+
+The whole rule, from `$80:FAC7` down:
+
+    STA $68,x            the surface class hit
+    JSR $FBBC            -> BIT $12,x picks kart ($3C/$3D/$3E) or
+                            OBJECT ($30/$31/$32), by class band
+    LDA #$0008 / STA $5C,x    the 8-frame bounce window (the port's own)
+
+and the band comes from `$84:DA18`, which walks the threshold table at
+`$84:DA3C` - `$00C0 $0060 $0030 $0000` - taking the entry where the
+object's `$06,x` stops exceeding the threshold.  The table's 0 terminator
+and its null first entry are BOTH silence, and `$84:D9DA` bails outright
+when both players are past `$0120`.  So a bounce far enough away makes no
+sound at all, which is what the user reported: "you only hear it when
+closer.  Right now you hear them bouncing no matter how far you are."
+
+The port now plays `$30` inside 96 px, `$31` to 192, `$32` to 288 and
+nothing beyond.  OURS: that `$06,x`'s units are read as world pixels.
+
+### The banana really is silent
+
+Not a gap in the search - a measurement, and now a firm one.
+`tools/labs/mame/itemfire.lua` hands the player any item inside a real
+recording (poke `$0D70`, and patch the pad READ at `$80:8445` to
+`LDA #$0080` for two frames, which gives a clean edge through the game's
+own `EOR $24,x / AND $20,x` pressed-word logic - a read tap on `$4218`
+did nothing).  With that:
+
+    mushroom  -> $48 at the press          (positive control)
+    green shell -> $2B two frames later    (positive control)
+    banana    -> NOTHING, thrown or held behind, on three sessions,
+                 across the object's whole 400-frame life
+
+The banana object is confirmed a banana - speed 0, sitting where it was
+dropped - while the shell's flies at 1596.  So the `$58` the port played
+when a banana was left behind is gone: NOTES 232 had attributed it to the
+banana, and it belongs to something else at `$84:D8F2`.
+
+The user hears "a pitch-drop sound" when throwing a banana.  Nothing in
+the ROM plays there.  Two things nearby ARE falling sounds and may be
+what is being heard: `$2B`, the shell throw, drops 135 -> 101 Hz, and the
+bounce clack above drops 839 -> 280.

@@ -33,7 +33,11 @@ local rom = manager.machine.memory.regions[":snsslot:cart:rom"]
 local PAD_READ = 0x8445
 local function pad_force(on)
   if on then
-    rom:write_u8(PAD_READ, 0xA9); rom:write_u8(PAD_READ+1, 0x80); rom:write_u8(PAD_READ+2, 0x00)
+    -- PAD=0080 is A alone; PAD=0480 adds DOWN, which is how a banana is
+    -- LEFT BEHIND rather than thrown ahead - two different actions.
+    local pad = tonumber(os.getenv("PAD") or "0080", 16)
+    rom:write_u8(PAD_READ, 0xA9)
+    rom:write_u8(PAD_READ+1, pad & 0xFF); rom:write_u8(PAD_READ+2, (pad >> 8) & 0xFF)
   else
     rom:write_u8(PAD_READ, 0xBD); rom:write_u8(PAD_READ+1, 0x18); rom:write_u8(PAD_READ+2, 0x42)
   end
@@ -76,11 +80,10 @@ emu.register_frame_done(function()
     print(out)
     local o = ""
     for _, b in ipairs({0x1800, 0x1880, 0x1900, 0x1980, 0x1A00, 0x1A80}) do
-      if w(b + 0x12) & 0x8000 ~= 0 then
-        o = o .. string.format(" %04X[a%04X s%d c%d]", b, w(b+0x2A), w(b+0x72), w(b+0x6C))
-      end
+      o = o .. string.format(" %04X[l%04X a%04X s%d c%d x%d y%d]", b,
+        w(b+0x12), w(b+0x2A), w(b+0x72), w(b+0x6C), w(b+0x18), w(b+0x1C))
     end
-    if o ~= "" then print("O " .. n .. o) end
+    print("O " .. n .. o)
   end
   if n > FIRE + SPAN then manager.machine:exit() end
 end)

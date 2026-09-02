@@ -1345,15 +1345,17 @@ const char *smk_sfx_hint(int id);   /* when the game fires an unnamed one */
  * $0120 and plays NOTHING when both are past it - so a bounce far away is
  * silent, which the port now honours. */
 #define SMK_SFX_OBJ_RANGE   0x0120
-/* UNRESOLVED: $30 renders identical to $48, the mushroom boost - same
- * length, same 2410 Hz, same rising sweep - so it is not the bounce, or
- * the baseline-diff render of it is contaminated (as $32's was: it came
- * back byte-identical to $50).  Nothing is played until this is settled. */
-#define SMK_SFX_OBJ_WALL    0x30  /* $84:D73A via $80:FBC5 - see above    */
-#define SMK_SFX_OBJ_WALL_2  0x31  /* the middle band - NOT CAPTURED       */
-#define SMK_SFX_OBJ_WALL_3  0x32  /* the far band - NOT CAPTURED: the
-                                   * render came back byte-identical to
-                                   * $50, so it latched the wrong voice   */
+/* MEASURED (NOTES 239): ONE short falling clack - sample $16, 0.07 s,
+ * 839 -> 280 Hz - at THREE volumes, which is the distance ladder.  Peaks
+ * 15585 / 9503 / 5702, so $30 is the near one.  $84:DA18 walks the
+ * threshold table at $84:DA3C ($00C0 $0060 $0030 $0000) and the 0
+ * terminator is silence, so past the last band a bounce is not heard.
+ * (The earlier "$30 is the mushroom boost" was MY bug: SFX_ID was being
+ * passed as a decimal 48, which the capture script re-read as hex $48.
+ * $32 came back as $50 the same way.  Both are captured properly now.) */
+#define SMK_SFX_OBJ_WALL    0x30  /* near   - $84:D73A via $80:FBC5       */
+#define SMK_SFX_OBJ_WALL_2  0x31  /* middle                               */
+#define SMK_SFX_OBJ_WALL_3  0x32  /* far                                  */
 #define SMK_SFX_SHELL_BOUNCE SMK_SFX_OBJ_WALL
 #define SMK_SFX_SHELL_HIT  0x29   /* USER: "hitting with a shell" - four
                                    * sites, none of them reached yet        */

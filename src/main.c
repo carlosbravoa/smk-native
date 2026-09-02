@@ -903,9 +903,12 @@ static void step_kart(smk_kart *k, smk_track *trk,
                 projs[i].bounced = 0;
                 float dx = (float)(smk_kart_px(projs[i].x) - smk_kart_px(kart.x));
                 float dy = (float)(smk_kart_px(projs[i].y) - smk_kart_px(kart.y));
-                if (dx * dx + dy * dy > (float)(SMK_SFX_OBJ_RANGE * SMK_SFX_OBJ_RANGE))
-                    continue;                       /* out of range: silent */
-                /* smk_sfx_play(SMK_SFX_SHELL_BOUNCE);  <- id unresolved */
+                float d2 = dx * dx + dy * dy;
+                int id = d2 <= 96.0f * 96.0f    ? SMK_SFX_OBJ_WALL
+                       : d2 <= 192.0f * 192.0f  ? SMK_SFX_OBJ_WALL_2
+                       : d2 <= (float)(SMK_SFX_OBJ_RANGE * SMK_SFX_OBJ_RANGE)
+                                                ? SMK_SFX_OBJ_WALL_3 : 0;
+                if (id) smk_sfx_play(id);
             }
     }
     {   /* sounds the game spaces out - the coin item is TWO coins, and
@@ -3479,8 +3482,15 @@ int main(int argc, char **argv)
                              * from $84:D8F2.  One flag for both the throw
                              * and its sound, so a debug override cannot
                              * make them disagree. */
+                            /* RE-MEASURED (NOTES 239): a banana is silent
+                             * BOTH ways.  Forced through the ROM's own item
+                             * handler on three sessions - with a green shell
+                             * in the same rig firing $2B two frames later as
+                             * the positive control - it makes no request at
+                             * any point in the object's 400-frame life.  The
+                             * $58 that used to play here was NOTES 232's
+                             * mis-attribution. */
                             bool behind = in.dpad_down || getenv("SMK_BANANA_DOWN") != NULL;
-                            if (behind) smk_sfx_play(SMK_SFX_DROP);
                             smk_proj_throw(projs, SMK_PROJ_MAX, SMK_PROJ_BANANA, &kart,
                                            player.heading, 0, -1, false, !behind);
                             break;
