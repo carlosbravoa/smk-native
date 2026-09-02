@@ -685,29 +685,22 @@ In rough order of value:
    thrown banana's arc and the fireball's weave (both wait on a recording
    with one in it), the shell's spin rate, the hit box.
 
-3. **Moving obstacles (S12's other half) — the MOTION is MEASURED and one
-   number short of portable.**
+3. **~~Moving obstacles (S12's other half)~~ — IN, and confirmed by the
+   user 2026-09-02: "thwomps movement is working since a long while".**
+   `smk_course_movers_step` runs the measured cycle every frame: parked at
+   `z = 4096` until the first lap completes and then, per object after its
+   own stagger, FALL (from `-64`, gaining `-32` a frame, clamped at 0) ->
+   HOLD 135 frames -> RISE `+64` a frame, capped back at the parked
+   height, and round again. x and y never move (NOTES 152).
 
-   Thwomps (NOTES 152, Rainbow Road, per frame): parked at z = 4096 until
-   the first lap completes, then fall — 15 frames, velocity from -64
-   gaining -32 a frame, clamped at 0 — hold at the bottom for **135
-   frames**, rise **+64 a frame**, fall again. x and y never move. The
-   one thing not pinned is how long the RISE lasts: 119/116/96 frames on
-   one object, 144/199/93 on the other, and NOT proximity-driven. So it
-   is script data, and nothing is ported until it is known.
-
-   **Anything measuring movers must complete a lap first**, or it records
-   parked objects and reports "nothing moves" — which cost four captures
-   before the user pointed it out.
-
-   Why it matters: Thwomps spawn at the right positions and never rise,
-   so four in a row are a wall across the road. A player meets a
-   permanent barricade on all three Bowser Castles. The decode is done
-   (NOTES 146): Z-only motion on a per-object bytecode script; the work
-   is the interpreter (`$85E0B9`), the few commands a Thwomp and a mole
-   use (`$85DDA0`, table at `$85DD26`), and where a script is attached.
-   **Gate it on a Bowser Castle recording** - no existing gate sees a
-   Thwomp - with `--autodrive` on tracks 3/9/17 as the cheap check.
+   LABELLED, and the only piece still open: `SMK_MOVER_RISE = 120`, how
+   long the rise lasts. The trace gave 119/116/96 on one object and
+   144/199/93 on the other and it is NOT proximity-driven, so it is
+   script data - the interpreter at `$85E0B9` with the Thwomp/mole
+   commands at `$85DDA0` (table `$85DD26`) is where the real number
+   lives. Everything else about a Thwomp - spawn positions, the blue
+   Rainbow Road art, the squash's contact band, standing like a rock -
+   is measured and in.
 
 4. **~~Grand Prix (P8)~~ — IN (NOTES 198).** Four cups of five in the
    ROM's order, 9/6/3/1 from `$85:BEB4` to the top four, standings between
