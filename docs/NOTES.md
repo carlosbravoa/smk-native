@@ -9842,3 +9842,37 @@ Footnote on savestates: they cannot be driven by these tools.  MAME
 `machine:load()` soft-resets and stops every notifier - frame, periodic
 and reset alike.  `tools/labs/mame/state.sh` is kept for the day that
 changes; an input RECORDING is what the lab can actually replay.
+
+## 241. The bridge is two notes, not one - all five surfaces re-rendered
+
+The user: "the sound for racing on a bridge is wrong."  It was, and so
+were two of its neighbours.  NOTES 237 found which sample each rough
+class keys and at what pitch, and then rendered three of them as STEADY
+loops.  They are not steady.  Logging the DSP's envelope and pitch every
+frame, with the whole course forced to each class in turn, gives:
+
+    $50 bridge   sample $16   TWO pitches, $0400 and $0300, alternating,
+                              re-keyed every 5 frames - a two-note clatter
+    $54 MC dirt  sample $00   envelope FLAT at 127, pitch dithered every
+                              frame through $0380 $0300 $0400 $0280
+    $58 sand     sample $04   one pitch $0400, re-keyed every 10 frames
+    $5A grass    sample $04   one pitch $0600, re-keyed every 10 frames
+    $5C mud      sample $12   one pitch $0A00, re-keyed every 10 frames
+
+Only the two that were already right - grass and sand - are single-pitch
+pulses; the bridge alternates, `$54` dithers under a held envelope, and
+mud pulses where it had been rendered flat.
+
+`tools/labs/hisssound.py` no longer takes a pitch and an envelope typed
+in by hand.  It reads the per-frame (envelope, pitch) straight out of a
+`surfenv.lua` log and renders one whole cycle of it, restarting the
+sample's phase on every frame where the envelope RISES - which is the
+key-on.  Nothing about the shape of these is ours any more except the
+choice of how many frames make one loop.
+
+A note on the offer of a savestate: not needed here, and it would not
+have helped.  These tools cannot drive a savestate at all - MAME 0.285
+cancels `-autoboot_script` when `-state` is given, and a Lua
+`machine:load()` soft-resets and kills every notifier (NOTES 240).  What
+the lab CAN replay is an input recording, and what it can force outright
+is the ground itself, which is what settled this.

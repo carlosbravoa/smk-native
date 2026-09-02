@@ -1,65 +1,81 @@
 #!/usr/bin/env python3
-"""The off-road hiss - the user's "when driving on grass there is a sound
-coming up, like S-S-S".
+"""Build a surface's held sound out of the game's own sample and the
+DSP's own per-frame envelope and pitch.
 
-It is never queued, so no amount of tapping the sound entry finds it: it
-is DSP voice 5 keying sample $04 over and over while the kart is on
-rough ground.  Found by forcing the ground rather than hunting for it -
-RAM $0B00 is the tilemap-byte -> surface-class table (NOTES 011), so
-overwriting every entry makes the whole course one class and the same
-recorded inputs can be run over each in turn (tools/labs/mame/
-surfhiss.lua).  Of fourteen classes only two hiss, and at different
-pitches:
+The five rough surfaces (NOTES 236/237/241) are each one BRR sample on a
+voice the driver keys and re-keys while the kart is on that ground.  They
+are NOT steady tones, and rendering them as one was the mistake the user
+caught on the bridge ("the sound for racing on a bridge is wrong"):
 
-    class $5A (grass)  sample $04 at pitch $0600  (12000 Hz)
-    class $58 (sand)   sample $04 at pitch $0400  ( 8000 Hz)
+    $50 bridge    sample $16   TWO pitches, $0400 and $0300, alternating,
+                               re-keyed every 5 frames
+    $54 MC dirt   sample $00   envelope flat at 127, pitch DITHERED every
+                               frame through $0380 $0300 $0400 $0280
+    $58 sand      sample $04   one pitch $0400, re-keyed every 10 frames
+    $5A grass     sample $04   one pitch $0600, re-keyed every 10 frames
+    $5C mud       sample $12   one pitch $0A00, re-keyed every 10 frames
 
-and the voice is re-keyed about every 10 frames, which is the S-S-S.
-One clean cycle of its ENVX, logged per frame, is the envelope below.
+So nothing here is transcribed by hand: the per-frame (envelope, pitch)
+comes straight out of a log taken from the chip with the whole course
+forced to that class (tools/labs/mame/surfenv.lua), and one whole cycle
+of it is rendered as a seamless loop.  A key-on - the phase reset - is
+taken to be any frame where the envelope RISES.
 
-    tools/labs/hisssound.py snap.spc PITCH out.wav
+    tools/labs/hisssound.py snap.spc SRCN log.txt START FRAMES out.wav
 """
 import sys, os, wave, struct
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import brr
 
-SRCN = 0x04
 FPS = 60.0988
 OUT_SR = 32000
-# MEASURED, frames 2870..2879 of the forced-grass run: one whole cycle of
-# voice 5's ENVX, from the key-on to the release.
-ENV = [34, 68, 100, 118, 81, 72, 63, 57, 50, 0]
+
+def read_log(path):
+    """-> [(frame, envx, pitch)] from surfenv.lua's `E f v env pitch`"""
+    out = []
+    for line in open(path):
+        p = line.split()
+        if len(p) == 5 and p[0] == 'E':
+            out.append((int(p[1]), int(p[3]), int(p[4], 16)))
+    out.sort()
+    return out
 
 def main():
-    snap, pitch, out = sys.argv[1], int(sys.argv[2], 0), sys.argv[3]
-    pcm, loop = brr.load_samples(snap, [SRCN])[SRCN]
+    snap, srcn, log, start, frames, outp = sys.argv[1:7]
+    srcn, start, frames = int(srcn, 0), int(start), int(frames)
+    rows = [r for r in read_log(log) if r[0] >= start][:frames]
+    if len(rows) < frames:
+        print('only %d frames from %d in %s' % (len(rows), start, log))
+        return
+    pcm, loop = brr.load_samples(snap, [srcn])[srcn]
     if loop is None:
         loop = 0
-    rate = (pitch & 0x3FFF) / 4096.0 * OUT_SR
-    step = rate / OUT_SR
-    n = int(round(len(ENV) / FPS * OUT_SR))      # one 10-frame period
-    per_frame = n / float(len(ENV))
+    per_frame = OUT_SR / FPS
     buf = []
     phase = 0.0
-    for i in range(n):
-        j = int(phase)
-        if j >= len(pcm):                        # the sample's own loop
-            phase = loop + (phase - len(pcm))
+    prev_env = None
+    for i, (f, env, pitch) in enumerate(rows):
+        if prev_env is not None and env > prev_env:
+            phase = 0.0                      # a key-on: the sample restarts
+        prev_env = env
+        step = (pitch & 0x3FFF) / 4096.0 * OUT_SR / OUT_SR
+        n = int(round((i + 1) * per_frame)) - int(round(i * per_frame))
+        for _ in range(n):
             j = int(phase)
-        # the envelope, linearly between the frames it was logged at
-        t = i / per_frame
-        k = int(t)
-        a = ENV[k % len(ENV)]
-        b = ENV[(k + 1) % len(ENV)]
-        e = (a + (b - a) * (t - k)) / 127.0
-        buf.append(int(max(-32768, min(32767, pcm[j] * e))))
-        phase += step
-    w = wave.open(out, 'wb')
+            if j >= len(pcm):
+                phase = loop + (phase - len(pcm))
+                j = int(phase)
+            buf.append(int(max(-32768, min(32767, pcm[j] * env / 127.0))))
+            phase += step
+    w = wave.open(outp, 'wb')
     w.setnchannels(1); w.setsampwidth(2); w.setframerate(OUT_SR)
     w.writeframes(struct.pack('<%dh' % len(buf), *buf))
     w.close()
-    print('%s: SRCN $%02X at pitch $%04X (%.0f Hz), %d frames = %.3f s, peak %d'
-          % (os.path.basename(out), SRCN, pitch, rate, len(ENV),
-             len(buf) / float(OUT_SR), max(abs(x) for x in buf)))
+    pitches = sorted({p for _, _, p in rows})
+    keyons = sum(1 for i in range(1, len(rows)) if rows[i][1] > rows[i - 1][1])
+    print('%s: SRCN $%02X, %d frames (%.3f s), %d key-on(s), pitch(es) %s, peak %d'
+          % (os.path.basename(outp), srcn, frames, len(buf) / float(OUT_SR),
+             keyons, ' '.join('$%04X' % p for p in pitches),
+             max(abs(x) for x in buf)))
 
 main()
