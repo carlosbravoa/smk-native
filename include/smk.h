@@ -226,6 +226,13 @@ void smk_kart_move_ex(smk_kart *k, const smk_track *t, bool auto_ramp);
 /* Height, decoded at $80B1D6 (NOTES 045).  Gravity is 26 units per frame;
  * a second mode at $80DFED uses 18.  Landing clears height, velocity and
  * the airborne flag. */
+/* The fastest a kart can ever go, MEASURED from the ROM's own tables
+ * (NOTES 251): the highest base top is $03B0 = 944 (Bowser and DK Jr at
+ * $81:8000), 150cc adds $A0, ten coins add 8 each, and state $12/$14 -
+ * the boost - caps at the class top plus $C0.  944 + 160 + 80 + 192.
+ * The speedometer is scaled to this so a mushroom has somewhere to go. */
+#define SMK_SPEED_MAX   1376
+
 #define SMK_GRAVITY      26         /* $001A - the captured bounce arc  */
 #define SMK_GRAVITY_ALT  18         /* $0012 - the $80DFED mode */
 /* Two DIFFERENT vertical events, and conflating them is what made the

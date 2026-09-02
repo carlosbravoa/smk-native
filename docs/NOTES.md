@@ -10222,3 +10222,39 @@ The dashboard beside it stays the game's - the coin row in the game's own
 shape, the position as its big number.  The raw figure survives in the
 telemetry block (H), where an exact number is occasionally what a decode
 needs.
+
+## 251. The dial: bottom left, and an ABSOLUTE scale so a mushroom shows
+
+The user: "move the dial to the bottom left corner instead of current
+metrics that are not needed anymore.  make the top of the dial an
+absolute number, so if I use a mushroom, I am able to hit the high."
+
+The scale was the class top, which is wrong for the same reason a raw
+number was: at the class top the needle is already at full deflection, so
+a boost - the one moment a driver most wants to see - has nowhere to go.
+
+The absolute ceiling is MEASURED, not chosen:
+
+    $81:8000    highest base top          $03B0 = 944  (Bowser, DK Jr)
+    150cc                                 +$A0 =  160
+    ten coins, 8 each ($D6)               +      80
+    state $12/$14's cap, target + $C0     +     192
+                                          ----------
+    SMK_SPEED_MAX                               1376
+
+so `SMK_SPEED_MAX` is what no kart can exceed anywhere, and the dial runs
+0..1376 always.  THIS class's top is drawn on it as a longer white mark,
+so the stretch only a boost reaches is visible as "past the marker", and
+the needle turns green once it is past.  The surface cap keeps its amber
+arc between the two.
+
+The corner: the dial takes the bottom left, and the metrics that were
+there - raw speed, the surface byte, the slip angle, the class-top bar
+and the live input state - are all diagnostics, so they moved behind
+**H** together (`SMK_TELEMETRY=1` to start with them on).  The lap sits
+above the dial as `1'5`, and deliberately WITHOUT the kart icon: in this
+game that icon means LIVES (NOTES 249), so beside a lap count it would
+say the wrong thing.
+
+The dial half-darkens what is under it.  Over tarmac it read on its own;
+over a row of item boxes it did not.

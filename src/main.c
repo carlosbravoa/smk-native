@@ -581,34 +581,70 @@ static void gauge_line(uint32_t *fb, int rw, int rh, float cx, float cy,
 #define GAUGE_A0  (190.0f * (float)M_PI / 180.0f)   /* the zero end   */
 #define GAUGE_A1  (-10.0f * (float)M_PI / 180.0f)   /* the full end   */
 
+/* Half-dark the pixels under the dial: over a road it is legible on its
+ * own, over a row of item boxes it was not. */
+static void gauge_shade(uint32_t *fb, int rw, int rh, int cx, int cy, int rad)
+{
+    for (int dy = -rad - 3; dy <= rad / 3 + 3; dy++)
+        for (int dx = -rad - 3; dx <= rad + 3; dx++) {
+            int d2 = dx * dx + dy * dy;
+            if (d2 > (rad + 3) * (rad + 3)) continue;
+            int x = cx + dx, y = cy + dy;
+            if (x < 0 || x >= rw || y < 0 || y >= rh) continue;
+            uint32_t p = fb[y * rw + x];
+            fb[y * rw + x] = 0xFF000000u
+                           | (((p & 0x00FF0000u) >> 1) & 0x00FF0000u)
+                           | (((p & 0x0000FF00u) >> 1) & 0x0000FF00u)
+                           | (((p & 0x000000FFu) >> 1) & 0x000000FFu);
+        }
+}
+
 static void draw_gauge(uint32_t *fb, int rw, int rh, int cx, int cy, int rad,
                        int speed, int top, int capfrac)
 {
-    if (top <= 0) return;
-    float frac = (float)speed / (float)top;
+    gauge_shade(fb, rw, rh, cx, cy, rad);
+    /* The scale is ABSOLUTE - SMK_SPEED_MAX, the fastest any kart can go
+     * anywhere (NOTES 251) - not this class's top.  The user: "make the
+     * top of the dial an absolute number, so if I use a mushroom, I am
+     * able to hit the high."  Against a class-top scale the needle sat at
+     * full deflection all down every straight and a boost had nowhere to
+     * show. */
+    float frac = (float)speed / (float)SMK_SPEED_MAX;
     if (frac < 0.0f) frac = 0.0f;
     if (frac > 1.0f) frac = 1.0f;
-    float capf = capfrac >= 1000 ? 1.0f : (float)capfrac / 1000.0f;
+    float topf = top > 0 ? (float)top / (float)SMK_SPEED_MAX : 1.0f;
+    if (topf > 1.0f) topf = 1.0f;
+    float capf = capfrac >= 1000 ? topf : topf * (float)capfrac / 1000.0f;
 
-    /* the arc: dark where the class can go, amber past the surface cap */
-    for (int i = 0; i <= 120; i++) {
-        float u = (float)i / 120.0f;
+    /* the arc: dark to the surface cap, amber from there to the class
+     * top, and dimmer still past it - the stretch only a boost reaches */
+    for (int i = 0; i <= 160; i++) {
+        float u = (float)i / 160.0f;
         float a = GAUGE_A0 + (GAUGE_A1 - GAUGE_A0) * u;
-        uint32_t col = u > capf ? 0xFFB07020u : 0xFF303038u;
+        uint32_t col = u > topf ? 0xFF283038u
+                     : u > capf ? 0xFFB07020u : 0xFF303038u;
         gauge_line(fb, rw, rh, (float)cx, (float)cy, a,
                    (float)rad - 2.0f, (float)rad, col, 1);
     }
-    /* five ticks */
+    /* five ticks across the whole scale */
     for (int i = 0; i <= 4; i++) {
         float u = (float)i / 4.0f;
         float a = GAUGE_A0 + (GAUGE_A1 - GAUGE_A0) * u;
         gauge_line(fb, rw, rh, (float)cx, (float)cy, a,
                    (float)rad * 0.72f, (float)rad - 2.0f, 0xFFE0E0E8u, 1);
     }
+    /* and a longer white mark at THIS class's top, so the stretch a
+     * mushroom reaches is visible as "past the marker" */
+    {
+        float a = GAUGE_A0 + (GAUGE_A1 - GAUGE_A0) * topf;
+        gauge_line(fb, rw, rh, (float)cx, (float)cy, a,
+                   (float)rad * 0.60f, (float)rad, 0xFFFFFFFFu, 2);
+    }
     /* the needle, and a hub so its pivot reads as one */
     float na = GAUGE_A0 + (GAUGE_A1 - GAUGE_A0) * frac;
-    uint32_t ncol = frac >= capf - 0.02f && capfrac < 1000
-                  ? 0xFFFFA030u : 0xFFFF4040u;
+    uint32_t ncol = frac > topf + 0.01f ? 0xFF60FF60u      /* boosting */
+                  : (capfrac < 1000 && frac >= capf - 0.01f) ? 0xFFFFA030u
+                  : 0xFFFF4040u;
     gauge_line(fb, rw, rh, (float)cx, (float)cy, na, 0.0f,
                (float)rad * 0.80f, ncol, 3);
     for (int dy2 = -2; dy2 <= 2; dy2++)
@@ -619,7 +655,7 @@ static void draw_gauge(uint32_t *fb, int rw, int rh, int cx, int cy, int rad,
 /* OURS, and marked as such (ROADMAP item 11): speed, surface, slip and
  * the class-top bar are telemetry the original never had.  H toggles
  * it; SMK_NO_TELEMETRY=1 starts with it off. */
-static bool show_speedo = true;
+static bool show_speedo;      /* off: the dial replaced it.  H brings it back */
 static int player_height_px;
 /* Sprite priority against the plane (NOTES 128): filled by the ground
  * renderer, one byte a pixel, non-zero where the plane is opaque. */
@@ -676,8 +712,10 @@ static void hud_hex2(uint32_t *fb, int rw, int rh, int x, int y,
 static void draw_speedo(uint32_t *fb, int rw, int rh,
                         const smk_kart *k, uint8_t surf, int top)
 {
+    /* the dial owns the bottom-left corner now, so the raw metrics sit
+     * above it when H turns them on */
     int sc = rw >= 640 ? 2 : 1;
-    int x = 8, y = rh - 10 * sc - 8;
+    int x = 8, y = rh - 10 * sc - 8 - 40 * sc;
     int frac = smk_surface_cap_frac(surf);
     int cap = frac >= 1000 ? top : (top * frac) / 1000;
     bool capped = k->speed >= cap - 8 && frac < 1000;
@@ -696,13 +734,7 @@ static void draw_speedo(uint32_t *fb, int rw, int rh,
                                              : 0xFF808088;
         hud_number(fb, rw, rh, x + 38 * sc, y, deg > 99 ? 99 : deg, 2, sc2, sc);
     }
-    /* The LAP is OURS (NOTES 249).  The game shows no lap number at all -
-     * "it is lakitu who annouces that" (the user) - so until his
-     * announcement is drawn the count sits here, in the block that is
-     * already marked as ours and toggles off with H. */
-    if (hud_lap > 0)
-        hud_number(fb, rw, rh, x + 50 * sc, y, hud_lap > 9 ? 9 : hud_lap, 1,
-                   0xFF80C8FF, sc);
+
 
     /* bar: speed vs this class's top, cap marked */
     int bx = x, by = y + 7 * sc, bw = 60 * sc, bh = 3 * sc;
@@ -1420,7 +1452,7 @@ static bool load_race(const smk_rom *rom, int track, int theme, int character,
     racer_draw_mask = (mode == SMK_MODE_TT) ? 0x00 : 0xFE;
 
     race_mode = mode;
-    if (getenv("SMK_NO_TELEMETRY")) show_speedo = false;
+    if (getenv("SMK_TELEMETRY")) show_speedo = true;
     race_state = RACE_COUNTDOWN;
     race_count = 0;
     hud_race_frames = 0;
@@ -2480,13 +2512,32 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
     }
     if (!celebrating) {
         draw_hud(fb, rw, rh, trk->palette, player.coins, hud_rank, kart.speed);
-        {   /* the needle, under the coin row and the position */
+        {   /* The needle lives in the BOTTOM-LEFT corner, where the raw
+             * metrics used to be - the user: "move the dial to the bottom
+             * left corner instead of current metrics that are not needed
+             * anymore".  The lap goes above it: the game shows none of its
+             * own (Lakitu announces it), so this is ours too. */
             int sc2 = rw >= 640 ? 3 : 2, adv2 = 8 * sc2;
+            int gr = adv2 * 2;
+            int gx = 8 + gr + adv2 / 2, gy = rh - 8 - adv2 / 2;
             uint8_t su = smk_track_surface(trk, smk_kart_px(kart.x),
                                            smk_kart_px(kart.y));
-            draw_gauge(fb, rw, rh, rw - adv2 * 4 - 8, 8 + adv2 * 3,
-                       adv2 * 2, kart.speed, player.target,
+            draw_gauge(fb, rw, rh, gx, gy, gr, kart.speed, player.target,
                        smk_surface_cap_frac(su));
+            /* The lap, above the dial.  NO kart icon: in this game that
+             * icon means LIVES (NOTES 249), so putting it beside a lap
+             * count would say the wrong thing.  Just the number, and the
+             * total after the clock's own separator. */
+            if (hud_lap > 0) {
+                int ld = hud_lap > 9 ? 9 : hud_lap;
+                int ly = gy - gr - adv2 - 10;
+                int lx = gx - gr - 4;
+                hud_tile(fb, rw, rh, lx, ly, smk_hud_digit(ld), trk->palette, sc2);
+                hud_tile(fb, rw, rh, lx + adv2, ly, 0xA2 - SMK_HUD_TILE0,
+                         trk->palette, sc2);
+                hud_tile(fb, rw, rh, lx + adv2 * 2, ly,
+                         smk_hud_digit(SMK_RACE_LAPS), trk->palette, sc2);
+            }
         }
         draw_track_map(fb, rw, rh, &kart, racers, SMK_CHARACTERS);
         draw_clock(fb, rw, rh, trk->palette, hud_race_frames);
@@ -2567,8 +2618,9 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
         }
     }
     /* live input state, so a stuck control is visible rather than
-     * looking like a physics bug */
-    if (hud_input) {
+     * looking like a physics bug.  Diagnostic, so it goes with the rest
+     * of them behind H - the dial has this corner now. */
+    if (hud_input && show_speedo) {
         int sc2 = rw >= 640 ? 2 : 1;
         int bx = 8, by = rh - 20 * sc2 - 8;
         hud_glyph(fb, rw, rh, bx, by, hud_input & 1 ? 1 : 0,

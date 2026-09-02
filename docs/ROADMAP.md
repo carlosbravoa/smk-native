@@ -767,9 +767,11 @@ In rough order of value:
     ROM's sprite digit at DOUBLE scale, because the game's own big number
     is background-layer art and is nowhere in OAM; the SPEEDOMETER, which
     the user asked for and the original never had - a NEEDLE rather than a
-    figure ("that number doesn't mean much"), sweeping 200 degrees against
-    the class top `$D6` with the arc past the surface cap in amber
-    (NOTES 250); and the telemetry
+    figure ("that number doesn't mean much"), in the bottom-left corner,
+    sweeping 200 degrees against an ABSOLUTE `SMK_SPEED_MAX` of 1376 -
+    measured, not chosen: 944 + 160 + 80 + 192 - with this class's top
+    marked on the scale so a mushroom shows as the needle going PAST it,
+    and the surface cap's amber arc between (NOTES 250/251); and the telemetry
     overlay - surface, slip angle, the class-top bar, and the lap count,
     which lives there because the game has no lap display to copy. The
     overlay TOGGLES on **H**, with `SMK_NO_TELEMETRY=1` to start without
