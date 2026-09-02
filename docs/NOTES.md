@@ -9803,3 +9803,42 @@ The user hears "a pitch-drop sound" when throwing a banana.  Nothing in
 the ROM plays there.  Two things nearby ARE falling sounds and may be
 what is being heard: `$2B`, the shell throw, drops 135 -> 101 Hz, and the
 bounce clack above drops 839 -> 280.
+
+## 240. UP is the missing input: thrown plays $2B, dropped is silent
+
+The user set up two savestates and said what to do with them: "press up +
+the item button".  UP was the whole answer - every earlier test had
+pressed the button ALONE, which for a banana is a different action.
+
+Forced through the ROM's own handler (`itemfire.lua`, `PAD=0880` for
+UP+A, `0480` for DOWN+A), with the object watched as well as the sounds:
+
+    green shell, button alone   thrown, object speed 1596   $2B
+    green shell + DOWN          dropped, speed 0            SILENT
+    banana, button alone        dropped, speed 0            SILENT
+    banana + UP                 thrown, speed 1596          $2B
+    banana + DOWN               dropped, speed 0            SILENT
+
+So the rule is not about WHICH item at all: **thrown forward plays `$2B`,
+left behind is silent.**  Only the DEFAULT direction differs - a shell
+goes ahead unless DOWN is held, a banana goes behind unless UP is.
+
+That reconciles NOTES 239, which was right about what it measured and
+wrong about what it meant: pressing the button alone with a banana was
+DROPPING it, and the object sitting at speed 0 was the tell I read past.
+
+`$2B` on the chip is voice 3, two samples one after the other, both
+descending: `$05` from pitch `$0900` down to `$06E4`, then `$0F` from
+`$0900` down to `$0690`.  A two-part falling sound - the user's "pitch
+drop", and their "another sound in the mix" is its second half.
+
+The port had this inverted for the banana (`$58` when DOWN, nothing
+otherwise) and half-wrong for the shell (`$58` on the drop).  Both now
+follow the measurement, and `in.dpad_up` is plumbed through so UP throws
+a banana ahead as it does in the game.
+
+Footnote on savestates: they cannot be driven by these tools.  MAME
+0.285 cancels `-autoboot_script` when `-state` is given, and a Lua
+`machine:load()` soft-resets and stops every notifier - frame, periodic
+and reset alike.  `tools/labs/mame/state.sh` is kept for the day that
+changes; an input RECORDING is what the lab can actually replay.

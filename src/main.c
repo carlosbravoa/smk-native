@@ -36,6 +36,7 @@ typedef struct {
     /* the shell: menu navigation and the item button, all edge-triggered */
     bool nav_up, nav_down, nav_left, nav_right, confirm, back;
     bool dpad_down;         /* the d-pad held DOWN (level): item + DOWN drops it behind */
+    bool dpad_up;           /* the d-pad held UP (level): item + UP throws it AHEAD */
     bool toggle_map;        /* M: the track map on / off */
     bool item;
 } input_state;
@@ -145,6 +146,7 @@ static void pump(input_state *in)
     in->up    = k[SDL_SCANCODE_UP]    || k[SDL_SCANCODE_W];
     in->down  = k[SDL_SCANCODE_DOWN]  || k[SDL_SCANCODE_S];
     in->dpad_down = k[SDL_SCANCODE_DOWN] || k[SDL_SCANCODE_S];
+    in->dpad_up   = k[SDL_SCANCODE_UP] || k[SDL_SCANCODE_W];
     in->left  = k[SDL_SCANCODE_LEFT]  || k[SDL_SCANCODE_A];
     in->right = k[SDL_SCANCODE_RIGHT] || k[SDL_SCANCODE_D];
     in->shift = k[SDL_SCANCODE_LSHIFT] || k[SDL_SCANCODE_RSHIFT];
@@ -161,6 +163,8 @@ static void pump(input_state *in)
         in->down  |= BTN(X) || lt > TRIG;                 /* SNES Y: brake */
         in->dpad_down |= BTN(DPAD_DOWN)
                       || SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_LEFTY) > DEAD;
+        in->dpad_up   |= BTN(DPAD_UP)
+                      || SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_LEFTY) < -DEAD;
         /* A stick is only believed once it has been seen at rest.  A
          * pad that reports a stuck or miscalibrated axis would otherwise
          * steer for ever with nothing touching it, and the player has no
@@ -3482,24 +3486,31 @@ int main(int argc, char **argv)
                              * from $84:D8F2.  One flag for both the throw
                              * and its sound, so a debug override cannot
                              * make them disagree. */
-                            /* RE-MEASURED (NOTES 239): a banana is silent
-                             * BOTH ways.  Forced through the ROM's own item
-                             * handler on three sessions - with a green shell
-                             * in the same rig firing $2B two frames later as
-                             * the positive control - it makes no request at
-                             * any point in the object's 400-frame life.  The
-                             * $58 that used to play here was NOTES 232's
-                             * mis-attribution. */
-                            bool behind = in.dpad_down || getenv("SMK_BANANA_DOWN") != NULL;
+                            /* MEASURED (NOTES 240), and the user found the
+                             * missing input: UP.  A banana's DEFAULT is to be
+                             * left behind - button alone gives an object at
+                             * speed 0 sitting where it was dropped, and no
+                             * sound at all.  Held UP it is THROWN, the object
+                             * flies at 1596, and $2B plays two frames later:
+                             * the same falling sound as a shell, which is
+                             * what the user heard ("same pitch drop").
+                             * The $58 that used to play here was NOTES 232's
+                             * mis-attribution; dropping one is silent. */
+                            bool ahead = in.dpad_up || getenv("SMK_BANANA_UP") != NULL;
+                            if (ahead) smk_sfx_play(SMK_SFX_THROW);
                             smk_proj_throw(projs, SMK_PROJ_MAX, SMK_PROJ_BANANA, &kart,
-                                           player.heading, 0, -1, false, !behind);
+                                           player.heading, 0, -1, false, ahead);
                             break;
                         }
                         case SMK_ITEM_GREEN: {
-                            /* thrown ahead it is $80:F442's $2B; left behind
-                             * it is the drop (NOTES 232) */
+                            /* A shell's default is the other way round: the
+                             * button alone THROWS it (the object flies at
+                             * 1596) and $2B plays; held DOWN it is dropped at
+                             * speed 0 and is SILENT (NOTES 240).  The $58
+                             * that used to play on the drop was measured
+                             * away with the banana's. */
                             bool behind = in.dpad_down || getenv("SMK_SHELL_DOWN") != NULL;
-                            smk_sfx_play(behind ? SMK_SFX_DROP : SMK_SFX_THROW);
+                            if (!behind) smk_sfx_play(SMK_SFX_THROW);
                             smk_proj_throw(projs, SMK_PROJ_MAX, SMK_PROJ_GREEN, &kart,
                                            player.heading, 0, -1, behind, false);
                             break;
