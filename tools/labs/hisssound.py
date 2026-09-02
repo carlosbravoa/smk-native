@@ -53,11 +53,16 @@ def main():
     per_frame = OUT_SR / FPS
     buf = []
     phase = 0.0
-    prev_env = None
+    last_key = 0        # the loop's own start IS a key-on
     for i, (f, env, pitch) in enumerate(rows):
-        if prev_env is not None and env > prev_env:
-            phase = 0.0                      # a key-on: the sample restarts
-        prev_env = env
+        # A KEY-ON, and not the DSP's attack ramp.  Grass rises 34 68 100
+        # 118 over four frames after each key-on - taking every one of
+        # those for a key-on reset the phase four times a cycle and cost
+        # the sound its hiss-hiss-hiss (the user).  So: a rise of more
+        # than 20, and not within three frames of the last one.
+        if i and env - rows[i - 1][1] > 20 and i - last_key > 3:
+            phase = 0.0
+            last_key = i
         step = (pitch & 0x3FFF) / 4096.0 * OUT_SR / OUT_SR
         n = int(round((i + 1) * per_frame)) - int(round(i * per_frame))
         for _ in range(n):
@@ -72,7 +77,10 @@ def main():
     w.writeframes(struct.pack('<%dh' % len(buf), *buf))
     w.close()
     pitches = sorted({p for _, _, p in rows})
-    keyons = sum(1 for i in range(1, len(rows)) if rows[i][1] > rows[i - 1][1])
+    keyons, lk = 0, 0
+    for i in range(1, len(rows)):
+        if rows[i][1] - rows[i - 1][1] > 20 and i - lk > 3:
+            keyons += 1; lk = i
     print('%s: SRCN $%02X, %d frames (%.3f s), %d key-on(s), pitch(es) %s, peak %d'
           % (os.path.basename(outp), srcn, frames, len(buf) / float(OUT_SR),
              keyons, ' '.join('$%04X' % p for p in pitches),

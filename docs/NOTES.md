@@ -9876,3 +9876,63 @@ cancels `-autoboot_script` when `-state` is given, and a Lua
 `machine:load()` soft-resets and kills every notifier (NOTES 240).  What
 the lab CAN replay is an input recording, and what it can force outright
 is the ground itself, which is what settled this.
+
+## 242. The attack ramp is not a key-on; and other karts' engines are a GRID thing
+
+Three reports, and two of them were my own regressions.
+
+### Grass lost its hiss-hiss-hiss
+
+NOTES 241 started reading the key-ons out of the log with "the envelope
+rose".  It rises four times per cycle without any key-on at all - that is
+the DSP's ATTACK.  One grass cycle, logged frame by frame, is exactly ten
+frames:
+
+    34  68  100  118   81  72  63  57  50   0
+
+`34 68 100 118` is the attack ramp; the key-on is the single frame after
+the zero.  Taking each step of the ramp for a key-on reset the sample's
+phase four times a cycle and cost the sound its shape - the user heard it
+at once.  A key-on is now a rise of more than 20 that is not within three
+frames of the last one, and the loop's own start counts as one.  Grass
+comes back at peak 4031 against the 4613 of the version the user had
+called perfect: the same envelope, the same one pulse per ten frames.
+
+The bridge's five-frame re-key survives that test (gaps of 5 in 14 of 22
+cycles across the whole log), and so do its two alternating pitches.
+
+Ruled out on the way: the BRR bank is NOT per-theme.  Samples `$00`,
+`$04`, `$12` and `$16` are byte-identical between a Donut Plains snapshot
+and a Mario Circuit one, so measuring a surface on one course and
+rendering it from the other is safe.  And `$50` really is the bridge:
+across all twenty tracks it appears only on 11 and 19 - Donut Plains 2
+and 3 - 408 and 168 cells each.
+
+### Other karts' engines: only on the grid
+
+The user: "other players engine sound too loud, not really like how the
+game managed volume/intensity of the sound."  The game's answer is that
+it does not manage it - it does not play them at all.
+
+Logging every voice in the engine sample AND pitch band beside every
+kart's position, over four sessions:
+
+    attack   second engines only f1412..f1820, nearest kart 38..40 px
+    moles    206 frames, nearest kart 40 px at the 25th, 50th and 75th
+             percentile AND at the max
+    cc100    103 frames, the same 40
+    crash    none at all
+
+Forty pixels is the STARTING GRID's spacing, every time.  And once the
+race is running, 1174 frames in `attack` alone have another kart inside
+120 px - some as close as 3 - with only voice 7 sounding.
+
+So NOTES 229's "an engine per kart" was wrong, and wrong at the root: it
+was built on the user naming `$5C` "the engine of another player", and
+`$5C` turned out to be DK Jr's overtake voice (NOTES 235).  The measured
+0.89 volume ratio of NOTES 237 was real but was measured almost entirely
+on grid frames, which is why raising the port to it made a racing kart
+far too loud.
+
+The port now drives the extra engine voices during the COUNTDOWN only,
+where the game does, and silences them for the race.

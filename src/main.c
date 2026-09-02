@@ -1141,9 +1141,20 @@ static void step_kart(smk_kart *k, smk_track *trk,
                         break;
                     }
             }
+            /* MEASURED (NOTES 242), and it overturns NOTES 229: the game
+             * gives another kart its own engine voice ONLY ON THE GRID.
+             * Logging every voice in the engine sample AND pitch band
+             * beside every kart's position, over four sessions: whenever
+             * a second engine sounds the nearest kart is at 40 px - the
+             * grid spacing, every time - and once the race is running a
+             * kart THREE pixels away still gets none.  NOTES 229 built
+             * this on the user naming $5C "another kart's engine"; $5C
+             * turned out to be DK Jr's overtake voice (NOTES 235).
+             * So: the countdown keeps them, the race does not. */
+            bool grid = race_state == RACE_COUNTDOWN;
             for (int j = 0; j < 3; j++) {
                 int q = near[j].idx;
-                if (!racing || q < 0 || near[j].d2 > 220.0f * 220.0f) {
+                if (!grid || q < 0 || near[j].d2 > 220.0f * 220.0f) {
                     smk_engine_voice(j + 1, 0, 0, 0.0f, 0.0f);
                     continue;
                 }
