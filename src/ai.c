@@ -102,8 +102,9 @@ void smk_collide_objects(smk_kart *k, const smk_course *crs)
      * with the MEASURED pipe response (crash lab, NOTES 072): velocity
      * REFLECTS about the contact normal, both components halve, speed
      * scales 308/581, and a 10-frame ballistic window follows.  Movers
-     * (Thwomps, moles) are static interim - positions right, motion not
-     * yet decoded (labelled). */
+     * (Thwomps, moles) run the measured fall/hold/rise cycle in
+     * smk_course_movers_step (NOTES 152); only the RISE duration is
+     * labelled. */
     /* Only the LIVE slots.  The game spawns two object blocks in a
      * one-player race ($819136: `lda #$0004`, minus two unless $B6 says
      * two-player) and everything downstream - drawing and collision alike
