@@ -42,6 +42,23 @@ static uint16_t render_heading;
  * hides it and a hole does not (NOTES 128). */
 static uint8_t *render_mask;
 static int render_mask_pitch;
+/* The width the horizontal scale is taken from, which is NOT always the
+ * width being drawn.  A half-width view (two players side by side, S36)
+ * must show LESS of the world, not the same amount squashed: the ground
+ * step and the sprite scale come from this reference, the drawing from
+ * the real width, and the difference is field of view.  0 = the view's
+ * own width, which is every single-view case. */
+static int render_ref_w;
+void smk_render_set_proj_width(int w) { render_ref_w = w; }
+int smk_render_proj_width(int w, int h)
+{
+    /* the shape the whole projection was calibrated at: 256 frame pixels
+     * across for every 112 frame lines down, at the 2:4 host scale a
+     * 512x448 view has (NOTES 083/084) */
+    int ref = h * 8 / 7;
+    if (render_ref_w > 0) ref = render_ref_w;
+    return w > ref ? w : ref;
+}
 void smk_render_set_plane_mask(uint8_t *mask, int pitch)
 {
     render_mask = mask;
@@ -58,6 +75,7 @@ void smk_render_mode7(const smk_track *t, const smk_camera *cam,
 {
     const float sa = sinf(cam->angle), ca = cosf(cam->angle);
     const float l2h = (float)h / 112.0f;          /* host px per frame line */
+    const int   pw  = smk_render_proj_width(w, h);   /* the FOV's width */
     const int horizon = (int)(SMK_SKY_LINES * l2h);
 
     /* The sky is the BACKDROP colour, palette entry 0 - measured from a
@@ -89,7 +107,7 @@ void smk_render_mode7(const smk_track *t, const smk_camera *cam,
         float cy = cam->y + sa * fwd;
 
         /* one HOST pixel of horizontal travel */
-        float step = depth / (SMK_PROJ_LES * (float)w / 256.0f);
+        float step = depth / (SMK_PROJ_LES * (float)pw / 256.0f);
         float sx_step = -sa * step;
         float sy_step =  ca * step;
 
@@ -135,10 +153,11 @@ bool smk_project(const smk_camera *cam, float wx, float wy,
     float d = zf + SMK_CAM_TRAIL;           /* depth from the EYE         */
     if (d < 12.0f) return false;            /* behind, or on top of, us   */
 
+    const int pw = smk_render_proj_width(w, h);
     float line = SMK_PROJ_H + SMK_PROJ_K / d;
     *sy = line * (float)h / 112.0f;
-    *sx = (float)w * 0.5f + xr * (SMK_PROJ_LES * (float)w / 256.0f) / d;
+    *sx = (float)w * 0.5f + xr * (SMK_PROJ_LES * (float)pw / 256.0f) / d;
     /* screen px per world px, in HOST pixels */
-    *scale = (SMK_PROJ_LES * (float)w / 256.0f) / d;
+    *scale = (SMK_PROJ_LES * (float)pw / 256.0f) / d;
     return *sy < (float)h && *sy > 0.0f;
 }

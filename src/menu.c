@@ -116,6 +116,9 @@ void smk_ui_init(smk_ui *ui)
     memset(ui, 0, sizeof *ui);
     ui->screen = SMK_UI_TITLE;
     ui->mode_sel = SMK_UI_MODE_RACE;
+    ui->mode_cur = SMK_UI_MODE_RACE;
+    ui->players = SMK_PLAYERS_1;
+    ui->player2_sel = 1;         /* Luigi, until it is chosen */
     ui->engine_class = 0;        /* 50cc */
     ui->track = -1;
 }
@@ -134,30 +137,69 @@ bool smk_ui_step(smk_ui *ui, const smk_rom *rom, const smk_ui_input *in)
         if (in->confirm) ui->screen = SMK_UI_MODE;
         break;
 
-    case SMK_UI_MODE:
-        if (in->up)   ui->mode_sel = (ui->mode_sel + SMK_UI_MODES - 1) % SMK_UI_MODES;
-        if (in->down) ui->mode_sel = (ui->mode_sel + 1) % SMK_UI_MODES;
+    case SMK_UI_MODE: {
+        /* Four rows: the three modes and, under them, how many views are
+         * on the screen.  The players row is a left/right choice like the
+         * engine class, because it is a setting rather than a destination. */
+        const int ROWS = SMK_UI_MODES + 1;
+        if (in->up)   ui->mode_cur = (ui->mode_cur + ROWS - 1) % ROWS;
+        if (in->down) ui->mode_cur = (ui->mode_cur + 1) % ROWS;
+        if (ui->mode_cur < SMK_UI_MODES) ui->mode_sel = ui->mode_cur;
+        else {
+            /* two humans need a controller: with none attached there is
+             * nothing for the second player to drive with, so that row is
+             * skipped rather than offered and then refused */
+            int n = SMK_PLAYERS_MODES;
+            if (in->left)  ui->players = (ui->players + n - 1) % n;
+            if (in->right) ui->players = (ui->players + 1) % n;
+            if (ui->players == SMK_PLAYERS_2 && ui->pads < 1)
+                ui->players = in->left ? SMK_PLAYERS_CPU : SMK_PLAYERS_1;
+        }
         if (in->back) ui->screen = SMK_UI_TITLE;
         if (in->confirm) {
             ui->gp = (ui->mode_sel == SMK_UI_MODE_GP);
+            ui->picking_p2 = false;
             ui->screen = SMK_UI_PLAYER;
         }
         break;
+    }
 
     case SMK_UI_PLAYER: {
-        int p = ui->player_sel;
+        /* The same grid picks player 1 and then, in a two-view race,
+         * player 2 (or the CPU the second camera follows).  `sel` is
+         * whichever of the two the cursor belongs to, so the navigation
+         * below is written once. */
+        int *sel = ui->picking_p2 ? &ui->player2_sel : &ui->player_sel;
+        int p = *sel;
         if (p == PLAYER_CLASS_ROW) {
             if (in->left)  ui->engine_class = (ui->engine_class + 2) % 3;
             if (in->right) ui->engine_class = (ui->engine_class + 1) % 3;
-            if (in->up)    ui->player_sel = 4;
+            if (in->up)    *sel = 4;
         } else {
-            if (in->left)  ui->player_sel = (p & 4) | ((p + 3) & 3);
-            if (in->right) ui->player_sel = (p & 4) | ((p + 1) & 3);
-            if (in->up)    ui->player_sel = p < 4 ? p : p - 4;
-            if (in->down)  ui->player_sel = p < 4 ? p + 4 : PLAYER_CLASS_ROW;
+            if (in->left)  *sel = (p & 4) | ((p + 3) & 3);
+            if (in->right) *sel = (p & 4) | ((p + 1) & 3);
+            if (in->up)    *sel = p < 4 ? p : p - 4;
+            if (in->down)  *sel = p < 4 ? p + 4 : PLAYER_CLASS_ROW;
         }
-        if (in->back)    ui->screen = SMK_UI_MODE;
-        if (in->confirm) ui->screen = SMK_UI_COURSE;
+        if (in->back) {
+            if (ui->picking_p2) ui->picking_p2 = false;
+            else ui->screen = SMK_UI_MODE;
+        }
+        if (in->confirm) {
+            if (ui->players != SMK_PLAYERS_1 && !ui->picking_p2) {
+                ui->picking_p2 = true;
+                /* two karts cannot be the same driver */
+                if (ui->player2_sel == ui->player_sel)
+                    ui->player2_sel = (ui->player_sel + 1) % SMK_CHARACTERS;
+            } else {
+                ui->picking_p2 = false;
+                ui->screen = SMK_UI_COURSE;
+            }
+        }
+        /* and the cursor may not land on the other player's driver */
+        if (ui->players != SMK_PLAYERS_1 && ui->picking_p2
+            && ui->player2_sel == ui->player_sel)
+            ui->player2_sel = (ui->player2_sel + 1) % SMK_CHARACTERS;
         break;
     }
 
@@ -269,16 +311,45 @@ static void draw_mode(const smk_ui *ui, const smk_font *f,
     ramp(f, TEXT_PAL, off, 0xFFFFFFFF, 0xFF2A3E78); dim(off);
     ramp(f, TEXT_HI, sel, 0xFFFFFFFF, 0xFF7A5A18);
 
-    text_c(f, fb, w, h, 40, "SELECT MODE", hi);
+    text_c(f, fb, w, h, 30, "SELECT MODE", hi);
     const char *row[SMK_UI_MODES] = { "GRAND PRIX", "SINGLE RACE", "TIME TRIAL" };
     for (int i = 0; i < SMK_UI_MODES; i++) {
-        int y = 80 + i * 24;
+        int y = 64 + i * 22;
         const uint32_t *c = (i == SMK_UI_MODE_GP) ? off
                           : (ui->mode_sel == i ? sel : lo);
         int x = (VW - (int)strlen(row[i]) * 8) / 2;
-        if (ui->mode_sel == i && ((ui->tick / 12) & 1) == 0)
+        if (ui->mode_cur == i && ((ui->tick / 12) & 1) == 0)
             fill(fb, w, h, x - 12, y - 2, 8, 12, 0xFFFFC040);
         text(f, fb, w, h, x, y, row[i], c);
+    }
+
+    /* how many views.  A second CAMERA costs nothing but pixels; a second
+     * DRIVER needs something to drive with, so with no pad attached that
+     * choice is drawn dimmed and cannot be reached. */
+    {
+        bool on = ui->mode_cur == SMK_UI_MODES;
+        /* the ROM font has no '+' or '-' (src/font.c), so these are
+         * spelled in letters rather than drawn with a hole in them */
+        const char *pl[SMK_PLAYERS_MODES] = { "1P", "VS CPU", "VS 2P" };
+        int y = 146;
+        text_c(f, fb, w, h, 132, "PLAYERS", on ? hi : lo);
+        int total = 0;
+        for (int i = 0; i < SMK_PLAYERS_MODES; i++) total += (int)strlen(pl[i]) * 8 + 16;
+        int x = (VW - total) / 2;
+        for (int i = 0; i < SMK_PLAYERS_MODES; i++) {
+            int wdt = (int)strlen(pl[i]) * 8;
+            bool cur = ui->players == i;
+            bool can = !(i == SMK_PLAYERS_2 && ui->pads < 1);
+            if (cur) fill(fb, w, h, x - 3, y - 2, wdt + 6, 12,
+                          on ? 0x60FFC040 : 0x30FFFFFF);
+            text(f, fb, w, h, x, y, pl[i], !can ? off : (cur ? sel : lo));
+            x += wdt + 16;
+        }
+        const char *note = ui->pads < 1
+            ? "NO CONTROLLER: VS 2P NEEDS ONE"
+            : (ui->pads < 2 ? "P1 CONTROLLER   P2 KEYBOARD"
+                            : "P1 PAD 1   P2 PAD 2");
+        text_c(f, fb, w, h, 168, note, off);
     }
     text_c(f, fb, w, h, 200, "ENTER SELECT   ESC BACK", lo);
 }
@@ -292,12 +363,26 @@ static void draw_player(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
     ramp(f, TEXT_HI, sel, 0xFFFFFFFF, 0xFF7A5A18);
     int sc = scale_for(w);
 
-    text_c(f, fb, w, h, 16, "SELECT DRIVER", hi);
+    const char *who = ui->players == SMK_PLAYERS_1 ? "SELECT DRIVER"
+                    : ui->picking_p2
+                      ? (ui->players == SMK_PLAYERS_CPU ? "SELECT THE CPU"
+                                                        : "PLAYER 2")
+                      : "PLAYER 1";
+    text_c(f, fb, w, h, 16, who, hi);
+    int cursor = ui->picking_p2 ? ui->player2_sel : ui->player_sel;
+    int other  = ui->players == SMK_PLAYERS_1 ? -1
+               : (ui->picking_p2 ? ui->player_sel : ui->player2_sel);
     for (int i = 0; i < SMK_CHARACTERS; i++) {
         int col = i & 3, row = i >> 2;
         int vx = 24 + col * 54, vy = 44 + row * 62;
-        bool on = ui->player_sel == i;
+        bool on = cursor == i;
         if (on) fill(fb, w, h, vx - 4, vy - 4, 48, 56, 0x40FFFFFF);
+        /* the driver the OTHER player has already taken, marked but not
+         * chosen - so the second pick is not a guessing game */
+        else if (i == other && !ui->picking_p2)
+            fill(fb, w, h, vx - 4, vy - 4, 48, 56, 0x20406080);
+        else if (i == other)
+            fill(fb, w, h, vx - 4, vy - 4, 48, 56, 0x2040A0FF);
         const smk_sprites *s = driver_art(rom, i);
         if (s && palette)
             smk_draw_sprite(s, SMK_SPR_REAR, palette, SMK_DRIVERS[i].pal,
@@ -309,10 +394,13 @@ static void draw_player(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
             if (*p >= 'a' && *p <= 'z') *p -= 'a' - 'A';
         text(f, fb, w, h, vx + 20 - (int)strlen(nm) * 4, vy + 40, nm,
              on ? sel : lo);
+        if (i == other)
+            text(f, fb, w, h, vx + 20 - 4, vy + 48,
+                 ui->picking_p2 ? "1" : "2", lo);
     }
     /* the engine class - the ROM's own "cc" ligature is glyph 42, but we
      * spell it with letters so the row reads at any scale */
-    bool on = ui->player_sel == PLAYER_CLASS_ROW;
+    bool on = cursor == PLAYER_CLASS_ROW;
     text(f, fb, w, h, 40, 176, "CLASS", on ? hi : lo);
     for (int c = 0; c < 3; c++) {
         const char *n = class_name(c);

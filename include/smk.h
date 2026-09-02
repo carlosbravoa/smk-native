@@ -91,6 +91,13 @@ void smk_track_place_objects(const smk_rom *rom, smk_track *t);
 uint32_t smk_track_texel(const smk_track *t, int wx, int wy);
 uint8_t  smk_track_texel_index(const smk_track *t, int wx, int wy);
 void     smk_render_set_plane_mask(uint8_t *mask, int pitch);
+/* The width the projection takes its horizontal scale from.  A view
+ * narrower than the shape the geometry was calibrated at (8:7 of its
+ * height) shows a NARROWER slice of the world rather than the same slice
+ * squashed - which is what makes two views side by side (S36) look like
+ * two windows instead of two funhouse mirrors.  Set 0 for the default. */
+void     smk_render_set_proj_width(int w);
+int      smk_render_proj_width(int w, int h);
 /* Sprite priority under the Mode 7 plane: while set, sprite pixels are
  * dropped where the mask marks the plane opaque (NOTES 128). */
 void     smk_draw_set_clip_mask(const uint8_t *mask, int pitch);
@@ -1824,10 +1831,21 @@ typedef struct { bool up, down, left, right, confirm, back; } smk_ui_input;
  * course run on its own - same eight karts, same grid, same coins - so
  * it hands the race SMK_MODE_GP; only the cup around it is missing. */
 enum { SMK_UI_MODE_GP, SMK_UI_MODE_RACE, SMK_UI_MODE_TT, SMK_UI_MODES };
+/* How many views are on the screen, and who drives the second one.  This
+ * is orthogonal to the mode above: any of the three modes can be watched
+ * by one camera or two.  The split is SIDE BY SIDE, left and right - the
+ * user's decision, and a deliberate deviation from the original, which
+ * stacks its two views because it only has 224 lines to divide. */
+enum { SMK_PLAYERS_1, SMK_PLAYERS_CPU, SMK_PLAYERS_2, SMK_PLAYERS_MODES };
 typedef struct {
     smk_ui_screen screen;
     int  mode_sel;        /* SMK_UI_MODE_*; Grand Prix is disabled */
+    int  mode_cur;        /* the cursor: 0..2 a mode, 3 the players row */
+    int  players;         /* SMK_PLAYERS_*                         */
+    int  pads;            /* controllers attached, set by the host  */
     int  player_sel;      /* SMK_DRIVERS index                     */
+    int  player2_sel;     /* who player 2 (or the watched CPU) is  */
+    bool picking_p2;      /* the driver screen is on the second one */
     int  cup_sel, course_sel;
     int  engine_class;
     int  track;           /* resolved on confirm                   */

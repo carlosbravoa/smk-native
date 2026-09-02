@@ -61,40 +61,87 @@ static void input_edges_clear(input_state *in)
  * is what hands expect on a modern pad, and the left stick doubles for
  * the d-pad through a deadzone (the game's steering is digital, so the
  * stick is thresholded, not scaled). */
-static SDL_GameController *pad;
+/* Two pads, because two people can play (S36).  Slot 0 drives player 1
+ * and slot 1 player 2; the KEYBOARD follows whoever is left over, which
+ * is the rule the user set: "if there is only one, then it is controller
+ * and keyboard".  With no pad at all the two-human mode is refused
+ * outright rather than sharing one keyboard between two drivers. */
+#define SMK_MAX_PADS 2
+static SDL_GameController *pads[SMK_MAX_PADS];
 static bool pad_off;          /* --no-pad */
 static int  pad_lx;           /* last stick reading, for the HUD */
+/* Which player the keyboard drives.  1 only when two humans are racing
+ * and exactly one pad is attached. */
+static int kb_player;
+
+int smk_pad_count(void)
+{
+    if (pad_off) return 0;
+    int n = 0;
+    for (int i = 0; i < SMK_MAX_PADS; i++) if (pads[i]) n++;
+    return n;
+}
 
 static void pad_open(int idx)
 {
-    if (pad || !SDL_IsGameController(idx)) return;
-    pad = SDL_GameControllerOpen(idx);
-    if (pad)
-        printf("gamepad: %s\n", SDL_GameControllerName(pad));
+    if (!SDL_IsGameController(idx)) return;
+    for (int i = 0; i < SMK_MAX_PADS; i++) {
+        if (pads[i]) continue;
+        pads[i] = SDL_GameControllerOpen(idx);
+        if (pads[i])
+            printf("gamepad %d: %s\n", i + 1, SDL_GameControllerName(pads[i]));
+        return;
+    }
 }
 
 static void pad_close(SDL_JoystickID which)
 {
-    if (!pad) return;
-    SDL_Joystick *j = SDL_GameControllerGetJoystick(pad);
-    if (j && SDL_JoystickInstanceID(j) == which) {
-        SDL_GameControllerClose(pad);
-        pad = NULL;
-        printf("gamepad: disconnected\n");
+    for (int i = 0; i < SMK_MAX_PADS; i++) {
+        if (!pads[i]) continue;
+        SDL_Joystick *j = SDL_GameControllerGetJoystick(pads[i]);
+        if (j && SDL_JoystickInstanceID(j) == which) {
+            SDL_GameControllerClose(pads[i]);
+            pads[i] = NULL;
+            printf("gamepad %d: disconnected\n", i + 1);
+        }
     }
 }
 
-static void pump(input_state *in)
+/* Which player's input a pad event belongs to: the pad's slot, unless
+ * only player 1 is driving, in which case any pad drives him. */
+static int pad_player(SDL_JoystickID which, int nhuman)
 {
+    for (int i = 0; i < SMK_MAX_PADS; i++) {
+        if (!pads[i]) continue;
+        SDL_Joystick *j = SDL_GameControllerGetJoystick(pads[i]);
+        if (j && SDL_JoystickInstanceID(j) == which)
+            return (nhuman > 1 && i < nhuman) ? i : 0;
+    }
+    return 0;
+}
+
+/* `ins` holds one input_state per human; `nhuman` is 1 or 2.  Everything
+ * that is not driving - quit, the toggles, menu navigation - lands on
+ * player 1's state, which is the one the shell reads. */
+static void pump(input_state *ins, int nhuman)
+{
+    input_state *in = &ins[0];
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
         if (e.type == SDL_QUIT) in->quit = true;
         if (e.type == SDL_CONTROLLERDEVICEADDED) pad_open(e.cdevice.which);
         if (e.type == SDL_CONTROLLERDEVICEREMOVED) pad_close(e.cdevice.which);
         if (e.type == SDL_CONTROLLERBUTTONDOWN) {
+            input_state *pin = &ins[pad_player(e.cbutton.which, nhuman)];
+            /* the driving buttons land on that pad's own player; the
+             * shell's navigation always on player 1 */
             switch (e.cbutton.button) {
             case SDL_CONTROLLER_BUTTON_LEFTSHOULDER:
-            case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: in->hop = true; break;
+            case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: pin->hop = true; continue;
+            case SDL_CONTROLLER_BUTTON_B:             pin->item = true; continue;
+            default: break;
+            }
+            switch (e.cbutton.button) {
             case SDL_CONTROLLER_BUTTON_RIGHTSTICK:    in->toggle_filter = true; break;
             case SDL_CONTROLLER_BUTTON_BACK:          in->prev_track = true;
                                                       in->back = true; break;
@@ -107,8 +154,8 @@ static void pump(input_state *in)
             case SDL_CONTROLLER_BUTTON_A:             in->confirm = true; break;
             /* B is the item button in a race - it must NOT also abandon
              * it, so `back` is Select/Esc only.  The menus accept B as a
-             * back too, but they read `item` for that themselves. */
-            case SDL_CONTROLLER_BUTTON_B:             in->item = true; break;
+             * back too, but they read `item` for that themselves; B is
+             * handled above, on the pad's OWN player. */
             default: break;
             }
         }
@@ -122,9 +169,9 @@ static void pump(input_state *in)
             case SDLK_p: in->next_pal = true; break;
             case SDLK_o: in->prev_pal = true; break;
             case SDLK_f: in->toggle_filter = true; break;
-            case SDLK_SPACE: in->hop = true; break;
+            case SDLK_SPACE: ins[kb_player].hop = true; break;
             case SDLK_RETURN: case SDLK_KP_ENTER: in->confirm = true; break;
-            case SDLK_z: case SDLK_LCTRL: in->item = true; break;
+            case SDLK_z: case SDLK_LCTRL: ins[kb_player].item = true; break;
             default: break;
             }
         }
@@ -144,40 +191,52 @@ static void pump(input_state *in)
             }
         }
     }
-    const Uint8 *k = SDL_GetKeyboardState(NULL);
-    in->up    = k[SDL_SCANCODE_UP]    || k[SDL_SCANCODE_W];
-    in->down  = k[SDL_SCANCODE_DOWN]  || k[SDL_SCANCODE_S];
-    in->dpad_down = k[SDL_SCANCODE_DOWN] || k[SDL_SCANCODE_S];
-    in->dpad_up   = k[SDL_SCANCODE_UP] || k[SDL_SCANCODE_W];
-    in->left  = k[SDL_SCANCODE_LEFT]  || k[SDL_SCANCODE_A];
-    in->right = k[SDL_SCANCODE_RIGHT] || k[SDL_SCANCODE_D];
-    in->shift = k[SDL_SCANCODE_LSHIFT] || k[SDL_SCANCODE_RSHIFT];
-    in->hop_held = k[SDL_SCANCODE_SPACE];
+    /* the held state: cleared for every human first, then the keyboard
+     * on its own player and each pad on its own */
+    for (int p = 0; p < nhuman; p++) {
+        ins[p].up = ins[p].down = ins[p].left = ins[p].right = false;
+        ins[p].dpad_up = ins[p].dpad_down = ins[p].shift = ins[p].hop_held = false;
+    }
+    {
+        const Uint8 *k = SDL_GetKeyboardState(NULL);
+        input_state *ki = &ins[kb_player < nhuman ? kb_player : 0];
+        ki->up    |= k[SDL_SCANCODE_UP]    || k[SDL_SCANCODE_W];
+        ki->down  |= k[SDL_SCANCODE_DOWN]  || k[SDL_SCANCODE_S];
+        ki->dpad_down |= k[SDL_SCANCODE_DOWN] || k[SDL_SCANCODE_S];
+        ki->dpad_up   |= k[SDL_SCANCODE_UP] || k[SDL_SCANCODE_W];
+        ki->left  |= k[SDL_SCANCODE_LEFT]  || k[SDL_SCANCODE_A];
+        ki->right |= k[SDL_SCANCODE_RIGHT] || k[SDL_SCANCODE_D];
+        ki->shift |= k[SDL_SCANCODE_LSHIFT] || k[SDL_SCANCODE_RSHIFT];
+        ki->hop_held |= k[SDL_SCANCODE_SPACE];
+    }
 
-    if (pad && !pad_off) {
+    for (int i = 0; i < SMK_MAX_PADS && !pad_off; i++) {
+        SDL_GameController *pad = pads[i];
+        if (!pad) continue;
+        input_state *pin = &ins[(nhuman > 1 && i < nhuman) ? i : 0];
         const int DEAD = 9000;      /* stick deadzone, SDL units */
         const int TRIG = 12000;     /* trigger press threshold   */
         int lx = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_LEFTX);
         int lt = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_TRIGGERLEFT);
         int rt = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
         #define BTN(b) SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_##b)
-        in->up    |= BTN(A) || rt > TRIG;                 /* SNES B: accel */
-        in->down  |= BTN(X) || lt > TRIG;                 /* SNES Y: brake */
-        in->dpad_down |= BTN(DPAD_DOWN)
+        pin->up    |= BTN(A) || rt > TRIG;                 /* SNES B: accel */
+        pin->down  |= BTN(X) || lt > TRIG;                 /* SNES Y: brake */
+        pin->dpad_down |= BTN(DPAD_DOWN)
                       || SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_LEFTY) > DEAD;
-        in->dpad_up   |= BTN(DPAD_UP)
+        pin->dpad_up   |= BTN(DPAD_UP)
                       || SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_LEFTY) < -DEAD;
         /* A stick is only believed once it has been seen at rest.  A
          * pad that reports a stuck or miscalibrated axis would otherwise
          * steer for ever with nothing touching it, and the player has no
          * way to tell that from a bug in the driving code. */
-        static bool stick_ok;
-        if (lx > -DEAD && lx < DEAD) stick_ok = true;
-        in->left  |= BTN(DPAD_LEFT)  || (stick_ok && lx < -DEAD);
-        in->right |= BTN(DPAD_RIGHT) || (stick_ok && lx >  DEAD);
-        pad_lx = lx;
-        in->hop_held |= BTN(LEFTSHOULDER) || BTN(RIGHTSHOULDER);
-        in->shift |= BTN(Y);
+        static bool stick_ok[SMK_MAX_PADS];
+        if (lx > -DEAD && lx < DEAD) stick_ok[i] = true;
+        pin->left  |= BTN(DPAD_LEFT)  || (stick_ok[i] && lx < -DEAD);
+        pin->right |= BTN(DPAD_RIGHT) || (stick_ok[i] && lx >  DEAD);
+        if (i == 0) pad_lx = lx;
+        pin->hop_held |= BTN(LEFTSHOULDER) || BTN(RIGHTSHOULDER);
+        pin->shift |= BTN(Y);
         #undef BTN
     }
 }
@@ -452,7 +511,7 @@ static void draw_rescue_lakitu(uint32_t *fb, int rw, int rh,
      * is the kart's sprite top minus 27 and his block sits 15 px left of
      * the kart's (NOTES 195's capture, both from the same frames).  The
      * kart's drawn top = the player line minus its lift minus 32. */
-    int scale2 = rw / 256; if (scale2 < 1) scale2 = 1;
+    int scale2 = smk_render_proj_width(rw, rh) / 256; if (scale2 < 1) scale2 = 1;
     int kart_top = (int)(SMK_PLAYER_LINE * (float)rh / 112.0f) / sc
                  - (rescue_draw_lift + 32 * scale2) / sc;
     int y = kart_top - 27 - rise;
@@ -836,6 +895,18 @@ static void draw_speedo(uint32_t *fb, int rw, int rh,
  * the decoded control in src/player.c (NOTES 103). */
 
 static smk_player player;
+/* SMK_PLAYERS_* from the shell, and who player 2 (or the watched CPU) is */
+static int players_mode;
+static int p2_character = 1;
+/* how many views are on the screen: 1 or 2 (S36) */
+static int nviews = 1;
+/* These four were locals of main().  They are per-VIEW state now (S36),
+ * so they live out here with the rest of it and are swapped by
+ * pv_switch() when the second player's half of the frame runs. */
+static smk_camera cam;
+static smk_racer *me;               /* the racers[] slot this view drives */
+static float lean;                  /* the sprite's steering lean          */
+static input_state in;              /* this view's own pad                 */
 
 /* ---- the game shell ------------------------------------------------
  * The race used to be the whole program; it is now one screen of a
@@ -846,6 +917,10 @@ static smk_track    trk;
 static smk_course   crs;
 static smk_physics  phys;
 static smk_sprites  karts;
+/* player 2's kart sheet; player 1's is `karts`.  view_karts points at
+ * whichever belongs to the view being stepped or drawn. */
+static smk_sprites  karts_p2;
+static smk_sprites *view_karts = &karts;
 static smk_racer    racers[SMK_CHARACTERS];
 /* the loaded ROM, so the per-frame sound code can read its tables
  * (the overtake voices, NOTES 235) without threading it through */
@@ -987,7 +1062,7 @@ static void step_kart(smk_kart *k, smk_track *trk,
     }
     /* $84DBD5 runs every frame: the lap segment the player's waypoint
      * falls in decides which obstacles are on the track (NOTES 127) */
-    if (course_for_step) smk_course_spawn(course_for_step, player_sector, false);
+    if (course_for_step) smk_course_spawn(course_for_step, player_sector, nviews > 1);
     bool grounded = k->z == 0;                   /* $1F,x before this frame's jump update */
     smk_player_step(&player, k, trk, held, pressed);
     /* Not while Lakitu has it.  smk_collide_objects pushes the kart's
@@ -1420,6 +1495,130 @@ static void step_kart(smk_kart *k, smk_track *trk,
     player_airborne = k->airborne;
 }
 
+/* The ROM's angle is 0 = -Y increasing clockwise; the renderer wants
+ * radians with 0 = +X, and (cos, sin) must equal (sin a, -cos a). */
+/* MEASURED (tools/labs/spincam.py, NOTES 196): through the object tumble
+ * (state $1A) the camera azimuth $94 turns WITH the spin - $A4 + $C0 +
+ * $AA/2, while the pose goes the other way, $A4 - $AA/2 - so the whole
+ * view does 360s at half the tumble rate (a turn every 16 frames at $2000,
+ * decaying with $E4).  The banana's and the coinless bump's spins leave
+ * $94 at $A4 + $C0: only the sprite turns.  The user remembered the
+ * camera turning; this is which one. */
+static int cam_spin;            /* $AA/2 while tumbling, else 0 */
+static void camera_from_kart(smk_camera *cam, const smk_kart *k)
+{
+    cam->x = (float)k->x / (float)SMK_POS_ONE;
+    cam->y = (float)k->y / (float)SMK_POS_ONE;
+    /* the ROM's camera azimuth is the heading plus a constant $C0 lead
+     * ($808632, measured on the live race: cam - $A4 == 192 every frame) */
+    uint16_t az = (uint16_t)(k->angle + SMK_CAM_LEAD + cam_spin);
+    cam->angle = (float)az * (2.0f * (float)M_PI / (float)SMK_ANGLE_TURN)
+                 - (float)M_PI / 2.0f;
+}
+
+static int8_t was_cool;   /* the kart's contact window before the collide */
+static int menu_nav_left;   /* SMK_MENU_NAV still has keys to send */
+static int show_kart = 1, show_grid = 1;
+
+/* ---- the two views (S36: two-player, side by side) -------------------
+ *
+ * The race is one WORLD - one track, one field of eight karts, one clock
+ * - watched by one or two cameras, each belonging to a driver.  Every
+ * global above that describes A DRIVER rather than the world is listed
+ * here once; the struct, the save and the load are all generated from
+ * that one list, so a field cannot be saved without being restored or
+ * added to one and forgotten in the other.
+ *
+ * The rest of the file goes on reading the plain names.  pv_switch(i)
+ * makes view i's copy the live one, and the frame runs the per-driver
+ * work once per view around a single shared world update.
+ *
+ * What is NOT here is deliberate: the track, the course, the racers
+ * array, the projectiles, the coin effects, the clock, the countdown and
+ * the item TABLES are the world's, and there is exactly one of each. */
+#define PV_LIST(X)                  \
+    X(smk_player,      player)      \
+    X(smk_kart,        kart)        \
+    X(smk_camera,      cam)         \
+    X(int,             cam_spin)    \
+    X(smk_racer *,     me)          \
+    X(input_state,     in)          \
+    X(float,           lean)        \
+    X(const smk_driver *, drv)      \
+    X(smk_item,        item)        \
+    X(bool,            item_used_once) \
+    X(int,             celebrating) \
+    X(uint16_t,        finish_yaw)  \
+    X(int,             celebrating_pose) \
+    X(int,             finish_t)    \
+    X(bool,            race_over)   \
+    X(bool,            race_reported) \
+    X(int,             player_sector) \
+    X(int,             player_slip_deg) \
+    X(int,             player_slip_units) \
+    X(int,             player_airborne) \
+    X(int,             player_height_px) \
+    X(int,             player_below) \
+    X(smk_effects,     fx)          \
+    X(smk_effect_state, fx_state)   \
+    X(int,             fx_frame_idx) \
+    X(bool,            fx_mirror)   \
+    X(int,             fx_kind_now) \
+    X(int,             hud_lap)     \
+    X(int,             hud_rank)    \
+    X(int,             hud_input)   \
+    X(int,             lap_sign_t)  \
+    X(int,             rescue_t)    \
+    X(int,             rescue_draw_lift) \
+    X(int,             lakitu_exit_t) \
+    X(long,            lap_start_frames) \
+    X(int,             crossings)   \
+    X(smk_ui_result,   result)      \
+    X(bool,            tt_mushroom) \
+    X(smk_autopilot,   autopilot)   \
+    X(int,             racer_draw_mask) \
+    X(int8_t,          was_cool)     /* bump_cool before the field collided */ \
+    X(smk_sprites *,   view_karts)   /* this driver's own kart sheet */ \
+    X(int,             show_kart) \
+    X(int,             show_grid) \
+    X(unsigned,        fx_ticks)
+
+#define PV_DECL(t, n) t n;
+#define PV_SAVE(t, n) v->n = n;
+#define PV_LOAD(t, n) n = v->n;
+typedef struct {
+    PV_LIST(PV_DECL)
+    /* not swapped state: what this view IS */
+    int  slot;            /* the racers[] index it drives                */
+    bool human;           /* false: it watches a CPU kart (1P + CPU)     */
+    uint32_t *fb;         /* its own framebuffer, half the window wide   */
+    int  rw, rh;
+} pview;
+
+static pview views[2];
+static int   cur_view;            /* whose copy the globals hold now     */
+/* SMK_PLAYERS_* from the shell, kept here so a race can be rebuilt */
+
+static void pv_save(pview *v) { PV_LIST(PV_SAVE) }
+static void pv_load(const pview *v) { PV_LIST(PV_LOAD) }
+
+/* Is racers[q] a slot a PERSON is driving?  The AI must not step it and
+ * the field's item pass must not hit it twice. */
+static bool slot_is_human(int q)
+{
+    for (int i = 0; i < nviews; i++)
+        if (views[i].human && views[i].slot == q) return true;
+    return false;
+}
+
+static void pv_switch(int i)
+{
+    if (i == cur_view) return;
+    pv_save(&views[cur_view]);
+    pv_load(&views[i]);
+    cur_view = i;
+}
+
 /* ---- the race, built and rebuilt by the shell -----------------------
  *
  * Time trial has NO coins and NO item boxes: the running game's tilemap
@@ -1476,6 +1675,7 @@ static bool load_race(const smk_rom *rom, int track, int theme, int character,
     build_track_map(&trk);
 
     drv = &SMK_DRIVERS[character];
+    view_karts = &karts;
     if (!smk_sprites_load(rom, drv->sheet, &karts))
         fprintf(stderr, "warning: kart sprites did not load\n");
     if (!smk_player_setup(rom, character, engine_class, &player)
@@ -1488,7 +1688,10 @@ static bool load_race(const smk_rom *rom, int track, int theme, int character,
      * indexed by the game's kart BLOCK, which is what smk_grid_order
      * returns and what SMK_GRID_SLOT turns into a row: block 0 - the
      * player - is at the BACK, block 7 on the pole. */
-    smk_grid_order(rom, character, 0, false, grid);
+    /* Two people take the two front human slots, so the grid order is
+     * the ROM's own two-player one (NOTES 161 / smk_grid_order). */
+    smk_grid_order(rom, character, p2_character,
+                   players_mode != SMK_PLAYERS_1, grid);
     for (int i = 0; i < SMK_CHARACTERS; i++) {
         smk_racer_start(&racers[i], &crs, SMK_GRID_SLOT(i));
         racers[i].character = grid[i];
@@ -1542,29 +1745,57 @@ static bool load_race(const smk_rom *rom, int track, int theme, int character,
     course_for_step = &crs;
     player_sector = 0;
     fx_state.kind = -1;
+    show_kart = 1;
+    show_grid = (mode == SMK_MODE_TT) ? show_grid : 1;
+
+    /* ---- the second view (S36) -------------------------------------
+     * Everything above set up ONE driver.  The globals are that driver,
+     * so they are banked as view 0 and then copied wholesale into view
+     * 1, which keeps the fresh race and changes only what makes it
+     * somebody else: its grid slot, its driver, its sprite sheet and its
+     * own camera.  A CPU view keeps no player of its own - the AI drives
+     * that kart and this only watches it. */
+    nviews = (players_mode == SMK_PLAYERS_1) ? 1 : 2;
+    views[0].slot = 0;
+    views[0].human = true;
+    cur_view = 0;
+    me = &racers[0];
+    racer_draw_mask = (mode == SMK_MODE_TT) ? 0x00 : 0xFE;
+    pv_save(&views[0]);
+    if (nviews > 1) {
+        uint32_t *keep = views[1].fb;
+        int kw = views[1].rw, kh = views[1].rh;
+        views[1] = views[0];
+        views[1].fb = keep; views[1].rw = kw; views[1].rh = kh;
+        views[1].slot = 1;
+        views[1].human = (players_mode == SMK_PLAYERS_2);
+        views[1].me = &racers[1];
+        views[1].drv = &SMK_DRIVERS[p2_character % SMK_CHARACTERS];
+        views[1].view_karts = &karts_p2;
+        if (!smk_sprites_load(rom, views[1].drv->sheet, &karts_p2))
+            fprintf(stderr, "warning: player 2's kart sprites did not load\n");
+        if (!smk_player_setup(rom, p2_character % SMK_CHARACTERS,
+                              engine_class, &views[1].player))
+            fprintf(stderr, "warning: player 2's physics did not load\n");
+        /* its kart IS its grid slot - smk_racer_start put it there */
+        views[1].kart = racers[1].k;
+        smk_player_reset(&views[1].player, views[1].kart.angle);
+        views[1].player.coins = (mode == SMK_MODE_TT) ? 0 : 2;
+        memset(&views[1].in, 0, sizeof views[1].in);
+        smk_autopilot_init(&views[1].autopilot);
+        views[1].cam_spin = 0;
+        camera_from_kart(&views[1].cam, &views[1].kart);
+        /* a driver does not draw his own kart through the projection -
+         * his is the near one; a CPU view draws every kart, including
+         * the one it follows, because it has no near kart of its own */
+        views[1].show_kart = views[1].human;
+        views[1].racer_draw_mask = views[1].human ? (0xFF & ~(1 << 1)) : 0xFF;
+        views[1].tt_mushroom = false;
+        views[1].player.item_held = false;
+    }
     return true;
 }
 
-/* The ROM's angle is 0 = -Y increasing clockwise; the renderer wants
- * radians with 0 = +X, and (cos, sin) must equal (sin a, -cos a). */
-/* MEASURED (tools/labs/spincam.py, NOTES 196): through the object tumble
- * (state $1A) the camera azimuth $94 turns WITH the spin - $A4 + $C0 +
- * $AA/2, while the pose goes the other way, $A4 - $AA/2 - so the whole
- * view does 360s at half the tumble rate (a turn every 16 frames at $2000,
- * decaying with $E4).  The banana's and the coinless bump's spins leave
- * $94 at $A4 + $C0: only the sprite turns.  The user remembered the
- * camera turning; this is which one. */
-static int cam_spin;            /* $AA/2 while tumbling, else 0 */
-static void camera_from_kart(smk_camera *cam, const smk_kart *k)
-{
-    cam->x = (float)k->x / (float)SMK_POS_ONE;
-    cam->y = (float)k->y / (float)SMK_POS_ONE;
-    /* the ROM's camera azimuth is the heading plus a constant $C0 lead
-     * ($808632, measured on the live race: cam - $A4 == 192 every frame) */
-    uint16_t az = (uint16_t)(k->angle + SMK_CAM_LEAD + cam_spin);
-    cam->angle = (float)az * (2.0f * (float)M_PI / (float)SMK_ANGLE_TURN)
-                 - (float)M_PI / 2.0f;
-}
 
 
 /* A rendered frame to a PPM, for looking at something instead of
@@ -1589,6 +1820,10 @@ static void save_ppm(const char *path, const uint32_t *fb, int w, int h)
  * rather than an estimate.  Capped, because a kart that is genuinely stuck
  * must not hang the results screen - those are shown as DNF.
  */
+static bool slot_is_human(int q);
+/* Bring the field home after the player has finished, so the results have
+ * everybody's time.  A slot a PERSON drives is left alone - they are
+ * still racing, and their time is their own. */
 static void settle_field(smk_racer *rs, const smk_track *t,
                          const smk_course *c, const smk_physics *ph, long now)
 {
@@ -1596,12 +1831,13 @@ static void settle_field(smk_racer *rs, const smk_track *t,
     for (long f = 0; f < CAP; f++) {
         int left = 0;
         for (int i = 1; i < SMK_CHARACTERS; i++)
-            if (rs[i].finish_frame < 0) left++;
+            if (rs[i].finish_frame < 0 && !slot_is_human(i)) left++;
         if (!left) break;
         smk_race_frame = now + f;
         smk_ai_rubber(rs, SMK_CHARACTERS, c, ph->engine_class);
         for (int i = 1; i < SMK_CHARACTERS; i++)
-            if (rs[i].finish_frame < 0) smk_racer_step(&rs[i], t, c, ph);
+            if (rs[i].finish_frame < 0 && !slot_is_human(i))
+                smk_racer_step(&rs[i], t, c, ph);
     }
     /* whoever is STILL out there (stuck on an obstacle, off in the weeds)
      * gets a time anyway - "the simulation needs them to arrive, with
@@ -1619,9 +1855,12 @@ static void settle_field(smk_racer *rs, const smk_track *t,
 }
 
 /* The finishing order and everyone's total, for the results screen. */
-static void build_result_table(smk_ui_result *res, smk_racer *rs, long player_total)
+/* `who` is the racers[] slot the result belongs to - slot 0 for player 1,
+ * slot 1 when player 2's own screen builds his (S36). */
+static void build_result_table(smk_ui_result *res, smk_racer *rs,
+                               long player_total, int who)
 {
-    rs[0].finish_frame = player_total;         /* the clock the HUD showed */
+    rs[who].finish_frame = player_total;       /* the clock the HUD showed */
     int order[SMK_CHARACTERS];
     for (int i = 0; i < SMK_CHARACTERS; i++) order[i] = i;
     /* finished karts by time, then the DNFs; a plain insertion sort, which
@@ -1644,10 +1883,10 @@ static void build_result_table(smk_ui_result *res, smk_racer *rs, long player_to
         rs[i].place = p + 1;
         res->field[p].character = rs[i].character;
         res->field[p].total     = rs[i].finish_frame;
-        res->field[p].player    = (i == 0);
+        res->field[p].player    = slot_is_human(i);
     }
     res->entries  = SMK_CHARACTERS;
-    res->position = rs[0].place;
+    res->position = rs[who].place;
 }
 
 /* The celebration camera: swing round to look the kart in the face.
@@ -1944,7 +2183,7 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
             float l2h2 = (float)rh / 112.0f;
             float dep2 = SMK_PROJ_K / (py / l2h2 - SMK_PROJ_H);
             float f22 = dep2 - SMK_CAM_TRAIL;
-            float st2 = dep2 / (SMK_PROJ_LES * (float)rw / 256.0f);
+            float st2 = dep2 / (SMK_PROJ_LES * (float)smk_render_proj_width(rw, rh) / 256.0f);
             int by = (int)py;
             for (int xx = 0; xx + 1 < rw; xx++) {
                 float ux = -sinf(cam->angle) * st2, uy = cosf(cam->angle) * st2;
@@ -1977,7 +2216,7 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
             float l2h = (float)rh / 112.0f;
             float dep = SMK_PROJ_K / (py / l2h - SMK_PROJ_H);
             float f2 = dep - SMK_CAM_TRAIL;
-            float st = dep / (SMK_PROJ_LES * (float)rw / 256.0f);
+            float st = dep / (SMK_PROJ_LES * (float)smk_render_proj_width(rw, rh) / 256.0f);
             float gx = cam->x + cosf(cam->angle) * f2
                      - sinf(cam->angle) * st * (px - rw / 2.0f);
             float gy = cam->y + sinf(cam->angle) * f2
@@ -2005,7 +2244,7 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
          * view's own 256:112; at 1350x505 they differ by 17%, and a
          * Thwomp measured 55.9 lines up where the game puts it 46.8.
          * Inverting smk_project's own line recovers the depth. */
-        float depth = (SMK_PROJ_LES * (float)rw / 256.0f) / sc;
+        float depth = (SMK_PROJ_LES * (float)smk_render_proj_width(rw, rh) / 256.0f) / sc;
         int lift = (int)(smk_mover_world(course, i)
                          * (SMK_PROJ_LES / depth) * ((float)rh / 112.0f));
         if (fart) {
@@ -2141,7 +2380,7 @@ static void draw_ai_kart(const smk_rom *rom, const smk_track *trk,
          * full -> mini at depth ~84, and there is no distance cull. */
         float dep_eye = depth + SMK_CAM_TRAIL;
         if (dep_eye < 12.0f) return;
-        int scale = (int)((float)(rw / 256) * SMK_CAM_TRAIL / dep_eye + 0.5f);
+        int scale = (int)((float)(smk_render_proj_width(rw, rh) / 256) * SMK_CAM_TRAIL / dep_eye + 0.5f);
         if (scale < 1) scale = 1;
         int ch = racers[k].character;
         if (ch < 0 || ch >= SMK_CHARACTERS) ch = k;
@@ -2206,7 +2445,7 @@ static void draw_ai_kart(const smk_rom *rom, const smk_track *trk,
         for (int t = 1; t < 4; t++)
             if (fabsf((float)KTIER[t].h - kwant)
                 < fabsf((float)KTIER[kt].h - kwant)) kt = t;
-        int kscale = rw / 256;
+        int kscale = smk_render_proj_width(rw, rh) / 256;
         if (kscale < 1) kscale = 1;
         if (getenv("SMK_TIER_TRACE") && (fx_ticks % 10) == 0)
             printf("tier f%u kart %d kd %.0f kwant %.1f tier %d (h %d) mirror %d\n",
@@ -2357,7 +2596,7 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
      * loss and coming down to the kart, which no throw from the kart
      * reproduces (NOTES 186). */
     if (coin_art.ok && !celebrating) {
-        int scale = rw / 256; if (scale < 1) scale = 1;
+        int scale = smk_render_proj_width(rw, rh) / 256; if (scale < 1) scale = 1;
         int prow = (int)(SMK_PLAYER_LINE * (float)rh / 112.0f);
         int kx = rw / 2, ky = prow - player_height_px * scale - 32 * scale;
         for (int i = 0; i < SMK_COINFX_MAX; i++) {
@@ -2394,7 +2633,7 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
         float px, py, sc;
         if (!smk_project(cam, (float)smk_kart_px(pr->x + pr->wx), (float)smk_kart_px(pr->y + pr->wy),
                          rw, rh, &px, &py, &sc)) continue;
-        int scale = rw / 256; if (scale < 1) scale = 1;
+        int scale = smk_render_proj_width(rw, rh) / 256; if (scale < 1) scale = 1;
         float kdx = (float)smk_kart_px(pr->x) - cam->x, kdy = (float)smk_kart_px(pr->y) - cam->y;
         float kd = sqrtf(kdx * kdx + kdy * kdy); if (kd < SMK_OBJ_NEAR) kd = SMK_OBJ_NEAR;
         int cs = (int)((float)scale * SMK_KART_SCALE_K / kd * 0.5f + 0.5f);
@@ -2454,7 +2693,7 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
     }
     if (show_kart && !celebrating && karts->frames
         && !(player.boo_t > 0 && (fx_ticks & 1))) {   /* Boo: OURS, a flicker */
-        int scale = rw / 256;                 /* the SNES 32px proportion */
+        int scale = smk_render_proj_width(rw, rh) / 256;   /* the SNES 32px proportion */
         if (scale < 1) scale = 1;
         /* small after lightning ($84): OURS, half the art scale; the star
          * ($4E bit 15): OURS, the palette cycling through the drivers' */
@@ -2517,7 +2756,7 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
          * trail distance, so that is the scale its shadow is drawn at. */
         if (lift > 0)
             draw_shadow(fb, rw, rh, (float)(rw / 2), (float)prow,
-                        SMK_PROJ_LES * (float)rw / 256.0f / SMK_CAM_TRAIL);
+                        SMK_PROJ_LES * (float)smk_render_proj_width(rw, rh) / 256.0f / SMK_CAM_TRAIL);
         if (player.squash_t > 0)                   /* bug 13: flattened */
             draw_flat(fb, rw, rh, trk->palette, (int)(drv - SMK_DRIVERS), 1,
                       rw / 2, prow - lift, (float)scale);
@@ -2780,6 +3019,75 @@ static int frame_for(const input_state *in, float *lean)
 
 
 /* ------------------------------------------------------------------ */
+/* ---- one view's picture (S36) ---------------------------------------
+ *
+ * Everything a single driver sees, drawn into the framebuffer it is
+ * handed: the Mode 7 plane under his own camera, the field, his kart,
+ * his dashboard.  With one view that buffer is the window; with two it
+ * is one half of it, and this runs twice with pv_switch between. */
+static void render_view(uint32_t *fb, int rw, int rh)
+{
+            smk_render_set_horizon(&horizon, kart.angle);
+            if (plane_mask_sz < (size_t)rw * (size_t)rh) {
+                free(plane_mask);
+                plane_mask_sz = (size_t)rw * (size_t)rh;
+                plane_mask = malloc(plane_mask_sz);
+            }
+            smk_render_set_plane_mask(plane_mask, rw);
+            player_below = kart.z < 0;   /* a real drop, not the fall countdown */
+            smk_render_mode7(&trk, &cam, fb, rw, rh, rw);
+            hud_input = (in.left ? 1 : 0) | (in.right ? 2 : 0)
+                      | (in.up ? 4 : 0);
+            /* The lap SHOWN is the crossing count, not one more than it:
+             * the grid is behind the line, so the first crossing enters
+             * lap 1 rather than completing it ($8089C9 skips $8000).  This
+             * used to read me->lap + 1 and so showed LAP 2 from the first
+             * time you passed the flag. */
+            hud_lap = me->lap < 1 ? 1 : me->lap;
+            if (hud_lap > SMK_RACE_LAPS) hud_lap = SMK_RACE_LAPS;
+            hud_rank = smk_race_rank(racers, (int)(me - racers), &crs);
+            int pframe = frame_for(&in, &lean);
+            /* The SPIN states draw through the FULL rotation rule, not
+             * frame_for's seven bands: those cap at the side-on frame, so
+             * half of every spin showed one frame and the feather's 360
+             * never read as a rotation (round 2, bug 3).  The pose lag
+             * carries the spin; the AI's measured heading rule turns it
+             * into the whole frame circle. */
+            if (player.state == 0x0A || player.state == 0x0C
+                || player.state == 0x0E || player.state == 0x10
+                || player.state == 0x18 || player.state == 0x1A) {
+                uint16_t r16 = (uint16_t)player_slip_units;
+                int ar16 = (int16_t)r16 < 0 ? -(int16_t)r16 : (int16_t)r16;
+                if (ar16 < 0x0400) pframe = 1000;
+                else {
+                    bool hfs = false;
+                    int fs = smk_sprite_for_heading(SMK_SPR_TIER0, r16, &hfs);
+                    pframe = hfs ? -fs : fs;
+                }
+            }
+            {
+                int af = pframe < 0 ? -pframe : pframe;
+                if (af > 7 && af != 47 && pframe != 1000) af = 7;   /* the fx column caps at 7 */
+                /* the game's $BC frame index: 0 straight, 1..7 the rotation
+                 * bands; the drift-onset sheet frame 47 counts as band 1
+                 * (LABELLED: its $BC index is not measured) */
+                fx_frame_idx = (pframe == 1000) ? 0 : (af == 47 ? 1 : af);
+                fx_mirror = pframe != 1000 && pframe < 0;
+            }
+            draw_scene(the_rom, &trk, view_karts, drv, &cam, fb, rw, rh,
+                       show_grid, show_kart, pframe,
+                       (uint16_t)(kart.angle + finish_yaw), racers, &crs);
+            if (!celebrating && show_speedo)
+                draw_speedo(fb, rw, rh, &kart,
+                            smk_track_surface(&trk, smk_kart_px(kart.x),
+                                              smk_kart_px(kart.y)),
+                            player.target);
+            if (race_mode == SMK_MODE_TT)
+                smk_ui_draw_splits(&menu_font, &result,
+                                   hud_race_frames - lap_start_frames,
+                                   result.laps_done, tt_mushroom, fb, rw, rh);
+}
+
 static void usage(const char *argv0)
 {
     printf("usage: %s [options]\n"
@@ -2799,6 +3107,9 @@ static void usage(const char *argv0)
            "                  and out as you drive; the default shows them all\n"
            "  --theme N       override the course theme    [from ROM]\n"
            "  --class N       engine class 0/1/2 (50/100/150cc)  [0]\n"
+           "  --players N     1 | cpu | 2: one view, or two side by side\n"
+           "                  (cpu: the right half follows a CPU kart)\n"
+           "  --character2 N  who player 2 (or that CPU) drives   [1]\n"
            "  --character N   0 Mario 1 Luigi 2 Bowser 3 Peach 4 DK Jr\n"
            "                  5 Yoshi 6 Koopa 7 Toad              [0]\n"
            "  --no-kart       hide the player's kart\n"
@@ -2848,8 +3159,8 @@ int main(int argc, char **argv)
     int track = 0, theme = -1;   /* -1 = use the ROM's own binding */
     int engine_class = 0;        /* 0 = 50cc, 1 = 100cc, 2 = 150cc  */
     int character = 0;           /* index into SMK_DRIVERS */
-    int show_kart = 1;
-    int show_grid = 1;
+    show_kart = 1;
+    show_grid = 1;
     int win_w = 1024, win_h = 896, pixel = 2, fullscreen = 0;
     const char *dump = NULL;          /* write raw track data and exit      */
     const char *shot = NULL;          /* render one frame to a BMP and exit */
@@ -2898,6 +3209,15 @@ int main(int argc, char **argv)
         if (!strcmp(a, "--obj-marks")) { obj_marks = true; continue; }
         ARG("--theme", theme) ARG("--class", engine_class)
         ARG("--character", character)
+        /* --players 1 | cpu | 2: one view, or two side by side with the
+         * right-hand one following a CPU kart or a second person */
+        if (!strcmp(a, "--players") && i + 1 < argc) {
+            const char *w = argv[++i];
+            players_mode = !strcmp(w, "2") ? SMK_PLAYERS_2
+                         : (!strcmp(w, "cpu") ? SMK_PLAYERS_CPU : SMK_PLAYERS_1);
+            continue;
+        }
+        ARG("--character2", p2_character)
         if (!strcmp(a, "--no-kart")) { show_kart = 0; continue; }
         if (!strcmp(a, "--no-grid")) { show_grid = 0; continue; }
         if (!strcmp(a, "--no-pad")) { pad_off = true; continue; }
@@ -3211,7 +3531,8 @@ int main(int argc, char **argv)
      * permissions) must still run, so this failing is not fatal. */
     if (SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER) == 0) {
         for (int i = 0; i < SDL_NumJoysticks(); i++) pad_open(i);
-        if (!pad) printf("gamepad: none connected (keyboard active)\n");
+        if (!smk_pad_count())
+            printf("gamepad: none connected (keyboard active; two-player needs one)\n");
     } else {
         fprintf(stderr, "gamepad: unavailable (%s)\n", SDL_GetError());
     }
@@ -3233,7 +3554,7 @@ int main(int argc, char **argv)
     SDL_Texture *tex = NULL;
     uint32_t *fb = NULL;
 
-    smk_camera cam = { 0 };
+    cam = (smk_camera){ 0 };
     course_for_step = &crs;
     rom_for_step = &rom;
     /* starting coins: the ROM's table at $81E3DA by the kart's $E6 field,
@@ -3244,9 +3565,11 @@ int main(int argc, char **argv)
         smk_racer_start(&racers[i], &crs, SMK_GRID_SLOT(i));
         racers[i].character = grid[i];
     }
-    smk_racer *me = &racers[0];
+    me = &racers[0];
+    views[0].slot = 0;
+    views[0].human = true;
 
-    float lean = 0.0f;
+    lean = 0.0f;
     float g0x, g0y;
     uint16_t g0h;
     smk_course_start(&crs, SMK_GRID_SLOT(0), &g0x, &g0y, &g0h);
@@ -3266,18 +3589,24 @@ int main(int argc, char **argv)
     }
     camera_from_kart(&cam, &kart);
 
-    input_state in;
     memset(&in, 0, sizeof in);
+    /* the globals ARE view 0 at this point: bank them so pv_switch has
+     * something to come back to */
+    pv_save(&views[0]);
 
     /* the shell */
     shell = !explicit_start || force_menu;
     smk_ui_init(&ui);
+    menu_nav_left = getenv("SMK_MENU_NAV") != NULL;
     if (!smk_font_load(&rom, &menu_font))
         fprintf(stderr, "warning: menu font not loaded\n");
     smk_records_load(&records);
     if (shell) {
         ui.player_sel = character;
         ui.engine_class = engine_class;
+        ui.players = players_mode;
+        ui.player2_sel = p2_character % SMK_CHARACTERS;
+        ui.pads = smk_pad_count();
         printf("lap records: %s\n", smk_records_path());
     } else {
         ui.screen = SMK_UI_RACE;
@@ -3288,6 +3617,11 @@ int main(int argc, char **argv)
         } else if (want_race && !replay_path) {
             /* A full eight-kart race with no shell, so --autodrive --fast
              * makes the AI measurable headlessly (SMK_ROW_TRACE). */
+            load_race(&rom, track, theme, character, engine_class, SMK_MODE_GP);
+            camera_from_kart(&cam, &kart);
+        } else if (players_mode != SMK_PLAYERS_1 && !replay_path) {
+            /* a bare --track with two views has to go through the race
+             * builder, because that is what sets the second one up */
             load_race(&rom, track, theme, character, engine_class, SMK_MODE_GP);
             camera_from_kart(&cam, &kart);
         }
@@ -3301,7 +3635,21 @@ int main(int argc, char **argv)
     int frames = 0; Uint64 fps_t0 = prev;
 
     while (!in.quit) {
-        pump(&in);
+        /* Both pads are read into the two views' own sticky states.  The
+         * live globals always hold view 0 at the top of a frame, so its
+         * copy is the one in `in`. */
+        pv_switch(0);
+        {
+            int nhuman = (nviews > 1 && views[1].human) ? 2 : 1;
+            /* the user's rule: with one controller it is "controller and
+             * keyboard", so the pad takes player 1 and the keys player 2 */
+            kb_player = (nhuman > 1 && smk_pad_count() == 1
+                         && (!shell || ui.screen == SMK_UI_RACE)) ? 1 : 0;
+            input_state ins[2];
+            ins[0] = in; ins[1] = views[1].in;
+            pump(ins, nhuman);
+            in = ins[0]; views[1].in = ins[1];
+        }
         /* the music follows the state; the mapping is the user's
          * music/map.txt (NOTES 202) */
         {
@@ -3361,10 +3709,36 @@ int main(int argc, char **argv)
                     smk_sfx_play(SMK_SFX_MENU_MOVE);
                 else if (nav.confirm) smk_sfx_play(SMK_SFX_MENU_OK);
                 else if (nav.back)    smk_sfx_play(SMK_SFX_MENU_BACK);
+                /* SMK_MENU_NAV=cdd... drives the shell one key a tick
+                 * (c confirm, b back, u d l r), so a menu screen can be
+                 * reached and shot headlessly instead of by hand. */
+                {
+                    static const char *nav_script = NULL;
+                    static int nav_init = 0, nav_i = 0;
+                    if (!nav_init) {
+                        nav_init = 1;
+                        nav_script = getenv("SMK_MENU_NAV");
+                        if (nav_script && *nav_script) menu_nav_left = 1;
+                    }
+                    if (nav_script && nav_script[nav_i]) {
+                        char c = nav_script[nav_i++];
+                        nav.up = c == 'u'; nav.down = c == 'd';
+                        nav.left = c == 'l'; nav.right = c == 'r';
+                        nav.confirm = c == 'c'; nav.back = c == 'b';
+                        menu_nav_left = 1;
+                    } else if (nav_script) {
+                        menu_nav_left = 0;
+                    }
+                }
+                ui.pads = smk_pad_count();
+                if (ui.players == SMK_PLAYERS_2 && ui.pads < 1)
+                    ui.players = SMK_PLAYERS_CPU;   /* unplugged mid-menu */
                 if (smk_ui_step(&ui, &rom, &nav)) {
                     /* a single race IS a Grand Prix course on its own */
                     int m = (ui.mode_sel == SMK_UI_MODE_TT)
                             ? SMK_MODE_TT : SMK_MODE_GP;
+                    players_mode = ui.players;
+                    p2_character = ui.player2_sel;
                     if (load_race(&rom, ui.track, -1, ui.player_sel,
                                   ui.engine_class, m)) {
                         track = ui.track; theme = -1;
@@ -3444,7 +3818,53 @@ int main(int argc, char **argv)
                 smk_sfx_play_name("count_beep");
             else if (race_count == SMK_COUNT_GO)
                 smk_sfx_play_name("count_go");
-            if (race_state == RACE_COUNTDOWN) {
+            /* ---- the world, once a frame ------------------------
+             * Everything below belongs to the RACE, not to a driver, so
+             * it runs once however many views are on the screen (S36). */
+            /* The lights are the race's; the rev and the launch are each
+             * driver's, so the transition happens here and the payout in
+             * the per-view pass below.  Splitting it this way keeps the
+             * clock counting the same frames it always did. */
+            bool countdown_now = (race_state == RACE_COUNTDOWN);
+            bool lights_out = countdown_now && race_count >= SMK_COUNT_FRAMES;
+            if (lights_out) race_state = RACE_RUN;
+            if (race_state == RACE_RUN || race_state == RACE_FINISH) {
+                hud_race_frames++;
+                smk_race_frame = hud_race_frames;   /* so a kart can stamp its own finish */
+            }
+            smk_blocks_step();
+            /* Thwomps are parked through lap one and released when it is
+             * complete - crossing 2 is the first finished lap (NOTES
+             * 148/152). */
+            {   /* SMK_MV_ON=1: release the movers from frame 0 (testing) */
+                static int mv_on = -1;
+                if (mv_on < 0) mv_on = getenv("SMK_MV_ON") ? 1 : 0;
+                smk_course_movers_step(&crs, mv_on || crossings >= 2);
+            }
+            smk_obj_ticks = fx_ticks;   /* the moles' clock, shared with collide */
+            if (getenv("SMK_MV_TRACE") && (fx_ticks % 300) == 0)
+                printf("mv f%ld cross %d z0 %d p0 %d z1 %d p1 %d\n",
+                       hud_race_frames, crossings,
+                       smk_mover_z(&crs, 0), crs.mv[0].phase,
+                       smk_mover_z(&crs, 1), crs.mv[1].phase);
+            /* ---- once per DRIVER ---------------------------------
+             * pv_switch makes this view's copy of every per-driver global
+             * the live one, so the code below is unchanged from when
+             * there was only ever one of them. */
+            for (int v = 0; v < nviews; v++) {
+            pv_switch(v);
+            if (!views[v].human) {
+                /* A CPU view drives nothing: the AI already stepped this
+                 * kart in the world pass, so the camera simply follows
+                 * it and the rest of the per-driver work is skipped. */
+                kart = me->k;
+                player.heading = kart.angle;
+                player.coins = me->coins;
+                cam_spin = 0;
+                camera_from_kart(&cam, &kart);
+                continue;
+            }
+            if (countdown_now) {
                 /* The lights.  The kart is held, but the throttle is NOT
                  * ignored - it builds the rev, and where the rev sits when
                  * the lights go out decides whether you get the turbo
@@ -3463,8 +3883,7 @@ int main(int argc, char **argv)
                 }
                 smk_player_rev(&player, thr, (unsigned)race_count);
                 engine_throttle = thr;   /* the rev before the lights */
-                if (race_count >= SMK_COUNT_FRAMES) {
-                    race_state = RACE_RUN;
+                if (lights_out) {
                     smk_player_launch(&player);   /* $80956A pays out here */
                     engine_throttle = false;
                 }
@@ -3505,10 +3924,6 @@ int main(int argc, char **argv)
                            was_state, race_state, was_screen, ui.screen, hud_race_frames);
                     was_state = race_state; was_screen = ui.screen;
                 }
-            }
-            if (race_state == RACE_RUN || race_state == RACE_FINISH) {
-                hud_race_frames++;
-                smk_race_frame = hud_race_frames;   /* so a kart can stamp its own finish */
             }
             if (race_state == RACE_FINISH) finish_t++;
             if (lap_sign_t >= 0 && ++lap_sign_t > SMK_LAPSIGN_FRAMES)
@@ -3575,26 +3990,11 @@ int main(int argc, char **argv)
                         (int)(kart.z >> 8),
                         smk_track_surface(&trk, smk_kart_px(kart.x), smk_kart_px(kart.y)),
                         autopilot.lost);
-            smk_blocks_step();
-            /* Thwomps are parked through lap one and released when it is
-             * complete - crossing 2 is the first finished lap (NOTES
-             * 148/152). */
-            {   /* SMK_MV_ON=1: release the movers from frame 0 (testing) */
-                static int mv_on = -1;
-                if (mv_on < 0) mv_on = getenv("SMK_MV_ON") ? 1 : 0;
-                smk_course_movers_step(&crs, mv_on || crossings >= 2);
-            }
-            smk_obj_ticks = fx_ticks;   /* the moles' clock, shared with collide */
             /* shaking the mole off: three fresh hops (OURS - the user let
              * one ride forever by doing nothing, which is the measured
              * baseline; the shake count is not) */
             if (player.mole_on && in.hop && ++player.mole_hops >= 3)
                 player.mole_on = 0;
-            if (getenv("SMK_MV_TRACE") && (fx_ticks % 300) == 0)
-                printf("mv f%ld cross %d z0 %d p0 %d z1 %d p1 %d\n",
-                       hud_race_frames, crossings,
-                       smk_mover_z(&crs, 0), crs.mv[0].phase,
-                       smk_mover_z(&crs, 1), crs.mv[1].phase);
             step_kart(&kart, &trk, &phys, &in);
             if (replay_path && getenv("SMK_REPLAY_TRACE") && replay_i < replay.n) {
                 const smk_demo_frame *r = &replay.f[replay_i];
@@ -3651,7 +4051,12 @@ int main(int argc, char **argv)
             if (!celebrating) finish_yaw = 0;
             racer_draw_mask = celebrating
                 ? (getenv("SMK_CEL_SOLO") ? 0x01 : 0xFF)
-                : (race_mode == SMK_MODE_TT ? 0x00 : 0xFE);
+                /* a time trial is alone on the track - unless there are
+                 * two of you, in which case the other one is the only
+                 * kart there is to draw */
+                : (race_mode == SMK_MODE_TT
+                     ? (nviews > 1 ? (0x03 & ~(1 << (int)(me - racers))) : 0x00)
+                     : (0xFF & ~(1 << (int)(me - racers))));
             if (race_state == RACE_FINISH) {
                 finish_camera(&cam, &kart, finish_t);
                 if (getenv("SMK_FINISH_TRACE") && finish_t % 10 == 0)
@@ -3660,6 +4065,9 @@ int main(int argc, char **argv)
                             kart.angle, cam.x, cam.y, cam.angle);
             }
             me->k = kart;
+            /* what this kart's contact window was BEFORE the field
+             * collided, so the pass below can spot a fresh one */
+            was_cool = kart.bump_cool;
 
             if ((race_state == RACE_RUN || race_state == RACE_FINISH)
                 && !replay_path && race_mode != SMK_MODE_TT) {
@@ -3815,6 +4223,36 @@ int main(int argc, char **argv)
                                        projs[q].heading, projs[q].t, projs[q].dying ? " dying" : "");
                         printf("\n");
                     }
+                }
+                /* SMK_PLAYER_AT=x,y:frame - put the player there on that race frame */
+                { const char *e = getenv("SMK_PLAYER_AT");
+                  if (e && strchr(e, ':') && hud_race_frames == atol(strchr(e, ':') + 1)) {
+                      int ax = atoi(e), ay = atoi(strchr(e, ',') + 1);
+                      kart.x = (int32_t)ax << SMK_POS_SHIFT; kart.y = (int32_t)ay << SMK_POS_SHIFT;
+                      me->k = kart;   /* or the collide pass copies the old
+                                       * position straight back - the same
+                                       * lost-write as the feather (NOTES 203) */
+                  } }
+                /* SMK_TEST_PLACE=q:d - park racer q d px straight ahead of
+                 * the player every frame, to look at one kart at one distance */
+                { const char *e = getenv("SMK_TEST_PLACE");
+                  if (e && strchr(e, ':')) {
+                      int q = atoi(e), dd = atoi(strchr(e, ':') + 1);
+                      if (q >= 1 && q < SMK_CHARACTERS) {
+                          int16_t sx, cy; smk_dsp_sincos(player.heading, 256, &sx, &cy);
+                          racers[q].k.x = kart.x + (((int32_t)sx * dd) << (SMK_POS_SHIFT - 8));
+                          racers[q].k.y = kart.y - (((int32_t)cy * dd) << (SMK_POS_SHIFT - 8));
+                          racers[q].k.angle = player.heading; racers[q].k.speed = 0;
+                          racers[q].k.vx = racers[q].k.vy = 0;
+                      }
+                  } }
+            }
+            }
+            pv_switch(0);
+            /* ---- the world again: the field, and everything the karts
+             * do to each other.  Once a frame, whoever is watching. */
+            if ((race_state == RACE_RUN || race_state == RACE_FINISH)
+                && !replay_path && race_mode != SMK_MODE_TT) {
                     /* THE AI'S WEAPONS (NOTES 190).  The user's rule, and the
                      * `attack` recording: only against the player, only
                      * from lap 2, only when the player is near; the object
@@ -3843,9 +4281,11 @@ int main(int argc, char **argv)
                     /* the projectiles fly, and anything they touch reacts */
                     const smk_kart *field_k[SMK_CHARACTERS];
                     for (int q = 0; q < SMK_CHARACTERS; q++) field_k[q] = &racers[q].k;
-                    field_k[0] = &kart;
                     smk_proj_step(projs, SMK_PROJ_MAX, &trk, field_k, SMK_CHARACTERS);
-                    int hk = smk_proj_hit(projs, SMK_PROJ_MAX, &kart, 0);
+                    /* each driver's own hit, on his own slot */
+                    for (int v = 0; v < nviews; v++) {
+                    pv_switch(v);
+                    int hk = smk_proj_hit(projs, SMK_PROJ_MAX, &kart, (int)(me - racers));
                     if (hk == SMK_PROJ_BANANA) {
                         if (smk_player_hit_banana(&player, &kart)) {
                             int lost = player.coins < 4 ? player.coins : 4;   /* $85:E4DA */
@@ -3876,7 +4316,10 @@ int main(int argc, char **argv)
                                              player.heading, kart.vx, kart.vy, lost);
                         }
                     }
+                    }
+                    pv_switch(0);
                     for (int q = 1; q < SMK_CHARACTERS; q++) {
+                        if (slot_is_human(q)) continue;   /* it took its hit above */
                         int hq = smk_proj_hit(projs, SMK_PROJ_MAX, &racers[q].k, q);
                         if (hq && getenv("SMK_ITEM_TRACE"))
                             printf("item HIT kart %d (%s) at (%d,%d) rank %d by kind %d; player at (%d,%d) rank %d\n",
@@ -3893,29 +4336,6 @@ int main(int argc, char **argv)
                         else if (hq == SMK_PROJ_MUSHROOM) { if (racers[q].star_t <= 0) racers[q].shrink_t = racers[q].shrink_t > 0 ? 0 : 0x440; }   /* shrink only; a second one restores (bug 21) */
                         else if (hq != SMK_PROJ_NONE) smk_racer_hit(&racers[q], 2, (int)(fx_ticks & 1));
                     }
-                }
-                /* SMK_PLAYER_AT=x,y:frame - put the player there on that race frame */
-                { const char *e = getenv("SMK_PLAYER_AT");
-                  if (e && strchr(e, ':') && hud_race_frames == atol(strchr(e, ':') + 1)) {
-                      int ax = atoi(e), ay = atoi(strchr(e, ',') + 1);
-                      kart.x = (int32_t)ax << SMK_POS_SHIFT; kart.y = (int32_t)ay << SMK_POS_SHIFT;
-                      me->k = kart;   /* or the collide pass copies the old
-                                       * position straight back - the same
-                                       * lost-write as the feather (NOTES 203) */
-                  } }
-                /* SMK_TEST_PLACE=q:d - park racer q d px straight ahead of
-                 * the player every frame, to look at one kart at one distance */
-                { const char *e = getenv("SMK_TEST_PLACE");
-                  if (e && strchr(e, ':')) {
-                      int q = atoi(e), dd = atoi(strchr(e, ':') + 1);
-                      if (q >= 1 && q < SMK_CHARACTERS) {
-                          int16_t sx, cy; smk_dsp_sincos(player.heading, 256, &sx, &cy);
-                          racers[q].k.x = kart.x + (((int32_t)sx * dd) << (SMK_POS_SHIFT - 8));
-                          racers[q].k.y = kart.y - (((int32_t)cy * dd) << (SMK_POS_SHIFT - 8));
-                          racers[q].k.angle = player.heading; racers[q].k.speed = 0;
-                          racers[q].k.vx = racers[q].k.vy = 0;
-                      }
-                  } }
                 /* the rubber band, before anybody moves (NOTES 167) */
                 smk_ai_rubber(racers, SMK_CHARACTERS, &crs, engine_class);
                 /* SMK_ROW_TRACE: one line per frame of every AI's $C8 row
@@ -3932,8 +4352,10 @@ int main(int argc, char **argv)
                                smk_kart_px(racers[q].k.y));
                     printf("\n");
                 }
-                for (int i = 1; i < SMK_CHARACTERS; i++)
+                for (int i = 1; i < SMK_CHARACTERS; i++) {
+                    if (slot_is_human(i)) continue;   /* a person drives this one */
                     smk_racer_step(&racers[i], &trk, &crs, &phys);
+                }
                 /* Kart against kart, once a frame over the whole field
                  * (NOTES 166).  racers[0] IS the player's kart - me->k is
                  * copied from it above - so the player takes part on the
@@ -3952,7 +4374,6 @@ int main(int argc, char **argv)
                  * $85:E4E5 takes four for an item hit, which is not
                  * reachable yet with no items.  The coins are thrown up
                  * and fall back (NOTES 183). */
-                int8_t was_cool = kart.bump_cool;
                 if (getenv("SMK_NO_BUMP")) {
                     /* A/B: run the field with kart contact switched off */
                 } else if (getenv("SMK_BUMP_TRACE")) {
@@ -3973,6 +4394,12 @@ int main(int argc, char **argv)
                 } else {
                     smk_karts_collide(field, wt, SMK_CHARACTERS);
                 }
+            }
+            for (int v = 0; v < nviews; v++) {
+            pv_switch(v);
+            if (!views[v].human) continue;   /* nothing of its own to settle */
+            if ((race_state == RACE_RUN || race_state == RACE_FINISH)
+                && !replay_path && race_mode != SMK_MODE_TT) {
                 kart = me->k;
                 if (getenv("SMK_SQUASH_TRACE"))
                     for (int q = 1; q < SMK_CHARACTERS; q++)
@@ -4032,7 +4459,6 @@ int main(int argc, char **argv)
                   smk_coinfx_spawn(coins_fx, SMK_COINFX_MAX,
                                    kart.x, kart.y, player.heading,
                                    kart.vx, kart.vy, 1); }
-            smk_coinfx_step(coins_fx, SMK_COINFX_MAX);
 
             /* player lap counting - the decoded rule via racer state */
             {
@@ -4081,7 +4507,7 @@ int main(int argc, char **argv)
                  * taken on the crossing rather than left to the HUD's
                  * per-frame value, which keeps moving as the AI carry on. */
                 result.position = (race_mode == SMK_MODE_TT)
-                                  ? 0 : smk_race_rank(racers, 0, &crs);
+                                  ? 0 : smk_race_rank(racers, (int)(me - racers), &crs);
                 printf("%s: %s, %s, %s\n",
                        race_mode == SMK_MODE_TT ? "time trial" : "race",
                        smk_track_name(&rom, track), drv->name,
@@ -4127,7 +4553,7 @@ int main(int argc, char **argv)
                 && finish_t >= SMK_FINISH_TURN + SMK_FINISH_HOLD) {
                 race_state = RACE_RUN;          /* nothing more to celebrate */
                 settle_field(racers, &trk, &crs, &phys, hud_race_frames);
-                build_result_table(&result, racers, result.total);
+                build_result_table(&result, racers, result.total, (int)(me - racers));
                 printf("  final order:\n");
                 for (int q = 0; q < result.entries; q++) {
                     char tt[16];
@@ -4140,6 +4566,8 @@ int main(int argc, char **argv)
                 }
                 if (shell || getenv("SMK_RESULT_SHOT")) { smk_ui_gp_award(&ui, &result); ui.screen = SMK_UI_RESULT; }
             }
+            }
+            pv_switch(0);
         }
         (void)stepped;   /* edges deliberately survive a tickless iteration */
 
@@ -4162,70 +4590,53 @@ int main(int argc, char **argv)
             else
                 smk_ui_draw(&ui, &rom, &menu_font, &records, trk.palette,
                             fb, rw, rh);
+            /* SMK_MENU_SHOT=path - whatever shell screen is up */
+            if (getenv("SMK_MENU_SHOT") && !menu_nav_left) {
+                save_ppm(getenv("SMK_MENU_SHOT"), fb, rw, rh);
+                in.quit = true;
+            }
             SDL_UpdateTexture(tex, NULL, fb, rw * (int)sizeof *fb);
             SDL_RenderClear(ren);
             SDL_RenderCopy(ren, tex, NULL, NULL);
             SDL_RenderPresent(ren);
         } else if (tex && fb) {
-            smk_render_set_horizon(&horizon, kart.angle);
-            if (plane_mask_sz < (size_t)rw * (size_t)rh) {
-                free(plane_mask);
-                plane_mask_sz = (size_t)rw * (size_t)rh;
-                plane_mask = malloc(plane_mask_sz);
-            }
-            smk_render_set_plane_mask(plane_mask, rw);
-            player_below = kart.z < 0;   /* a real drop, not the fall countdown */
-            smk_render_mode7(&trk, &cam, fb, rw, rh, rw);
-            hud_input = (in.left ? 1 : 0) | (in.right ? 2 : 0)
-                      | (in.up ? 4 : 0);
-            /* The lap SHOWN is the crossing count, not one more than it:
-             * the grid is behind the line, so the first crossing enters
-             * lap 1 rather than completing it ($8089C9 skips $8000).  This
-             * used to read me->lap + 1 and so showed LAP 2 from the first
-             * time you passed the flag. */
-            hud_lap = me->lap < 1 ? 1 : me->lap;
-            if (hud_lap > SMK_RACE_LAPS) hud_lap = SMK_RACE_LAPS;
-            hud_rank = smk_race_rank(racers, 0, &crs);
-            int pframe = frame_for(&in, &lean);
-            /* The SPIN states draw through the FULL rotation rule, not
-             * frame_for's seven bands: those cap at the side-on frame, so
-             * half of every spin showed one frame and the feather's 360
-             * never read as a rotation (round 2, bug 3).  The pose lag
-             * carries the spin; the AI's measured heading rule turns it
-             * into the whole frame circle. */
-            if (player.state == 0x0A || player.state == 0x0C
-                || player.state == 0x0E || player.state == 0x10
-                || player.state == 0x18 || player.state == 0x1A) {
-                uint16_t r16 = (uint16_t)player_slip_units;
-                int ar16 = (int16_t)r16 < 0 ? -(int16_t)r16 : (int16_t)r16;
-                if (ar16 < 0x0400) pframe = 1000;
-                else {
-                    bool hfs = false;
-                    int fs = smk_sprite_for_heading(SMK_SPR_TIER0, r16, &hfs);
-                    pframe = hfs ? -fs : fs;
+            if (nviews < 2) {
+                render_view(fb, rw, rh);
+            } else {
+                /* SIDE BY SIDE, not stacked - the user's decision: "split
+                 * screen but side by side (left/right).  Today we have
+                 * widescreens!"  The original stacks because it has 224
+                 * lines to divide; halving a modern window the other way
+                 * gives each driver a taller view than the SNES ever had.
+                 * A deliberate deviation, ledgered.
+                 *
+                 * Each view draws into its own buffer at the half width
+                 * so that everything inside - the projection, the HUD,
+                 * the map - lays itself out for the size it really has,
+                 * and the two are copied side by side afterwards. */
+                int vw = rw / 2;
+                for (int v = 0; v < 2; v++) {
+                    pv_switch(v);
+                    if (views[v].rw != vw || views[v].rh != rh) {
+                        free(views[v].fb);
+                        views[v].fb = malloc((size_t)vw * (size_t)rh * sizeof *fb);
+                        views[v].rw = vw; views[v].rh = rh;
+                    }
+                    if (!views[v].fb) continue;
+                    render_view(views[v].fb, vw, rh);
+                    for (int y = 0; y < rh; y++)
+                        memcpy(fb + (size_t)y * rw + (size_t)v * vw,
+                               views[v].fb + (size_t)y * vw,
+                               (size_t)vw * sizeof *fb);
+                }
+                pv_switch(0);
+                /* a two-pixel rule down the middle, so the halves read as
+                 * two screens rather than one wide one */
+                for (int y = 0; y < rh; y++) {
+                    fb[(size_t)y * rw + vw - 1] = 0xFF101018u;
+                    fb[(size_t)y * rw + vw]     = 0xFF101018u;
                 }
             }
-            {
-                int af = pframe < 0 ? -pframe : pframe;
-                if (af > 7 && af != 47 && pframe != 1000) af = 7;   /* the fx column caps at 7 */
-                /* the game's $BC frame index: 0 straight, 1..7 the rotation
-                 * bands; the drift-onset sheet frame 47 counts as band 1
-                 * (LABELLED: its $BC index is not measured) */
-                fx_frame_idx = (pframe == 1000) ? 0 : (af == 47 ? 1 : af);
-                fx_mirror = pframe != 1000 && pframe < 0;
-            }
-            draw_scene(&rom, &trk, &karts, drv, &cam, fb, rw, rh,
-                       show_grid, show_kart, pframe,
-                       (uint16_t)(kart.angle + finish_yaw), racers, &crs);
-            if (!celebrating && show_speedo)
-                draw_speedo(fb, rw, rh, &kart,
-                            smk_track_surface(&trk, smk_kart_px(kart.x),
-                                              smk_kart_px(kart.y)),
-                            player.target);
-            if (race_mode == SMK_MODE_TT)
-                smk_ui_draw_splits(&menu_font, &result,
-                                   hud_race_frames - lap_start_frames,
-                                   result.laps_done, tt_mushroom, fb, rw, rh);
             /* SMK_FINISH_SHOT=t:path - a frame of the celebration, counted
              * from the moment the player crosses, so the camera swing can
              * be looked at rather than argued about. */
@@ -4358,6 +4769,7 @@ int main(int argc, char **argv)
     }
 
     free(fb);
+    for (int v = 0; v < 2; v++) free(views[v].fb);
     if (tex) SDL_DestroyTexture(tex);
     SDL_DestroyRenderer(ren);
     SDL_DestroyWindow(win);
