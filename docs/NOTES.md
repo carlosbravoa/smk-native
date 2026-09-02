@@ -10061,3 +10061,30 @@ same sound (their voice logs are identical frame for frame, so that is
 the game's doing, not a capture fault), and `$5E`, `$60` and `$63` render
 byte-identical to each other from music alone - the port plays none of
 them and the game has never been seen to.
+
+## 246. $5B captured from a menu frame; four bogus files removed
+
+`$5B`, the ROM's fourth menu click (`$84:D986`), had resisted capture
+because poking an id during a RACE renders the race's sample bank.  The
+fix is to poke it on a MENU frame - around f600 in any session, where the
+only sounds firing are `$2C`, `$2E`, `$7F` and `$82` - and to snapshot the
+sample bank there too rather than reusing the race's.  `$5B` and `$52`
+(the two-player rank sound, `$84:DA70`) both come back distinct from each
+other and from `$2C`/`$2E`/`$2F`: no pair correlates above 0.9.
+
+`$5B` is captured but NOT wired.  Which screen uses it rather than `$2C`
+is not measured, and the course-screen split the port used to have was an
+invention (NOTES 235), so every screen keeps the measured `$2C`.
+
+A volume audit over all the files: no clipping anywhere, and the peaks
+run 732..24156 rather than clustering, which is what the game's own
+balance should look like - a per-file normalisation would show up as a
+single repeated peak.  It did, for four files, and they are gone:
+
+    $5E $60 $63   byte-identical to each other, peak exactly 22000,
+                  rendered from music alone - the port plays none of
+                  them and the game has never been seen to
+    $4B           2.61 s at an RMS of 32, which is silence
+
+A wrong file is worse than a missing one, and these four would have sat
+in `--sfx` looking like evidence.

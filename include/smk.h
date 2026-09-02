@@ -1407,9 +1407,14 @@ int smk_sfx_pass_voice(const smk_rom *rom, int character, bool gaining);
  * The menu family is $2C/$2E/$2F/$5B ($84:D971..$84:D989, all through
  * $81:F5A7), so the second menu click is $5B. */
 #define SMK_SFX_MENU_SCROLL 0x5B  /* MEASURED: $84:D986, the menu group.
-                                   * NOT CAPTURED: poking an id during a
-                                   * race cannot render it, because the
-                                   * menus load their own sample bank. */
+                                   * CAPTURED at last (NOTES 246) by
+                                   * poking it on a MENU frame, with the
+                                   * sample bank snapshotted there too.
+                                   * Not wired: which screen uses it
+                                   * rather than $2C is not measured, and
+                                   * the old course-screen split was an
+                                   * invention, so every screen keeps the
+                                   * measured $2C until it is. */
 #define SMK_SFX_JUMP_BIG   0x4E   /* $80:B684 - the $2A bump taken while the
                                    * drive state is $10, i.e. BOOSTING        */
 #define SMK_SFX_ITEMBOX    0x55   /* MEASURED: 16 of 22 with the item word     */
