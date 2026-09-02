@@ -127,6 +127,13 @@ void smk_ui_init(smk_ui *ui)
 
 #define PLAYER_CLASS_ROW 8       /* cursor value for the engine-class row */
 
+/* How many rows the mode screen shows.  TIME TRIAL is last and is only
+ * there for one player, so this is all it takes to hide it. */
+int smk_ui_mode_rows(const smk_ui *ui)
+{
+    return ui->players == SMK_PLAYERS_1 ? SMK_UI_MODES : SMK_UI_MODES - 1;
+}
+
 bool smk_ui_step(smk_ui *ui, const smk_rom *rom, const smk_ui_input *in)
 {
     ui->tick++;
@@ -134,28 +141,39 @@ bool smk_ui_step(smk_ui *ui, const smk_rom *rom, const smk_ui_input *in)
 
     switch (ui->screen) {
     case SMK_UI_TITLE:
-        if (in->confirm) ui->screen = SMK_UI_MODE;
+        if (in->confirm) ui->screen = SMK_UI_PLAYERS;
         break;
 
-    case SMK_UI_MODE: {
-        /* Four rows: the three modes and, under them, how many views are
-         * on the screen.  The players row is a left/right choice like the
-         * engine class, because it is a setting rather than a destination. */
-        const int ROWS = SMK_UI_MODES + 1;
-        if (in->up)   ui->mode_cur = (ui->mode_cur + ROWS - 1) % ROWS;
-        if (in->down) ui->mode_cur = (ui->mode_cur + 1) % ROWS;
-        if (ui->mode_cur < SMK_UI_MODES) ui->mode_sel = ui->mode_cur;
-        else {
-            /* two humans need a controller: with none attached there is
-             * nothing for the second player to drive with, so that row is
-             * skipped rather than offered and then refused */
-            int n = SMK_PLAYERS_MODES;
-            if (in->left)  ui->players = (ui->players + n - 1) % n;
-            if (in->right) ui->players = (ui->players + 1) % n;
-            if (ui->players == SMK_PLAYERS_2 && ui->pads < 1)
-                ui->players = in->left ? SMK_PLAYERS_CPU : SMK_PLAYERS_1;
+    case SMK_UI_PLAYERS: {
+        /* HOW MANY, first - the order the original asks in, and it has to
+         * be first because it decides what the mode screen may offer. */
+        int n = SMK_PLAYERS_MODES;
+        if (in->up)   ui->players = (ui->players + n - 1) % n;
+        if (in->down) ui->players = (ui->players + 1) % n;
+        /* two humans need a controller: with none attached there is
+         * nothing for the second player to drive with, so that row is
+         * stepped over rather than offered and then refused */
+        if (ui->players == SMK_PLAYERS_2 && ui->pads < 1)
+            ui->players = in->up ? SMK_PLAYERS_CPU : SMK_PLAYERS_1;
+        if (in->back)    ui->screen = SMK_UI_TITLE;
+        if (in->confirm) {
+            /* a time trial is a solo thing: with a second driver on the
+             * track the row is not there to land on */
+            if (ui->players != SMK_PLAYERS_1 && ui->mode_sel == SMK_UI_MODE_TT)
+                ui->mode_sel = SMK_UI_MODE_RACE;
+            ui->mode_cur = ui->mode_sel;
+            ui->screen = SMK_UI_MODE;
         }
-        if (in->back) ui->screen = SMK_UI_TITLE;
+        break;
+    }
+
+    case SMK_UI_MODE: {
+        int rows = smk_ui_mode_rows(ui);
+        if (in->up)   ui->mode_cur = (ui->mode_cur + rows - 1) % rows;
+        if (in->down) ui->mode_cur = (ui->mode_cur + 1) % rows;
+        if (ui->mode_cur >= rows) ui->mode_cur = rows - 1;
+        ui->mode_sel = ui->mode_cur;
+        if (in->back) ui->screen = SMK_UI_PLAYERS;
         if (in->confirm) {
             ui->gp = (ui->mode_sel == SMK_UI_MODE_GP);
             ui->picking_p2 = false;
@@ -311,10 +329,12 @@ static void draw_mode(const smk_ui *ui, const smk_font *f,
     ramp(f, TEXT_PAL, off, 0xFFFFFFFF, 0xFF2A3E78); dim(off);
     ramp(f, TEXT_HI, sel, 0xFFFFFFFF, 0xFF7A5A18);
 
-    text_c(f, fb, w, h, 30, "SELECT MODE", hi);
+    text_c(f, fb, w, h, 40, "SELECT MODE", hi);
     const char *row[SMK_UI_MODES] = { "GRAND PRIX", "SINGLE RACE", "TIME TRIAL" };
-    for (int i = 0; i < SMK_UI_MODES; i++) {
-        int y = 64 + i * 22;
+    /* TIME TRIAL is simply not there with a second driver on the track */
+    int rows = smk_ui_mode_rows(ui);
+    for (int i = 0; i < rows; i++) {
+        int y = 84 + i * 24;
         const uint32_t *c = (i == SMK_UI_MODE_GP) ? off
                           : (ui->mode_sel == i ? sel : lo);
         int x = (VW - (int)strlen(row[i]) * 8) / 2;
@@ -322,35 +342,49 @@ static void draw_mode(const smk_ui *ui, const smk_font *f,
             fill(fb, w, h, x - 12, y - 2, 8, 12, 0xFFFFC040);
         text(f, fb, w, h, x, y, row[i], c);
     }
-
-    /* how many views.  A second CAMERA costs nothing but pixels; a second
-     * DRIVER needs something to drive with, so with no pad attached that
-     * choice is drawn dimmed and cannot be reached. */
-    {
-        bool on = ui->mode_cur == SMK_UI_MODES;
-        /* the ROM font has no '+' or '-' (src/font.c), so these are
-         * spelled in letters rather than drawn with a hole in them */
-        const char *pl[SMK_PLAYERS_MODES] = { "1P", "VS CPU", "VS 2P" };
-        int y = 146;
-        text_c(f, fb, w, h, 132, "PLAYERS", on ? hi : lo);
-        int total = 0;
-        for (int i = 0; i < SMK_PLAYERS_MODES; i++) total += (int)strlen(pl[i]) * 8 + 16;
-        int x = (VW - total) / 2;
-        for (int i = 0; i < SMK_PLAYERS_MODES; i++) {
-            int wdt = (int)strlen(pl[i]) * 8;
-            bool cur = ui->players == i;
-            bool can = !(i == SMK_PLAYERS_2 && ui->pads < 1);
-            if (cur) fill(fb, w, h, x - 3, y - 2, wdt + 6, 12,
-                          on ? 0x60FFC040 : 0x30FFFFFF);
-            text(f, fb, w, h, x, y, pl[i], !can ? off : (cur ? sel : lo));
-            x += wdt + 16;
-        }
-        const char *note = ui->pads < 1
-            ? "NO CONTROLLER: VS 2P NEEDS ONE"
-            : (ui->pads < 2 ? "P1 CONTROLLER   P2 KEYBOARD"
-                            : "P1 PAD 1   P2 PAD 2");
-        text_c(f, fb, w, h, 168, note, off);
+    {   /* what was chosen on the screen before, so it can be seen */
+        const char *pl[SMK_PLAYERS_MODES] = { "1 PLAYER", "1 PLAYER VS CPU",
+                                              "2 PLAYERS" };
+        text_c(f, fb, w, h, 176, pl[ui->players % SMK_PLAYERS_MODES], off);
     }
+    text_c(f, fb, w, h, 200, "ENTER SELECT   ESC BACK", lo);
+}
+
+/* HOW MANY PLAYERS, asked first - the original's order, and it decides
+ * what the mode screen may offer. */
+static void draw_players(const smk_ui *ui, const smk_font *f,
+                         uint32_t *fb, int w, int h)
+{
+    uint32_t hi[4], lo[4], off[4], sel[4];
+    ramp(f, TEXT_HI, hi, 0xFFFFFFFF, 0xFF7A5A18);
+    ramp(f, TEXT_PAL, lo, 0xFFFFFFFF, 0xFF2A3E78);
+    ramp(f, TEXT_PAL, off, 0xFFFFFFFF, 0xFF2A3E78); dim(off);
+    ramp(f, TEXT_HI, sel, 0xFFFFFFFF, 0xFF7A5A18);
+
+    text_c(f, fb, w, h, 40, "HOW MANY PLAYERS", hi);
+    /* the ROM font has no '+' or '-' (src/font.c), so these are spelled
+     * in letters rather than drawn with a hole in them */
+    const char *pl[SMK_PLAYERS_MODES] = { "1 PLAYER", "1 PLAYER VS CPU",
+                                          "2 PLAYERS" };
+    const char *sub[SMK_PLAYERS_MODES] = { "ONE SCREEN",
+                                           "SPLIT SCREEN, CPU ON THE RIGHT",
+                                           "SPLIT SCREEN, SIDE BY SIDE" };
+    for (int i = 0; i < SMK_PLAYERS_MODES; i++) {
+        int y = 84 + i * 26;
+        /* a second DRIVER needs something to drive with: with no pad
+         * attached that row is drawn dim and cannot be reached */
+        bool can = !(i == SMK_PLAYERS_2 && ui->pads < 1);
+        int x = (VW - (int)strlen(pl[i]) * 8) / 2;
+        if (ui->players == i && ((ui->tick / 12) & 1) == 0)
+            fill(fb, w, h, x - 12, y - 2, 8, 12, 0xFFFFC040);
+        text(f, fb, w, h, x, y, pl[i], !can ? off : (ui->players == i ? sel : lo));
+    }
+    text_c(f, fb, w, h, 168, sub[ui->players % SMK_PLAYERS_MODES], off);
+    const char *note = ui->pads < 1
+        ? "NO CONTROLLER: 2 PLAYERS NEEDS ONE"
+        : (ui->pads < 2 ? "P1 CONTROLLER   P2 KEYBOARD"
+                        : "P1 PAD 1   P2 PAD 2");
+    text_c(f, fb, w, h, 184, note, off);
     text_c(f, fb, w, h, 200, "ENTER SELECT   ESC BACK", lo);
 }
 
@@ -480,8 +514,9 @@ void smk_ui_draw(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
     if (!f->ok) return;
     backdrop(fb, w, h, f);
     switch (ui->screen) {
-    case SMK_UI_TITLE:  draw_title(ui, f, fb, w, h); break;
-    case SMK_UI_MODE:   draw_mode(ui, f, fb, w, h); break;
+    case SMK_UI_TITLE:   draw_title(ui, f, fb, w, h); break;
+    case SMK_UI_PLAYERS: draw_players(ui, f, fb, w, h); break;
+    case SMK_UI_MODE:    draw_mode(ui, f, fb, w, h); break;
     case SMK_UI_PLAYER: draw_player(ui, rom, f, palette, fb, w, h); break;
     case SMK_UI_COURSE: draw_course(ui, rom, f, rec, fb, w, h); break;
     default: break;

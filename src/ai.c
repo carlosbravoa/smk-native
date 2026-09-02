@@ -454,12 +454,21 @@ void smk_racer_step(smk_racer *r, const smk_track *trk,
     if (r->escape > 0) diff = 0;             /* hold the escape heading */
     if (diff > AI_SNAP || diff < -AI_SNAP) {
         uint16_t err = (uint16_t)(diff > 0 ? diff : -diff);
-        /* DECODED ($80AFF9): turn amount from the physics blob's words 32+,
-         * indexed by heading error; the demo AI uses row 8 ($C8 = 8).
-         * MEASURED (NOTES 043): above ~90 degrees of error the AI turns at
-         * $800 per frame - a fast turnaround, not a table step. */
+        /* DECODED ($80AFF9): the turn amount is the physics blob's word at
+         * $C8 + 7 - and $80AFBE only ever reaches it with a value the
+         * routine clamps to $01FF, so the rate is a CONSTANT per row, not
+         * a function of the error.  MEASURED (NOTES 043): above ~90
+         * degrees of error the AI turns at $800 per frame instead.
+         *
+         * The row is the ROM's $C8, and passing OUR $C8 (r->row * 2) was
+         * tried: it costs track 15, where a kart can no longer get round
+         * (NOTES 256).  Our rubber-band row is a model that scores 94.2%
+         * against the game's own logged rows (NOTES 174), not the row
+         * itself, so feeding it into the steering propagates its 6% into
+         * a place that was a fixed constant and worked.  LABELLED: row 8
+         * stays until $C8 is exact. */
         uint16_t step = err > 0x4000 ? 0x800
-                      : smk_physics_turn(phys, err, r->row * 2);
+                      : smk_physics_turn(phys, err, 8);
         r->k.angle += (uint16_t)(diff > 0 ? step : -(int)step);
     } else {
         r->k.angle = want;

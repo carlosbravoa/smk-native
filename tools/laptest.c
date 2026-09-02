@@ -66,14 +66,16 @@ static void shell_checks(smk_rom *rom)
     smk_time_text(3690, tm, sizeof tm);
     check(!strcmp(tm, "1'01\"50"), "the clock formats as the game does");
 
-    /* the shell walks title -> mode -> driver -> course -> race, and the
-     * course it lands on is the ROM's own cup table entry */
+    /* the shell walks title -> players -> mode -> driver -> course ->
+     * race, and the course it lands on is the ROM's own cup table entry */
     smk_ui ui;
     smk_ui_init(&ui);
     smk_ui_input none = { 0 };
     smk_ui_input go = { 0 }; go.confirm = true;
     smk_ui_step(&ui, rom, &go);
-    check(ui.screen == SMK_UI_MODE, "title -> mode");
+    check(ui.screen == SMK_UI_PLAYERS, "title -> players");
+    smk_ui_step(&ui, rom, &go);
+    check(ui.screen == SMK_UI_MODE, "players -> mode");
     check(ui.mode_sel == SMK_UI_MODE_RACE, "the shell opens on SINGLE RACE");
     smk_ui_step(&ui, rom, &go);
     check(ui.screen == SMK_UI_PLAYER, "single race -> driver");
@@ -88,17 +90,49 @@ static void shell_checks(smk_rom *rom)
     check(ui.track == 1, "flower cup course 2 is track 1 (GHOST VALLEY 2)");
     check(!strcmp(smk_track_name(rom, ui.track), "GHOST VALLEY 2"), "and it is named so");
 
-    /* The mode screen is four rows: three modes and, under them, how
-     * many views are on the screen (S36).  The list wraps through all
-     * four, and Grand Prix ENTERS the cup (NOTES 198). */
+    /* THE SHELL'S ORDER.  How many players is asked FIRST, as the
+     * original asks it, because it decides what the mode screen offers
+     * (NOTES 257). */
     smk_ui_input up = { 0 }; up.up = true;
     smk_ui_init(&ui);
+    ui.pads = 1;
     smk_ui_step(&ui, rom, &go);
+    check(ui.screen == SMK_UI_PLAYERS, "the title asks how many players");
+    check(ui.players == SMK_PLAYERS_1, "starting on one");
+    smk_ui_step(&ui, rom, &down);
+    check(ui.players == SMK_PLAYERS_CPU, "down reaches 1P vs CPU");
+    smk_ui_step(&ui, rom, &down);
+    check(ui.players == SMK_PLAYERS_2, "and then two players");
+    smk_ui_step(&ui, rom, &down);
+    check(ui.players == SMK_PLAYERS_1, "and wraps");
+
+    /* A TIME TRIAL IS SOLO: with a second driver the row is not there */
+    check(smk_ui_mode_rows(&ui) == SMK_UI_MODES, "one player: three modes");
+    ui.players = SMK_PLAYERS_2;
+    check(smk_ui_mode_rows(&ui) == SMK_UI_MODES - 1, "two: no time trial");
+    ui.players = SMK_PLAYERS_CPU;
+    check(smk_ui_mode_rows(&ui) == SMK_UI_MODES - 1, "nor against a CPU");
+    ui.mode_sel = SMK_UI_MODE_TT;          /* left over from a solo run */
+    smk_ui_step(&ui, rom, &go);
+    check(ui.screen == SMK_UI_MODE, "players -> mode");
+    check(ui.mode_sel != SMK_UI_MODE_TT, "and a stale time trial is dropped");
+
+    /* with no controller the two-human row cannot be landed on */
+    smk_ui_init(&ui);
+    ui.pads = 0;
+    smk_ui_step(&ui, rom, &go);
+    smk_ui_step(&ui, rom, &down);
+    check(ui.players == SMK_PLAYERS_CPU, "down reaches 1P vs CPU");
+    smk_ui_step(&ui, rom, &down);
+    check(ui.players == SMK_PLAYERS_1, "and steps over two players");
+
+    /* the modes wrap, and Grand Prix ENTERS the cup (NOTES 198) */
+    smk_ui_init(&ui);
+    smk_ui_step(&ui, rom, &go);            /* title -> players */
+    smk_ui_step(&ui, rom, &go);            /* players -> mode  */
+    check(ui.screen == SMK_UI_MODE, "and the mode screen after it");
     smk_ui_step(&ui, rom, &down);          /* onto TIME TRIAL  */
     check(ui.mode_sel == SMK_UI_MODE_TT, "down reaches Time Trial");
-    smk_ui_step(&ui, rom, &down);          /* onto PLAYERS     */
-    check(ui.mode_cur == SMK_UI_MODES, "and then the players row");
-    check(ui.mode_sel == SMK_UI_MODE_TT, "which does not change the mode");
     smk_ui_step(&ui, rom, &down);          /* wraps to GRAND PRIX */
     check(ui.mode_sel == SMK_UI_MODE_GP, "and wraps to Grand Prix");
     smk_ui_step(&ui, rom, &go);
@@ -106,38 +140,26 @@ static void shell_checks(smk_rom *rom)
     check(ui.gp, "and arms the cup");
     smk_ui_init(&ui);
     smk_ui_step(&ui, rom, &go);
+    smk_ui_step(&ui, rom, &go);
     smk_ui_step(&ui, rom, &up);            /* Single Race -> Grand Prix */
     check(ui.mode_sel == SMK_UI_MODE_GP, "up reaches Grand Prix");
-    smk_ui_step(&ui, rom, &up);            /* and wraps onto the players row */
-    check(ui.mode_cur == SMK_UI_MODES, "up wraps onto the players row");
-    smk_ui_step(&ui, rom, &up);
-    check(ui.mode_sel == SMK_UI_MODE_TT, "then Time Trial");
+    smk_ui_step(&ui, rom, &up);            /* and wraps to Time Trial */
+    check(ui.mode_sel == SMK_UI_MODE_TT, "up wraps to Time Trial");
     smk_ui_step(&ui, rom, &up);
     check(ui.mode_sel == SMK_UI_MODE_RACE, "and back to Single Race");
     smk_ui_step(&ui, rom, &go);
     check(ui.screen == SMK_UI_PLAYER, "a single race is entered");
     check(!ui.gp, "with the cup unarmed");
 
-    /* THE PLAYERS ROW.  Two humans need a controller: with none attached
-     * that choice cannot be reached, and a second CAMERA still can. */
-    smk_ui_input rt = { 0 }; rt.right = true;
+    /* the driver screen picks BOTH drivers, never the same one */
     smk_ui_init(&ui);
-    ui.pads = 0;
-    smk_ui_step(&ui, rom, &go);            /* title -> mode */
-    smk_ui_step(&ui, rom, &down);
-    smk_ui_step(&ui, rom, &down);          /* onto the players row */
-    check(ui.mode_cur == SMK_UI_MODES, "the players row is reachable");
-    smk_ui_step(&ui, rom, &rt);
-    check(ui.players == SMK_PLAYERS_CPU, "right picks 1P + CPU");
-    smk_ui_step(&ui, rom, &rt);
-    check(ui.players == SMK_PLAYERS_1, "and with no pad it steps over 1P + 2P");
     ui.pads = 1;
-    smk_ui_step(&ui, rom, &rt);
-    smk_ui_step(&ui, rom, &rt);
-    check(ui.players == SMK_PLAYERS_2, "with a pad attached it is offered");
-
-    /* and then the driver screen picks BOTH drivers, never the same one */
     smk_ui_step(&ui, rom, &go);
+    smk_ui_step(&ui, rom, &down);
+    smk_ui_step(&ui, rom, &down);
+    check(ui.players == SMK_PLAYERS_2, "two players");
+    smk_ui_step(&ui, rom, &go);            /* -> mode   */
+    smk_ui_step(&ui, rom, &go);            /* -> driver */
     check(ui.screen == SMK_UI_PLAYER && !ui.picking_p2, "player 1 first");
     int p1 = ui.player_sel;
     smk_ui_step(&ui, rom, &go);

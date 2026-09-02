@@ -1814,7 +1814,7 @@ void smk_autopilot_step(smk_autopilot *a, const smk_track *trk,
  * 4 time trial, 6 battle (NOTES 113) - and time trial is the one this
  * shell drives. */
 typedef enum {
-    SMK_UI_TITLE, SMK_UI_MODE, SMK_UI_PLAYER, SMK_UI_COURSE,
+    SMK_UI_TITLE, SMK_UI_PLAYERS, SMK_UI_MODE, SMK_UI_PLAYER, SMK_UI_COURSE,
     SMK_UI_RACE, SMK_UI_RESULT, SMK_UI_STANDINGS
 } smk_ui_screen;
 #define SMK_MODE_GP    0
@@ -1832,9 +1832,10 @@ typedef struct { bool up, down, left, right, confirm, back; } smk_ui_input;
  * course run on its own - same eight karts, same grid, same coins - so
  * it hands the race SMK_MODE_GP; only the cup around it is missing. */
 enum { SMK_UI_MODE_GP, SMK_UI_MODE_RACE, SMK_UI_MODE_TT, SMK_UI_MODES };
-/* How many views are on the screen, and who drives the second one.  This
- * is orthogonal to the mode above: any of the three modes can be watched
- * by one camera or two.  The split is SIDE BY SIDE, left and right - the
+/* How many views are on the screen, and who drives the second one.  The
+ * game asks this FIRST, as the original does, because it decides what the
+ * mode screen may offer: a time trial is a solo thing and does not appear
+ * once a second driver is on the track (the user).  The split is SIDE BY SIDE, left and right - the
  * user's decision, and a deliberate deviation from the original, which
  * stacks its two views because it only has 224 lines to divide. */
 enum { SMK_PLAYERS_1, SMK_PLAYERS_CPU, SMK_PLAYERS_2, SMK_PLAYERS_MODES };
@@ -1867,6 +1868,9 @@ typedef struct {
 } smk_ui;
 
 void smk_ui_init(smk_ui *ui);
+/* how many rows the mode screen offers - two with a second driver on the
+ * track, three alone, because a time trial is a solo thing */
+int  smk_ui_mode_rows(const smk_ui *ui);
 /* advance one frame; true when a race should start */
 bool smk_ui_step(smk_ui *ui, const smk_rom *rom, const smk_ui_input *in);
 void smk_ui_draw(const smk_ui *ui, const smk_rom *rom, const smk_font *f,

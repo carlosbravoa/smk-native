@@ -10584,7 +10584,14 @@ disassembly rather than from the feel:
   one.  (main.c's rescue path already read it correctly - the idiom was
   in the tree, just not here.)
 * `$80AFBE` takes its turn rate from **the kart's own `$C8`** - the
-  rubber-band row - and the port passed a hardcoded 8 for every kart.
+  rubber-band row - and the port passes a hardcoded 8 for every kart.
+  **TRIED AND REVERTED:** feeding it our own row (`r->row * 2`) costs
+  track 15, where a kart can no longer get round.  Our row is a MODEL
+  that scores 94.2% against the game's logged rows (NOTES 174), not the
+  row itself, so putting it here propagates its 6% into a place that was
+  a constant and worked.  The constant stays, labelled, until `$C8` is
+  exact - and the shape of the routine is now written down for whoever
+  does that.
 
 Also decoded properly while reading it: `$80AFBE` snaps when the heading
 error is inside `$0200` and otherwise turns by a rate that `$80AFF9`
@@ -10619,7 +10626,40 @@ per frame instead of 17.1% - a constant fine shimmer instead of an
 occasional jump) and sampling about the sprite's centre instead of its
 left edge (17.3%: no difference at all).
 
+**And the gate caught the revert.**  `laptest` drives an AI kart round
+all twenty courses; it went 20/20 -> 19/20 the moment the turn row
+changed, which is exactly what that test is for.
+
 **Still open, and it is a choice rather than a bug.**  A continuously
 scaled sprite re-samples itself whenever it grows; only a small set of
 fixed sizes removes that entirely, and that is the ladder the user
 rejected.  The measurement above is the ruler for whatever is decided.
+
+## 257. The shell asks HOW MANY first, and a time trial is a solo thing
+
+The user: *"we shouldn't have time trial in 2p mode.  So the original
+game had appearing menus: first options shown: 1p 2p, then the other
+options: GP, Single Race, Time trial (the last one only comes up in 1P
+mode)."*
+
+So the players choice comes out of the mode screen, where NOTES 255 had
+put it as a fourth row, and becomes a screen of its own between the title
+and the mode:
+
+    TITLE -> HOW MANY PLAYERS -> SELECT MODE -> DRIVER(S) -> COURSE -> RACE
+
+`smk_ui_mode_rows()` is the whole of the rule - three rows for one
+player, two for two, because TIME TRIAL is last in the list - and it is
+the one function the navigation and the drawing both ask, so the cursor
+can never land on a row that is not drawn.  A time trial left selected
+from a previous solo run is dropped on the way out of the players screen
+rather than allowed to reach a split-screen race.
+
+The players screen also carries what the pads decide, in words: `NO
+CONTROLLER: 2 PLAYERS NEEDS ONE`, `P1 CONTROLLER  P2 KEYBOARD`, or
+`P1 PAD 1  P2 PAD 2`.  The mode screen underneath shows the choice that
+was made, so the two screens read as one decision.
+
+`tools/laptest.c` walks the new order and checks the rule from both
+sides: that two players and one-player-versus-CPU both drop the row, that
+the cursor cannot reach it, and that a stale time trial is cleared.
