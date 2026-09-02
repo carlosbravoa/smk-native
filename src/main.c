@@ -500,6 +500,54 @@ static void draw_clock(uint32_t *fb, int rw, int rh, const uint32_t *palette,
 }
 
 /* "LAP n/N" in the game's own art, top-right like the original. */
+/* OURS: a small closed circuit beside the lap count, so the pair reads
+ * as "lap 1 of 5" rather than two loose numbers.  The game has no such
+ * icon - the kart icon it does have in that corner means LIVES - and the
+ * user asked for it deliberately generic: "just a typical kidney-shaped
+ * track as an icon", so it never has to match the course being raced.
+ * One byte a row, bit 7 leftmost, drawn dark-then-light so it reads over
+ * sky, sand and tarmac alike. */
+static const uint8_t TRACK_ICON[8] = {
+    0x3C,   /* ..####.. */
+    0x42,   /* .#....#. */
+    0x81,   /* #......# */
+    0x81,   /* #......# */
+    0x99,   /* #..##..# */
+    0x81,   /* #......# */
+    0x42,   /* .#....#. */
+    0x3C,   /* ..####.. */
+};
+
+static void draw_track_icon(uint32_t *fb, int rw, int rh, int x, int y, int sc)
+{
+    /* The outline is the cells NEXT TO the shape and not part of it.
+     * Ringing every set cell instead filled the loop's own hole and the
+     * icon came out a solid blob. */
+    for (int r = -1; r < 9; r++)
+        for (int c = -1; c < 9; c++) {
+            int on = (r >= 0 && r < 8 && c >= 0 && c < 8)
+                   && (TRACK_ICON[r] & (0x80 >> c));
+            int near = 0;
+            for (int k = 0; k < 4 && !near; k++) {
+                static const int nx[4] = { -1, 1, 0, 0 }, ny[4] = { 0, 0, -1, 1 };
+                int rr = r + ny[k], cc = c + nx[k];
+                if (rr >= 0 && rr < 8 && cc >= 0 && cc < 8
+                    && (TRACK_ICON[rr] & (0x80 >> cc))) near = 1;
+            }
+            /* ...and never INSIDE the loop: an outline there closes the
+             * hole and the icon reads as a solid blob. */
+            if (!on && (r >= 2 && r <= 5 && c >= 2 && c <= 5)) continue;
+            if (!on && !near) continue;
+            uint32_t col = on ? 0xFFF0F0F8u : 0xFF201820u;
+            for (int dy = 0; dy < sc; dy++)
+                for (int dx = 0; dx < sc; dx++) {
+                    int px = x + c * sc + dx, py = y + r * sc + dy;
+                    if (px >= 0 && px < rw && py >= 0 && py < rh)
+                        fb[py * rw + px] = col;
+                }
+        }
+}
+
 /* The dashboard (NOTES 248/249).  The user, correcting the first cut:
  * "the kart shows the number of lifes remaining, not the lap count.  The
  * game doesn't show lap number because it is lakitu who annouces that.
@@ -549,9 +597,10 @@ static void draw_hud(uint32_t *fb, int rw, int rh, const uint32_t *palette,
     if (lap > 0) {
         int ld = lap > 9 ? 9 : lap;
         int ly = y + adv;
-        hud_tile(fb, rw, rh, x + adv,     ly, smk_hud_digit(ld), palette, sc);
-        hud_tile(fb, rw, rh, x + adv * 2, ly, 0xA2 - SMK_HUD_TILE0, palette, sc);
-        hud_tile(fb, rw, rh, x + adv * 3, ly,
+        draw_track_icon(fb, rw, rh, x + adv, ly, sc);
+        hud_tile(fb, rw, rh, x + adv * 2, ly, smk_hud_digit(ld), palette, sc);
+        hud_tile(fb, rw, rh, x + adv * 3, ly, 0xA2 - SMK_HUD_TILE0, palette, sc);
+        hud_tile(fb, rw, rh, x + adv * 4, ly,
                  smk_hud_digit(SMK_RACE_LAPS), palette, sc);
     }
     (void)speed;    /* the speed is a NEEDLE now, drawn by draw_gauge */

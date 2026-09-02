@@ -10293,3 +10293,26 @@ class tops were 864 and 992.  A star peaks at 1313, a lightning bolt at
 The lesson is the one this project keeps relearning: the port's
 transcription of a routine is not a measurement of the game.  `target +
 $C0` is real code, correctly read, for the wrong event.
+
+## 253. A track icon for the lap count
+
+The user: "can we add an icon with a small track?  we don't need to
+change it, just a typical kidney-shaped track as an icon."  So: OURS, and
+deliberately generic - it never has to match the course being raced.
+
+An 8x8 closed loop with an infield nub, drawn white with a dark outline
+so it sits beside the ROM's own outlined sprites without looking out of
+place.  Two things had to be got right before it read as a track rather
+than a letter:
+
+* a TWO-cell band leaves a four-cell hole, and once the outline eats one
+  cell from each side of that hole only two remain - at which point the
+  icon is a white blob with a speck in it.  One-cell band, six-cell hole.
+* the outline must be the cells NEXT TO the shape and outside the loop.
+  Ringing every set cell fills the hole from the inside and undoes the
+  first fix; ringing with a single offset smears into the digit beside
+  it.  The interior is excluded by hand - the shape is fixed, so a flood
+  fill would be ceremony.
+
+It sits where the coin icon sits on the row above, so the two lines read
+as a pair: coins on top, `<track> 1'5` under it.
