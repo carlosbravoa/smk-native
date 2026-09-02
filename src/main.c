@@ -1530,6 +1530,8 @@ static void camera_from_kart(smk_camera *cam, const smk_kart *k)
 
 static int8_t was_cool;   /* the kart's contact window before the collide */
 static int menu_nav_left;   /* SMK_MENU_NAV still has keys to send */
+static int finish_wait;     /* frames since this view crossed */
+static bool results_ready;  /* its table is due, once everyone is in */
 static int show_kart = 1, show_grid = 1;
 
 /* ---- the two views (S36: two-player, side by side) -------------------
@@ -1559,6 +1561,7 @@ static int show_kart = 1, show_grid = 1;
     X(const smk_driver *, drv)      \
     X(smk_item,        item)        \
     X(bool,            item_used_once) \
+    X(int,             race_state)   /* the countdown is shared, the finish is not */ \
     X(int,             celebrating) \
     X(uint16_t,        finish_yaw)  \
     X(int,             celebrating_pose) \
@@ -1585,6 +1588,8 @@ static int show_kart = 1, show_grid = 1;
     X(int,             lakitu_exit_t) \
     X(long,            lap_start_frames) \
     X(int,             crossings)   \
+    X(int,             finish_wait) /* frames waited for the other driver */ \
+    X(bool,            results_ready) /* this driver's table is due       */ \
     X(smk_ui_result,   result)      \
     X(bool,            tt_mushroom) \
     X(smk_autopilot,   autopilot)   \
@@ -1602,7 +1607,8 @@ typedef struct {
     PV_LIST(PV_DECL)
     /* not swapped state: what this view IS */
     int  slot;            /* the racers[] index it drives                */
-    bool human;           /* false: it watches a CPU kart (1P + CPU)     */
+    bool drives;          /* it steers its own kart with the player code  */
+    bool bot;             /* ...and the AUTOPILOT presses its buttons     */
     uint32_t *fb;         /* its own framebuffer, half the window wide   */
     int  rw, rh;
 } pview;
@@ -1614,13 +1620,31 @@ static int   cur_view;            /* whose copy the globals hold now     */
 static void pv_save(pview *v) { PV_LIST(PV_SAVE) }
 static void pv_load(const pview *v) { PV_LIST(PV_LOAD) }
 
-/* Is racers[q] a slot a PERSON is driving?  The AI must not step it and
- * the field's item pass must not hit it twice. */
-static bool slot_is_human(int q)
+/* Is racers[q] a slot one of the VIEWS drives - a person, or our own
+ * autopilot?  Either way it is stepped by the player code, so the
+ * shipped AI must leave it alone and the field's item pass must not hit
+ * it twice. */
+static bool slot_is_driven(int q)
 {
     for (int i = 0; i < nviews; i++)
-        if (views[i].human && views[i].slot == q) return true;
+        if (views[i].drives && views[i].slot == q) return true;
     return false;
+}
+
+/* Has everybody who is DRIVING finished?  In a two-view race the results
+ * belong to both of them, so the screen waits - but not for ever: a
+ * driver who is stuck in the scenery must not hold the other's results
+ * hostage, so `finish_wait` counts the frames since the first one
+ * crossed and gives up after SMK_FINISH_WAIT. */
+#define SMK_FINISH_WAIT (60 * 60)      /* a minute of race time - OURS */
+static bool every_view_finished(void)
+{
+    for (int i = 0; i < nviews; i++) {
+        if (!views[i].drives) continue;
+        bool done = (i == cur_view) ? race_over : views[i].race_over;
+        if (!done) return false;
+    }
+    return true;
 }
 
 static void pv_switch(int i)
@@ -1769,7 +1793,8 @@ static bool load_race(const smk_rom *rom, int track, int theme, int character,
      * that kart and this only watches it. */
     nviews = (players_mode == SMK_PLAYERS_1) ? 1 : 2;
     views[0].slot = 0;
-    views[0].human = true;
+    views[0].drives = true;
+    views[0].bot = false;
     cur_view = 0;
     me = &racers[0];
     racer_draw_mask = (mode == SMK_MODE_TT) ? 0x00 : 0xFE;
@@ -1780,7 +1805,13 @@ static bool load_race(const smk_rom *rom, int track, int theme, int character,
         views[1] = views[0];
         views[1].fb = keep; views[1].rw = kw; views[1].rh = kh;
         views[1].slot = 1;
-        views[1].human = (players_mode == SMK_PLAYERS_2);
+        /* BOTH split modes drive a real kart with the player physics.
+         * The difference is only who presses the buttons: a person, or
+         * our own autopilot - the driver that obeys the rules (NOTES
+         * 149), which is a better and smoother driver than the shipped
+         * AI and is what "VS CPU" means here. */
+        views[1].drives = true;
+        views[1].bot = (players_mode == SMK_PLAYERS_CPU);
         views[1].me = &racers[1];
         views[1].drv = &SMK_DRIVERS[p2_character % SMK_CHARACTERS];
         views[1].view_karts = &karts_p2;
@@ -1800,8 +1831,8 @@ static bool load_race(const smk_rom *rom, int track, int theme, int character,
         /* a driver does not draw his own kart through the projection -
          * his is the near one; a CPU view draws every kart, including
          * the one it follows, because it has no near kart of its own */
-        views[1].show_kart = views[1].human;
-        views[1].racer_draw_mask = views[1].human ? (0xFF & ~(1 << 1)) : 0xFF;
+        views[1].show_kart = 1;
+        views[1].racer_draw_mask = 0xFF & ~(1 << 1);
         views[1].tt_mushroom = false;
         views[1].player.item_held = false;
     }
@@ -1832,7 +1863,7 @@ static void save_ppm(const char *path, const uint32_t *fb, int w, int h)
  * rather than an estimate.  Capped, because a kart that is genuinely stuck
  * must not hang the results screen - those are shown as DNF.
  */
-static bool slot_is_human(int q);
+static bool slot_is_driven(int q);
 /* Bring the field home after the player has finished, so the results have
  * everybody's time.  A slot a PERSON drives is left alone - they are
  * still racing, and their time is their own. */
@@ -1843,12 +1874,12 @@ static void settle_field(smk_racer *rs, const smk_track *t,
     for (long f = 0; f < CAP; f++) {
         int left = 0;
         for (int i = 1; i < SMK_CHARACTERS; i++)
-            if (rs[i].finish_frame < 0 && !slot_is_human(i)) left++;
+            if (rs[i].finish_frame < 0 && !slot_is_driven(i)) left++;
         if (!left) break;
         smk_race_frame = now + f;
         smk_ai_rubber(rs, SMK_CHARACTERS, c, ph->engine_class);
         for (int i = 1; i < SMK_CHARACTERS; i++)
-            if (rs[i].finish_frame < 0 && !slot_is_human(i))
+            if (rs[i].finish_frame < 0 && !slot_is_driven(i))
                 smk_racer_step(&rs[i], t, c, ph);
     }
     /* whoever is STILL out there (stuck on an obstacle, off in the weeds)
@@ -1857,7 +1888,7 @@ static void settle_field(smk_racer *rs, const smk_track *t,
     {
         int left[SMK_CHARACTERS], nl = 0;
         for (int i = 1; i < SMK_CHARACTERS; i++)
-            if (rs[i].finish_frame < 0) left[nl++] = i;
+            if (rs[i].finish_frame < 0 && !slot_is_driven(i)) left[nl++] = i;
         for (int a = 0; a < nl; a++)
             for (int b = a + 1; b < nl; b++)
                 if (rs[left[b]].lap > rs[left[a]].lap) { int q = left[a]; left[a] = left[b]; left[b] = q; }
@@ -1895,7 +1926,7 @@ static void build_result_table(smk_ui_result *res, smk_racer *rs,
         rs[i].place = p + 1;
         res->field[p].character = rs[i].character;
         res->field[p].total     = rs[i].finish_frame;
-        res->field[p].player    = slot_is_human(i);
+        res->field[p].player    = slot_is_driven(i);
     }
     res->entries  = SMK_CHARACTERS;
     res->position = rs[who].place;
@@ -3579,7 +3610,8 @@ int main(int argc, char **argv)
     }
     me = &racers[0];
     views[0].slot = 0;
-    views[0].human = true;
+    views[0].drives = true;
+    views[0].bot = false;
 
     lean = 0.0f;
     float g0x, g0y;
@@ -3652,7 +3684,7 @@ int main(int argc, char **argv)
          * copy is the one in `in`. */
         pv_switch(0);
         {
-            int nhuman = (nviews > 1 && views[1].human) ? 2 : 1;
+            int nhuman = (nviews > 1 && views[1].drives && !views[1].bot) ? 2 : 1;
             /* the user's rule: with one controller it is "controller and
              * keyboard", so the pad takes player 1 and the keys player 2 */
             kb_player = (nhuman > 1 && smk_pad_count() == 1
@@ -3839,7 +3871,12 @@ int main(int argc, char **argv)
              * clock counting the same frames it always did. */
             bool countdown_now = (race_state == RACE_COUNTDOWN);
             bool lights_out = countdown_now && race_count >= SMK_COUNT_FRAMES;
-            if (lights_out) race_state = RACE_RUN;
+            if (lights_out) {
+                /* every view leaves the grid together; only the FINISH is
+                 * each driver's own, which is why race_state is per view */
+                race_state = RACE_RUN;
+                for (int v = 1; v < nviews; v++) views[v].race_state = RACE_RUN;
+            }
             if (race_state == RACE_RUN || race_state == RACE_FINISH) {
                 hud_race_frames++;
                 smk_race_frame = hud_race_frames;   /* so a kart can stamp its own finish */
@@ -3865,17 +3902,6 @@ int main(int argc, char **argv)
              * there was only ever one of them. */
             for (int v = 0; v < nviews; v++) {
             pv_switch(v);
-            if (!views[v].human) {
-                /* A CPU view drives nothing: the AI already stepped this
-                 * kart in the world pass, so the camera simply follows
-                 * it and the rest of the per-driver work is skipped. */
-                kart = me->k;
-                player.heading = kart.angle;
-                player.coins = me->coins;
-                cam_spin = 0;
-                camera_from_kart(&cam, &kart);
-                continue;
-            }
             if (countdown_now) {
                 /* The lights.  The kart is held, but the throttle is NOT
                  * ignored - it builds the rev, and where the rev sits when
@@ -3971,7 +3997,10 @@ int main(int argc, char **argv)
                     racers[1].k.airborne = (r->flags & 0x8000) != 0;
                 }
             }
-            if (autodrive && race_state == RACE_RUN && !replay_path) {
+            /* --autodrive drives EVERY view; a VS CPU view's second
+             * driver is the same autopilot, always. */
+            if ((autodrive || views[v].bot)
+                && race_state == RACE_RUN && !replay_path) {
                 /* The autopilot presses buttons and nothing else, so the
                  * kart it drives is subject to every rule the player's is
                  * (src/autopilot.c). */
@@ -4331,7 +4360,7 @@ int main(int argc, char **argv)
                     }
                     pv_switch(0);
                     for (int q = 1; q < SMK_CHARACTERS; q++) {
-                        if (slot_is_human(q)) continue;   /* it took its hit above */
+                        if (slot_is_driven(q)) continue;   /* it took its hit above */
                         int hq = smk_proj_hit(projs, SMK_PROJ_MAX, &racers[q].k, q);
                         if (hq && getenv("SMK_ITEM_TRACE"))
                             printf("item HIT kart %d (%s) at (%d,%d) rank %d by kind %d; player at (%d,%d) rank %d\n",
@@ -4365,7 +4394,7 @@ int main(int argc, char **argv)
                     printf("\n");
                 }
                 for (int i = 1; i < SMK_CHARACTERS; i++) {
-                    if (slot_is_human(i)) continue;   /* a person drives this one */
+                    if (slot_is_driven(i)) continue;   /* a person drives this one */
                     smk_racer_step(&racers[i], &trk, &crs, &phys);
                 }
                 /* Kart against kart, once a frame over the whole field
@@ -4409,7 +4438,6 @@ int main(int argc, char **argv)
             }
             for (int v = 0; v < nviews; v++) {
             pv_switch(v);
-            if (!views[v].human) continue;   /* nothing of its own to settle */
             if ((race_state == RACE_RUN || race_state == RACE_FINISH)
                 && !replay_path && race_mode != SMK_MODE_TT) {
                 kart = me->k;
@@ -4552,18 +4580,29 @@ int main(int argc, char **argv)
                  * for, so hand over to the celebration and let it run. */
                 me->finish_frame = hud_race_frames;
                 smk_sfx_play(SMK_SFX_FINISH);    /* the user: "getting to the goal" */
+                finish_wait = 0;
                 if (race_mode == SMK_MODE_TT) {
-                    if (shell || getenv("SMK_RESULT_SHOT")) { smk_ui_gp_award(&ui, &result); ui.screen = SMK_UI_RESULT; }
+                    results_ready = true;
                 } else {
                     race_state = RACE_FINISH;
                     finish_t = 0;
                 }
             }
+            /* Somebody else is still out there.  Their race is not over
+             * because yours is (S42), so the results wait - up to a
+             * minute, after which a driver stuck in the scenery stops
+             * holding the other's screen. */
+            if (race_over) finish_wait++;
 
             /* the celebration is over: settle the field and show the times */
             if (race_state == RACE_FINISH
                 && finish_t >= SMK_FINISH_TURN + SMK_FINISH_HOLD) {
                 race_state = RACE_RUN;          /* nothing more to celebrate */
+                results_ready = true;
+            }
+            if (results_ready
+                && (every_view_finished() || finish_wait >= SMK_FINISH_WAIT)) {
+                results_ready = false;
                 settle_field(racers, &trk, &crs, &phys, hud_race_frames);
                 build_result_table(&result, racers, result.total, (int)(me - racers));
                 printf("  final order:\n");

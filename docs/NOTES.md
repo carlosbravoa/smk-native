@@ -10487,13 +10487,35 @@ Views at or above that shape are untouched, which is why every existing
 window renders exactly as it did.
 
 **The second driver.**  `racers[1]` is the ROM's own rival slot, so a
-person simply takes it: the AI step and the field's item pass skip any
+driver simply takes it: the AI step and the field's item pass skip any
 slot a human drives (`slot_is_human`), the human's kart syncs into
 `racers[1]` before the collide and out of it after, exactly as player 1's
 always has, and everything kart-to-kart - bumps, coins, shells, stars -
-works between the two people with no special case at all.  `VS CPU` keeps
-no player of its own: the AI drives that kart and the second view only
-watches it, which is four lines.
+works between the two people with no special case at all.  **And `VS CPU` is OUR
+driver, not the shipped AI** - the user: *"the CPU you implemented is not
+the right one.  We implemented a CPU player that actually played smoothly
+and better than the original AI players."*  Right: that is the autopilot
+of NOTES 149, which presses buttons and is therefore subject to every
+rule the player is.  So both split modes are real drivers with the player
+physics on their own slot, and the only difference is who presses the
+buttons - a person, or `smk_autopilot_step`.  A view carries `drives` and
+`bot` rather than `human`, and `slot_is_driven` is what keeps the shipped
+AI off that kart.
+
+Two more defects fell out of that, both invisible while the second view
+was only a spectator:
+
+* **`race_state` was shared.**  When one driver crossed, the OTHER one
+  celebrated too - and then settled the field and built a results table
+  with its own (zero) time, which put an idle player 1 in FIRST place
+  with a blank clock.  It is per view now; only the countdown is shared,
+  and every view leaves the grid on the same frame.
+* **The results appeared the moment ONE driver crossed**, ending the race
+  for somebody still on their last lap, and `settle_field` handed that
+  unfinished driver an invented straggler time.  A driven slot is now
+  left alone by the settle, and the results wait for every driver -
+  bounded by a minute of race time so a kart stuck in the scenery cannot
+  hold the other player's screen.
 
 **Controllers.**  `smk_pad_count()` drives the menu row: none and VS 2P
 is drawn dim and cannot be reached; one and it is the pad for player 1
