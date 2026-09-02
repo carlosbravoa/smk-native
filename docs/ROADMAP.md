@@ -470,7 +470,7 @@ regression in them is noticed.
 | P4 sprites | **done** — the projection is derived once from the ROM's own DSP-1 geometry (NOTES 083/084): depth(L)=4972/(L-20.36), scale=depth/256 (ratio = Les, the cross-check), camera trails the kart 61 px.  Pose ladder measured pixel-exact (NOTES 080/081).  Residual: kart-sheet rows 1-2 purpose, sprite size quantisation (ours is continuous, labelled) |
 | P5 race furniture | **part** - the live phase — ground objects stamped with the ROM's own tiles (NOTES 074), sprite-obstacle entity list decoded and colliding (NOTES 078), HUD set + clock + lap counter on the game's own art, start countdown (NOTES 085).  hazard classes decoded and ported - water ($22) wade/skim, the fall ($24/$26/$20/$28) and Lakitu's rescue as the ROM's own three states with a latched target (NOTES 113, 124).  Breakable blocks done and gated for both themes (NOTES 123/123a).  The sector map now matches the game's own $7F:5000 on all painted cells.  Lakitu's own art is now decoded and drawn for the start (NOTES 162).  Residual: the horizon/backdrop (S5), entity MOTION (S12), item behaviour, the splash/sink effects |
 | P6 opponents | **driving and competitiveness in, personality not.**  Flow-field steering (95% byte-exact), ramp launches, wall escapes and a Lakitu rescue get the field round **20/20** GP courses.  Kart-to-kart contact is the ROM's, weight classes and all (NOTES 166).  The rubber band is the ROM's own row chooser, `$80ADA0`, rebuilt in NOTES 174 and reproducing the game's choice on 94.2% of 39,074 recorded kart-frames - it turns on whether the neighbouring kart is the HUMAN, and its catch-up distances re-tune every lap.  Residual: the "in trouble" test (`$84`, `$10` bit 5) is approximated and never fires where the game is at 8%; the distance CACHE is not modelled; per-kart driving personality; items |
-| P7 audio | **decided** — pre-recorded; `smk spc` dumps the driver, rendering not wired up |
+| P7 audio | **effects DONE and decoded** (NOTES 211-246) — the game's own ids, rendered from its own BRR samples off the chip; four engines by driver pair, six rough surfaces, the overtake voices, the held voices (engine/roulette/skid).  **Music PARKED** by the user and off by default.  Residual: nine PENDING items listed under "Where to pick up next" (1a-1i) — the bridge's rate, `$4F`/`$53`, coverage 35/71 |
 | P8 modes / menus | **part** — a working shell: title → mode → driver+class → course-by-cup → race → results, in two modes.  SINGLE RACE is a Grand Prix course on its own: eight karts, the ROM's per-character grid order (`$81EE97`, NOTES 111) on the ROM's own grid rows with the player at the back (NOTES 164), starting coins, and a finishing place.  TIME TRIAL is alone with one mushroom and keeps the top five lap times per course on disk.  Font, palettes, cup order, course names, lap count and the time-trial rules are all ROM-derived (NOTES 147/148).  Residual: the real menu art (S20), the mushroom grant rule (S19); the cup is in (NOTES 198) |
 
 ## Known bugs (the user's list, 2026-08-30)
@@ -630,51 +630,52 @@ of them changes how every race feels.
 
 In rough order of value:
 
-1. **Sound (S8, P7) — music PARKED and OFF by default; the SFX are IN
-   and now DECODED rather than guessed (NOTES 211-230).** Three tools
-   cover it and none of them need anyone to play anything:
-   `sfxwho.lua` taps the call and says which ROUTINE plays each sound;
-   `sfxsweep.py` forces any item, surface, collision, object or menu in
-   our own interpreter and logs what the game asks for; `voicedump.lua`
-   plus `sfxrender.py` rebuild the sounds from the game's own BRR
-   samples, including the HELD voices (the engine, the roulette, the
-   skid) that are never queued at all. `sfxcoverage.py` counts it: 71
-   call sites with a known id, 35 seen. What is left is the menus'
-   per-screen sites and the item-hit variants, both reachable the same
-   way. Old text (the capture route, superseded):** 31 of the game's own effects are captured from the
-   running game by subtracting two deterministic MAME replays, cut by
-   tools/labs/sfxcut.py into rom/sfx/<ID>.wav, and played by the GAME'S
-   own ids so every call site reads like the ROM's. A dozen are named by
-   the ROM's own call sites (hop, spin, water, lava, feather, mushroom,
-   item box, coin, lap, the lights, the menu); the rest need an ear -
-   `smk --sfx` plays them all. **The engine note is now IN** (NOTES 212, S38): it was never
-   in the queue - $80:9643 hands the driver one byte a frame - and both
-   halves are measured, the pitch law (f = 392 + 7.5*v Hz, by pinning
-   the parameter with a ROM patch) and the rev that drives it ($80:9543,
-   +$C0 a frame to $4F00, the over-rev surge, $180 decay to idle). The
-   turbo launch finally has the cue a player times against. STILL OPEN:
-   the SFX are not yet mixed per-event with distance/priority, and the
-   effects for events the ROM's call sites do not name. Old text:** The pipeline works end to
-   end (NOTES 201/202, docs/SOUND.md): the game's own driver snapshotted
-   and rendered, one clean loop per song, mapped in rom/music/map.txt.
-   PARKED by the user 2026-08-30: the loops "don't start from a sensible
-   part of the song" and real intros are wanted - "this will take long to
-   get properly running and it is minor". The open half is the SFX: the
-   ENGINE NOTE first (the turbo launch is timed against it), then hits,
-   items, the countdown beeps.
-   The old text:** The songs
-   are the game's own driver, snapshotted from a MAME replay and rendered
-   by libgme; the port plays the WAVs the user maps in rom/music/map.txt
-   (N toggles). Still open: per-theme snapshots for every course, loop
-   points, and all SFX - the engine note that the turbo launch needs most.
-   The old text:** It has moved from "polish" to "the missing half of
-   a mechanic", and the user has now confirmed it from play: the turbo
-   launch works in the port and is "slightly harder to pull off given
-   that there is no sound yet". The window is 95 frames before the green
-   lamp and lines up with no lamp at all - the cue a player times against
-   is the engine note. A decoded, correct mechanic that a human cannot
-   reliably use is the strongest case on this list. `smk spc` already
-   dumps the driver; nothing renders it.
+1. **Sound (S8, P7) — the SFX are IN and DECODED, not guessed
+   (NOTES 211-246); music PARKED by the user and off by default.**
+   Everything below is what is still PENDING; the working methods are in
+   docs/SOUND.md and the memory note, and none of them needs anyone to
+   play anything.
+
+   PENDING, in rough order of value:
+
+   a. **The bridge (class $50) still sounds wrong to the user** after
+      three passes. Sample `$16`, two pitches `$0400`/`$0300` alternating,
+      re-keyed every 5 frames - all measured and stable across the whole
+      log. The untested suspicion is that the clatter RATE tracks the
+      kart's SPEED, and one speed is baked into the loop. Measure it at
+      two speeds before touching anything else.
+   b. **`$4F` and `$53` are played by the game and never by the port.**
+      Both captured. `$4F` comes from `$80:F0CC`, which sets a `$012C`
+      timer on an object; `$53` from `$80:F809`, an object's `$66` timer
+      expiring. Neither EVENT is identified yet, so neither is wired.
+   c. **`$48` (boost) renders at 0.67 of the chip's span** and every
+      other id now lands within 1%. `SFX_DEBUG=1` says the music takes
+      the voice back at f2265, so it may be right - it needs one look.
+   d. **`$5B` is captured but not wired**: which screen uses it rather
+      than `$2C` is not measured, and the course-screen split the port
+      used to have was an invention.
+   e. **`$29`, `$5D`, `$5F` are the last ear-only wirings.** The port
+      plays them; the game has never been seen to. `$5D`/`$5F` are the
+      poison mushroom, and forcing the shrink state plays nothing
+      (NOTES 233).
+   f. **Coverage is 35 of 71 call sites.** What is left is the menus'
+      per-screen sites and the item-hit variants, both reachable by
+      forcing.
+   g. **Distance banding is applied to the shell bounce only.** The
+      other families off `$80:FBBC` (`$33`, `$36`, and the kart's own
+      `$3C`) share `$84:D9DA`'s threshold table. For the player's own
+      hits the nearest band is always right, so this only matters once
+      another kart's events are audible - which they are not today.
+   h. **Whether a surface's pulse rate tracks speed** - the same question
+      as (a), for grass and sand as well as the bridge.
+   i. **Music stays PARKED** (the user, 2026-08-30): the loops "don't
+      start from a sensible part of the song" and real intros are wanted;
+      "this will take long to get properly running and it is minor."
+
+   DONE and confirmed by the user: the engine note, four engines by
+   driver pair, the item roulette, the skid, the five... now six rough
+   surfaces, the overtake voices, the item lock-in, throwing versus
+   dropping, and the wall pair.
 
 2. **Items (P5) — IN and played (docs/ITEMS.md, NOTES 185/190/192).**
    The roulette replays the user's race 285/285 frames exact; the nine
