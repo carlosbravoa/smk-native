@@ -754,23 +754,24 @@ In rough order of value:
     The third is the chequered flag's neighbour - Lakitu's third job is
     still unstarted, and the art is the checker across `$68`-`$9F`.
 
-11. **~~The dashboard (user's list)~~ — IN (NOTES 248).** Laps, position
-    and coins are the ROM's own art in the ROM's own FORM, read off the
-    game's OAM in a race rather than invented (`tools/labs/hudlayout.py`):
-    a kart icon then the multiply sign then the lap digit, and under it a
-    coin icon, the sign and up to two digits - the coin row one tile right
-    of the kart's icon, eight pixels below, sharing a column with the lap
-    digit. Coins had never been drawn at all: `draw_hud` took them and
-    threw them away.
+11. **~~The dashboard (user's list)~~ — IN (NOTES 248/249).** Coins and
+    position are the ROM's own art, read off the game's OAM in a race
+    rather than invented (`tools/labs/hudlayout.py`); coins had never been
+    drawn at all - `draw_hud` took them and threw them away. The kart icon
+    beside them is LIVES, not laps (the user), and lives are deliberately
+    NOT implemented. The game shows no lap number anywhere: Lakitu
+    announces it.
 
     OURS and ledgered: the corner it hangs in (the window is not 256x224 -
-    the standing rule is ROM art, our layout), the position's placement
-    (the game draws its own on a background layer this renderer has no
-    equivalent of), and the whole telemetry overlay - speed, surface,
-    slip angle, the class-top bar - which the original never had. That
-    overlay is now TOGGLEABLE on **H**, with `SMK_NO_TELEMETRY=1` to start
-    without it, and it no longer repeats the lap and position in the
-    corner.
+    the standing rule is ROM art, our layout); the position drawn as the
+    ROM's sprite digit at DOUBLE scale, because the game's own big number
+    is background-layer art and is nowhere in OAM; the SPEED readout,
+    which the user asked for and the original never had; and the telemetry
+    overlay - surface, slip angle, the class-top bar, and the lap count,
+    which lives there because the game has no lap display to copy. The
+    overlay TOGGLES on **H**, with `SMK_NO_TELEMETRY=1` to start without
+    it. Still open: Lakitu's lap announcement, after which the telemetry's
+    lap number can go.
 
 12. **~~The track map (user's list)~~ — IN (NOTES 200, S33).** The
     course's own tilemap in the bottom-right corner, every kart a dot, M

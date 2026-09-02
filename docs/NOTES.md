@@ -10164,3 +10164,37 @@ gone: the dashboard owns the lap and the position now.
 `--shot` also draws the dashboard, so a still can be put beside the
 game's - though its plane and palette are unloaded on that path, so a
 live `SMK_SHOT=frame:path` is the one to compare with.
+
+## 249. The kart icon is LIVES, not laps - and the game shows no lap at all
+
+NOTES 248 read the ROM's own OAM correctly and then named it wrong.  The
+user: "the kart shows the number of lifes remaining, not the lap count.
+The game doesn't show lap number because it is lakitu who annouces that.
+The position is the big number next to those two.  I don't want to
+implement lifes, and I do want to add speed."
+
+So the corner holds three things, and now the port draws two of them:
+
+    y 84   kart icon $5E $5F, $4E, digit   LIVES     - deliberately NOT drawn
+    y 92   coin icon $4F, $4E, two digits  COINS     - drawn, the game's shape
+    right  a big number                    POSITION  - drawn, see below
+
+The position is worth a note of its own: it is nowhere in OAM.  Dumping
+the shadow at `$0220` at a frame where a big `1` is plainly on screen
+turns up only the small digits of the two rows, so the game's own is
+background-layer art.  The port draws the ROM's sprite digit at twice the
+scale instead, which is LABELLED - the glyph is the game's, the doubling
+is ours.
+
+And the LAP: the game never shows one, so neither does the dashboard.
+The count moved into the telemetry block, which is already marked as ours
+and toggles off with H.  When Lakitu's lap announcement is drawn it can
+go entirely.
+
+SPEED is the user's own addition, in the ROM's digits under the coin row,
+with no icon - the original had nothing there to copy.
+
+A layout note that cost a screenshot: the block is seven tiles wide, not
+five.  Five is the coin row; the big position digit needs two more, and
+at five the doubled glyph drew off the right edge of the window
+altogether.

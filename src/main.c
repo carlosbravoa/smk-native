@@ -500,52 +500,58 @@ static void draw_clock(uint32_t *fb, int rw, int rh, const uint32_t *palette,
 }
 
 /* "LAP n/N" in the game's own art, top-right like the original. */
-/* The dashboard, in the GAME'S own form (NOTES 248).  Read straight off
- * the ROM's OAM in a race (tools/labs/hudlayout.py) rather than invented:
+/* The dashboard (NOTES 248/249).  The user, correcting the first cut:
+ * "the kart shows the number of lifes remaining, not the lap count.  The
+ * game doesn't show lap number because it is lakitu who annouces that.
+ * The position is the big number next to those two.  I don't want to
+ * implement lifes, and I do want to add speed."
  *
- *   LAP    y 84   kart icon $5E $5F   at x 182,190
- *                 the multiply sign $4E at 198
- *                 the lap digit        at 206
- *   COINS  y 92   coin icon $4F        at 190
- *                 $4E                  at 198
- *                 two digits           at 206, 214
+ * So of the three things the game draws in that corner - lives, coins,
+ * position - the port draws two.  Read off the ROM's own OAM
+ * (tools/labs/hudlayout.py): the coin icon $4F, the multiply sign $4E and
+ * up to two digits, at y 92, x 190/198/206/214.  The row above it, at
+ * y 84, is the kart icon and the LIVES, and is deliberately not drawn.
  *
- * so the coin row sits one tile RIGHT of the lap's icon and eight pixels
- * below it, and the lap digit and the coins' TENS digit share a column.
- * That shape is the game's; the corner it hangs in is OURS, because the
- * window is not 256x224 (the standing rule: ROM art, our layout).
+ * The POSITION is a big number to the right of both rows.  The game's is
+ * background-layer art, not a sprite - it is nowhere in OAM - so this is
+ * the ROM's own digit at twice the scale.  LABELLED.
  *
- * The POSITION is the ROM's digit art in a place of our choosing - the
- * game draws its own on a background layer, which this renderer has no
- * equivalent of. */
+ * SPEED is the user's own addition and the original never had it, so it
+ * sits under the block in the same digits with no icon. */
 static void draw_hud(uint32_t *fb, int rw, int rh, const uint32_t *palette,
-                     int lap, int coins, int rank)
+                     int coins, int rank, int speed)
 {
     if (!hud_art.ok) return;
     int sc  = rw >= 640 ? 3 : 2;
     int adv = 8 * sc;
-    int x = rw - adv * 5 - 8, y = 8;
+    /* the block is seven tiles wide: five for a coin row, two for the
+     * big position digit that sits to its right, as the game has it */
+    int x = rw - adv * 7 - 8, y = 8;
 
-    /* LAP: the kart, the cross, the number */
-    hud_tile(fb, rw, rh, x,           y, 0x5E - SMK_HUD_TILE0, palette, sc);
-    hud_tile(fb, rw, rh, x + adv,     y, 0x5F - SMK_HUD_TILE0, palette, sc);
+    /* COINS, in the game's own shape */
+    int c = coins < 0 ? 0 : (coins > 99 ? 99 : coins);
+    hud_tile(fb, rw, rh, x + adv,     y, 0x4F - SMK_HUD_TILE0, palette, sc);
     hud_tile(fb, rw, rh, x + adv * 2, y, 0x4E - SMK_HUD_TILE0, palette, sc);
-    int d = lap < 1 ? 1 : (lap > 9 ? 9 : lap);
-    hud_tile(fb, rw, rh, x + adv * 3, y, smk_hud_digit(d), palette, sc);
-
-    /* COINS, the row under it */
-    int cy = y + adv;
-    int c  = coins < 0 ? 0 : (coins > 99 ? 99 : coins);
-    hud_tile(fb, rw, rh, x + adv,     cy, 0x4F - SMK_HUD_TILE0, palette, sc);
-    hud_tile(fb, rw, rh, x + adv * 2, cy, 0x4E - SMK_HUD_TILE0, palette, sc);
     if (c >= 10)
-        hud_tile(fb, rw, rh, x + adv * 3, cy, smk_hud_digit(c / 10), palette, sc);
-    hud_tile(fb, rw, rh, x + adv * (c >= 10 ? 4 : 3), cy,
+        hud_tile(fb, rw, rh, x + adv * 3, y, smk_hud_digit(c / 10), palette, sc);
+    hud_tile(fb, rw, rh, x + adv * (c >= 10 ? 4 : 3), y,
              smk_hud_digit(c % 10), palette, sc);
 
-    /* POSITION, a row lower again */
+    /* POSITION: the big number beside it.  OURS: the digit is the ROM's,
+     * the doubling is not (the game's own is on a background layer). */
     int r = rank < 1 ? 1 : (rank > 8 ? 8 : rank);
-    hud_tile(fb, rw, rh, x + adv * 3, cy + adv, smk_hud_digit(r), palette, sc);
+    hud_tile(fb, rw, rh, x + adv * 5, y - sc * 2, smk_hud_digit(r), palette, sc * 2);
+
+    /* SPEED, the user's addition, under the block */
+    int sp = speed < 0 ? 0 : (speed > 9999 ? 9999 : speed);
+    int sy = y + adv + sc * 2, sx = x + adv;
+    int div = 1000;
+    for (int i = 0; i < 4; i++, div /= 10) {
+        int d2 = (sp / div) % 10;
+        if (div > 1 && sp < div) continue;      /* no leading zeroes */
+        hud_tile(fb, rw, rh, sx, sy, smk_hud_digit(d2), palette, sc);
+        sx += adv;
+    }
 }
 /* OURS, and marked as such (ROADMAP item 11): speed, surface, slip and
  * the class-top bar are telemetry the original never had.  H toggles
@@ -627,8 +633,13 @@ static void draw_speedo(uint32_t *fb, int rw, int rh,
                                              : 0xFF808088;
         hud_number(fb, rw, rh, x + 38 * sc, y, deg > 99 ? 99 : deg, 2, sc2, sc);
     }
-    /* the lap and the position used to be repeated here in the corner;
-     * they belong to draw_hud now, on the game's own art (NOTES 248) */
+    /* The LAP is OURS (NOTES 249).  The game shows no lap number at all -
+     * "it is lakitu who annouces that" (the user) - so until his
+     * announcement is drawn the count sits here, in the block that is
+     * already marked as ours and toggles off with H. */
+    if (hud_lap > 0)
+        hud_number(fb, rw, rh, x + 50 * sc, y, hud_lap > 9 ? 9 : hud_lap, 1,
+                   0xFF80C8FF, sc);
 
     /* bar: speed vs this class's top, cap marked */
     int bx = x, by = y + 7 * sc, bw = 60 * sc, bh = 3 * sc;
@@ -2405,7 +2416,7 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
         smk_draw_set_clip_mask(NULL, 0);
     }
     if (!celebrating) {
-        draw_hud(fb, rw, rh, trk->palette, hud_lap, player.coins, hud_rank);
+        draw_hud(fb, rw, rh, trk->palette, player.coins, hud_rank, kart.speed);
         draw_track_map(fb, rw, rh, &kart, racers, SMK_CHARACTERS);
         draw_clock(fb, rw, rh, trk->palette, hud_race_frames);
         /* THE ITEM SLOT: the game's own BG3 icon, 2x2 tiles at the top left
@@ -2986,11 +2997,11 @@ int main(int argc, char **argv)
                                 smk_track_surface(&trk, (int)shot_x, (int)shot_y),
                                 672);
                 /* the dashboard too, so a still can be checked against the
-                 * game's own (SMK_SHOT_HUD=lap,coins,rank) */
-                int slap = 3, scoin = 12, srank = 2;
+                 * game's own (SMK_SHOT_HUD=coins,rank,speed) */
+                int scoin = 12, srank = 2, sspd = 583;
                 const char *hs = getenv("SMK_SHOT_HUD");
-                if (hs) sscanf(hs, "%d,%d,%d", &slap, &scoin, &srank);
-                draw_hud(px, sw, sh, trk.palette, slap, scoin, srank);
+                if (hs) sscanf(hs, "%d,%d,%d", &scoin, &srank, &sspd);
+                draw_hud(px, sw, sh, trk.palette, scoin, srank, sspd);
             }
         }
         if (SDL_Init(SDL_INIT_VIDEO) != 0 && SDL_Init(0) != 0) {
