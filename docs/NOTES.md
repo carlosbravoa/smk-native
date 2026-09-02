@@ -10088,3 +10088,36 @@ single repeated peak.  It did, for four files, and they are gone:
 
 A wrong file is worse than a missing one, and these four would have sat
 in `--sfx` looking like evidence.
+
+## 247. The countdown hop: one half of the block was missing
+
+The user: "during countdown ... I am able to jump and move my direction
+to start.  That in the original game is blocked, you cannot jump during
+count down."  Half right, and they corrected the other half themselves:
+"steering is allowed, but since there is no speed, there is no movement,
+so that is why you only get head leaning movement only."
+
+Measured, by patching the pad READ at `$80:8445` to a fixed word for 200
+frames of the countdown (`tools/labs/mame/countdownpad.lua`) and diffing
+the kart against an unforced control:
+
+    LEFT   held 200 frames -> heading, turn, pose, pose-lag, Z, speed:
+                              all IDENTICAL, 0 of 61 sampled frames differ
+    L      held 200 frames -> Z moves by exactly $0000
+    B      held 200 frames -> the launch speed differs; the throttle IS live
+
+and `$80:A9B8`, the low-speed turn table, reads
+
+    $0000 $0010 $0020 $0030 $0038 $003C $003E $0040 $0080
+
+so entry ZERO covers speeds 0..15: the ROM cannot turn a stationary kart
+at all, which is exactly the user's "no speed, no movement".
+
+The port already had this right for steering, and deliberately so
+(NOTES 175 carries the same instruction from the user).  What it had
+wrong was the hop, and only half of it: the countdown block cleared
+`in.hop_held` but not `in.hop`, and `step_kart` reads the two separately -
+`held |= 0x0020` from one, `pressed |= 0x0020` from the other, and it is
+the PRESS that hops.  So the countdown could still be hopped through.
+One field, and the gates are unmoved: 94 selftests, both human runs at
+86.2% and 92.8%.

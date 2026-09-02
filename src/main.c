@@ -3262,7 +3262,14 @@ int main(int argc, char **argv)
                  * the heading moves by exactly $0000.  All they reach is
                  * the sprite's lean (NOTES 175). */
                 in.up = in.down = false;
-                in.hop_held = false;
+                /* BOTH halves of the hop.  Clearing only hop_held left the
+                 * fresh PRESS - step_kart reads them separately, `pressed
+                 * |= 0x0020` - so the countdown could still be hopped
+                 * through, which is what the user found: "I am able to
+                 * jump ... in the original game it is blocked".  Forcing
+                 * the pad to L for 200 countdown frames in the ROM moves
+                 * Z by exactly $0000 (NOTES 247). */
+                in.hop_held = in.hop = false;
             }
             if (getenv("SMK_SPEED_TRACE") && race_state == RACE_RUN)
                 printf("spd f%ld speed %d surf $%02X type %d drive $%02X fc %d state $%02X target %d at %d,%d z %d air %d\n",
