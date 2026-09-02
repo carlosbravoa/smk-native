@@ -1310,6 +1310,9 @@ void smk_audio_set_dir(const char *rom_path);
 void smk_music_set(const char *key);
 void smk_audio_pump(void);
 void smk_music_toggle(void);
+/* freeze or resume every voice - the music, the effects and the held
+ * sounds - for the pause */
+void smk_audio_pause(bool on);
 
 /* ---- Sound effects (P7) --------------------------------------------
  *

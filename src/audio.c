@@ -109,6 +109,25 @@ void smk_music_set(const char *key)
 
 void smk_audio_pump(void) { /* SDL_mixer feeds itself */ }
 
+/* PAUSE.  Everything stops: the music, every sound effect channel and the
+ * held ones with them (the engine, the roulette), because the simulation
+ * that would have ended them is not running either.  Idempotent, so the
+ * caller can just say what it wants every frame. */
+static bool audio_paused;
+void smk_audio_pause(bool on)
+{
+    if (on == audio_paused) return;
+    audio_paused = on;
+    if (!ready) return;
+    if (on) {
+        Mix_Pause(-1);
+        if (music_on) Mix_PauseMusic();
+    } else {
+        Mix_Resume(-1);
+        if (music_on) Mix_ResumeMusic();
+    }
+}
+
 /* ---- Sound effects (NOTES 211) --------------------------------------
  *
  * One Mix_Chunk per game sound ID, loaded lazily from rom/sfx/<ID>.wav

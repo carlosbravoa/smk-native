@@ -10663,3 +10663,44 @@ was made, so the two screens read as one decision.
 `tools/laptest.c` walks the new order and checks the rule from both
 sides: that two players and one-player-versus-CPU both drop the row, that
 the cursor cannot reach it, and that a stale time trial is cleared.
+
+## 258. Fullscreen by default, and a pause
+
+The user: *"can we add two things: Start full screen, with alt+enter to
+toggle, and also a pause function?"*
+
+**Fullscreen** is now the default and `--windowed` opts out; Alt+Enter and
+F11 toggle at any time, in the shell as well as in a race, because
+`SDL_SetWindowFullscreen` is all it takes and the framebuffer already
+follows the renderer's output size at the top of the next frame.
+
+One rule keeps every measurement honest: **a run that names `--frames`
+stays windowed**.  A benchmark or a screenshot has to render at the size
+it was asked for, not at whatever the desktop happens to be, and `make
+check`'s smoke run is one of those.
+
+**Pause** is Start on a pad, Enter on the keyboard, and it belongs to the
+RACE rather than to a driver - either player can call it, and the overlay
+is drawn once across the whole window rather than into each half.  It
+stops the simulation by skipping the tick, so nothing at all advances:
+not the clock, not the field, not Lakitu.  Three details were worth
+getting right:
+
+* **The accumulator is emptied while paused.**  Wall time keeps passing;
+  without this, letting go would fast-forward every frame the clock had
+  run up meanwhile, which is the opposite of a pause.
+* **Escape while paused unpauses.**  The code that leaves a race lives in
+  the tick, and the tick is not running - so the press would have sat
+  there sticky and abandoned the race on the NEXT unpause.  Now it lets
+  the tick run again and the existing handler answers immediately.
+* **Start is also the debug track-cycle** in a direct race, so pausing
+  clears that edge: one press cannot do both.
+
+The sound stops with it - `smk_audio_pause()` pauses the music and every
+effect channel, the held ones included (the engine, the roulette),
+because the simulation that would have ended them is not running either.
+
+`SMK_PAUSE_AT=frame` pauses on a given race frame so the overlay can be
+shot headlessly, and `SMK_SHOT` waits for the paused frame when it is set
+- the clock stops there, so the ordinary "shoot at frame N" would always
+fire one frame early.

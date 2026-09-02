@@ -26,9 +26,15 @@ between sessions (under `$XDG_DATA_HOME/smk-port/laptimes.txt`).
 menu            arrows move    enter selects    esc back
 arrows / WASD   steer and accelerate      space  hop / drift
 z or ctrl       use the mushroom          shift  boost
+enter / START   pause                     alt+enter or F11  fullscreen
 [  ]            previous / next track     o  p   cycle palette
 f               toggle filtering          esc    back, quit at the title
 ```
+
+It starts **fullscreen**; `alt+enter` (or F11) toggles at any time, and
+`--windowed` starts in a window instead.  A run that names `--frames`
+keeps the size it was asked for, so benchmarks and screenshots are
+unaffected.
 
 **Two players.**  The mode screen has a PLAYERS row: `1P`, `VS CPU` (the
 right half of the screen follows a CPU kart) and `VS 2P` (a second person

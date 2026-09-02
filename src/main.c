@@ -40,6 +40,8 @@ typedef struct {
     bool toggle_map;
     bool toggle_speedo;      /* H: the telemetry overlay, which is OURS */        /* M: the track map on / off */
     bool item;
+    bool pause;              /* Start, P or Enter in a race            */
+    bool toggle_full;        /* Alt+Enter, or F11                      */
 } input_state;
 
 static void input_edges_clear(input_state *in)
@@ -49,6 +51,7 @@ static void input_edges_clear(input_state *in)
     in->hop = false;
     in->nav_up = in->nav_down = in->nav_left = in->nav_right = false;
     in->confirm = in->back = in->item = false;
+    in->pause = in->toggle_full = false;
 }
 
 /* Gamepad.
@@ -158,7 +161,8 @@ static void pump(input_state *ins, int nhuman)
             case SDL_CONTROLLER_BUTTON_BACK:          in->prev_track = true;
                                                       in->back = true; break;
             case SDL_CONTROLLER_BUTTON_START:         in->next_track = true;
-                                                      in->confirm = true; break;
+                                                      in->confirm = true;
+                                                      in->pause = true; break;
             case SDL_CONTROLLER_BUTTON_DPAD_UP:       in->nav_up = true; break;
             case SDL_CONTROLLER_BUTTON_DPAD_DOWN:     in->nav_down = true; break;
             case SDL_CONTROLLER_BUTTON_DPAD_LEFT:     in->nav_left = true; break;
@@ -182,7 +186,12 @@ static void pump(input_state *ins, int nhuman)
             case SDLK_o: in->prev_pal = true; break;
             case SDLK_f: in->toggle_filter = true; break;
             case SDLK_SPACE: ins[kb_player].hop = true; break;
-            case SDLK_RETURN: case SDLK_KP_ENTER: in->confirm = true; break;
+            case SDLK_RETURN: case SDLK_KP_ENTER:
+                if (e.key.keysym.mod & KMOD_ALT) in->toggle_full = true;
+                else { in->confirm = true; in->pause = true; }
+                break;
+            case SDLK_F11: in->toggle_full = true; break;
+            case SDLK_PAUSE: in->pause = true; break;
             case SDLK_z: case SDLK_LCTRL: ins[kb_player].item = true; break;
             default: break;
             }
@@ -1531,6 +1540,7 @@ static void camera_from_kart(smk_camera *cam, const smk_kart *k)
 static int8_t was_cool;   /* the kart's contact window before the collide */
 static int menu_nav_left;   /* SMK_MENU_NAV still has keys to send */
 static int finish_wait;     /* frames since this view crossed */
+static bool paused;         /* the race is frozen (Start / Enter) */
 static bool results_ready;  /* its table is due, once everyone is in */
 static int show_kart = 1, show_grid = 1;
 
@@ -3094,6 +3104,39 @@ static int frame_for(const input_state *in, float *lean)
 
 
 /* ------------------------------------------------------------------ */
+/* PAUSED.  Drawn over the whole window, not per view: it is the RACE
+ * that is stopped, not one driver's camera.  The frozen frame is washed
+ * down so it reads as stopped rather than as a dropped frame, and the
+ * word is the ROM's own font in the menu's own pens. */
+static void draw_paused(uint32_t *fb, int rw, int rh)
+{
+    for (int y = 0; y < rh; y++) {
+        uint32_t *row = fb + (size_t)y * (size_t)rw;
+        for (int x = 0; x < rw; x++) {
+            uint32_t c = row[x];
+            unsigned r = ((c >> 16) & 255) * 2 / 5;
+            unsigned g = ((c >> 8) & 255) * 2 / 5;
+            unsigned b = (c & 255) * 2 / 5 + 12;
+            row[x] = 0xFF000000u | (r << 16) | (g << 8) | b;
+        }
+    }
+    if (!menu_font.ok) return;
+    int sc = rw / 256;
+    if (sc < 1) sc = 1;
+    uint32_t hi[4] = { 0, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFF7A5A18u };
+    uint32_t lo[4] = { 0, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFF2A3E78u };
+    if (menu_font.has_pal) {
+        for (int i = 1; i < 4; i++) { hi[i] = menu_font.pal[1][i]; lo[i] = menu_font.pal[16][i]; }
+    }
+    const char *msg = "PAUSE";
+    const char *sub = "START OR ENTER TO CONTINUE";
+    int mw = smk_font_text_w(msg, sc * 2), sw = smk_font_text_w(sub, sc);
+    smk_font_draw(&menu_font, fb, rw, rh, (rw - mw) / 2, rh / 2 - 8 * sc * 2,
+                  msg, sc * 2, hi);
+    smk_font_draw(&menu_font, fb, rw, rh, (rw - sw) / 2, rh / 2 + 12 * sc,
+                  sub, sc, lo);
+}
+
 /* ---- one view's picture (S36) ---------------------------------------
  *
  * Everything a single driver sees, drawn into the framebuffer it is
@@ -3193,7 +3236,8 @@ static void usage(const char *argv0)
            "  --width W       window width                 [1024]\n"
            "  --height H      window height                [896]\n"
            "  --pixel N       render at 1/N resolution     [2]\n"
-           "  --fullscreen\n"
+           "  --fullscreen    (the default)   --windowed  to start in a window\n"
+           "                  alt+enter or F11 toggles at any time\n"
            "  --frames N      run N frames then exit (benchmark)\n"
            "  --shot PATH     render one frame to a BMP and exit\n"
            "  --dump PATH     write map+tiles+palette and exit (verification)\n"
@@ -3212,6 +3256,8 @@ static void usage(const char *argv0)
            "  prev track    [            / Back\n"
            "  filter        F            / right stick click\n"
            "  use mushroom  Z or Ctrl / B button   (time trial)\n"
+           "  pause         Enter or Start\n"
+           "  fullscreen    Alt+Enter or F11\n"
            "  menu          arrows move, Enter selects, Esc goes back\n"
            "  quit          Esc at the title screen\n"
            "\n"
@@ -3236,7 +3282,12 @@ int main(int argc, char **argv)
     int character = 0;           /* index into SMK_DRIVERS */
     show_kart = 1;
     show_grid = 1;
-    int win_w = 1024, win_h = 896, pixel = 2, fullscreen = 0;
+    /* FULLSCREEN is the default - it is a game, and the user asked for
+     * it - with Alt+Enter (or F11) to come out.  --windowed opts out, and
+     * so does any run that names a frame count: a benchmark or a
+     * screenshot must render at the size it was asked for, not at
+     * whatever the desktop happens to be. */
+    int win_w = 1024, win_h = 896, pixel = 2, fullscreen = 1;
     const char *dump = NULL;          /* write raw track data and exit      */
     const char *shot = NULL;          /* render one frame to a BMP and exit */
     replay_path = NULL;
@@ -3298,6 +3349,7 @@ int main(int argc, char **argv)
         if (!strcmp(a, "--no-pad")) { pad_off = true; continue; }
         ARG("--width", win_w) ARG("--height", win_h) ARG("--pixel", pixel)
         if (!strcmp(a, "--fullscreen")) { fullscreen = 1; continue; }
+        if (!strcmp(a, "--windowed")) { fullscreen = 0; continue; }
         if (!strcmp(a, "--frames") && i + 1 < argc) { max_frames = atol(argv[++i]); continue; }
         if (!strcmp(a, "--shot") && i + 1 < argc) { shot = argv[++i]; explicit_start = 1; continue; }
         if (!strcmp(a, "--replay") && i + 1 < argc) { replay_path = argv[++i]; explicit_start = 1; continue; }
@@ -3612,6 +3664,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "gamepad: unavailable (%s)\n", SDL_GetError());
     }
 
+    if (max_frames) fullscreen = 0;      /* a measured run keeps its size */
     SDL_Window *win = SDL_CreateWindow("Super Mario Kart",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, win_w, win_h,
         SDL_WINDOW_RESIZABLE | (fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0));
@@ -3763,8 +3816,48 @@ int main(int argc, char **argv)
         if (dt > 0.25f) dt = 0.25f;            /* don't spiral after a stall */
         accum += fast ? TICK_DT : dt;
 
+        /* ALT+ENTER (or F11) between fullscreen and a window, at any time.
+         * The framebuffer follows the renderer's output size at the top
+         * of the next frame, so nothing else has to know. */
+        if (in.toggle_full) {
+            in.toggle_full = false;
+            fullscreen = !fullscreen;
+            SDL_SetWindowFullscreen(win, fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
+        }
+
+        /* PAUSE.  Only in a race - the shell has its own screens - and
+         * from either player's Start, because the race belongs to both.
+         * The accumulator is emptied while paused so that letting go does
+         * not fast-forward the frames the clock ran up meanwhile. */
+        {
+            bool in_race = (!shell || ui.screen == SMK_UI_RACE);
+            bool hit = in.pause || (nviews > 1 && views[1].in.pause);
+            {   /* SMK_PAUSE_AT=frame - pause on that race frame, so the
+                 * overlay can be looked at without a pair of hands */
+                static int at = -2;
+                if (at == -2) { const char *e = getenv("SMK_PAUSE_AT");
+                                at = e ? atoi(e) : -1; }
+                if (at >= 0 && hud_race_frames >= at) { hit = true; at = -1; }
+            }
+            in.pause = false; views[1].in.pause = false;
+            if (!in_race) paused = false;
+            else if (hit) {
+                paused = !paused;
+                /* Start is also the debug track-cycle in a direct race;
+                 * pausing wins, or one press would do both */
+                in.next_track = false;
+            }
+            /* Esc while paused means "leave", and the code that handles
+             * it lives in the tick - so let the tick run again rather
+             * than sitting on the press until the next unpause */
+            if (paused && (in.back || (nviews > 1 && views[1].in.back)))
+                paused = false;
+            smk_audio_pause(paused);
+            if (paused) accum = 0.0f;
+        }
+
         bool stepped = false;
-        while (accum >= TICK_DT) {
+        while (!paused && accum >= TICK_DT) {
             accum -= TICK_DT;
             stepped = true;
 
@@ -4731,6 +4824,7 @@ int main(int argc, char **argv)
                     fb[(size_t)y * rw + vw]     = 0xFF101018u;
                 }
             }
+            if (paused) draw_paused(fb, rw, rh);
             /* SMK_FINISH_SHOT=t:path - a frame of the celebration, counted
              * from the moment the player crosses, so the camera swing can
              * be looked at rather than argued about. */
@@ -4782,7 +4876,10 @@ int main(int argc, char **argv)
                     const char *c = strchr(e, ':');
                     if (c) { want = atoi(e); snprintf(path, sizeof path, "%s", c + 1); }
                 }
-                if (want >= 0 && hud_race_frames >= want) {
+                /* with SMK_PAUSE_AT set the interesting frame is the
+                 * PAUSED one, and the clock stops there - so wait for it */
+                if (want >= 0 && hud_race_frames >= want
+                    && (!getenv("SMK_PAUSE_AT") || paused)) {
                     FILE *pf = fopen(path, "wb");
                     if (pf) {
                         fprintf(pf, "P6\n%d %d\n255\n", rw, rh);
