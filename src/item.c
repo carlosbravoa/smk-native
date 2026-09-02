@@ -147,7 +147,11 @@ bool smk_itemicons_load(const smk_rom *rom, smk_itemicons *out)
         out->tile[i] = rd8(rom, T_ICON_TILES + (uint32_t)i * 2u);
         out->pal[i]  = (uint8_t)((rd8(rom, T_ICON_TILES + (uint32_t)i * 2u + 1u) >> 2) & 7);
     }
-    out->tile[SMK_ITEMS]     = rd8(rom, T_ICON_TILES + 0x12u);          /* the blink blank */
+    /* $81:B320 + $12 is NOT a blank - it is a second Boo face, and
+     * drawing it as one made every held item blink into a ghost.  The
+     * blink is the EMPTY BOX ($81:B3A7 -> $81:B426), which is the entry
+     * below.  Kept and labelled so nobody reaches for it again. */
+    out->tile[SMK_ITEMS]     = rd8(rom, T_ICON_TILES + 0x12u);          /* a 2nd Boo, unused */
     out->pal[SMK_ITEMS]      = (uint8_t)((rd8(rom, T_ICON_TILES + 0x13u) >> 2) & 7);
     out->tile[SMK_ITEMS + 1] = 0xE8;                                    /* $81:B433: the empty box, $E9 over $E8 */
     out->pal[SMK_ITEMS + 1]  = (0x3C >> 2) & 7;

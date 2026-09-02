@@ -1041,6 +1041,50 @@ static void smk_sfx_after(int id, int frames)
 /* One frame of the player's kart: the DECODED control (src/player.c, NOTES
  * 103).  This function only translates the SDL input into the SNES pad word
  * the ROM composes at $80A3CC and publishes the HUD readouts. */
+/* The per-driver audio state: the edge detector behind every sound the
+ * kart makes, and the engine's own rev accumulator.  One per VIEW. */
+typedef struct {
+    int state, hazard, mole, air, shrink, drive, boo;
+    int hazard_exit, rank_prev, rank_cool, brake_cool;
+    int16_t speed;
+    int8_t  bump;
+    uint8_t surf;
+    float   rev;
+} smk_sfx_prev;
+static smk_sfx_prev sfx_prev = { .rank_prev = -1, .rev = 1.0f };
+
+/* A HELD sound is one channel and both drivers have an opinion about it
+ * (the skid, the rough surfaces, the item roulette).  Called per view it
+ * was last-writer-wins, so player 1 silenced player 2's skid and the
+ * other way round - "actions on one player affect the sound from the
+ * other player".  Each view records a WISH; the frame turns the loop on
+ * if either of them wants it. */
+static int  cur_view;        /* whose copy the per-driver globals hold */
+static bool slot_is_driven(int q);
+#define SFX_WISHES 12
+static struct { char name[24]; bool want[2]; } sfx_wish[SFX_WISHES];
+static void sfx_loop_want(const char *name, bool on)
+{
+    int free_slot = -1;
+    for (int i = 0; i < SFX_WISHES; i++) {
+        if (sfx_wish[i].name[0] && !strcmp(sfx_wish[i].name, name)) {
+            sfx_wish[i].want[cur_view & 1] = on; return;
+        }
+        if (!sfx_wish[i].name[0] && free_slot < 0) free_slot = i;
+    }
+    if (!on || free_slot < 0) return;
+    snprintf(sfx_wish[free_slot].name, sizeof sfx_wish[free_slot].name, "%s", name);
+    sfx_wish[free_slot].want[cur_view & 1] = true;
+}
+static void sfx_loop_flush(void)
+{
+    for (int i = 0; i < SFX_WISHES; i++) {
+        if (!sfx_wish[i].name[0]) continue;
+        smk_sfx_loop(sfx_wish[i].name, sfx_wish[i].want[0] || sfx_wish[i].want[1]);
+        sfx_wish[i].want[0] = sfx_wish[i].want[1] = false;
+    }
+}
+
 static const smk_rom *rom_for_step;
 static const char *replay_path;         /* --replay: drive the kart from the game's log */
 static int replay_kart = 1000;          /* 1000 = P1 (Mario), 1100 = P2 (Toad)        */
@@ -1126,7 +1170,7 @@ static void step_kart(smk_kart *k, smk_track *trk,
      * Lakitu takes his two-coin fee and rises; the kart is held (speed 0)
      * until he is gone */
     {
-        static int was_hazard;
+        int was_hazard = sfx_prev.hazard_exit;
         if (was_hazard == 0x0E && player.hazard == 0) {
             if (getenv("SMK_RESCUE_TRACE"))
                 printf("rescue DONE f%ld: the fee and the exit\n", hud_race_frames);
@@ -1138,6 +1182,7 @@ static void step_kart(smk_kart *k, smk_track *trk,
                                  player.heading, kart.vx, kart.vy, fee);
         }
         was_hazard = player.hazard;
+        sfx_prev.hazard_exit = was_hazard;
     }
     if (lakitu_exit_t > 0) { lakitu_exit_t--; k->speed = 0; k->speed_frac = 0; }
     /* the collector ($81B73B) serves ONE player per frame, alternating:
@@ -1215,11 +1260,20 @@ static void step_kart(smk_kart *k, smk_track *trk,
                 smk_sfx_play(sfx_later[i].id);
     }
     if (!replay_path) {
-        static int was_state, was_hazard2, was_mole, was_air, was_shrink, was_drive;
-        static int16_t was_speed;
-        static int8_t was_bump;
-        static int was_boo;
-        static uint8_t was_surf;
+        /* THE EDGE DETECTOR IS PER DRIVER.  These were function statics -
+         * ONE set for both - so with two views each player was compared
+         * against the OTHER one's previous frame: every sound fired on
+         * both, and things that were not happening fired constantly.  A
+         * hop played 129 times over 3000 frames instead of twice
+         * (measured, SMK_SFX_TRACE), which is the echo the user heard.
+         * They are loaded from this view's copy and stored back below. */
+        int was_state = sfx_prev.state, was_hazard2 = sfx_prev.hazard;
+        int was_mole = sfx_prev.mole, was_air = sfx_prev.air;
+        int was_shrink = sfx_prev.shrink, was_drive = sfx_prev.drive;
+        int was_boo = sfx_prev.boo;
+        int16_t was_speed = sfx_prev.speed;
+        int8_t was_bump = sfx_prev.bump;
+        uint8_t was_surf = sfx_prev.surf;
         int st = player.state;
         uint8_t surf_now = smk_track_surface(trk, smk_kart_px(k->x), smk_kart_px(k->y));
         bool spin = (st == 0x0A || st == 0x0C || st == 0x1A);
@@ -1264,16 +1318,16 @@ static void step_kart(smk_kart *k, smk_track *trk,
          * Jr and Toad have one of those; the rest overtake in silence,
          * which is the ROM's own 0 in the table, not a gap in ours. */
         {
-            static int rank_prev = -1, rank_cool;
+            int rank_prev = sfx_prev.rank_prev, rank_cool = sfx_prev.rank_cool;
             if (race_state != RACE_RUN) { rank_prev = -1; rank_cool = 0; }
             else if (rank_cool > 0) rank_cool--;
             else {
-                int r = racers[0].rank;
+                int r = me->rank;
                 if (rank_prev >= 0 && r != rank_prev) {
                     int id = 0;
                     if (r < rank_prev) {          /* we passed somebody */
                         id = smk_sfx_pass_voice(the_rom,
-                                 racers[0].character % SMK_CHARACTERS, true);
+                                 me->character % SMK_CHARACTERS, true);
                     } else {                       /* somebody passed us */
                         for (int q = 0; q < SMK_CHARACTERS; q++)
                             if (racers[q].rank == r - 1) {
@@ -1287,6 +1341,7 @@ static void step_kart(smk_kart *k, smk_track *trk,
                 }
                 rank_prev = r;
             }
+            sfx_prev.rank_prev = rank_prev; sfx_prev.rank_cool = rank_cool;
         }
         /* A wall is TWO sounds, not one (NOTES 245).  Over the 'crash'
          * session every one of 17 wall hits fires $3C from $84:D77F and
@@ -1309,7 +1364,7 @@ static void step_kart(smk_kart *k, smk_track *trk,
          * ($80:D37A's own branch); the other surfaces have their own
          * kinds and their own sounds, which is why the user hears a
          * different one off-road. */
-        smk_sfx_loop("skid", fx_kind_now == 0x24 && race_state == RACE_RUN);
+        sfx_loop_want("skid", fx_kind_now == 0x24 && race_state == RACE_RUN);
         /* THE OFF-ROAD HISS (NOTES 236).  The user: "when driving on
          * grass there is a sound coming up, like S-S-S".  It is never
          * queued, so no amount of tapping the sound entry finds it -
@@ -1349,17 +1404,18 @@ static void step_kart(smk_kart *k, smk_track *trk,
                 printf("surf: $%02X (class $%02X) speed %d state %d air %d\n",
                        surf_now, sc, k->speed, (int)race_state, (int)k->airborne);
             for (int i = 0; i < (int)(sizeof ROUGH / sizeof ROUGH[0]); i++)
-                smk_sfx_loop(ROUGH[i].name, rough && sc == ROUGH[i].cls);
+                sfx_loop_want(ROUGH[i].name, rough && sc == ROUGH[i].cls);
         }
         /* braking hard (the user's $3C): Y held and the speed really going */
         {
-            static int brake_cool;
+            int brake_cool = sfx_prev.brake_cool;
             if (brake_cool > 0) brake_cool--;
             if ((player.pad & 0x4000) && k->speed > 0x200
                 && k->speed < was_speed - 24 && brake_cool == 0) {
                 smk_sfx_play(SMK_SFX_BRAKE);
                 brake_cool = 45;
             }
+            sfx_prev.brake_cool = brake_cool;
         }
         was_speed = k->speed;
         if (player.drive == 0x10 && was_drive != 0x10)
@@ -1372,6 +1428,11 @@ static void step_kart(smk_kart *k, smk_track *trk,
         was_mole = player.mole_on; was_air = k->airborne;
         was_surf = surf_now; was_shrink = player.shrink_t > 0;
         was_drive = player.drive; was_boo = player.boo_t; was_bump = k->bump_cool;
+        sfx_prev.state = was_state; sfx_prev.hazard = was_hazard2;
+        sfx_prev.mole = was_mole;   sfx_prev.air = was_air;
+        sfx_prev.surf = was_surf;   sfx_prev.shrink = was_shrink;
+        sfx_prev.drive = was_drive; sfx_prev.boo = was_boo;
+        sfx_prev.speed = was_speed; sfx_prev.bump = was_bump;
     }
 
     /* THE ENGINE (NOTES 214/216).  $42 - the byte the driver gets every
@@ -1390,7 +1451,7 @@ static void step_kart(smk_kart *k, smk_track *trk,
      *
      * LABELLED (S38): the shape is the game's, the constants are a fit. */
     {
-        static float rev = 1.0f;
+        float rev = sfx_prev.rev;
         bool thr = (player.pad & 0x8000) != 0 || engine_throttle;
         /* THE MAP FROM SPEED, measured (NOTES 219).  The engine note is
          * NOT proportional to speed: the game's own $42 sits in a narrow
@@ -1421,10 +1482,17 @@ static void step_kart(smk_kart *k, smk_track *trk,
          * is back at $20 within ten frames. */
         float d = target - rev;
         rev += d > 0.0f ? (d < 0.8f ? d : 0.8f) : (d > -3.0f ? d : -3.0f);
+        sfx_prev.rev = rev;          /* this driver's own accumulator */
         int v = (int)(rev + 0.5f);
         bool racing = race_state == RACE_RUN || race_state == RACE_COUNTDOWN;
-        smk_engine_set(racers[0].character % SMK_CHARACTERS,
-                       racing ? (v < 1 ? 1 : v) : 0);
+        /* A VOICE PER DRIVER (the user: "P2's engine doesn't come up with
+         * the right sound ... we should hear both engines").  Each view
+         * takes its own engine voice, with its own driver's sample and
+         * its own rev, panned to the side of the screen it is drawn on. */
+        smk_engine_voice(cur_view, me->character % SMK_CHARACTERS,
+                         racing ? (v < 1 ? 1 : v) : 0,
+                         smk_engine_base_volume(),
+                         nviews > 1 ? (cur_view ? 0.5f : -0.5f) : 0.0f);
         /* AND THE OTHER KARTS (NOTES 229).  The user named $5C and $62
          * as "the engine of another player": the game gives a nearby
          * kart its own engine, so the port now does too - the three
@@ -1454,11 +1522,16 @@ static void step_kart(smk_kart *k, smk_track *trk,
              * this on the user naming $5C "another kart's engine"; $5C
              * turned out to be DK Jr's overtake voice (NOTES 235).
              * So: the countdown keeps them, the race does not. */
-            bool grid = race_state == RACE_COUNTDOWN;
-            for (int j = 0; j < 3; j++) {
+            /* the drivers' own voices come first, so these start above
+             * them - and only the first view places them, or the second
+             * would overwrite what the first just set */
+            int base = nviews > 1 ? 2 : 1;
+            bool grid = race_state == RACE_COUNTDOWN && cur_view == 0;
+            for (int j = 0; j + base < 4; j++) {
                 int q = near[j].idx;
-                if (!grid || q < 0 || near[j].d2 > 220.0f * 220.0f) {
-                    smk_engine_voice(j + 1, 0, 0, 0.0f, 0.0f);
+                if (!grid || q < 0 || near[j].d2 > 220.0f * 220.0f
+                    || slot_is_driven(q)) {
+                    if (cur_view == 0) smk_engine_voice(j + base, 0, 0, 0.0f, 0.0f);
                     continue;
                 }
                 float d = sqrtf(near[j].d2);
@@ -1484,7 +1557,7 @@ static void step_kart(smk_kart *k, smk_track *trk,
                 float vol = smk_engine_base_volume()
                           * (1.3f - 1.0f * d / 220.0f);
                 if (vol < 0.0f) vol = 0.0f;
-                smk_engine_voice(j + 1, racers[q].character % SMK_CHARACTERS,
+                smk_engine_voice(j + base, racers[q].character % SMK_CHARACTERS,
                                  vq, vol, pan);
                 if (getenv("SMK_ENGINE_TRACE") && (fx_ticks % 30) == 0)
                     printf("  ai%d kart %d d %.0f vq %d vol %.3f pan %.2f\n",
@@ -1605,6 +1678,7 @@ static int show_kart = 1, show_grid = 1;
     X(smk_autopilot,   autopilot)   \
     X(int,             racer_draw_mask) \
     X(int8_t,          was_cool)     /* bump_cool before the field collided */ \
+    X(smk_sfx_prev,    sfx_prev)    /* every sound's edge detector, per driver */ \
     X(smk_sprites *,   view_karts)   /* this driver's own kart sheet */ \
     X(int,             show_kart) \
     X(int,             show_grid) \
@@ -1624,7 +1698,6 @@ typedef struct {
 } pview;
 
 static pview views[2];
-static int   cur_view;            /* whose copy the globals hold now     */
 /* SMK_PLAYERS_* from the shell, kept here so a race can be rebuilt */
 
 static void pv_save(pview *v) { PV_LIST(PV_SAVE) }
@@ -2962,7 +3035,20 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
             if (smk_item_present(&item) && !(item.word & 0x1000)) {
                 int id = smk_item_shown(&item);
                 which = (id >= 0 && id < SMK_ITEMS) ? id : SMK_ITEMS + 1;
-                if (smk_item_blink(&item)) which = SMK_ITEMS;   /* the blank */
+                /* THE BLINK, decoded: $81:B3A7 tests bit 3 of the hold
+                 * timer and branches to $81:B426, which writes the EMPTY
+                 * BOX ($3CE9 over $3CE8) - so a held item alternates with
+                 * the empty slot, eight frames each.  The port drew
+                 * `tile[SMK_ITEMS]` here, read from $81:B320 + $12 on the
+                 * assumption that the entry after the nine icons was a
+                 * blank.  It is not: it is a SECOND BOO FACE, so every
+                 * held item blinked into a Boo - which the user caught
+                 * ("boo appears but it shouldn't.  Boo only appears in 2P
+                 * battle mode, not race.  4 dings, item blinks, that's
+                 * it").  Boo is not even reachable in a GP race: its
+                 * sequences (0, 1, 2) are selected only by block 7, and
+                 * no GP track uses that block. */
+                if (smk_item_blink(&item)) which = SMK_ITEMS + 1;
             }
             int t0 = which >= 0 ? item_icons.tile[which] - SMK_ICON_BASE : 0;
             int pal = which >= 0 ? item_icons.pal[which] : 7;
@@ -3918,6 +4004,9 @@ int main(int argc, char **argv)
                         ui.screen = SMK_UI_COURSE;
                     }
                 }
+                /* no driver is asking for a held sound on a menu screen,
+                 * so the flush turns off whatever the last race left on */
+                sfx_loop_flush();
                 input_edges_clear(&in);
                 continue;
             }
@@ -4016,6 +4105,12 @@ int main(int argc, char **argv)
                 smk_course_movers_step(&crs, mv_on || crossings >= 2);
             }
             smk_obj_ticks = fx_ticks;   /* the moles' clock, shared with collide */
+            /* ONE set of coins in the air, stepped once a frame.  This
+             * moved out of the per-driver pass with the two-player split
+             * and was not put back, so the two-coin item and every
+             * spilled coin spawned and then froze (the user: "the coin
+             * item ... now there is nothing happening"). */
+            smk_coinfx_step(coins_fx, SMK_COINFX_MAX);
             if (getenv("SMK_MV_TRACE") && (fx_ticks % 300) == 0)
                 printf("mv f%ld cross %d z0 %d p0 %d z1 %d p1 %d\n",
                        hud_race_frames, crossings,
@@ -4292,7 +4387,7 @@ int main(int argc, char **argv)
                      * sound rapidly going through 6 notes".  It is not
                      * queued, which is why it looked absent; it is held,
                      * so the port holds it too. */
-                    smk_sfx_loop("roulette", smk_item_spinning(&item));
+                    sfx_loop_want("roulette", smk_item_spinning(&item));
                     if (used >= 0) {
                         item_used_once = true;
                         int ahead_idx = -1;                 /* the red shell's target */
@@ -4415,6 +4510,7 @@ int main(int argc, char **argv)
             }
             }
             pv_switch(0);
+            sfx_loop_flush();     /* one channel per held sound, both views' wishes */
             /* ---- the world again: the field, and everything the karts
              * do to each other.  Once a frame, whoever is watching. */
             if ((race_state == RACE_RUN || race_state == RACE_FINISH)

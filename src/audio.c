@@ -51,6 +51,24 @@ bool smk_audio_init(void)
     if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) != 0) return false;
     Mix_AllocateChannels(16);        /* several effects can overlap */
     Mix_ReserveChannels(SFX_LOOPS);  /* the held sounds get their own */
+    /* THE EFFECTS' LEVEL.  They played at the mixer's full volume while
+     * the engine sits at smk_engine_base_volume() (0.40 of its sample),
+     * so every effect landed a good 8 dB over the bed the game rides on -
+     * the user, on the hop: "sounds too loud, like it was not passing
+     * through the game's sound engine".
+     *
+     * MEASURED over the 65 captured effects: the median has an RMS of
+     * 3073, the engine samples about 4700.  At 0.40 the engine's own
+     * level is ~1880, so 0.75 puts the median effect at ~2300 - just
+     * above the engine rather than on top of it.  OURS, labelled, and
+     * SMK_SFX_VOL overrides it. */
+    {
+        const char *v = getenv("SMK_SFX_VOL");
+        float f = v ? (float)atof(v) : 0.75f;
+        if (f < 0.0f) f = 0.0f;
+        if (f > 1.0f) f = 1.0f;
+        Mix_Volume(-1, (int)(f * MIX_MAX_VOLUME + 0.5f));
+    }
     Mix_HookMusicFinished(on_music_done);
     ready = true;
     return true;
@@ -647,6 +665,12 @@ void smk_engine_voice(int voice, int chr, int v, float vol, float pan)
         eng_hooked = true;
         if (getenv("SMK_ENGINE_TRACE"))
             printf("engine: hook installed (v %d)\n", v);
+    }
+    if (getenv("SMK_ENGINE_TRACE")) {
+        static unsigned n[ENG_VOICES];
+        if ((n[voice]++ % 240) == 0)
+            printf("engine: voice %d kind %d (%s) rev %d vol %.2f pan %+.2f\n",
+                   voice, kind, eng_law[kind].who, v, vol, pan);
     }
 }
 

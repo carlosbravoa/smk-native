@@ -10704,3 +10704,82 @@ because the simulation that would have ended them is not running either.
 shot headlessly, and `SMK_SHOT` waits for the paused frame when it is set
 - the clock stops there, so the ordinary "shoot at frame N" would always
 fire one frame early.
+
+## 259. Five sound and item regressions, and the Boo that was never an item
+
+The user, playing: *"The coin item, when used, it was showing the right
+animation: same as picking up two coins.  Now there is nothing
+happening.  The jump sound (with L or R) now sounds too loud, like it was
+not passing through the game's sound engine.  Then, in multiplayer, the
+sound is a mess.  When jumping, the sound has echo because it sounds
+twice at the same time.  P2's engine doesn't come up with the right sound
+... and actions on one player affect the sound from the other player.
+Other issue: when selecting an item after the roulette, boo appears but
+it shouldn't."*
+
+Five separate things, and four of them were mine.
+
+**1. The coins froze.**  `smk_coinfx_step` was deleted when the coin
+animation moved to the world pass in NOTES 255 and never put back, so
+every coin - the item's two, and every one spilled by a bump - spawned
+and then hung in the air for the rest of the race.  Restored, in the
+world pass where it belongs.  (A rendered frame at race frame 300 now
+differs from the old reference, and the diff is exactly the litter of
+frozen coins going away.)
+
+**2. Every per-driver sound was one edge detector for two drivers.**  The
+`was_*` variables behind the whole sound block were function STATICS
+inside `step_kart`, which runs once per view - so with two views each
+player was compared against the OTHER one's previous frame.  Measured
+with `SMK_SFX_TRACE` over 3000 frames of a two-player race: the hop
+played **129 times** and the landing 129, against **2** in the same
+one-player race.  That is the "echo", and it is also every other sound
+firing on the wrong kart.  They are per-view state now (`smk_sfx_prev` in
+`PV_LIST`), along with the engine's own rev accumulator and the overtake
+voice's rank memory - which was watching `racers[0]` whoever was driving.
+After: 8 hops and 8 landings for two drivers over the same 3000 frames.
+
+**3. A held sound is one channel, and both drivers had an opinion.**  The
+skid, the six rough surfaces and the item roulette were set with
+`smk_sfx_loop(name, on)` per view, so it was last-writer-wins: player 1
+silenced player 2's skid and the other way round.  Each view now records
+a WISH and the frame turns the loop on if either wants it
+(`sfx_loop_want` / `sfx_loop_flush`) - and the flush also runs on menu
+screens, so a race that is left no longer leaves its skid playing.
+
+**4. Player 2 had no engine.**  `smk_engine_set` always voiced
+`racers[0]` on voice 0.  Each view now takes its own engine voice, with
+its own driver's sample, its own rev and a pan to the side of the screen
+it is drawn on - Mario left, Bowser right, verified with
+`SMK_ENGINE_TRACE`.  The grid's neighbouring-kart voices start above the
+drivers' own and skip any slot a driver owns.
+
+**5. The effects were louder than the game they sit in.**  They played at
+the mixer's full volume while the engine sits at 0.40 of its sample.
+MEASURED over the 65 captured effects: the median has an RMS of 3073 and
+the engine samples about 4700, so at 0.40 the engine's own level is
+~1880 and every effect landed some 8 dB over the bed.  The effects now
+play at 0.75, which puts the median just above the engine rather than on
+top of it.  OURS, labelled; `SMK_SFX_VOL` overrides.
+
+**And the Boo, which was not an item at all.**  The user is right twice
+over, and the ROM's own tables say so:
+
+* Boo lives in roulette sequences 0, 1 and 2.  The only probability
+  BLOCK whose records select those is block 7 - and no GP track uses
+  block 7 (`$81:8B73` gives blocks 0..6 for all twenty).  Over every
+  reachable (block, lap, rank, roll) - 8960 of them - **Boo is awarded
+  zero times and shown zero times.**  The port's own roulette, run over
+  the same space, uses only sequences 3 and 4 and never shows it either.
+* So where did it come from?  **The blink.**  `$81:B3A7` tests bit 3 of
+  the hold timer and branches to `$81:B426`, which writes the EMPTY BOX
+  (`$3CE9` over `$3CE8`): a held item alternates with the empty slot,
+  eight frames each.  The port drew `$81:B320 + $12` there, on the
+  assumption that the entry after the nine icons was a blank.  It is not.
+  It is A SECOND BOO FACE - so every held item blinked into a ghost,
+  which is exactly "4 dings, item blinks, that's it" with a Boo where the
+  blank should be.
+
+Rendering the icon table settled it in one look; reading the table's
+bytes had not, because the entry is only a tile number.  The lesson is
+the older one: when the question is "what does this look like", draw it.
