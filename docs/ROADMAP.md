@@ -70,6 +70,17 @@ copying them, and the selftest checks all sixteen entries against it.
 The rule is the ROM's too - $84:EF05's rank compare, and its $0A-frame
 cooldown. OURS: nothing.
 
+**S42 — Two players, side by side (NOTES 255).** OURS, and deliberately:
+the original stacks its two views because it has 224 lines to divide, and
+the user decided ours divides the other way - *"split screen but side by
+side (left/right). Today we have widescreens!"*  With it comes a
+projection reference width, so a narrow view shows a narrower slice of
+the world instead of a squashed one; wider views are untouched and every
+existing window renders as it did.  The engine sound is mono and follows
+player 1 - also ours, and also labelled.  What is NOT ours: the second
+kart is the ROM's own rival slot, and every rule that applies between two
+karts applies between the two people unchanged.
+
 **S40 — Four engines, one per driver pair (NOTES 234). CONFIRMED by
 the user, 2026-09-01: "engine sounds are correct".** The sample and
 the pitch law are both the game's, measured on the chip at eight rev
@@ -783,14 +794,19 @@ In rough order of value:
     course's own tilemap in the bottom-right corner, every kart a dot, M
     toggles it.
 
-13. **Two-player (user's list).** Two humans, or one human and one CPU.
-    **SIDE BY SIDE, not stacked** - DECIDED by the user: *"split screen
-    but side by side (left/right). Today we have widescreens!"* The
-    original stacks because it has 224 lines to divide; on a modern panel
-    the same split left/right gives each player a bigger view than the
-    original ever had. A deliberate deviation, ledgered. The renderer is
-    resolution-independent, so the cost is the second camera and a second
-    HUD, not the geometry. Largest item on this list by some way.
+13. **~~Two-player (user's list)~~ - IN (NOTES 255, S42).** A PLAYERS
+    setting beside the mode - 1P / VS CPU / VS 2P - with the field still
+    eight karts. **SIDE BY SIDE, not stacked**, as the user decided:
+    *"split screen but side by side (left/right). Today we have
+    widescreens!"* A deliberate deviation, ledgered. The cost was NOT
+    only the second camera: halving the width squashes the world, so the
+    projection now takes its horizontal scale from a reference width
+    (`smk_render_proj_width`) and a narrow view shows a narrower SLICE
+    rather than the same slice squeezed. Player 2 takes the ROM's own
+    rival slot `racers[1]`, so bumps, coins, shells and stars work
+    between the two people with no special case. Controllers decide what
+    the menu offers: none disables VS 2P, one is pad + keyboard, two is
+    one each.
 
 14. **Art detail.** The near-object source (S15) and the kart size ladder
     (S10's other half). Both visible, neither affecting how it plays.
@@ -1010,8 +1026,8 @@ green.
 - ✅ Single race: eight karts, the ROM's grid order, a finishing place.
 - ✅ The shell: title → mode → driver+class → course-by-cup → results, in
   the ROM's own font and palettes (NOTES 147/148).
-- Next: the CUP around a race — four of five, finishing order, points,
-  standings — then the real menu art (S20) and 2P.
+- ✅ Two-player, side by side: 1P / VS CPU / VS 2P (NOTES 255, S42).
+- Next: the real menu art (S20).
 - **2P is SIDE BY SIDE, not stacked.** DECIDED by the user: *"split screen
   but side by side (left/right). Today we have widescreens!"* The original
   stacks two Mode 7 views because it has 256x224 to divide; on a modern

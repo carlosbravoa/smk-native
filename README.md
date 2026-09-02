@@ -30,8 +30,18 @@ z or ctrl       use the mushroom          shift  boost
 f               toggle filtering          esc    back, quit at the title
 ```
 
+**Two players.**  The mode screen has a PLAYERS row: `1P`, `VS CPU` (the
+right half of the screen follows a CPU kart) and `VS 2P` (a second person
+on the second grid slot).  The split is **side by side**, left and right -
+a deliberate deviation from the original, which stacks its two views
+because it only has 224 lines to divide.  What the menu offers depends on
+what is plugged in: with no controller `VS 2P` is unavailable, with one it
+is the controller for player 1 and the keyboard for player 2, and with two
+it is one each.
+
 Useful flags: `--track N` (0–23) skips the shell and drives that course,
-`--timetrial` makes it a solo five-lap trial, `--width/--height`, `--pixel N`
+`--timetrial` makes it a solo five-lap trial, `--players 1|cpu|2` and
+`--character2 N` set the split without the shell, `--width/--height`, `--pixel N`
 (render at 1/N resolution — `--pixel 1` is native, `--pixel 4` is chunky and
 retro), `--fullscreen`, `--frames N` (headless benchmark), `--fast` (one
 simulation tick per frame, for headless runs), `--autodrive` (drive itself — a

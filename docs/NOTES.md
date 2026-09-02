@@ -10424,3 +10424,90 @@ driven by a person (76-82%), and the surfcheck on it shows a SYMMETRIC
 ±1-tile disagreement at road/dust boundaries.  That is the lab's logging
 phase, not the port: the game's own logger gives 0 differences on the same
 track.  Log with `demolog.lua` when the number has to be believed.
+
+## 255. Two players, side by side: the frame split into the world and its
+drivers
+
+The user: *"ok. Let's go with 2p mode.  1p, 1p-cpu, 1p-2p.  side by side.
+for controls, let's see how many usb controllers are attached.  If there
+is none, then 2p is disabled, if there is only one, then it is controller
+and keyboard."*  Two things needed asking first, and both changed the
+work: the three entries are a PLAYERS setting orthogonal to GP / RACE /
+TIME TRIAL (not three new modes), and the two-human race keeps the full
+eight-kart field - P1 and P2 in the two front human slots, six AI.
+
+**The shape of the change.**  `main.c` had about forty globals describing
+the player and one very long tick that mixed him up with the world.  The
+rewrite is one idea: *the race is a world watched by one or two cameras.*
+
+Every global that describes a DRIVER rather than the race is listed once,
+in `PV_LIST`; the `pview` struct, `pv_save` and `pv_load` are all
+generated from that list by the preprocessor, so a field cannot be saved
+without being restored, or added to one and forgotten in the other.  That
+was the deciding design choice - a hand-written save/restore pair of
+forty fields would have been wrong within a week.  `pv_switch(i)` makes
+view `i`'s copy the live one, and the four thousand lines that read
+`player`, `kart`, `cam`, `item`, `result` are untouched.
+
+The tick is now four passes:
+
+    world      the clock, the lights, the blocks, the movers
+    driver x N the countdown rev, the controls, the kart, the items
+    world      the AI, the projectiles, kart against kart
+    driver x N the collide's result, the coins, the lap, the finish
+
+Splitting it needed three things moved rather than copied: the race clock
+(it must not tick twice), the AI's weapons and the projectile flight (one
+set of shells, one step a frame), and the coin animation.  The lights
+were split in half - the transition is the race's, the rev and the launch
+each driver's - which is what keeps the clock counting exactly the frames
+it counted before.
+
+**The check that made it safe.**  A single-player race must be
+*unchanged*, and it is measurable: the same autodriven race on track 7 at
+100cc finished 4th in **1'32"95** before and after every step, and a
+rendered frame at race frame 300 is **byte-identical**.  Two of those
+checks failed mid-way and both were real - the clock had moved one frame
+relative to the countdown, and the projectiles had been cut out of the
+frame without being put back.
+
+**Side by side, and why the halves had to change shape.**  The user
+decided the split long ago: *"split screen but side by side (left/right).
+Today we have widescreens!"*  Halving the width alone SQUASHES the world -
+the projection maps 256 frame pixels across the view whatever the view is,
+so a 256x448 half drew karts two pixels wide and a road to match.  A
+photograph of it settled the argument in one look.
+
+The fix is a reference width, `smk_render_proj_width(w, h)`: the ground
+step and every sprite scale come from `max(w, h * 8 / 7)` - the shape the
+geometry was calibrated at (NOTES 083/084) - while the drawing still uses
+the real width.  A narrow view therefore shows a NARROWER SLICE of the
+world at the correct proportions, which is field of view, not distortion.
+Views at or above that shape are untouched, which is why every existing
+window renders exactly as it did.
+
+**The second driver.**  `racers[1]` is the ROM's own rival slot, so a
+person simply takes it: the AI step and the field's item pass skip any
+slot a human drives (`slot_is_human`), the human's kart syncs into
+`racers[1]` before the collide and out of it after, exactly as player 1's
+always has, and everything kart-to-kart - bumps, coins, shells, stars -
+works between the two people with no special case at all.  `VS CPU` keeps
+no player of its own: the AI drives that kart and the second view only
+watches it, which is four lines.
+
+**Controllers.**  `smk_pad_count()` drives the menu row: none and VS 2P
+is drawn dim and cannot be reached; one and it is the pad for player 1
+with the keyboard for player 2 (`kb_player`, which reverts to player 1 in
+the shell so the menus still answer to the keys); two and it is one each.
+A pad's driving buttons go to its own player and its Start/Select to the
+shell.
+
+**Also.**  `SMK_MENU_NAV=cddrr...` drives the shell one key a tick and
+`SMK_MENU_SHOT=path` saves whatever screen is up, so menu layout can be
+looked at headlessly instead of by hand - which is how the players row
+was found to be drawing `1P+CPU` as `1P CPU`: the ROM font has no `+`
+and no `-` (src/font.c), so the rows are spelled `1P` / `VS CPU` /
+`VS 2P`.
+
+Ledgered as OURS: the left/right split (the original stacks), and the
+engine sound, which is mono and follows player 1.
