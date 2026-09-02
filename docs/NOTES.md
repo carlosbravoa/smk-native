@@ -10502,6 +10502,17 @@ the shell so the menus still answer to the keys); two and it is one each.
 A pad's driving buttons go to its own player and its Start/Select to the
 shell.
 
+And the count was wrong the first time, which the rig caught rather than
+a person: the machine has ONE controller and the port printed two.  SDL
+queues a `CONTROLLERDEVICEADDED` for every pad already attached when the
+subsystem starts, and the enumeration at startup finds the same ones, so
+each pad was opened into both slots - `smk_pad_count()` said two, the menu
+offered "P1 PAD 1 / P2 PAD 2", and player 2 would have been handed a
+second copy of player 1's stick.  Matching on the joystick INSTANCE ID
+(the same device however it is reached) fixes it, and the menu now reads
+"P1 CONTROLLER  P2 KEYBOARD" on this machine, which is the user's rule
+exactly.
+
 **Also.**  `SMK_MENU_NAV=cddrr...` drives the shell one key a tick and
 `SMK_MENU_SHOT=path` saves whatever screen is up, so menu layout can be
 looked at headlessly instead of by hand - which is how the players row

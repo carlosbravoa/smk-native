@@ -85,6 +85,18 @@ int smk_pad_count(void)
 static void pad_open(int idx)
 {
     if (!SDL_IsGameController(idx)) return;
+    /* SDL queues a DEVICEADDED for every controller already attached when
+     * the subsystem starts, and the enumeration at startup finds the same
+     * ones - so without this the single pad on the desk is opened into
+     * BOTH slots, `smk_pad_count()` says two, and player 2 is handed a
+     * second copy of player 1's stick.  Match on the instance id, which
+     * is the same device however it is reached. */
+    SDL_JoystickID want = SDL_JoystickGetDeviceInstanceID(idx);
+    for (int i = 0; i < SMK_MAX_PADS; i++) {
+        if (!pads[i]) continue;
+        SDL_Joystick *j = SDL_GameControllerGetJoystick(pads[i]);
+        if (j && SDL_JoystickInstanceID(j) == want) return;   /* already open */
+    }
     for (int i = 0; i < SMK_MAX_PADS; i++) {
         if (pads[i]) continue;
         pads[i] = SDL_GameControllerOpen(idx);
