@@ -331,7 +331,15 @@ void smk_racer_step(smk_racer *r, const smk_track *trk,
     int fsec = crs->map[fcell] & SMK_SECT_OFF;
     uint16_t want;
     if (fsec != SMK_SECT_OFF && crs->map[fcell] != 0) {
-        want = (uint16_t)(crs->flow[fcell] << 8);
+        /* $80B0E8 reads a WORD at $7F:3FFF + cell: the cell's own byte
+         * is the high half and its LEFT neighbour's the low half, so the
+         * target angle carries a sub-step from the cell beside it rather
+         * than being quantised to 256 directions.  The port had only the
+         * high byte, which is why our karts sat on a coarser staircase
+         * than the game's.  (The rescue path in main.c already read it
+         * this way.) */
+        want = (uint16_t)((crs->flow[fcell] << 8)
+                          | crs->flow[(fcell - 1) & (SMK_SECT_CELLS - 1)]);
     } else {
         int next = r->sector + 1;
         if (next >= crs->sectors) next = 0;
@@ -441,6 +449,7 @@ void smk_racer_step(smk_racer *r, const smk_track *trk,
         }
     } else
         r->slow_frames = 0;
+    r->dbg_want = want;
     int16_t diff = (int16_t)(want - r->k.angle);
     if (r->escape > 0) diff = 0;             /* hold the escape heading */
     if (diff > AI_SNAP || diff < -AI_SNAP) {
@@ -449,7 +458,8 @@ void smk_racer_step(smk_racer *r, const smk_track *trk,
          * indexed by heading error; the demo AI uses row 8 ($C8 = 8).
          * MEASURED (NOTES 043): above ~90 degrees of error the AI turns at
          * $800 per frame - a fast turnaround, not a table step. */
-        uint16_t step = err > 0x4000 ? 0x800 : smk_physics_turn(phys, err, 8);
+        uint16_t step = err > 0x4000 ? 0x800
+                      : smk_physics_turn(phys, err, r->row * 2);
         r->k.angle += (uint16_t)(diff > 0 ? step : -(int)step);
     } else {
         r->k.angle = want;

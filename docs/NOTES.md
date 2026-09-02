@@ -10544,3 +10544,82 @@ and no `-` (src/font.c), so the rows are spelled `1P` / `VS CPU` /
 
 Ledgered as OURS: the left/right split (the original stacks), and the
 engine sound, which is mono and follows player 1.
+
+## 256. "They jitter a lot in the X axis": it is not the driving, and the
+first measurement said it was
+
+The user, watching a shipped-AI kart from the second view for a whole
+race: *"I noticed the bug we have pending: they jitter a lot in the X
+axis.  A lot."*  Round-2 bug 16, open since the near draw was made to
+round instead of truncate.
+
+**The first answer was wrong, and the rig said so.**  Logging every
+kart's position on both sides (`tools/labs/mame/fieldpos.lua` and the
+port's `SMK_FIELD_TRACE`, same columns) and counting direction reversals
+gave: the game 5-8 per 100 frames, the port 12-19.  Two to three times
+worse, apparently conclusive.
+
+It was contaminated.  The "in view" stretch the filter picked out of the
+recorded race was mostly the **starting grid** - every kart stationary,
+screen x constant, wobble zero - against a port window of real racing.
+Measuring the same thing over the race proper, and normalising by how
+fast the kart is crossing the screen (`mean |d2x| / mean |dx|`, which no
+sampling difference can fake), reverses it:
+
+    the game itself     0.317
+    the port            0.133
+
+**Our AI karts hold a straighter line than the game's.**  The steering is
+not the jitter.  ([[measurement-contamination-traps]] again, and the
+lesson is the same one: pick the window by what is HAPPENING in it, not
+by what the filter happens to accept.)
+
+**Two real divergences turned up on the way**, both from the
+disassembly rather than from the feel:
+
+* `$80B0E8` reads a **WORD** at `$7F:3FFF + cell`, so the AI's target
+  angle is the cell's own flow byte as the high half and its LEFT
+  NEIGHBOUR's as the low half.  The port used `flow[cell] << 8` alone
+  and so sat on a staircase of 256 directions where the game has a finer
+  one.  (main.c's rescue path already read it correctly - the idiom was
+  in the tree, just not here.)
+* `$80AFBE` takes its turn rate from **the kart's own `$C8`** - the
+  rubber-band row - and the port passed a hardcoded 8 for every kart.
+
+Also decoded properly while reading it: `$80AFBE` snaps when the heading
+error is inside `$0200` and otherwise turns by a rate that `$80AFF9`
+always clamps to its top entry, so the turn is a CONSTANT per row rather
+than a function of the error.  Measured against the game's own steps, the
+rates it actually uses are `$0120 $0160 $0180 $0200 $0240`; ours produced
+`$0120 $0140 $0180`, which is the hardcoded row showing.
+
+**Where the jitter really is: the DRAWING.**  `tools/labs/aixjit.py`
+traces the kart's drawn x, art frame, mirror flag and scale
+(`SMK_AI_XTRACE=k`).  Over a race:
+
+    the drawn size changes            15.3 times a SECOND
+    each change re-samples the sprite - `col = x * 32 / size` - so
+    17.1% of its columns take a different source column
+    (art-frame flicker 1.0/s, mirror flicker 0.1/s: not the story)
+
+So the kart's own pixels rearrange sideways fifteen times a second while
+it approaches.  The hardware cannot do this at all: the SNES places and
+sizes sprites on WHOLE pixels and has a handful of art sizes, which is
+why the original's karts sit still.
+
+Snapping the drawn size to the SNES's own pixel grid (`kscale` host
+pixels to the SNES pixel, which is what `--pixel N` already means) takes
+it to **10.0 changes a second and 12.9% of columns** for a quarter of a
+SNES pixel of size error, and the size stays continuous otherwise - the
+user asked for that in NOTES 158 and the tier ladder is not coming back.
+
+Two things that were TRIED and measured WORSE, so they are not in:
+anchoring the resampling in continuous space (58.2% of columns re-mapped
+per frame instead of 17.1% - a constant fine shimmer instead of an
+occasional jump) and sampling about the sprite's centre instead of its
+left edge (17.3%: no difference at all).
+
+**Still open, and it is a choice rather than a bug.**  A continuously
+scaled sprite re-samples itself whenever it grows; only a small set of
+fixed sizes removes that entirely, and that is the ladder the user
+rejected.  The measurement above is the ruler for whatever is decided.

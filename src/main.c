@@ -2515,6 +2515,25 @@ static void draw_ai_kart(const smk_rom *rom, const smk_track *trk,
         float ks = sc * SMK_CAM_TRAIL / SMK_PROJ_LES;
         if (ks > (float)kscale) ks = (float)kscale;
         if (racers[k].shrink_t > 0) ks *= 0.5f;
+        /* ON THE SNES'S OWN PIXEL GRID (the user: "they jitter a lot in
+         * the X axis").  MEASURED, tools/labs/aixjit.py over a traced
+         * race: the drawn size was changing 15 times a SECOND, and every
+         * change re-samples the sprite - `col = x * 32 / size` - so 17%
+         * of its columns take a different source column and the kart's
+         * pixels rearrange sideways while it approaches.  The hardware
+         * cannot do that: it places and sizes sprites on whole SNES
+         * pixels.  Snapping the drawn size to the same grid (kscale host
+         * pixels to the SNES pixel) takes it to 10 changes a second and
+         * 12.9% of columns, for a quarter of a SNES pixel of size error.
+         * The size stays CONTINUOUS otherwise - the user asked for that
+         * (NOTES 158) and the tier ladder is not coming back. */
+        {
+            float q = (float)kscale;
+            float want_px = (float)SMK_SPR_PX * ks;
+            float snapped = q * floorf(want_px / q + 0.5f);
+            if (snapped < q) snapped = q;
+            ks = snapped / (float)SMK_SPR_PX;
+        }
         int fdraw = mirror ? 0 : f;
         bool hf2 = hf;
         (void)kt;
@@ -2551,6 +2570,19 @@ static void draw_ai_kart(const smk_rom *rom, const smk_track *trk,
             /* ROUNDED, not truncated: near karts flickered a pixel in X as
              * the projected centre and the scaled size crossed integer
              * boundaries out of step (round 2, bug 16) */
+            /* SMK_AI_XTRACE=k - the DRAWN x of one kart, frame by
+             * frame, with everything that can move it: the projected
+             * centre, the rounded one, the art frame, the mirror flag and
+             * the scale.  "They jitter in X" is about this number. */
+            {
+                static int xk = -2;
+                if (xk == -2) { const char *e = getenv("SMK_AI_XTRACE");
+                                xk = e ? atoi(e) : -1; }
+                if (xk == k)
+                    printf("aix %u %.4f %d %.4f %d %d %d %d %.4f\n", fx_ticks,
+                           px, (int)lroundf(px), py, (int)lroundf(py),
+                           fdraw, (int)mirror, (int)hf2, ks);
+            }
             smk_draw_sprite_scaled(&other[k], fdraw, trk->palette, apal,
                                    (int)lroundf(px), (int)lroundf(py), ks, hf2, mirror,
                                    fb, rw, rh, rw);
@@ -4383,6 +4415,17 @@ int main(int argc, char **argv)
                  * and speed, in the same shape flaglog.lua logs the real
                  * game, so tools/labs/rowmix.py can put ours and the
                  * ROM's row mixture side by side (NOTES 174). */
+                /* SMK_FIELD_TRACE: every kart's 16.16 position, once a
+                 * frame, in the same shape tools/labs/mame/fieldpos.lua
+                 * logs the running game - so "the AI jitters in X" can be
+                 * a number from both sides instead of an impression. */
+                if (getenv("SMK_FIELD_TRACE")) {
+                    printf("fp %ld", hud_race_frames);
+                    for (int q = 0; q < SMK_CHARACTERS; q++)
+                        printf(",%d,%d,%u,%u", racers[q].k.x, racers[q].k.y,
+                               racers[q].k.angle, racers[q].dbg_want);
+                    printf("\n");
+                }
                 if (getenv("SMK_ROW_TRACE")) {
                     printf("row %ld", total_frames);
                     for (int q = 0; q < SMK_CHARACTERS; q++)

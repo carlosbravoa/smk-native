@@ -1157,6 +1157,7 @@ typedef struct {
     int      skill;         /* ($7F + lap) & 7: which $80AF0F row        */
     int      trouble;       /* $84 != 0 or $10 & $0020 -> the $18 row    */
     int      branch;        /* which $80ADA0 branch answered (diagnostic) */
+    uint16_t dbg_want;      /* $FA: the steering target this frame        */
     /* hit by an item (docs/ITEMS.md §6).  The AI has no $A6 machine here,
      * so the tumble is carried on the racer: pose spin, speed to zero. */
     int      hit_t;         /* frames left in the reaction              */
