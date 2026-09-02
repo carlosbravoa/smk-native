@@ -9936,3 +9936,34 @@ far too loud.
 
 The port now drives the extra engine voices during the COUNTDOWN only,
 where the game does, and silences them for the race.
+
+## 243. $2B is TWO samples, and the renderer was cutting the second one off
+
+The user, on throwing a shell or a banana with UP: "the sound is not
+complete: there is part of the sound correct, but the pitch-drop is
+missing.  It is like if the sound was cut."  It was cut, and by
+`sfxrender.py`.
+
+Watched on the chip, `$2B` occupies voice 3 for 23 frames and uses two
+samples one after the other, both descending:
+
+    f2205..f2211   sample $05   pitch $0900 -> $06E4   env 126 -> 107
+    f2212..f2227   sample $0F   pitch $08D0 -> $0600   env 125 ->  77
+    f2228          the voice is keyed off; f2231 the music has it back
+
+The renderer builds a `kit` of the samples seen in the effect's FIRST
+FOUR FRAMES and stops at anything else, because a different sample is
+normally the music coming back (NOTES 216).  Here the second half arrives
+at frame SIX, so every render of `$2B` stopped at f2211 - 0.119 s of the
+`$05` part and none of the `$0F` fall.  Exactly "part of the sound
+correct, the pitch-drop missing".
+
+`SFX_KIT=05,0F` names the samples an effect is KNOWN to use, and `$2B`
+re-renders at 0.387 s - 23 frames, the effect's whole span - with the
+dominant frequency falling 1819 -> 1302 Hz through the tail where the old
+file had nothing at all.  The default window is unchanged: widening it
+for everything would let music into the effects that do not need it.
+
+The file ends at 62% of its peak, and that is the game's doing, not a
+cut: `$0F`'s envelope is still at 77 of 127 when the driver keys the
+voice off.

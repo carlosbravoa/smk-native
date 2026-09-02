@@ -169,6 +169,15 @@ def main():
         first_srcn = test[(first, v)][3]
         kit = {test[(f2, v)][3] for f2 in range(first, min(first + 4, f1 + 1))
                if (f2, v) in test}
+        # SFX_KIT names the samples an effect is KNOWN to use, for the
+        # ones that use more than one.  $2B - throwing a shell or a
+        # banana ahead - is $05 falling $0900->$06E4 and then $0F falling
+        # $0900->$0690, watched on the chip through a real throw; the
+        # four-frame window only ever caught $05, so the second half, the
+        # pitch drop, was cut off ("it is like if the sound was cut" -
+        # the user).
+        if os.environ.get('SFX_KIT'):
+            kit |= {int(x, 16) for x in os.environ['SFX_KIT'].split(',')}
         strikes = 0
         last_env = 0
         for f in range(first, f1 + 1):
