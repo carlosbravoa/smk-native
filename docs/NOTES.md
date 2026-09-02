@@ -10258,3 +10258,34 @@ say the wrong thing.
 
 The dial half-darkens what is under it.  Over tarmac it read on its own;
 over a row of item boxes it did not.
+
+## 252. The mushroom's ceiling is $07E0, and NOTES 251 had it wrong
+
+The user: "I thought the mushroom was 1500."  They were right that 1376
+was too low, and the real number is higher than either of us said.
+
+NOTES 251 derived a ceiling by adding `$C0` to the class top, from the
+port's own transcription of state `$12`/`$14`.  That is a different
+reward state.  The mushroom's is `$80:A5E4`:
+
+    $80A5E4  DEC $FC,x        the boost timer
+    $80A5E6  BEQ  out         expired
+    $80A5E8  LDA #$07E0       the ceiling
+    $80A5EB  CMP $EA,x        against the speed
+    $80A5ED  BCS  accel       under it: accelerate
+    $80A5EF  STA $EA,x        over it: CLAMP the speed to $07E0
+    $80A5F1  LDA #$0000       and stop accelerating
+    $80A5F6  LDA #$0032       the rate, +50 a frame
+
+Forced in a real race (`tools/labs/mame/boostmax.lua`: poke the item
+word, patch the pad read for two frames, watch `$10EA`), a mushroom does
+exactly that - rises 847, 897, 948 ... at +50 a frame, then sits FLAT at
+2016 for eight frames, then decays.  `$07E0` is 2016.
+
+And it is not scaled by anything: the same 2016 on two sessions whose
+class tops were 864 and 992.  A star peaks at 1313, a lightning bolt at
+873 - the mushroom is the ceiling, so the dial's scale is `$07E0`.
+
+The lesson is the one this project keeps relearning: the port's
+transcription of a routine is not a measurement of the game.  `target +
+$C0` is real code, correctly read, for the wrong event.

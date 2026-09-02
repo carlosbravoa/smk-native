@@ -768,8 +768,9 @@ In rough order of value:
     is background-layer art and is nowhere in OAM; the SPEEDOMETER, which
     the user asked for and the original never had - a NEEDLE rather than a
     figure ("that number doesn't mean much"), in the bottom-left corner,
-    sweeping 200 degrees against an ABSOLUTE `SMK_SPEED_MAX` of 1376 -
-    measured, not chosen: 944 + 160 + 80 + 192 - with this class's top
+    sweeping 200 degrees against an ABSOLUTE `SMK_SPEED_MAX` of `$07E0` =
+    2016 - the ROM's own boost clamp at `$80:A5E8`, confirmed by forcing
+    a mushroom and watching it sit flat there for eight frames - with this class's top
     marked on the scale so a mushroom shows as the needle going PAST it,
     and the surface cap's amber arc between (NOTES 250/251); and the telemetry
     overlay - surface, slip angle, the class-top bar, and the lap count,

@@ -226,12 +226,24 @@ void smk_kart_move_ex(smk_kart *k, const smk_track *t, bool auto_ramp);
 /* Height, decoded at $80B1D6 (NOTES 045).  Gravity is 26 units per frame;
  * a second mode at $80DFED uses 18.  Landing clears height, velocity and
  * the airborne flag. */
-/* The fastest a kart can ever go, MEASURED from the ROM's own tables
- * (NOTES 251): the highest base top is $03B0 = 944 (Bowser and DK Jr at
- * $81:8000), 150cc adds $A0, ten coins add 8 each, and state $12/$14 -
- * the boost - caps at the class top plus $C0.  944 + 160 + 80 + 192.
- * The speedometer is scaled to this so a mushroom has somewhere to go. */
-#define SMK_SPEED_MAX   1376
+/* The fastest a kart can ever go, and it is the ROM's own constant
+ * (NOTES 251, corrected): `$80:A5E8` is the boost's own ceiling -
+ *
+ *     $80A5E4  DEC $FC,x          the boost timer
+ *     $80A5E6  BEQ  out           expired
+ *     $80A5E8  LDA #$07E0         the ceiling
+ *     $80A5EB  CMP $EA,x          against the speed
+ *     $80A5ED  BCS  accel         under it: accelerate
+ *     $80A5EF  STA $EA,x          over it: CLAMP the speed to $07E0
+ *     $80A5F6  LDA #$0032         the rate, +50 a frame
+ *
+ * and a mushroom forced in a real race rises at exactly +50 a frame and
+ * then sits flat at 2016 for eight frames before it decays - on two
+ * sessions whose class tops were 864 and 992, so the ceiling is NOT
+ * scaled by the class.  A star peaks at 1313, well under it.
+ * The first cut of this said 1376 by adding $C0 to the class top, which
+ * is a different reward state entirely. */
+#define SMK_SPEED_MAX   0x07E0    /* 2016 - $80:A5E8's own clamp */
 
 #define SMK_GRAVITY      26         /* $001A - the captured bounce arc  */
 #define SMK_GRAVITY_ALT  18         /* $0012 - the $80DFED mode */
