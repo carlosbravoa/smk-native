@@ -2764,13 +2764,19 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
             int len = kc->kind ? SMK_COINUP_PATH_LEN : SMK_COIN_PATH_LEN;
             if (step < 0 || step >= len) continue;
             const smk_coin_step *st = &(kc->kind ? SMK_COINUP_PATH : SMK_COIN_PATH)[step];
-            /* Where it hops.  A spilled coin fans by its side; a road
-             * pickup follows the capture exactly, offset and all; the
-             * ITEM's pair is centred on the kart and fanned, because the
-             * capture's own offset is where that one road coin was. */
-            int cx = kc->kind == 2 ? kx + kc->side * SMK_COIN_ITEM_SEP * scale
-                   : kc->kind == 1 ? kx + st->dx * scale
-                                   : kx + st->dx * kc->side * scale;
+            /* dx is the sprite's OAM LEFT EDGE relative to the kart's
+             * centre, not its centre - MEASURED: a picked-up coin sits at
+             * OAM x 119 with the kart spanning 112..143, so its own centre
+             * is 127 against the kart's 128, and the path's -9 is
+             * 119 - 128.  Re-centring the sprite on it (the old
+             * `- SMK_COIN_PX/2`) pushed every coin another half-sprite
+             * left, which is the "shifted to the left and not in the
+             * middle" the user saw.  A spilled coin's fan mirrors about
+             * the kart's centre, so its left edge mirrors to
+             * -dx - SMK_COIN_PX. */
+            int dx = kc->kind ? st->dx
+                   : (kc->side < 0 ? -st->dx - SMK_COIN_PX : st->dx);
+            int cx = kx + dx * scale;
             int cy = ky + st->dy * scale;
             if (getenv("SMK_COIN_TRACE"))
                 printf("coin t%d screen (%d,%d)\n", kc->t, cx * 256 / rw, cy * 224 / rh);
@@ -2780,7 +2786,7 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
                 if (sy < 0 || sy >= rh) continue;
                 const uint8_t *row = art + (yy / scale) * SMK_COIN_PX;
                 for (int xx = 0; xx < SMK_COIN_PX * scale; xx++) {
-                    int sx = cx - SMK_COIN_PX * scale / 2 + xx;
+                    int sx = cx + xx;
                     if (sx < 0 || sx >= rw) continue;
                     uint8_t v = row[xx / scale];
                     if (!v) continue;

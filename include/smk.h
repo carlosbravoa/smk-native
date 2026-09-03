@@ -1698,10 +1698,8 @@ typedef struct {
     int16_t  vx, vy, vz;
     int      t;             /* frames since the loss                       */
     int      side;          /* which way this coin's path drifts           */
-    uint8_t  kind;          /* 0 spilled by a bump, 1 picked up from the road,
-                             * 2 the item's pair - same hop, but centred on
-                             * the kart and fanned apart (the capture's own
-                             * -9 px is where THAT road coin happened to be) */
+    uint8_t  kind;          /* 0 spilled by a bump, 1 picked up from the road
+                             * (and the item's two, which ARE that) */
 } smk_coin;
 /* The path a spilled coin takes on screen, relative to the top centre of
  * the player's kart sprite - CAPTURED from a real bump (NOTES 186).  The
@@ -1716,11 +1714,12 @@ extern const int SMK_COIN_PATH_LEN;
 extern const smk_coin_step SMK_COINUP_PATH[];
 extern const int SMK_COINUP_PATH_LEN;
 #define SMK_COINUP_DELAY 2
-/* How far either side of the kart the ITEM's two coins hop.  OURS: the
- * captured path is one road coin, so a pair needs a fan, and at half the
- * sprite plus two they clear each other instead of overlapping (the user:
- * "the two coins are too close, almost indistinguishable"). */
-#define SMK_COIN_ITEM_SEP  (SMK_COIN_PX / 2 + 2)
+/* MEASURED (tools/labs/coinitem.py): the 2-coin item is the road pickup's
+ * own hop, twice, at the SAME x, the second SEVEN frames after the first.
+ * Both coin sprites sit at OAM x 119 every frame of both arcs while the
+ * player's kart spans 112..143 - so they are centred on it, and there is
+ * no fan of any kind. */
+#define SMK_COIN_ITEM_GAP 7
 void smk_coinfx_pickup(smk_coin *c, int n);
 void smk_coinfx_pickup2(smk_coin *c, int n);   /* the 2-coin item: the hop, doubled */
 /* `count` coins out of a kart at (x,y) travelling on `heading` */

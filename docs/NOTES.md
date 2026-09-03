@@ -10808,15 +10808,59 @@ whole reason the origin is a parameter rather than a global rule.
 
 **And the coin item's two coins landed on top of each other, to the
 left.**  The user: *"the two coins are too close, almost
-indistinguishable and shifted to the left and not in the middle."*  Both
-were true, and both come from the same place: the picked-up coin's hop is
-a CAPTURE of one real road coin (NOTES 189), and that coin was 9 px left
-of the kart - every step of the path carries `dx = -9`.  The item's pair
-was drawn with the same path and with `side` ignored, so they sat one
-frame apart at the same x, nine pixels off centre.
+indistinguishable and shifted to the left and not in the middle."*  I
+answered that by inventing a fan - separating them by half a sprite - and
+was told off for it, correctly: *"we have tools to measure.  don't
+invent.  this is a port."*  See NOTES 261 for what the game actually
+does; the fan is gone.
 
-The pair is now its own kind: centred on the kart and fanned to either
-side by half the sprite plus two, with the one-frame stagger kept.  A
-road pickup still follows its capture exactly, offset and all, because
-that is what was measured.  Labelled: the fan is ours - the capture only
-ever had one coin in it.
+## 261. The coin item, measured instead of reasoned about
+
+The user, twice, and the second time sharply: *"it is EXACTLY the same as
+picking one coin.  But it is two instead and one after the other.  Both
+centered at the kart driver's head.  This is again the same discussion.
+We are definitely going back and please please stop assuming.  We have
+tools to measure.  Don't invent.  This is a port.  The only things that
+are deliberately different are stated, not assumed."*
+
+They are right, and NOTES 260's answer - a fan of my own devising - was
+exactly the thing this log exists to prevent.  So: `tools/labs/coinitem.py`
+pokes a READY coin item into the oracle (`$0D70 = $C007`), presses A, and
+logs every coin sprite in OAM frame by frame.
+
+    +1   coins 5 -> 7
+    +2   s40 x119 y66      the first coin appears
+    +3   s40 x119 y60
+    ...  up to y21 and back down
+    +9   s40 x119 y66      the SECOND coin appears
+                s41 x119 y34   (the first, still going)
+
+**Three numbers, and all three say what the user said:**
+
+* both coins sit at **OAM x 119 on every frame of both arcs** - one x, no
+  fan, no drift;
+* the second starts **seven frames** after the first (+2 and +9), one
+  after the other;
+* each follows the picked-up coin's own arc exactly (66 -> 21 -> 66 -> 78,
+  the same spin frames): it IS the road pickup, twice.
+
+**And the -9 was never an offset.**  The player's kart is the 16x16 pair
+at x 112 and 128, so it spans **112..143 and its centre is 128**.  The
+coin at 119 is a 16x16 sprite, so its own centre is **127** - one pixel
+off the kart's, which is what "centred at the driver's head" means.  The
+captured path's `dx = -9` is `119 - 128`: the sprite's OAM **LEFT EDGE**
+against the kart's centre, not a centre offset.  The renderer took it as a
+centre and then subtracted another half sprite, so every coin - the
+item's and the road's alike - was drawn a further eight pixels left.
+That single misreading is the whole of "shifted to the left and not in
+the middle", and it had been there since NOTES 186/189.
+
+Fixed at the source: `dx` is a left edge now (`sx = kx + dx * scale`), the
+spilled coin's fan mirrors about the kart's centre properly
+(`-dx - SMK_COIN_PX`, since mirroring a left edge is not negating it), and
+the item is two ordinary pickups seven frames apart.  Both `.inc` headers
+say "left edge" so the next reader does not have to find this twice.
+
+Checked in our own output: the coin's cell lands at 238..269 in a
+512-wide view, centre 254 against the kart's 256 - one SNES pixel left,
+the game's own 127 against 128.

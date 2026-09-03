@@ -1,6 +1,7 @@
 /* The picked-up coin's screen path, CAPTURED (NOTES 189): x and y per
- * frame relative to the top centre of the player's kart sprite, from a
- * real pickup in the oracle (tools/labs/coinpick.py), 2 frames after the
+ * frame: the sprite's OAM LEFT EDGE against the kart's own centre (the
+ * kart spans 112..143, the coin sits at 119), from a real pickup in the
+ * oracle (tools/labs/coinpick.py), 2 frames after the
  * count went up.  Straight up 45 px and back down past where it started,
  * gone after 34 frames; the spin frame is the game's, changing every four.
  * The third number is the spin frame: 0 $86, 1 $A2, 2 $60. */

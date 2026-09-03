@@ -21,18 +21,21 @@ const smk_coin_step SMK_COINUP_PATH[] =
 const int SMK_COINUP_PATH_LEN = (int)(sizeof SMK_COINUP_PATH / sizeof SMK_COINUP_PATH[0]);
 
 /* the coin you just drove over hops straight up off the road (NOTES 189) */
-/* The 2-coin item: "the same as picking up one coin from the floor, but
- * doubled" (the user) - two hops, one either side of the kart and the
- * second a frame late.  Kind 2, not 1, because the captured hop carries
- * the lateral offset of the road coin it was captured from (-9 px): for a
- * pair that has to go, or they land on top of each other, off to the
- * left of the kart. */
+/* The 2-coin item, MEASURED in the oracle (tools/labs/coinitem.py) rather
+ * than reasoned about: it is EXACTLY the road pickup's hop, twice, at the
+ * same x, the second seven frames after the first.  The user, twice:
+ * "the same as picking up one coin from the floor, but doubled", and then
+ * "it is EXACTLY the same as picking one coin.  But it is two instead and
+ * one after the other.  Both centered at the kart driver's head."  Both
+ * readings of the log agree with them: two sprites at OAM x 119 through
+ * two identical arcs, starting at +2 and +9. */
 void smk_coinfx_pickup2(smk_coin *c, int n)
 {
     int got = 0;
     for (int s = 0; s < n && got < 2; s++) if (!c[s].live) {
         memset(&c[s], 0, sizeof c[s]);
-        c[s].live = 1; c[s].kind = 2; c[s].side = got ? 1 : -1; c[s].t = -got;
+        c[s].live = 1; c[s].kind = 1; c[s].side = 1;
+        c[s].t = -SMK_COIN_ITEM_GAP * got;
         got++;
     }
 }
