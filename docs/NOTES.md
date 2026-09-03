@@ -11062,3 +11062,86 @@ wrong: the way to choose between two guesses is to stop guessing.
 
 Both header entries now carry what is known: `$66` with its call site,
 `$39` with the fact that it has none yet.
+
+## 265. A Ghost Valley time trial, and the engine note decoded end to end
+
+The user recorded a clean five-lap time trial on Ghost Valley 1 (100cc,
+Mario, `sessions/ghost-valley`) and asked for five things to be checked
+against it.  Three are answered with measurements, one is now decoded and
+ported, and one is still open and stays open.
+
+**1. Timings and top speed: the port already matches, frame by frame.**
+The run is 4381 frames = 72.90 s, laps 15.41 / 14.53 / 14.26 / 14.24 /
+14.46 s, top speed 912 (Mario's 100cc `$B4`, and no coins - a time trial
+starts on zero and stays there).  Their inputs replayed through the port
+(`smk_demoreplay` on a `demolog.lua` capture of the same run): **speed
+differs by more than 2 units on 55 of 5661 frames - 0.97%** - and through
+the whole launch the two agree exactly, unit for unit.
+
+Their impression - *"it took me more than 1 complete lap to reach top
+speeds"* - is not what the clock says: 912 is first touched **6.44 s in**,
+well inside lap 1.  What IS true is the shape of the lap: lap 1 spends
+46.5% of its frames at or above 98% of top, laps 2-5 spend 80-90%.  Lap
+one is the lap you are not at speed for, and that is the feel; the
+acceleration itself is the game's own and ours already matches it.
+
+**2. The engine note: DECODED, and the port was using a fit.**  This one
+is a real defect and it is fixed.
+
+`$80:9643` is `LDA $42 / STA $2142` - `$42` is the byte the APU gets.
+Measured against the run, **`$42` = `$C2 >> 8`** (exact on 83% of frames
+sampled at frame end, 92% with the one-frame sampling phase allowed).
+And `$C2` is built by `$80:B121`, whose six parameters live at
+`$0E20..$0E2A`, copied at setup from `$81:EFE7` **by engine class** -
+`$81:EE07` keeps `Y = $0A` when `$0030 == 0` and takes `$16` otherwise:
+
+              ceiling  +under $2000  +over   coast   off-road  drift
+    50cc       $3FFF      +$0120     +$0080  -$0200   -$0300   -$0100
+    100/150cc  $5FFF      +$0200     +$0040  -$0280   -$0380   -$0180
+
+That also settles NOTES 143's open label ("what selects between the two
+rows is not established"): it is the class.
+
+The whole law, re-simulated against the game's own logged inputs
+(`tools/labs/revsim.py`), is **exact on 5660 of 5660 race frames**.  The
+cadence came out of the same data: `$C2` moves once every EIGHT frames -
+707 of 763 changes in the run are exactly 8 apart, all on one phase -
+because the game builds one kart block a frame.
+
+**Why it matters, in the user's words:** *"see how the engine clearly
+shows acceleration at high speed."*  At 100cc the rev crawls from `$2000`
+to `$5FFF` at `$40` a frame - **four more seconds of rising note after
+the kart has stopped accelerating**.  Measured in their run: at the frame
+speed first reaches 912 the rev is `$3800`; 400 frames later the speed is
+the same and the rev is `$4480`.  The port's note was `20 + speed*0.048`
+clamped at 63 (NOTES 219's fit, made on 50cc data), which is FLAT from
+about speed 900 up - so our engine stopped climbing exactly where the
+game's keeps going.  The note now runs the game's own range (13..78 on
+this track) instead of pinning at 63.
+
+**5. The grid's little bumps have their own sound, and we had none.**
+`$80:B69D` is the class-`$1E` bump handler - the port already has its
+physics (`case 0x1E`: `$26 = $80`, `$1E = $100`, airborne, jump state 2) -
+and `$80:B6B9` plays **`$22`** in the middle of it.  Nineteen fire in the
+Ghost Valley run, on a course with no moles at all.  NOTES 211's table of
+call sites had labelled `$80:B6B9` "mole", which is how the port came to
+play `$22` for a mole's grab and NOT for the bump strip it belongs to.
+Now it plays for the bumps too, which is the difference the user heard.
+
+**3 and 4 are NOT answered, and are not guessed at.**  The slide sound on
+wood and the dust-versus-smoke question both need work this note does not
+contain:
+
+* Every sound the game queues in the whole run is `$25` (landing, x43),
+  `$22` (the bumps, x19), `$21` (hop, x15+x9) and one `$68`.  **No skid
+  sound of any kind fires while sliding**, and the only per-frame APU
+  parameters are `$42` (the engine, now decoded) and `$43`, which is a
+  constant `$80` throughout.  So a per-surface slide sound is not coming
+  from either place, and settling it needs the surface-audio rig
+  (`surfgrab.lua`: force the course to one class, record, subtract) run
+  on Ghost Valley's own classes - the kart spends its time on `$40`,
+  `$42`, `$4E` and `$1E`, and the port only holds captures for the six
+  off-road classes.
+* The dust/smoke question is a picture, and the way to answer it is a
+  frame capture during a slide (`pix.lua`), not an argument about
+  palettes.

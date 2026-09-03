@@ -1300,6 +1300,9 @@ static void step_kart(smk_kart *k, smk_track *trk,
         if (player.hazard != was_hazard2 && player.hazard == 6)
             smk_sfx_play(SMK_SFX_FALL);              /* off the road   */
         if (player.mole_on && !was_mole) smk_sfx_play(SMK_SFX_MOLE);
+        /* the little bumps on the grid ($80:B6B9), which the port had the
+         * physics for but no sound (NOTES 265) */
+        if (player.bump_sfx) { smk_sfx_play(SMK_SFX_BUMP_STRIP); player.bump_sfx = 0; }
         if (k->airborne && !was_air && player.state != 0x18) {
             /* Three different take-offs, and the ROM keeps them apart
              * (NOTES 229, each forced by filling the surface):
@@ -1466,44 +1469,24 @@ static void step_kart(smk_kart *k, smk_track *trk,
      *
      * LABELLED (S38): the shape is the game's, the constants are a fit. */
     {
-        float rev = sfx_prev.rev;
-        bool thr = (player.pad & 0x8000) != 0 || engine_throttle;
-        /* THE MAP FROM SPEED, measured (NOTES 219).  The engine note is
-         * NOT proportional to speed: the game's own $42 sits in a narrow
-         * band - about $14 at a standstill under throttle and $3D flat
-         * out - because the parameter is a REV accumulator ($80:B121,
-         * +$0120 a frame under $2000, +$0080 over, -$0200 coasting,
-         * ceiling $3FFF) and $42 is that rev over about 222.  Medians
-         * from 8,600 logged frames with the throttle held:
+        /* THE NOTE IS THE REV, not a curve through speed.
          *
-         *   speed  150 300 450 650 750 850 950+
-         *   $42     36  33  42  50  54  61  61
-         *
-         * which is 20 + speed * 0.048, and that is what the port uses.
-         * A straight speed * 0.079 - 6 (the first fit) swept the whole
-         * range instead and the note ran away from the kart. */
-        float target = 20.0f + (float)k->speed * 0.048f;
-        if (race_state == RACE_COUNTDOWN) {
-            /* the port already keeps the game's own countdown rev
-             * (smk_player_rev transcribes $80:95BB - NOTES 163) */
-            target = (float)((player.rev >> 8) & 0x7F);
-        } else if (!thr && k->speed < 0x40) {
-            target = 1.0f;                    /* stopped and coasting: idle */
-        }
-        if (target < 1.0f) target = 1.0f;
-        if (target > 63.0f) target = 63.0f;   /* the rev's own ceiling      */
-        /* MEASURED rates, and they are not symmetric: the trace rises
-         * about 1 a frame and FALLS up to 3 - after a crash from $3F it
-         * is back at $20 within ten frames. */
-        float d = target - rev;
-        rev += d > 0.0f ? (d < 0.8f ? d : 0.8f) : (d > -3.0f ? d : -3.0f);
-        sfx_prev.rev = rev;          /* this driver's own accumulator */
-        int v = (int)(rev + 0.5f);
-        bool racing = race_state == RACE_RUN || race_state == RACE_COUNTDOWN;
-        /* A VOICE PER DRIVER (the user: "P2's engine doesn't come up with
-         * the right sound ... we should hear both engines").  Each view
-         * takes its own engine voice, with its own driver's sample and
-         * its own rev, panned to the side of the screen it is drawn on. */
+         * This used to be a fit - 20 + speed * 0.048, clamped at 63
+         * (NOTES 219) - which is flat from about 900 up, so the engine
+         * stopped climbing exactly where the user says the original
+         * keeps climbing: "see how the engine clearly shows acceleration
+         * at high speed".  $80:B121 is now transcribed in player.c and
+         * validated frame-exact against their Ghost Valley run, and
+         * $80:9643 shows what the chip is actually handed: $42 = $C2 >> 8
+         * (measured, 83-92% of frames exactly, the rest one frame of
+         * sampling phase).  At 100cc that note runs 13..78 over a race -
+         * a range the old clamp could not even reach. */
+        bool racing = race_state == RACE_RUN || race_state == RACE_FINISH;
+        if (racing) smk_player_rev_race(&player);
+        int v = smk_player_engine_note(&player);
+        if (racing || race_state == RACE_COUNTDOWN) {
+            if (v < 1) v = 1;
+        } else v = 0;
         smk_engine_voice(cur_view, me->character % SMK_CHARACTERS,
                          racing ? (v < 1 ? 1 : v) : 0,
                          smk_engine_base_volume(),
@@ -1580,10 +1563,10 @@ static void step_kart(smk_kart *k, smk_track *trk,
             }
         }
         if (getenv("SMK_ENGINE_TRACE") && (fx_ticks % 15) == 0)
-            printf("engine f%ld %-6s speed %4d thr %d -> $%02X\n",
+            printf("engine f%ld %-6s speed %4d rev $%04X -> note %d\n",
                    hud_race_frames,
-                   SMK_DRIVERS[racers[0].character % SMK_CHARACTERS].name,
-                   k->speed, (int)thr, v);
+                   SMK_DRIVERS[me->character % SMK_CHARACTERS].name,
+                   k->speed, (uint16_t)player.rev, v);
     }
 
     /* the ground effect object ($80CF7B..$80D4A3): what the surface under

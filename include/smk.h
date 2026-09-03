@@ -309,7 +309,14 @@ typedef struct {
     /* the start rev and its flags (NOTES 143).  $C2 is not only the
      * launch: $80A10F halves it on a crash, with a floor of $0100. */
     int16_t  rev;              /* $C2                                       */
-    uint16_t rev_ceiling;      /* the $81:EFF3 row, read at setup           */
+    uint16_t rev_ceiling;      /* the row's ceiling, read at setup          */
+    /* The IN-RACE rev row ($80:B121's $0E20..$0E2A), read from
+     * $81:EFE7 at setup: ceiling, + under $2000, + over it, coasting,
+     * off-road, drifting.  $81:EE07 picks the row BY ENGINE CLASS -
+     * $0030 == 0 takes the first, every other class the second - which
+     * is the selector NOTES 143 left labelled as unestablished. */
+    int16_t  rev_race[6];
+    int      rev_tick;         /* the every-eighth-frame cadence, measured  */
     int16_t  rev_up_lo, rev_up_hi, rev_off;
     uint8_t  rev_window;       /* $E0 bit 0: inside the turbo band          */
     uint8_t  rev_over;         /* past $3000 while the lights still run     */
@@ -339,6 +346,7 @@ typedef struct {
      * that was purely my invention (three hops). */
     int      mole_hops;        /* alternations counted so far        */
     int      mole_dir;         /* the last direction pressed: -1 / +1 */
+    uint8_t  bump_sfx;         /* the class-$1E strip fired this frame ($80:B6B9) */
     int      fc, ca;           /* $FC countdown, $CA hold counter           */
     /* hazards (NOTES 113): water = the $22 wade, fall = the $24/$26 drop
      * and Lakitu's rescue.  The caller supplies the rescue target - the
@@ -368,6 +376,13 @@ bool smk_player_boost(smk_player *p);
  * smk_player_rev once a frame while the lights run - it ticks on every
  * second one, like the game - then smk_player_launch when they go out. */
 void smk_player_rev(smk_player *p, bool throttle, unsigned frame);
+/* $80:B121, the IN-RACE rev - what the engine note is actually made of.
+ * Call it once a frame while the race runs; it steps $C2 on every eighth,
+ * which is the game's own cadence (it builds one kart block a frame).
+ * The note the chip gets is $42 = $C2 >> 8 ($80:9643). */
+void smk_player_rev_race(smk_player *p);
+static inline int smk_player_engine_note(const smk_player *p)
+{ return ((uint16_t)p->rev) >> 8; }
 void smk_player_launch(smk_player *p);
 /* place the kart: all three angles, machine at rest */
 void smk_player_reset(smk_player *p, uint16_t heading);
@@ -1371,7 +1386,16 @@ const char *smk_sfx_hint(int id);   /* when the game fires an unnamed one */
 
 #define SMK_SFX_COIN       0x20   /* MEASURED: 41 of 63 with the coin count up */
 #define SMK_SFX_HOP        0x21   /* MEASURED: fires as jump_state goes to 2   */
-#define SMK_SFX_MOLE       0x22   /* MEASURED: at the mole's grab              */
+/* $22, and its call site is DECODED: $80:B6B9, inside the class-$1E BUMP
+ * handler at $80:B69D - the strip of little bumps you cross on Ghost
+ * Valley's grid.  Nineteen of them fire in the user's Ghost Valley run,
+ * where there is not a mole on the course (NOTES 265).  NOTES 211's table
+ * called $80:B6B9 "mole" from a scan of call sites, which is how the
+ * port came to play it for the mole's grab and NOT for the bump it
+ * belongs to.  Both keep it for now - the mole's own sound was measured
+ * separately (NOTES 210) - but the BUMP is the decoded one. */
+#define SMK_SFX_MOLE       0x22   /* the mole's grab (NOTES 210, by capture)   */
+#define SMK_SFX_BUMP_STRIP 0x22   /* $80:B6B9, the class-$1E bump strip        */
 #define SMK_SFX_RAMP       0x23   /* MEASURED: airborne (drive $02) every time */
 #define SMK_SFX_FEATHER    0x24   /* USER + ROM $80:B57B                       */
 #define SMK_SFX_LAND       0x25   /* MEASURED: drive $02->$00 and z to 0       */

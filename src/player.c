@@ -23,6 +23,8 @@
  *   $2A  pose       - heading - $AA: the sprite turns INTO the slide
  */
 #include "smk.h"
+#include <stdio.h>
+#include <stdlib.h>
 #include <math.h>
 #include <string.h>
 
@@ -70,10 +72,17 @@ bool smk_player_setup(const smk_rom *rom, int character, int engine_class,
 
     /* $81F026: base top speed by character, then the class adjustment
      * ($2C == 0 selects it): 50cc -$80, 100cc +0, 150cc +$A0. */
-    /* the countdown's rev parameters (NOTES 143).  Two clean rows sit at
-     * $81:EFE7 and $81:EFF3; the second is the one measured live in a
-     * one-player race, which is all this port runs.  LABELLED: what
-     * selects between them is not established. */
+    /* The rev rows sit at $81:EFE7 and $81:EFF3, and WHAT SELECTS THEM is
+     * now decoded (NOTES 265): $81:EE07 keeps Y = $0A when $0030 == 0 and
+     * takes $16 otherwise, then copies six words down into $0E20 - so
+     * 50cc reads the first row and every other class the second.  NOTES
+     * 143 left this labelled as unestablished. */
+    {
+        uint32_t rr = (engine_class == 0) ? 0x81EFE7u : T_REV;
+        for (int i = 0; i < 6; i++)
+            p->rev_race[i] = (int16_t)rd16(rom, rr + (uint32_t)i * 2u);
+    }
+    p->rev_tick = 0;
     p->rev_ceiling = rd16(rom, T_REV);
     p->rev_up_lo   = (int16_t)rd16(rom, T_REV + 2u);
     p->rev_up_hi   = (int16_t)rd16(rom, T_REV + 4u);
@@ -131,6 +140,44 @@ bool smk_player_setup(const smk_rom *rom, int character, int engine_class,
     p->coins = 0;
     smk_player_reset(p, 0);
     return true;
+}
+
+/* $80:B121, the in-race rev, TRANSCRIBED and validated frame-exact
+ * against a whole recorded run (tools/labs/revsim.py: 5660 of 5660
+ * frames of the user's Ghost Valley time trial).
+ *
+ *   Y held, or no throttle      -> row[3]   (coasting)
+ *   B held, surface type >= $14 -> row[4] once the rev is past $1000
+ *   B held, drifting ($E2 bit 2)-> row[5] once it is within $1800 of
+ *                                  the ceiling
+ *   otherwise                   -> row[1] under $2000, row[2] over it
+ *
+ * then floor $0100 and ceiling row[0].  The rev therefore keeps climbing
+ * long after the kart has stopped accelerating - at 100cc it crawls from
+ * $2000 to $5FFF at $40 a frame, four more seconds of rising note - and
+ * that is the "engine clearly shows acceleration at high speed" the
+ * port's speed-derived fit could not do (NOTES 265).
+ *
+ * The CADENCE is the game's own: it builds one kart block a frame, so
+ * each kart's rev moves once every EIGHT (707 of 763 changes in the run
+ * are exactly 8 apart). */
+void smk_player_rev_race(smk_player *p)
+{
+    if (++p->rev_tick < 8) return;
+    p->rev_tick = 0;
+    const int16_t *row = p->rev_race;
+    int ceil = (uint16_t)row[0];
+    int rev = (uint16_t)p->rev, d;
+    int ramp = rev < 0x2000 ? row[1] : row[2];
+    if (p->pad & 0x4000)            d = row[3];          /* $80B124: Y */
+    else if (!(p->pad & 0x8000))    d = row[3];          /* no throttle */
+    else if (p->type >= 0x14)       d = rev < 0x1000 ? ramp : row[4];
+    else if (p->flags & 0x0004)     d = (ceil - 0x1800) >= rev ? ramp : row[5];
+    else                            d = ramp;
+    rev += d;
+    if (rev < 0x0100) rev = 0x0100;                      /* $80B173 */
+    if (rev >= ceil) rev = ceil;                         /* $80B17B */
+    p->rev = (int16_t)rev;
 }
 
 /* $80B46B/$80B47C/$80B489: a mushroom.  Refused in the spin states
@@ -704,6 +751,11 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
                 k->zvel = 0x0080; k->z = (int32_t)0x0100;   /* $1E = $100 */
                 k->airborne = true; p->flags |= 0x8000;
                 p->jump_state = 2;
+                /* $80:B6B9 plays $22 here - NOT the hop's $21.  The user:
+                 * "check how it sounds when passing through the grid with
+                 * the small bumps (different sound compared to jump)".
+                 * Nineteen of them in their Ghost Valley run. */
+                p->bump_sfx = 1;
             }
             break;
         default: break;                     /* $14 box, $1A coin: the collector */
