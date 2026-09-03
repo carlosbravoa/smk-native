@@ -11711,7 +11711,16 @@ Toad's the mushroom (both seen).  Bowser's fireball and Yoshi's egg were
 never on screen in any recording; their palettes 6 and 5 are read off
 the art and labelled INFERRED.  Synthesising spawns from a captured
 block (`forceproj3.lua`) draws nothing - the block is more than its 128
-bytes - and is written down as a dead end.
+bytes - and rewriting only the OWNER of a real special the frame it
+spawns (`forceproj4.lua`, every kart, two recordings) changes what draws
+(Peach's mushroom becomes DK's banana with owner 7) but draws nothing at
+all for five of the seven owners, Bowser and Yoshi among them: their
+specials are not this variant's road item.  Both dead ends written down.
+
+The squash's STOP is OURS and now measured against: after a Thwomp lifts
+off the kart, `$EA` written to 512 every frame reads back 512 - the game
+does not zero it - so the game does not hold a squashed kart still the
+way SMK_SQUASH_T does.  Left as it is, labelled.
 
 ### Rainbow Road, fabricated
 
