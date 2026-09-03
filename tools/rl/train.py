@@ -90,8 +90,13 @@ def evaluate(policy, norm, args, tracks, device, greedy=True, episodes=1):
                    max_frames=args.max_frames, stall_frames=0,
                    mode=MODE_GP if args.gp else MODE_TT,
             items=int(args.items),
-            mushroom=int(args.mushroom), seed=args.seed + 9000 + t)
-            for t in tracks for _ in range(episodes)]
+            mushroom=int(args.mushroom),
+                   # a DIFFERENT seed per episode, or eight races are
+                   # ONE race counted eight times: the seed drives the
+                   # item roulette, so a fixed one makes every episode
+                   # of a course byte-identical
+                   seed=args.seed + 9000 + 131 * t + ep)
+            for t in tracks for ep in range(episodes)]
     env = SMKVecEnv(cfgs)
     obs = env.reset()
     n = env.n
@@ -308,7 +313,8 @@ def train(args):
             # learned the game or learned twenty routes, and averaging
             # the two together would hide it.
             if held:
-                hres = evaluate(policy, norm, args, held, device)
+                hres = evaluate(policy, norm, args, held, device,
+                                episodes=args.eval_episodes)
                 hf = [hres[t]["frames"] for t in held]
                 print(f"    HELD OUT ({len(held)} courses never trained on): "
                       f"{sum(x is not None for x in hf)}/{len(held)} finished"
@@ -321,7 +327,8 @@ def train(args):
                     print(f"      {track_name(t):<18} "
                           f"{frames_to_time(got) if got else 'did not finish':<10}"
                           + (f"  P{int(pl)}" if args.gp and pl else "") + mark)
-            res = evaluate(policy, norm, args, tracks, device)
+            res = evaluate(policy, norm, args, tracks, device,
+                           episodes=args.eval_episodes)
             for t in tracks:
                 got, b = res[t]["frames"], base[t]
                 mark = ""
@@ -408,6 +415,10 @@ def main():
     p.add_argument("--log-every", type=int, default=10, dest="log_every")
     p.add_argument("--eval-every", type=int, default=100, dest="eval_every")
     p.add_argument("--eval", type=str, default="", help="load a policy and evaluate it")
+    # A RACE is far noisier than a time trial - one shell decides a place -
+    # so a single episode per course says almost nothing about a GP policy.
+    p.add_argument("--eval-episodes", type=int, default=1, dest="eval_episodes",
+                   help="episodes per course at evaluation (raise it for --gp)")
     p.add_argument("--no-watch", dest="watch", action="store_false",
                    help="do not write a watchable .pads at each evaluation")
     p.set_defaults(watch=True)
@@ -423,15 +434,34 @@ def main():
         norm = RunningNorm(OBS_DIM); norm.load(ck["norm"])
         tracks = GP_TRACKS if args.tracks == "gp" else \
             ([int(t) for t in args.tracks.split(",")] if args.tracks else [args.track])
-        base = autopilot_baseline(args, sorted(set(tracks) | set(held)))
-        res = evaluate(policy, norm, args, tracks, device)
-        print(f"{'course':<18} {'policy':<10} {'the script':<10}  delta")
+        base = autopilot_baseline(args, tracks)
+        res = evaluate(policy, norm, args, tracks, device,
+                       episodes=args.eval_episodes)
+        head = f"{'course':<18} {'best':<10} {'the script':<10}  delta"
+        # A RACE is far noisier than a time trial - one red shell decides a
+        # place - so the best lap alone says very little about a GP policy.
+        # What it FINISHED and where is the number that means something.
+        if args.gp:
+            head += "      finished  mean place"
+        print(head)
+        pl_sum = pl_n = 0.0
         for t in tracks:
             got, b = res[t]["frames"], base[t]
-            d = f"{(got-b)/60.0:+.2f}s" if got and b else ""
-            print(f"{track_name(t):<18} "
-                  f"{frames_to_time(got) if got else 'DNF':<10} "
-                  f"{frames_to_time(b) if b else 'DNF':<10}  {d}")
+            d = f"{(got - b) / 60.0:+.2f}s" if got and b else ""
+            line = (f"{track_name(t):<18} "
+                    f"{frames_to_time(got) if got else 'DNF':<10} "
+                    f"{frames_to_time(b) if b else 'DNF':<10}  {d:<9}")
+            if args.gp:
+                pl = res[t]["place"]
+                line += (f"  {res[t]['finished']}/{res[t]['of']:<7}"
+                         + (f"  P{pl:.2f}" if pl else "  -"))
+                if pl:
+                    pl_sum += pl * res[t]["finished"]
+                    pl_n += res[t]["finished"]
+            print(line)
+        if args.gp and pl_n:
+            print(f"\nmean finishing place over {int(pl_n)} races: "
+                  f"P{pl_sum / pl_n:.2f} of 8")
         return
     train(args)
 
