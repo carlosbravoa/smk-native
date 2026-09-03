@@ -10999,3 +10999,66 @@ SURFACE sound, and the port only holds six of those ($50 $54 $56 $58 $5A
 $5C, all off-road); Ghost Valley's wooden road is none of them.  Settling
 it needs the surface-audio rig (force the course to one class, record,
 subtract), which has not been run.  Not guessed at in the meantime.
+
+## 264. The AI's hit sound, decoded: it was the one I removed
+
+The user, after NOTES 263 took one of the two sounds away: *"I think I
+understand why I hear the ai being hit sound twice.  Some AI players emit
+that sound when dropping their items, which is not the right sound for
+the original game.  Can you check?"*
+
+Checked, and the answer is better than the question: the port was playing
+the WRONG ONE OF THE TWO, and NOTES 263 deleted the right one.
+
+**First, the drop itself.**  `tools/labs/mame/aidropsfx.lua` watches every
+object's carry counter and every sound request with its caller, on the
+user's own `attack` recording.  Seven releases:
+
+    f2966  by P1        SILENT
+    f3306  by AI $1600  SILENT
+    f3897  by AI $1700  SILENT
+    f4580  by P1        $2B from $80:F442      <- the throw
+    f4781  by AI $1700  SILENT
+    f5427  by AI $1700  ($24, the feather - another event, same frame)
+    f6301  by AI $1700  SILENT
+
+So an AI release is silent and a PLAYER release plays `$2B`, which is what
+the port already does.  Nothing was wrong at the drop.
+
+**Then the hit, and this is the find.**  `$81:9967` is the
+object-hits-kart handler:
+
+    $819967  LDX $08 / LDY $0A
+    $81996B  LDA $0010,y        the VICTIM's flags
+    $81996E  AND #$2000
+    $819971  BNE $81997B        -> JSL $84:D8CC, then the tumble at $99B1
+    $819973  LDA #$0003 / STA $005E,y     ... otherwise, and no sound
+
+and `$84:D8CC` loads `#$0066` on both of its branches (the `$6A` test picks
+between two play routines, not two sounds).  So the sound the game makes
+when a dropped object hits a kart is **`$66`** - and only on the `$2000`
+branch.
+
+**What `$2000` is, dumped rather than assumed:** `$10` bit 13 over a whole
+recording is *never* set on kart 0 and *always* set on karts 1-7.  It is
+"this kart is an AI".  So:
+
+    an AI hit by a dropped object   -> $66, and the tumble
+    the PLAYER hit by one           -> silent HERE (their own reaction
+                                       code makes its own noise)
+
+`$66` is exactly what the user called it in the audition - *"ai player
+fell on something"* - and their ear was right twice: it is the AI, and it
+is falling foul of a dropped item.
+
+**And `$39` is not this sound at all.**  It never fires once in the
+`attack` recording's 210 sound events.  It is a real sample with a real
+name from the audition ("ai player takes a hit"), but its call site is
+unknown, and the port had it wired to the one path that is now decoded.
+NOTES 263 removed `$66` and kept `$39` - the wrong half - on the grounds
+that "both ids are their own naming by ear, not a decoded call site".
+That was true when it was written and is the reason the coin flip landed
+wrong: the way to choose between two guesses is to stop guessing.
+
+Both header entries now carry what is known: `$66` with its call site,
+`$39` with the fact that it has none yet.

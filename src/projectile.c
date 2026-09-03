@@ -6,6 +6,8 @@
  * docs/ITEMS.md §5, with the two things still OURS labelled there.
  */
 #include "smk.h"
+#include <stdlib.h>
+#include <stdio.h>
 #include <math.h>
 #include <string.h>
 
@@ -270,6 +272,9 @@ int smk_proj_hit(smk_proj *list, int n, const smk_kart *k, int kart_index)
         if (dx >= SMK_PROJ_HIT_R || dy >= SMK_PROJ_HIT_R) continue;
         if (k->z > SMK_BUMP_Z_MAX * 25029) continue;       /* over it */
         int kind = p->kind;
+        if (getenv("SMK_ITEM_TRACE"))
+            printf("  proj HIT: kind %d owner %d victim %d t %d carry %d safe %d frame %ld\n",
+                   kind, p->owner, kart_index, p->t, p->carry, p->safe, smk_race_frame);
         if (kind == SMK_PROJ_BANANA || kind == SMK_PROJ_MUSHROOM || kind == SMK_PROJ_EGG) p->kind = SMK_PROJ_NONE;
         else { p->dying = true; p->zv = SMK_PROJ_DIE_HOP; p->vx = p->vy = 0; }
         return kind;

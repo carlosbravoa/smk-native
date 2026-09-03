@@ -1413,7 +1413,11 @@ const char *smk_sfx_hint(int id);   /* when the game fires an unnamed one */
                                    * thrown ahead is SILENT (forced in the
                                    * oracle, NOTES 232) */
 #define SMK_SFX_DROP       0x58   /* $84:D8F2 - leaving an item BEHIND you   */
-#define SMK_SFX_AI_HIT     0x39   /* USER: "ai player takes a hit"             */
+#define SMK_SFX_AI_HIT     0x39   /* USER: "ai player takes a hit".  NAMED BY EAR
+                                     and NOT used by the object-hit path: it
+                                     never fires once in the `attack`
+                                     recording's 210 sound events (NOTES 264).
+                                     Its own call site is still unknown. */
 #define SMK_SFX_MENU_MOVE  0x2C   /* USER                                      */
 #define SMK_SFX_MENU_OK    0x2E   /* USER                                      */
 #define SMK_SFX_MENU_BACK  0x2F   /* USER                                      */
@@ -1470,7 +1474,10 @@ int smk_sfx_pass_voice(const smk_rom *rom, int character, bool gaining);
 #define SMK_SFX_ITEMBOX    0x55   /* MEASURED: 16 of 22 with the item word     */
 #define SMK_SFX_SHRINK     0x5D   /* USER: the poison mushroom                 */
 #define SMK_SFX_GROW       0x5F   /* USER: back to full size                   */
-#define SMK_SFX_AI_FELL    0x66   /* USER: "ai player fell on something"       */
+#define SMK_SFX_AI_FELL    0x66   /* USER: "ai player fell on something", and
+                                     DECODED to exactly that: $81:9967 sends an
+                                     AI victim ($10 bit 13) to $84:D8CC, which
+                                     plays $0066 (NOTES 264) */
 #define SMK_SFX_BOO        0x57   /* USER: "this is boo"                       */
 #define SMK_SFX_FINISH     0x68   /* USER: "getting to the goal"               */
 

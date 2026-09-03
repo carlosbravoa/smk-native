@@ -4621,7 +4621,7 @@ int main(int argc, char **argv)
                             else smk_proj_ai_drop(projs, SMK_PROJ_MAX, wp, &r->k, q);
                             r->weapon_cool = SMK_AI_COOL;
                             if (getenv("SMK_ITEM_TRACE"))
-                                printf("AI %d (%s) uses weapon %d at (%d,%d), player %d px away, lap %d\n", q,
+                                printf("f%ld AI %d (%s) uses weapon %d at (%d,%d), player %d px away, lap %d\n", hud_race_frames, q,
                                        SMK_DRIVERS[r->character % SMK_CHARACTERS].name, wp,
                                        smk_kart_px(r->k.x), smk_kart_px(r->k.y), (int)sqrt((double)(ddx * ddx + ddy * ddy)), r->lap);
                         }
@@ -4673,15 +4673,20 @@ int main(int argc, char **argv)
                                    q, SMK_DRIVERS[racers[q].character % SMK_CHARACTERS].name,
                                    smk_kart_px(racers[q].k.x), smk_kart_px(racers[q].k.y), racers[q].rank, hq,
                                    smk_kart_px(kart.x), smk_kart_px(kart.y), racers[0].rank);
-                        /* ONE sound.  This used to play $39 and $66
-                         * together on the reading that "hitting an AI is
-                         * both"; the user, hearing it: "AI players get to
-                         * fall twice in traps (the sound gets triggered 2
-                         * times for the same item)".  Both ids are their
-                         * own naming by ear, not a decoded call site, so
-                         * the hit keeps the one they named "ai player
-                         * takes a hit". */
-                        if (hq) smk_sfx_play(SMK_SFX_AI_HIT);
+                        /* $66, and ONLY $66 - DECODED, not named by ear.
+                         * $81:9967 is the object-hits-kart handler: it
+                         * tests the VICTIM's $10 bit 13 and, when it is
+                         * set, calls $84:D8CC (which plays $0066 either
+                         * side of a $6A test) and runs the tumble;
+                         * otherwise it is silent here and only sets the
+                         * flags.  And bit 13 is "this kart is an AI":
+                         * dumped over a whole recording, kart 0 never has
+                         * it and karts 1-7 always do (NOTES 264).
+                         * So an AI hit by a dropped object plays $66, a
+                         * PLAYER hit by one plays nothing at this site,
+                         * and $39 - which the port played here - is a
+                         * sound the game does not use for this at all. */
+                        if (hq) smk_sfx_play(SMK_SFX_AI_FELL);
                         if (hq == SMK_PROJ_BANANA) smk_racer_hit(&racers[q], 1, (int)(fx_ticks & 1));
                         else if (hq == SMK_PROJ_MUSHROOM) { if (racers[q].star_t <= 0) racers[q].shrink_t = racers[q].shrink_t > 0 ? 0 : 0x440; }   /* shrink only; a second one restores (bug 21) */
                         else if (hq != SMK_PROJ_NONE) smk_racer_hit(&racers[q], 2, (int)(fx_ticks & 1));
