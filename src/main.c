@@ -1090,6 +1090,14 @@ static void sfx_loop_flush(void)
 
 static const smk_rom *rom_for_step;
 static const char *replay_path;         /* --replay: drive the kart from the game's log */
+/* --pads: drive the kart from a trained policy's own choices, one action
+ * index a game frame (tools/rl/export_pads.py).  The point is to WATCH
+ * a policy, in the real window with the real sound, rather than trust a
+ * lap time printed by the trainer. */
+static const char *pads_path;
+static int32_t *pad_seq;
+static int pads_n, pads_i;
+static uint16_t pads_prev;
 static int replay_kart = 1000;          /* 1000 = P1 (Mario), 1100 = P2 (Toad)        */
 static int replay_i;
 static void step_kart(smk_kart *k, smk_track *trk,
@@ -3536,6 +3544,7 @@ int main(int argc, char **argv)
         if (!strcmp(a, "--frames") && i + 1 < argc) { max_frames = atol(argv[++i]); continue; }
         if (!strcmp(a, "--shot") && i + 1 < argc) { shot = argv[++i]; explicit_start = 1; continue; }
         if (!strcmp(a, "--replay") && i + 1 < argc) { replay_path = argv[++i]; explicit_start = 1; continue; }
+        if (!strcmp(a, "--pads") && i + 1 < argc) { pads_path = argv[++i]; explicit_start = 1; continue; }
         ARG("--replay-kart", replay_kart)
         if (!strcmp(a, "--dump") && i + 1 < argc) { dump = argv[++i]; explicit_start = 1; continue; }
         #define FARG(name, var) if (!strcmp(a, name) && i + 1 < argc) { var = (float)atof(argv[++i]); continue; }
@@ -3581,6 +3590,36 @@ int main(int argc, char **argv)
         engine_class = replay.engine_class;
         printf("replay: track %d, character %d, class %d, %d frames\n",
                track, character, engine_class, replay.n);
+    }
+    if (pads_path) {
+        /* the file is one action index a game frame, with an optional
+         * header line naming the race it was driven on:
+         *     # track 0 character 0 class 1 mode 4
+         * so watching a policy is one flag and not six. */
+        FILE *f = fopen(pads_path, "r");
+        if (!f) { fprintf(stderr, "error: cannot read %s\n", pads_path); return 1; }
+        int cap = 4096, mode_want = -1;
+        pad_seq = malloc((size_t)cap * sizeof *pads);
+        char line[256];
+        while (fgets(line, sizeof line, f)) {
+            if (line[0] == '#') {
+                int t, c, cl, m;
+                if (sscanf(line, "# track %d character %d class %d mode %d",
+                           &t, &c, &cl, &m) == 4) {
+                    track = t; theme = -1; character = c; engine_class = cl;
+                    mode_want = m;
+                }
+                continue;
+            }
+            if (line[0] == '\0' || line[0] == '\n') continue;
+            if (pads_n == cap) { cap *= 2; pad_seq = realloc(pad_seq, (size_t)cap * sizeof *pads); }
+            pad_seq[pads_n++] = (int32_t)strtol(line, NULL, 10);
+        }
+        fclose(f);
+        if (mode_want == SMK_MODE_TT) want_tt = 1;
+        else if (mode_want == SMK_MODE_GP) want_race = 1;
+        printf("pads: track %d, character %d, class %d, %d frames\n",
+               track, character, engine_class, pads_n);
     }
     if (character < 0 || character >= SMK_CHARACTERS) character = 0;
     drv = &SMK_DRIVERS[character];
@@ -4304,6 +4343,34 @@ int main(int argc, char **argv)
              * hold, and the port had never played it. */
             if (player.hazard == 0x0E && rescue_t == 0) smk_sfx_play(SMK_SFX_RESCUE);
             rescue_t = (player.hazard == 0x0E) ? rescue_t + 1 : 0;
+            if (pads_path && race_state == RACE_RUN && !countdown_now) {
+                /* one action a game frame, decoded through the SAME table
+                 * the environment presses (src/env.c), so what is watched
+                 * here is what was trained - not a second interpretation
+                 * of the action set */
+                int act = pads_i < pads_n ? pad_seq[pads_i] : 1;
+                pads_i++;
+                uint16_t held = smk_env_action_pad(act);
+                in.up       = (held & 0x8000) != 0;
+                in.down     = (held & 0x4000) != 0;
+                in.left     = (held & 0x0200) != 0;
+                in.right    = (held & 0x0100) != 0;
+                in.hop_held = (held & 0x0020) != 0;
+                in.hop      = (held & ~pads_prev & 0x0020) != 0;
+                pads_prev = held;
+                if (smk_env_action_uses_item(act) && player.item_held) {
+                    if (smk_player_boost(&player)) player.item_held = false;
+                }
+                /* SMK_PADS_TRACE: the kart's own position each frame, so
+                 * a replay can be diffed against the trajectory the
+                 * environment produced.  If these two ever disagree, the
+                 * env and the game have drifted apart and every lap time
+                 * the trainer prints is about a different game. */
+                if (getenv("SMK_PADS_TRACE"))
+                    printf("pads f%ld a%d x%d y%d spd%d lap%d\n",
+                           hud_race_frames, act, smk_kart_px(kart.x),
+                           smk_kart_px(kart.y), kart.speed, me->lap);
+            }
             if (replay_path) {
                 /* the recorded pad word replaces the player's input, and
                  * the game's own kart rides along as a ghost (slot 1) */

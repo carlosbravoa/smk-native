@@ -35,9 +35,13 @@ add_library(smkcore STATIC
   src/records.c
   src/menu.c
   src/autopilot.c
+  src/env.c
 )
 target_include_directories(smkcore PUBLIC include)
 target_compile_options(smkcore PRIVATE -Wall -Wextra -O2)
+# the RL binding loads a .so, and a shared object cannot link non-PIC
+# objects - so the core is built position-independent for everyone
+set_target_properties(smkcore PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_link_libraries(smkcore PUBLIC m)
 
 add_executable(smk src/main.c src/audio.c)
@@ -73,6 +77,16 @@ target_compile_options(smk_accelgrip PRIVATE -Wall -Wextra -O2)
 add_executable(smk_demoreplay tools/demoreplay.c)
 target_link_libraries(smk_demoreplay PRIVATE smkcore m)
 target_compile_options(smk_demoreplay PRIVATE -Wall -Wextra -O2)
+
+# The RL environment as a shared object, for the ctypes binding in
+# tools/rl/smkenv.py.
+add_library(smkenv SHARED src/env.c)
+target_link_libraries(smkenv PRIVATE smkcore m)
+target_compile_options(smkenv PRIVATE -Wall -Wextra -O2)
+
+add_executable(smk_envtest tools/envtest.c)
+target_link_libraries(smk_envtest PRIVATE smkcore m)
+target_compile_options(smk_envtest PRIVATE -Wall -Wextra -O2)
 
 enable_testing()
 add_test(NAME selftest COMMAND smk_selftest ${CMAKE_SOURCE_DIR}/rom/smk_usa.sfc)

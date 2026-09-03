@@ -1310,15 +1310,6 @@ void smk_grid_order(const smk_rom *rom, int p1, int p2, bool two_players, int ou
 void smk_racer_step(smk_racer *r, const smk_track *trk,
                     const smk_course *crs, const smk_physics *phys);
 
-/* The lap rule (src/course.c), shared by the AI and the player - one
- * decoded implementation, not two.  Returns +1 on a forward crossing that
- * advanced the progress watermark, -1 on a backward one, 0 otherwise; the
- * caller keeps its own bookkeeping. */
-int smk_progress_step(smk_racer *me, const smk_course *crs, const smk_kart *k);
-/* Continuous distance along the racing line, in sectors.  See src/course.c. */
-float smk_progress_line(const smk_racer *me, const smk_course *crs,
-                        const smk_kart *k);
-
 /* The lap rule (src/course.c), shared by the AI, the player and the RL
  * environment - one decoded implementation, not three.  Returns +1 on a
  * forward crossing that advanced the progress watermark, -1 on a

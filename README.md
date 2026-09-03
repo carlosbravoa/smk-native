@@ -59,7 +59,8 @@ simulation tick per frame, for headless runs), `--autodrive` (drive itself — a
 crude test aid, not the shipped AI: it follows the course direction field
 and recovers to the racing line when it leaves the road, which gets it round
 most courses but not all), `--shot FILE` (render one frame to a BMP and
-exit).
+exit), `--pads FILE` (drive player 1 from a trained policy's own choices —
+see [`docs/RL.md`](docs/RL.md)).
 
 The renderer is single-threaded software and still does ~100 fps at 1920×1080,
 so resolution is not a constraint.
@@ -116,6 +117,32 @@ Everything asset-side is verified byte-for-byte against the game's own
 
 Every shortcut is listed in the ledger in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
+## Training a driver
+
+The port doubles as a headless deterministic RL environment - the same C
+the window races, stepped from an action instead of a gamepad, at about
+**36,000x realtime** on one core.  No emulator and no renderer are in the
+loop.
+
+```bash
+make envtest          # the environment's gate, and its throughput
+make envcheck         # prove it is frame-for-frame the same game as the window
+make train TRACK=0    # PPO, in tools/rl/
+make watch TRACK=0    # watch the trained policy drive, in the real window
+```
+
+Three million agent steps - about half a minute on one GPU - is enough
+for a policy that finishes every lap of Mario Circuit 1 and beats
+`src/autopilot.c` by 26 seconds over three.  The environment is verified
+against the SDL game the hard way: a race is driven in the environment,
+its inputs are replayed through the actual game binary, and the kart's
+position and speed are compared on **every frame** - currently 8,966 out
+of 8,966 identical.
+
+What the ROM provides and what is ours - the observation, the actions,
+the reward, the episode rules - is set out with its own ledger in
+[`docs/RL.md`](docs/RL.md).
+
 ## The oracle
 
 `tools/smktool/` contains a 65816 interpreter that **runs the game's own
@@ -151,9 +178,11 @@ include/, src/     the native game (C11 + SDL2)
   lzc.c            Super Mario Kart's compression codec
   assets.c         pointer tables, tilemap/tileset/palette, tile expander
   mode7.c          perspective ground-plane renderer
+  env.c            the headless RL environment (docs/RL.md)
   main.c           SDL host: window, fixed timestep, input
 tools/             the reverse-engineering toolkit (Python)
   smktool/         rom, disassembler, symbols, codec, graphics, assets
+  rl/              the RL binding, PPO, and the env-vs-game replay gate
 romhack/           the ROM-patching path: asar patches + symbol database
 docs/FINDINGS.md   what the ROM turned out to contain
 ```

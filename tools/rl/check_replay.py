@@ -1,0 +1,122 @@
+"""Prove the environment and the SDL game are the same game.
+
+    python3 tools/rl/check_replay.py [--track N] [--laps N]
+
+The environment (src/env.c) and the race loop (src/main.c) are two
+callers of the same physics, and nothing but discipline keeps them
+stepping it in the same order.  If they drift, every lap time the
+trainer prints is about a different game than the one on screen, and
+nothing would say so - the numbers would just be wrong.
+
+So: drive a race in the environment, export the inputs, replay them
+through the real SDL binary with its own trace on, and compare the
+kart's position and speed on every single frame.  The bar is 100%.
+"""
+from __future__ import annotations
+
+import argparse
+import os
+import re
+import subprocess
+import sys
+import tempfile
+
+import numpy as np
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from smkenv import EnvCfg, SMKVecEnv, MODE_TT, frames_to_time, track_name  # noqa: E402
+
+_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+_TRACE = re.compile(r"pads f(\d+) a(\d+) x(-?\d+) y(-?\d+) spd(-?\d+) lap(-?\d+)")
+
+
+def run(track: int, laps: int, character: int, engine_class: int) -> tuple[int, int, str]:
+    """Returns (frames compared, frames identical, a one-line verdict)."""
+    cfg = dict(track=track, character=character, engine_class=engine_class,
+               mode=MODE_TT, laps=laps, max_frames=30000, stall_frames=0)
+
+    # 1. the scripted driver, in the environment, at one action a frame
+    env = SMKVecEnv([EnvCfg(frame_skip=1, **cfg)])
+    env.reset()
+    acts, rows, finish = [], [], None
+    for _ in range(30000):
+        a = int(env.autopilot_actions()[0])
+        obs, rew, done, trunc, info = env.step(np.array([a], dtype=np.int32))
+        st = env.state(0)
+        acts.append(a)
+        rows.append((st.frames, int(st.x), int(st.y), st.speed))
+        if done[0]:
+            finish = float(info[0][SMKVecEnv.INFO_FINISH_FRAME])
+            break
+        if trunc[0]:
+            break
+    env.close()
+
+    with tempfile.TemporaryDirectory() as tmp:
+        pads = os.path.join(tmp, "check.pads")
+        with open(pads, "w") as f:
+            f.write(f"# track {track} character {character} "
+                    f"class {engine_class} mode {MODE_TT}\n")
+            f.write("\n".join(str(a) for a in acts) + "\n")
+
+        # 2. the same inputs through the real game
+        smk = os.path.join(_ROOT, "build-native", "smk")
+        env_vars = dict(os.environ, SMK_PADS_TRACE="1",
+                        SDL_VIDEODRIVER="dummy", SDL_AUDIODRIVER="dummy")
+        # --fast is required: without it the fixed timestep follows the
+        # WALL clock, and a headless run at 13,000 fps barely ticks the
+        # simulation at all
+        out = subprocess.run(
+            [smk, "--pads", pads, "--fast", "--frames", str(len(acts) + 2000),
+             "--width", "64", "--height", "56", "--windowed"],
+            capture_output=True, text=True, env=env_vars, timeout=600).stdout
+
+    game = {}
+    for line in out.splitlines():
+        m = _TRACE.match(line)
+        if m:
+            g = [int(x) for x in m.groups()]
+            game[g[0]] = (g[2], g[3], g[4])
+
+    n = same = 0
+    first = None
+    for f, x, y, s in rows:
+        # the game's trace is printed BEFORE that frame's step, so frame
+        # f+1's reading is the state frame f left behind
+        g = game.get(f + 1)
+        if g is None:
+            continue
+        n += 1
+        if g == (x, y, s):
+            same += 1
+        elif first is None:
+            first = f
+    verdict = (f"{track_name(track)}: {same}/{n} frames identical"
+               + (f", first divergence at frame {first}" if first else "")
+               + (f", {laps} laps in {frames_to_time(finish)}" if finish else ", did not finish"))
+    return n, same, verdict
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--track", type=int, action="append", default=None)
+    p.add_argument("--laps", type=int, default=2)
+    p.add_argument("--character", type=int, default=0)
+    p.add_argument("--engine-class", type=int, default=1, dest="engine_class")
+    args = p.parse_args()
+    tracks = args.track if args.track else [0, 7, 19]
+
+    ok = True
+    for t in tracks:
+        n, same, verdict = run(t, args.laps, args.character, args.engine_class)
+        print("  " + verdict)
+        if n == 0 or same != n:
+            ok = False
+    print("the environment and the SDL game step the same race"
+          if ok else "DIVERGED - src/env.c and src/main.c are not running the same game")
+    return 0 if ok else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

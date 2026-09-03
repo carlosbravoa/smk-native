@@ -11,7 +11,8 @@ GAME    := $(NATIVE)/smk
 ASAR    := vendor/asar-build/asar/bin/asar
 
 .PHONY: all game run bench shots selftest test verify info trace dis \
-        jumptables health extract roundtrip romhack tools clean distclean help
+        jumptables health extract roundtrip romhack tools clean distclean help \
+        envtest envcheck train watch
 
 all: game
 
@@ -44,6 +45,29 @@ selftest: game $(BASE)
 
 ailap: game $(BASE)
 	@$(NATIVE)/smk_ailap $(BASE)
+
+## ---- reinforcement learning (docs/RL.md) --------------------------------
+
+## the RL environment's own gate: the checks, then its throughput
+envtest: game $(BASE)
+	@$(NATIVE)/smk_envtest $(BASE)
+
+## prove src/env.c and src/main.c step the same race, frame for frame
+envcheck: game $(BASE)
+	@$(PY) tools/rl/check_replay.py
+
+## train a policy on one course (see docs/RL.md for the knobs)
+train: game $(BASE)
+	@$(PY) tools/rl/train.py --track $(TRACK) --envs 256 --steps 20000000 \
+	    --out runs/track$(TRACK)
+
+## watch the last trained policy drive, in the real window
+watch: game $(BASE)
+	@$(PY) tools/rl/export_pads.py runs/track$(TRACK)/policy.pt \
+	    --track $(TRACK) --laps 5 -o runs/track$(TRACK)/run.pads
+	@$(GAME) --pads runs/track$(TRACK)/run.pads
+
+TRACK ?= 0
 
 ## the AI row chooser replayed against the real game's own logged inputs
 rowcheck: game
@@ -136,4 +160,6 @@ check: $(BASE)
 	@./build-native/smk_accelgrip --surfcheck tools/labs/mame/crash_run.csv rom/smk_usa.sfc --gate | tail -1
 	@./build-native/smk_accelgrip --surfcheck tools/labs/mame/demo_tt_track19.csv rom/smk_usa.sfc --gate | tail -1
 	@$(PY) tools/test.py | tail -1
+	@./build-native/smk_envtest rom/smk_usa.sfc | tail -1
+	@$(PY) tools/rl/check_replay.py | tail -1
 	@SDL_VIDEODRIVER=dummy ./build-native/smk --frames 60 >/dev/null && echo "smoke: game binary runs"
