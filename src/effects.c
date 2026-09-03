@@ -27,6 +27,8 @@
  *   scripts, records, wobble table - ROM bank $80
  */
 #include "smk.h"
+#include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 
 #define FX_TEMPLATE_STREAM 0xC5EE00u
@@ -112,7 +114,7 @@ bool smk_effects_load(const smk_rom *rom, smk_effects *fx)
         smk_effect_kind *k = &fx->kind[kind / 6];
         uint32_t rec = FX_RECORDS + (uint32_t)kind;
         uint16_t block = rd16(rom, rec), scripts = rd16(rom, rec + 2);
-        k->attr_xor = rd8(rom, rec + 5);   /* the flags word, XORed onto tile/attr: its high byte hits attr */
+        k->attr_xor = rd8(rom, rec + 5);   /* the flags word's high byte, ORed onto the attribute (NOTES 268) */
         k->valid = true;
         /* the template pointer table at the block, offsets from the block */
         uint32_t boff = block - FX_WRAM_BASE;
@@ -231,7 +233,23 @@ void smk_effects_draw(const smk_effects *fx, const smk_effect_state *st, bool mi
         int tx = t->x[j] & 0xFF;
         int dx = mirror ? (int8_t)(uint8_t)(tx ^ 0xFF) : (int8_t)(uint8_t)tx;
         int dy = t->y[j];
-        uint8_t attr = (uint8_t)(t->attr[j] ^ k->attr_xor ^ (mirror ? 0x40 : 0));
+        /* The record's flags byte is ORed onto the attribute, not XORed.
+         * MEASURED (NOTES 268): the game's drift puff on Ghost Valley is
+         * OBJ palette 7 - its pixels are $AD9C52 and $8C7B31, which are
+         * that palette's entries 7 and 6 - and kind $24's templates carry
+         * attr $3E with a flags byte of $05.  `| $05` keeps palette 7 and
+         * sets the theme's tile bank; `^ $05` clears palette bit 2 and
+         * gives palette 5, which on this theme is reds, white and greys:
+         * the grey smoke the user reported ("it is dust coming off the
+         * wheels, not grey smoke").
+         *
+         * The change is confined to that one kind.  Over all eleven kinds
+         * the two rules give the SAME palette everywhere else: no
+         * template has attr bit 0 set, so `|$01` and `^$01` agree, and
+         * kind $1E's templates have bit 2 clear so its $05 agrees too.
+         * $24 is the only place they differ, and the capture says which
+         * one is right. */
+        uint8_t attr = (uint8_t)((t->attr[j] | k->attr_xor) ^ (mirror ? 0x40 : 0));
         bool hf = (attr & 0x40) != 0;
         int pal = (attr >> 1) & 7;
         int tile = t->tile[j] & 0xFF;

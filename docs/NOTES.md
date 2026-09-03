@@ -11256,3 +11256,57 @@ now sits in ROADMAP under **"Known issues (measured, not decided)"**
 rather than among the deviations.  The distinction is the whole point: a
 reader who finds the skid in the ledger must not conclude it was
 designed.
+
+## 268. The dust: the effect flags are an OR, and one bit made it grey
+
+NOTES 266 left this pinned from both ends - the game's drift puff on
+Ghost Valley is sandy (`$AD9C52` / `$8C7B31` off a captured frame) and our
+port appeared to draw nothing.  Fixing it turned up one real bug and two
+false alarms of my own making.
+
+**The two false alarms first, because they cost the most time.**
+
+* *"Our port picks the effect on 85 frames where the game has 630."*  It
+  does not.  The comparison lined our `--replay` trace up by
+  `hud_race_frames` against a `demolog` CSV keyed on ITS counter - the
+  same frame-numbering trap as NOTES 266, made twice in two days.
+* *"Our slide machine never enters state 2."*  Also wrong, and from the
+  same cause plus a second: `--replay` does not resync, so over 4000
+  frames it drifts.  Measured properly - in `smk_demoreplay`, which does
+  resync - the pose lag `$AA` matches on 90.5% of frames and the deep
+  drift (`|$AA| >= $1800`) comes out **game 843 frames, port 839**.  The
+  slide machine was never the problem.
+
+  `smk_demoreplay` now checks `$AA` and reports both, because the
+  position gate is structurally blind to it: the pose lag does not move
+  the kart, it leans the sprite and sets `$E2` bits 2 and 5 - the bits
+  the ground effect is keyed on.  A port can hold the racing line
+  perfectly and never raise a puff.
+
+**And the effect WAS being drawn all along** - in grey.  Once a frame was
+shot where the effect was actually up (the autopilot deep-drifts rarely;
+the earlier shot missed the window by ten frames), the puffs are there in
+white and grey.
+
+**The bug is one operator.**  Each effect record carries a flags byte
+that goes onto every sprite's OAM attribute, and the port XORed it.  It
+should be an OR:
+
+    kind $24's templates carry attr $3E, flags byte $05
+      $3E | $05 = $3F  ->  palette 7, theme tile bank
+      $3E ^ $05 = $3B  ->  palette 5, theme tile bank
+
+and on Ghost Valley's theme, OBJ palette 7 entries 6 and 7 are exactly
+`$8C7B31` and `$AD9C52` - the two colours measured off the game - while
+palette 5 is reds, white and `$7B7B7B` / `$CECECE`.  Grey smoke.
+
+**The change is provably confined to one kind.**  Over all eleven effect
+kinds and every template sprite in them, OR and XOR give the same palette
+everywhere except kind `$24`: no template has attribute bit 0 set, so
+`|$01` and `^$01` agree, and kind `$1E`'s templates have bit 2 clear so
+its `$05` agrees too.  294 sprites differ and all 294 are kind `$24`.
+Two selftest checks pin exactly that, so nobody can quietly put the XOR
+back.
+
+Rendered after the change, our puff's two colours are `rgb(140,123,49)`
+and `rgb(173,156,82)` - the game's own, to the byte.

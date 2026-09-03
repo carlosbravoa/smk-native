@@ -1239,6 +1239,14 @@ static void step_kart(smk_kart *k, smk_track *trk,
         fx_kind_now = smk_effects_pick(surf, !k->airborne && k->z == 0,
                                        (player.flags & 0x0008) != 0,
                                        (player.flags & 0x0020) != 0, k->speed);
+        /* SMK_FX_TRACE: frame, surface, $E2, the effect kind, the pose lag
+         * and the slide state - the five numbers behind "why is there no
+         * puff" (NOTES 268).  Indexed by the REPLAY's own counter when
+         * replaying, so it lines up with a demolog CSV. */
+        if (getenv("SMK_FX_TRACE"))
+            printf("fx %d %02X %04X %d %d %d\n",
+                   replay_path ? replay_i : (int)hud_race_frames,
+                   surf, player.flags, fx_kind_now, player.plag, player.state);
     }
     {   /* A shell off a wall.  The DISTANCE rule is measured and is in:
          * $84:D9DA weighs each player's distance to the object against

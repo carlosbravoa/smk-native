@@ -86,6 +86,7 @@ int main(int argc, char **argv)
            kart_id, nrows - i0 - 1, i0, tol, resync ? "" : ", no resync");
 
     int n = 0, within1 = 0, within_tol = 0, resyncs = 0, streak = 0, best_streak = 0;
+    int plag_bad = 0, game_deep = 0, port_deep = 0;
     double sum_err = 0, max_err = 0;
     int max_err_frame = -1, head_bad = 0, spd_bad = 0, coin_bad = 0, coin_diff = 0;
     for (int i = i0 + 1; i < nrows; i++) {
@@ -133,6 +134,18 @@ int main(int argc, char **argv)
         int dh = s16((int)p.heading - r->a4);
         int ds = k.speed - r->speed;
         n++;
+        /* THE POSE LAG $AA, which nothing here used to check.  It does not
+         * move the kart, so the position gate is blind to it - but it is
+         * what leans the sprite through a drift AND what sets $E2 bits 2
+         * and 5, the drift-sprite bits the ground effect is keyed on
+         * (NOTES 268).  A port can match the racing line perfectly and
+         * still never raise a puff. */
+        {
+            int gp = s16(r->plag), pp = s16(p.plag);
+            if (gp != pp) plag_bad++;
+            if ((gp < 0 ? -gp : gp) >= 0x1800) game_deep++;
+            if ((pp < 0 ? -pp : pp) >= 0x1800) port_deep++;
+        }
         if (i >= trace_a && i <= trace_b) {
             int cx = smk_kart_px(k.x) & 1023, cy = smk_kart_px(k.y) & 1023;
             int cell = (cy >> 3) * 128 + (cx >> 3);
@@ -159,6 +172,8 @@ int main(int argc, char **argv)
            100.0 * within_tol / n, sum_err / n, max_err, max_err_frame);
     printf("heading off by >8 on %d frames, speed off by >2 on %d frames, resyncs %d, "
            "longest run within tol %d frames, coins wrong on %d frames\n", head_bad, spd_bad, resyncs, best_streak, coin_bad);
+    printf("pose lag $AA differs on %d frames (%.1f%%); deep drift (|$AA| >= $1800) "
+           "game %d frames, port %d\n", plag_bad, 100.0 * plag_bad / n, game_deep, port_deep);
     if (gate) {
         /* The gate: what the port achieves today, so a regression shows.
          * P1: one divergence left, a kart-to-kart collision near the end

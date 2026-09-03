@@ -1717,6 +1717,43 @@ int main(int argc, char **argv)
         }
     }
 
+    {   /* THE EFFECT ATTRIBUTE IS AN OR, NOT AN XOR (NOTES 268).
+         *
+         * The record's flags byte is ORed onto each sprite's attribute.
+         * It matters in exactly one place: kind $24, the road drift puff,
+         * whose templates carry attr $3E with a flags byte of $05.  ORed,
+         * that is palette 7 - the game's own dust, captured off a real
+         * frame as $AD9C52 / $8C7B31, which ARE palette 7's entries 7 and
+         * 6.  XORed it is palette 5, which on Ghost Valley's theme is
+         * reds, white and greys: the grey smoke the user reported. */
+        static smk_effects fxe;
+        if (smk_effects_load(&rom, &fxe)) {
+            static const int kinds[] = { 0x00,0x06,0x0C,0x12,0x18,0x1E,0x24,0x2A,0x30,0x36,0x3C };
+            int differ = 0, d24 = 0, bad = 0, seen24 = 0;
+            for (unsigned q = 0; q < sizeof kinds / sizeof kinds[0]; q++) {
+                const smk_effect_kind *k = &fxe.kind[kinds[q] / 6];
+                if (!k->valid) continue;
+                for (int f = 0; f < 12; f++)
+                    for (int sc = 0; sc < k->script[f].n; sc++) {
+                        const smk_effect_template *t = &k->script[f].t[sc];
+                        for (int j = 0; j < t->n; j++) {
+                            int po = ((t->attr[j] | k->attr_xor) >> 1) & 7;
+                            int px = ((t->attr[j] ^ k->attr_xor) >> 1) & 7;
+                            if (po != px) { differ++; if (kinds[q] == 0x24) d24++; }
+                            if (kinds[q] == 0x24) { seen24++; if (po != 7) bad++; }
+                        }
+                    }
+            }
+            char de[96];
+            snprintf(de, sizeof de, "%d sprites differ, %d of them kind $24", differ, d24);
+            check("the effect attribute ORs: only the road drift puff is affected",
+                  differ > 0 && differ == d24, de);
+            snprintf(de, sizeof de, "%d of %d sprites off palette 7", bad, seen24);
+            check("the road drift puff draws in OBJ palette 7 (the game's own dust)",
+                  seen24 > 0 && bad == 0, de);
+        }
+    }
+
     printf("\n%d passed, %d failed\n", pass, fail);
     smk_rom_free(&rom);
     return fail ? 1 : 0;
