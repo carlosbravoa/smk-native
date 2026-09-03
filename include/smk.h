@@ -2230,8 +2230,9 @@ int  smk_proj_hit(smk_proj *list, int n, const smk_kart *k, int kart_index);
  * is OURS and is a training harness, not a claim about the game.
  */
 #define SMK_ENV_RAYS       12
-#define SMK_ENV_OBS        55     /* see observe() in src/env.c            */
-#define SMK_ENV_ACTIONS_N  13
+#define SMK_ENV_NEAR       3      /* opponents named in the observation     */
+#define SMK_ENV_OBS        81     /* see smk_obs_build() in src/env.c       */
+#define SMK_ENV_ACTIONS_N  14
 #define SMK_ENV_INFO       8      /* floats of per-step diagnostics        */
 
 typedef struct {
@@ -2244,6 +2245,8 @@ typedef struct {
     int      max_frames;    /* the episode's budget, in game frames        */
     int      stall_frames;  /* give up after this long with no progress    */
     int      mushroom;      /* hand a time trial its one mushroom          */
+    int      items;         /* GP: run the boxes, the roulette and what
+                               comes out of it, and the AI's own weapons  */
     int      countdown;     /* run the game's own 336-frame start          */
     int      start_hold;    /* countdown frame the throttle goes down on,
                                -1 = never: the turbo start, as a knob      */
@@ -2256,6 +2259,9 @@ typedef struct {
     uint32_t seed;
     /* the reward's weights, all OURS - see the note over reward() */
     float    w_progress, w_time, w_wall, w_offroad, w_rescue, w_finish;
+    /* GP only: what the finishing PLACE is worth, and what being hit by
+     * an item costs on top of the seconds it already costs. */
+    float    w_place, w_hit;
 } smk_env_cfg;
 void smk_env_cfg_default(smk_env_cfg *c);
 
@@ -2268,12 +2274,30 @@ typedef struct {
 typedef struct smk_env       smk_env;
 typedef struct smk_env_batch smk_env_batch;
 
+/* The race around the kart, for the observation.  NULL, or a field with
+ * nracers 0, gives the time-trial vector with the racing half zeroed -
+ * the WIDTH does not change with the mode, so one policy can drive both. */
+typedef struct {
+    const smk_racer *racers;   /* the field, indexed by kart block        */
+    int              nracers;
+    int              self;     /* which slot is us (main.c: me - racers)  */
+    int              rank;     /* 1 = leading; 0 = unknown                */
+    const smk_item  *item;     /* the roulette and what is held           */
+    const smk_proj  *projs;    /* what is in the air                      */
+    int              nprojs;
+} smk_obs_race;
+
 /* The observation vector, from the game's own state.  The SDL game calls
  * this too (--cpu-policy), so the VS CPU driver sees exactly what the
- * policy was trained on - one implementation, checked by smk_envtest. */
+ * policy was trained on - one implementation, and tools/rl/check_obs.py
+ * compares the two byte for byte. */
 void smk_obs_build(const smk_track *trk, const smk_course *crs,
                    const smk_player *p, const smk_kart *k,
-                   const smk_racer *me, float *out);
+                   const smk_racer *me, const smk_obs_race *race, float *out);
+
+/* the item roulette's five random bits, from a caller's own stream -
+ * OURS, and shared so the environment and the game draw from one */
+unsigned smk_item_roll(unsigned *state);
 
 int  smk_env_obs_dim(void);
 int  smk_env_action_count(void);

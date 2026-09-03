@@ -29,7 +29,7 @@ import torch
 import torch.nn as nn
 from torch.distributions import Categorical
 
-from smkenv import (EnvCfg, SMKVecEnv, GP_TRACKS, OBS_DIM,
+from smkenv import (EnvCfg, SMKVecEnv, GP_TRACKS, OBS_DIM, MODE_GP, MODE_TT,
                     frames_to_time, track_name)
 from policy import Policy, RunningNorm, load_checkpoint
 from export_pads import write_pads
@@ -67,6 +67,8 @@ def build_cfgs(args) -> list[EnvCfg]:
             frame_skip=args.frame_skip,
             max_frames=args.max_frames,
             stall_frames=args.stall_frames,
+            mode=MODE_GP if args.gp else MODE_TT,
+            items=int(args.items),
             mushroom=int(args.mushroom),
             start_jitter=args.jitter,
             disrupt=args.disrupt,
@@ -86,12 +88,15 @@ def evaluate(policy, norm, args, tracks, device, greedy=True, episodes=1):
     cfgs = [EnvCfg(track=t, character=args.character, engine_class=args.engine_class,
                    laps=args.laps, frame_skip=args.frame_skip,
                    max_frames=args.max_frames, stall_frames=0,
-                   mushroom=int(args.mushroom), seed=args.seed + 9000 + t)
+                   mode=MODE_GP if args.gp else MODE_TT,
+            items=int(args.items),
+            mushroom=int(args.mushroom), seed=args.seed + 9000 + t)
             for t in tracks for _ in range(episodes)]
     env = SMKVecEnv(cfgs)
     obs = env.reset()
     n = env.n
     fin = np.full(n, -1.0)
+    rank = np.zeros(n)
     ret = np.zeros(n)
     live = np.ones(n, dtype=bool)
     budget = args.max_frames // args.frame_skip + 2
@@ -103,6 +108,7 @@ def evaluate(policy, norm, args, tracks, device, greedy=True, episodes=1):
         for i in range(n):
             if live[i] and done[i]:
                 fin[i] = info[i][SMKVecEnv.INFO_FINISH_FRAME]
+                rank[i] = info[i][SMKVecEnv.INFO_RANK]
                 live[i] = False
             elif live[i] and trunc[i]:
                 live[i] = False
@@ -113,8 +119,10 @@ def evaluate(policy, norm, args, tracks, device, greedy=True, episodes=1):
     for k, t in enumerate(tracks):
         sl = slice(k * episodes, (k + 1) * episodes)
         got = fin[sl][fin[sl] >= 0]
+        pl = rank[sl][fin[sl] >= 0]
         out[t] = {"finished": int(len(got)), "of": episodes,
                   "frames": float(got.min()) if len(got) else None,
+                  "place": float(pl.mean()) if len(pl) else None,
                   "return": float(ret[sl].mean())}
     return out
 
@@ -125,7 +133,9 @@ def autopilot_baseline(args, tracks):
     cfgs = [EnvCfg(track=t, character=args.character, engine_class=args.engine_class,
                    laps=args.laps, frame_skip=args.frame_skip,
                    max_frames=args.max_frames, stall_frames=0,
-                   mushroom=int(args.mushroom), seed=args.seed + 9000 + t)
+                   mode=MODE_GP if args.gp else MODE_TT,
+            items=int(args.items),
+            mushroom=int(args.mushroom), seed=args.seed + 9000 + t)
             for t in tracks]
     env = SMKVecEnv(cfgs)
     env.reset()
@@ -307,16 +317,20 @@ def train(args):
                 for t in held:
                     got, b = hres[t]["frames"], base.get(t)
                     mark = f"   ({(got - b) / 60:+.2f}s vs the script)" if got and b else ""
+                    pl = hres[t]["place"]
                     print(f"      {track_name(t):<18} "
-                          f"{frames_to_time(got) if got else 'did not finish':<10}{mark}")
+                          f"{frames_to_time(got) if got else 'did not finish':<10}"
+                          + (f"  P{int(pl)}" if args.gp and pl else "") + mark)
             res = evaluate(policy, norm, args, tracks, device)
             for t in tracks:
                 got, b = res[t]["frames"], base[t]
                 mark = ""
                 if got and b:
                     mark = f"   ({'-' if got < b else '+'}{abs(got-b)/60.0:.2f}s vs the script)"
+                pl = res[t]["place"]
                 print(f"    {track_name(t):<18} "
-                      f"{frames_to_time(got) if got else 'did not finish':<10}{mark}")
+                      f"{frames_to_time(got) if got else 'did not finish':<10}"
+                      + (f"  P{int(pl)}" if args.gp and pl else "") + mark)
             torch.save({"policy": policy.state_dict(), "norm": norm.state(),
                         "args": vars(args)}, os.path.join(args.out, "policy.pt"))
             # Leave something to WATCH, not just a number to read.  Every
@@ -362,6 +376,10 @@ def main():
     p.add_argument("--max-frames", type=int, default=10800, dest="max_frames")
     p.add_argument("--stall-frames", type=int, default=300, dest="stall_frames")
     p.add_argument("--jitter", type=int, default=0, help="px of start jitter")
+    p.add_argument("--gp", action="store_true",
+                   help="a full eight-kart race with items, not a time trial")
+    p.add_argument("--no-items", dest="items", action="store_false")
+    p.set_defaults(items=True)
     p.add_argument("--holdout", default="",
                    help="courses to keep OUT of training and report separately - "
                         "the test of whether it learned the game or the routes")

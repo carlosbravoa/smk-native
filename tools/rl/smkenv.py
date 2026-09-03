@@ -32,8 +32,8 @@ import numpy as np
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.abspath(os.path.join(_HERE, "..", ".."))
 
-OBS_DIM = 55
-N_ACTIONS = 13
+OBS_DIM = 81
+N_ACTIONS = 14
 INFO_DIM = 8
 
 MODE_GP = 0
@@ -44,7 +44,7 @@ ACTION_NAMES = [
     "coast", "accel", "accel+left", "accel+right",
     "drift-left", "drift-right", "hop",
     "brake", "brake+left", "brake+right",
-    "left", "right", "accel+item",
+    "left", "right", "accel+item", "accel+item(other way)",
 ]
 
 #: the observation's layout, for interpreting a policy rather than
@@ -59,6 +59,12 @@ OBS_LAYOUT = [
     ("line_offset", 1),
     ("flow_sin", 1), ("flow_cos", 1),
     ("rays", 24),                   # 12 x (wall distance, road-edge distance)
+    # --- the race; all zero in a time trial, and the width does not change
+    ("rank", 1),
+    ("near_karts", 12),             # 3 x (ahead, right, rel speed, in front of me)
+    ("item_held_kind", 9),          # one-hot: mushroom..lightning
+    ("item_spinning", 1),
+    ("incoming", 3),                # nearest hostile projectile: ahead, right, closeness
 ]
 
 _TRACK_NAMES = [
@@ -83,13 +89,15 @@ class _Cfg(ctypes.Structure):
         ("engine_class", ctypes.c_int), ("mode", ctypes.c_int),
         ("laps", ctypes.c_int), ("frame_skip", ctypes.c_int),
         ("max_frames", ctypes.c_int), ("stall_frames", ctypes.c_int),
-        ("mushroom", ctypes.c_int), ("countdown", ctypes.c_int),
+        ("mushroom", ctypes.c_int), ("items", ctypes.c_int),
+        ("countdown", ctypes.c_int),
         ("start_hold", ctypes.c_int), ("start_jitter", ctypes.c_int),
         ("disrupt", ctypes.c_int),
         ("seed", ctypes.c_uint32),
         ("w_progress", ctypes.c_float), ("w_time", ctypes.c_float),
         ("w_wall", ctypes.c_float), ("w_offroad", ctypes.c_float),
         ("w_rescue", ctypes.c_float), ("w_finish", ctypes.c_float),
+        ("w_place", ctypes.c_float), ("w_hit", ctypes.c_float),
     ]
 
 
@@ -120,6 +128,7 @@ class EnvCfg:
     max_frames: int = 10800        # three minutes at 60 Hz
     stall_frames: int = 300
     mushroom: int = 1              # the shell hands a time trial one
+    items: int = 1                 # GP: boxes, the roulette, the AI's weapons
     countdown: int = 1             # run the game's own 336-frame start
     start_hold: int = -1           # countdown frame to hold the throttle from
     start_jitter: int = 0
@@ -132,6 +141,8 @@ class EnvCfg:
     w_offroad: float = 0.002
     w_rescue: float = 2.0
     w_finish: float = 20.0
+    w_place: float = 30.0          # GP: what winning is worth
+    w_hit: float = 1.0
 
     def to_c(self) -> _Cfg:
         # by name, so a field added to one side and not the other is a
@@ -234,7 +245,9 @@ class SMKVecEnv:
 
     # ``info`` columns, by name
     INFO_LAP, INFO_FRAMES, INFO_PROGRESS, INFO_SPEED = 0, 1, 2, 3
-    INFO_WALLS, INFO_RESCUES, INFO_FINISH_FRAME, INFO_DISRUPTED = 4, 5, 6, 7
+    INFO_WALLS, INFO_RESCUES, INFO_FINISH_FRAME = 4, 5, 6
+    #: disruptions in a time trial, the finishing RANK in a race
+    INFO_DISRUPTED = INFO_RANK = 7
 
     def close(self) -> None:
         if getattr(self, "_b", None):

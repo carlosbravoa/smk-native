@@ -276,9 +276,12 @@ static smk_proj    projs[SMK_PROJ_MAX];
 static unsigned    item_rng = 0x2545F491u;
 static unsigned item_roll(void)
 {
-    /* OURS: five random bits.  The game's $1F26 is not reproduced. */
-    item_rng = item_rng * 1103515245u + 12345u;
-    return (item_rng >> 16) & 31u;
+    /* The stream lives in src/env.c now, because the RL environment has
+     * to draw from the same one: the same box has to give the same item
+     * in a training race and in the window, or there is nothing left to
+     * compare.  SMK_ITEM_SEED sets it, which is how check_obs.py lines
+     * the two up. */
+    return smk_item_roll(&item_rng);
 }
 static smk_flagart flag_art;
 /* The coin effects are drawn in the DRIVER's own screen space - the
@@ -3660,6 +3663,7 @@ int main(int argc, char **argv)
                track, character, engine_class, pads_n,
                pads_mushroom < 0 ? "unstated" : pads_mushroom ? "yes" : "no");
     }
+    { const char *e = getenv("SMK_ITEM_SEED"); if (e) item_rng = (unsigned)strtoul(e, NULL, 0); }
     if (cpu_policy_path) {
         char nerr[256];
         if (!smk_net_load(&cpu_net, cpu_policy_path, nerr, sizeof nerr)) {
@@ -4416,8 +4420,20 @@ int main(int argc, char **argv)
                 in.hop_held = (held & 0x0020) != 0;
                 in.hop      = (held & ~pads_prev & 0x0020) != 0;
                 pads_prev = held;
-                if (smk_env_action_uses_item(act) && player.item_held) {
-                    if (smk_player_boost(&player)) player.item_held = false;
+                /* The item is a BUTTON, not a boost.  This used to call
+                 * smk_player_boost directly, which is right for a time
+                 * trial's lone mushroom and wrong for a race: in GP the
+                 * press belongs to smk_item_step, which owns the hold and
+                 * the release.  A replay fired a mushroom where the race
+                 * had a shell.
+                 *
+                 * The direction is the pad's own: $81:B40A reads UP and
+                 * DOWN at the release, and a banana's default is behind
+                 * while a shell's is ahead - so ONE action flips both. */
+                {
+                    int it = smk_env_action_uses_item(act);
+                    in.item = it != 0;
+                    in.dpad_up = in.dpad_down = (it == 2);
                 }
                 /* SMK_PADS_TRACE: the kart's own position each frame, so
                  * a replay can be diffed against the trajectory the
@@ -4430,7 +4446,12 @@ int main(int argc, char **argv)
                  * about anything except the buttons */
                 if (getenv("SMK_OBS_TRACE")) {
                     float obs[SMK_ENV_OBS];
-                    smk_obs_build(&trk, &crs, &player, &kart, me, obs);
+                    smk_obs_race race = {
+                        .racers = racers, .self = (int)(me - racers),
+                        .nracers = race_mode == SMK_MODE_TT ? 0 : SMK_CHARACTERS,
+                        .rank = hud_rank, .item = &item,
+                        .projs = projs, .nprojs = SMK_PROJ_MAX };
+                    smk_obs_build(&trk, &crs, &player, &kart, me, &race, obs);
                     obs_trace(obs, act);
                 }
                 if (getenv("SMK_PADS_TRACE"))
@@ -4488,7 +4509,12 @@ int main(int argc, char **argv)
                  */
                 if (--net_hold <= 0) {
                     float obs[SMK_ENV_OBS];
-                    smk_obs_build(&trk, &crs, &player, &kart, me, obs);
+                    smk_obs_race race = {
+                        .racers = racers, .self = (int)(me - racers),
+                        .nracers = race_mode == SMK_MODE_TT ? 0 : SMK_CHARACTERS,
+                        .rank = hud_rank, .item = &item,
+                        .projs = projs, .nprojs = SMK_PROJ_MAX };
+                    smk_obs_build(&trk, &crs, &player, &kart, me, &race, obs);
                     net_act = smk_net_act(&cpu_net, obs);
                     net_hold = cpu_net.frame_skip;
                     obs_trace(obs, net_act);
@@ -4501,7 +4527,11 @@ int main(int argc, char **argv)
                 in.hop_held = (held & 0x0020) != 0;
                 in.hop      = (held & ~net_pad_prev & 0x0020) != 0;
                 net_pad_prev = held;
-                in.item     = smk_env_action_uses_item(net_act) != 0;
+                {
+                    int it = smk_env_action_uses_item(net_act);
+                    in.item = it != 0;
+                    in.dpad_up = in.dpad_down = (it == 2);
+                }
             } else if ((autodrive || views[v].bot)
                 && race_state == RACE_RUN && !replay_path) {
                 /* The autopilot presses buttons and nothing else, so the
@@ -4511,7 +4541,12 @@ int main(int argc, char **argv)
                 smk_autopilot_step(&autopilot, &trk, &crs, &player, &kart, &ap);
                 if (getenv("SMK_OBS_TRACE")) {
                     float obs[SMK_ENV_OBS];
-                    smk_obs_build(&trk, &crs, &player, &kart, me, obs);
+                    smk_obs_race race = {
+                        .racers = racers, .self = (int)(me - racers),
+                        .nracers = race_mode == SMK_MODE_TT ? 0 : SMK_CHARACTERS,
+                        .rank = hud_rank, .item = &item,
+                        .projs = projs, .nprojs = SMK_PROJ_MAX };
+                    smk_obs_build(&trk, &crs, &player, &kart, me, &race, obs);
                     obs_trace(obs, -1);
                 }
                 in.up = ap.accel; in.down = ap.brake;
