@@ -141,11 +141,22 @@ static float wrap_px(float d)
 static float ang_delta(uint16_t a, uint16_t b)
 { return (float)(int16_t)(uint16_t)(a - b) / 32768.0f; }
 
-static void observe(const smk_env *e, float *o)
+/* The observation, built from the game's own state and nothing else.
+ *
+ * It takes the pieces rather than an environment because the SDL game
+ * needs it too: `--cpu-policy` runs a trained policy as the VS CPU
+ * driver, and that driver MUST see exactly what the policy was trained
+ * on.  Two implementations of this vector would be two different games
+ * wearing the same weights, so there is one, and smk_envtest checks that
+ * both callers get identical bytes out of it.
+ */
+void smk_obs_build(const smk_track *trk, const smk_course *crs,
+                   const smk_player *p, const smk_kart *k,
+                   const smk_racer *me, float *o)
 {
-    const smk_kart *k = &e->kart;
-    const smk_player *p = &e->player;
     int i = 0;
+    const int sector = me->sector;
+    const float prog = smk_progress_line(me, crs, k);
     int px = smk_kart_px(k->x), py = smk_kart_px(k->y);
     float top = p->target > 0 ? (float)p->target : 1024.0f;
 
@@ -181,18 +192,18 @@ static void observe(const smk_env *e, float *o)
     o[i++] = (float)p->coins / 10.0f;
     o[i++] = p->hazard ? 1.0f : 0.0f;                  /* water or the drop */
     {
-        int g = ground_of(smk_track_surface(&e->trk, px, py));
+        int g = ground_of(smk_track_surface(&(*trk), px, py));
         o[i++] = g == SMK_GND_SLOW   ? 1.0f : 0.0f;
         o[i++] = g == SMK_GND_HAZARD ? 1.0f : 0.0f;
     }
     o[i++] = p->item_held ? 1.0f : 0.0f;
-    o[i++] = e->crs.sectors ? (e->prog - floorf(e->prog)) : 0.0f;
+    o[i++] = crs->sectors ? (prog - floorf(prog)) : 0.0f;
 
     /* --- the racing line ahead (4 waypoints x 3 = 12) --- */
     for (int w = 0; w < OBS_WP_AHEAD; w++) {
-        int s = e->crs.sectors ? (e->sector + 1 + w) % e->crs.sectors : 0;
-        float dx = wrap_px((float)e->crs.wx[s] - (float)px);
-        float dy = wrap_px((float)e->crs.wy[s] - (float)py);
+        int s = crs->sectors ? (sector + 1 + w) % crs->sectors : 0;
+        float dx = wrap_px((float)crs->wx[s] - (float)px);
+        float dy = wrap_px((float)crs->wy[s] - (float)py);
         float d  = sqrtf(dx * dx + dy * dy);
         /* the bearing, in the game's own convention: 0 = -Y, clockwise */
         uint16_t bear = (uint16_t)(int)(atan2f(dx, -dy)
@@ -205,9 +216,9 @@ static void observe(const smk_env *e, float *o)
 
     /* --- where the line is, sideways, and where the ROM says to go (3) --- */
     {
-        int s = e->sector, n = e->crs.sectors ? (s + 1) % e->crs.sectors : 0;
-        float ax = e->crs.wx[s], ay = e->crs.wy[s];
-        float dx = wrap_px((float)e->crs.wx[n] - ax), dy = wrap_px((float)e->crs.wy[n] - ay);
+        int s = sector, n = crs->sectors ? (s + 1) % crs->sectors : 0;
+        float ax = crs->wx[s], ay = crs->wy[s];
+        float dx = wrap_px((float)crs->wx[n] - ax), dy = wrap_px((float)crs->wy[n] - ay);
         float qx = wrap_px((float)px - ax), qy = wrap_px((float)py - ay);
         float len = sqrtf(dx * dx + dy * dy);
         /* the cross product: signed distance from the line, in px */
@@ -217,8 +228,8 @@ static void observe(const smk_env *e, float *o)
          * - the heading its AI would take.  Free, exact, and the single
          * most useful number in the vector. */
         int fcell = ((py >> 4) & 63) * 64 + ((px >> 4) & 63);
-        uint16_t flow = (uint16_t)((e->crs.flow[fcell] << 8)
-                                   | e->crs.flow[(fcell - 1) & 0xFFF]);
+        uint16_t flow = (uint16_t)((crs->flow[fcell] << 8)
+                                   | crs->flow[(fcell - 1) & 0xFFF]);
         float rel = ang_delta(flow, k->angle) * (float)M_PI;
         o[i++] = sinf(rel);
         o[i++] = cosf(rel);
@@ -239,7 +250,7 @@ static void observe(const smk_env *e, float *o)
         for (int d = OBS_RAY_STEP; d <= (int)OBS_RAY_MAX; d += OBS_RAY_STEP) {
             int qx = (px + (int)(sx * d)) & (SMK_WORLD_PX - 1);
             int qy = (py + (int)(sy * d)) & (SMK_WORLD_PX - 1);
-            int g = ground_of(smk_track_surface(&e->trk, qx, qy));
+            int g = ground_of(smk_track_surface(&(*trk), qx, qy));
             if (g != SMK_GND_ROAD && edge == OBS_RAY_MAX) edge = (float)d;
             if (g == SMK_GND_WALL || g == SMK_GND_HAZARD) { wall = (float)d; break; }
         }
@@ -249,6 +260,9 @@ static void observe(const smk_env *e, float *o)
 }
 
 static void frame(smk_env *e, uint16_t held, uint16_t pressed);
+/* the env's own view of smk_obs_build: it holds all five pieces */
+#define OBSERVE(e, out) \
+    smk_obs_build(&(e)->trk, &(e)->crs, &(e)->player, &(e)->kart, &(e)->me, (out))
 
 /* ---- reset -------------------------------------------------------------
  *
@@ -542,7 +556,7 @@ void smk_env_batch_reset(smk_env_batch *b, float *obs)
     for (int i = 0; i < b->n; i++) {
         course_for_step = &b->env[i].crs;
         env_reset_one(&b->env[i]);
-        if (obs) observe(&b->env[i], obs + (size_t)i * SMK_ENV_OBS);
+        if (obs) OBSERVE(&b->env[i], obs + (size_t)i * SMK_ENV_OBS);
     }
 }
 
@@ -615,10 +629,10 @@ static void step_one(smk_env *e, int action, float *obs, float *rew,
      * wrong number.  So the state as it was left is written here, and
      * tools/rl/train.py bootstraps a truncated step from it. */
     if (e->done || e->truncated) {
-        if (final_obs) observe(e, final_obs);
+        if (final_obs) OBSERVE(e, final_obs);
         env_reset_one(e);
     }
-    if (obs) observe(e, obs);
+    if (obs) OBSERVE(e, obs);
 }
 
 void smk_env_batch_step(smk_env_batch *b, const int32_t *actions, float *obs,

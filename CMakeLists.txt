@@ -36,6 +36,7 @@ add_library(smkcore STATIC
   src/menu.c
   src/autopilot.c
   src/env.c
+  src/net.c
 )
 target_include_directories(smkcore PUBLIC include)
 target_compile_options(smkcore PRIVATE -Wall -Wextra -O2)

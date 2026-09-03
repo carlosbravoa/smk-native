@@ -2263,6 +2263,13 @@ typedef struct {
 typedef struct smk_env       smk_env;
 typedef struct smk_env_batch smk_env_batch;
 
+/* The observation vector, from the game's own state.  The SDL game calls
+ * this too (--cpu-policy), so the VS CPU driver sees exactly what the
+ * policy was trained on - one implementation, checked by smk_envtest. */
+void smk_obs_build(const smk_track *trk, const smk_course *crs,
+                   const smk_player *p, const smk_kart *k,
+                   const smk_racer *me, float *out);
+
 int  smk_env_obs_dim(void);
 int  smk_env_action_count(void);
 /* One ROM, shared read-only; one mutable world per env.  cfgs is an array
@@ -2288,3 +2295,26 @@ void smk_env_batch_state(const smk_env_batch *b, int i, smk_env_state *out);
  * can drive the real window from a trained policy's choices */
 uint16_t smk_env_action_pad(int action);
 int      smk_env_action_uses_item(int action);
+
+/* ---- A trained policy, run inside the game (src/net.c) -----------------
+ *
+ * `--cpu-policy FILE` makes the VS CPU driver a trained network instead
+ * of src/autopilot.c.  It drives the way every driver here drives - a
+ * full smk_player in its own grid slot, pressing buttons through
+ * smk_player_step - so it is subject to every rule a person is.  The
+ * weights come from tools/rl/export_net.py; there is no runtime to link,
+ * because two 256-wide layers is thirty lines of C. */
+typedef struct {
+    bool  ok;
+    int   in_dim, hidden, n_act;
+    int   frame_skip;      /* how long one decision is held, as trained  */
+    int   engine_class;    /* the class it learned in: 50/100/150cc       */
+    int   mushroom;        /* whether its time trial had one              */
+    float *mean, *inv_std; /* the observation normaliser, saved with it  */
+    float *w1, *b1, *w2, *b2, *wp, *bp;
+    float *h1, *h2;        /* scratch                                    */
+} smk_net;
+bool smk_net_load(smk_net *n, const char *path, char *err, size_t errn);
+void smk_net_free(smk_net *n);
+/* the greedy action for this observation */
+int  smk_net_act(smk_net *n, const float *obs);

@@ -224,11 +224,79 @@ and not a second interpretation of the action set.  Add `--fast` for a
 headless run; without it the fixed timestep follows the wall clock and a
 headless binary at 13,000 fps barely ticks the simulation at all.
 
+## The policy as the VS CPU driver
+
+```bash
+python3 tools/rl/export_net.py runs/gp2/policy.pt -o runs/gp2/cpu.net
+./build-native/smk --players cpu --cpu-policy runs/gp2/cpu.net --class 1
+```
+
+The second player in `VS CPU` is already a full `smk_player` in its own
+grid slot, and `src/main.c`'s own note says what matters: *"BOTH split
+modes drive a real kart with the player physics.  The difference is only
+who presses the buttons: a person, or our own autopilot."*  So the policy
+substitutes at exactly that point.  It sees `smk_obs_build` - the same
+observation, from the same implementation, that it was trained on - and
+answers with an action index, which becomes the pad word a person's hands
+would make.
+
+**It gets no privileged control over its kart.**  That is not a courtesy,
+it is the only way the comparison means anything: it accelerates,
+brakes, steers and hops through `smk_player_step` like everything else
+here, and it is subject to every rule a person is.
+
+The decision is held for the `frame_skip` it trained at (saved in the
+file).  Re-deciding every frame would run the policy four times faster
+than the rate it learned at, which is a different driver.
+
+There is no runtime to link.  The network is 83,469 parameters - 327 KB -
+and a forward pass is two matrix-vector products and a tanh, about 84,000
+multiply-adds per decision.  At one decision every four frames that is
+roughly 1.3 MFLOP a second, next to a software Mode 7 renderer doing
+hundreds of millions.  `src/net.c` is thirty lines of arithmetic.
+
+### What it is and is not, today
+
+Against `src/autopilot.c` in a real eight-kart race at the class it
+trained on, over 6,000 ticks:
+
+| | autopilot | policy |
+|---|---|---|
+| Mario Circuit 1 | lap 4 | lap 4 |
+| Donut Plains 2 | lap 5 | **lap 6** |
+| Rainbow Road | lap 4 | **lap 5** |
+
+Which is a real result and a limited one.  The policy has **never seen
+another kart**.  It was trained alone in a time trial, so it drives a
+fast line and is blind to the seven karts around it, to the items it
+picks up, and to the ones thrown at it.  It is a better *driver* than the
+autopilot and not yet a better *racer*.
+
+**The class must match.**  The acceleration curve and the target speeds
+are the ROM's own per engine class, so a policy trained at 100cc driving
+a 50cc kart has the throttle and steering timing of a different car - it
+looks broken rather than mismatched.  The file records what it learned
+on and the game warns when they differ.  The fix is to vary
+`engine_class` across the training batch rather than to remember a flag;
+the environment already takes a config per environment, so that is a
+one-line change to `build_cfgs`.
+
 ## Where to take it next
 
-- **The other seven karts.** `smk_racer_step` is already in the library
-  and already drives the ROM's racing lines; a GP-mode environment needs
-  them stepped in the loop and the rank added to the observation.
+- **Racing, rather than driving.** This is the big one, and the reason
+  the VS CPU driver is only half a result. Everything needed is already
+  in `libsmkcore` - `smk_racer_step`, `smk_item_box`/`smk_item_step`,
+  `smk_proj_step`/`smk_proj_hit`, `smk_racer_hit`, kart-to-kart bumping
+  with the ROM's weight table - and the environment calls none of it.
+  The work is that ~420 lines of race orchestration in `src/main.c` have
+  to become shared code with two callers, which is the same problem the
+  lap rule had, and `make envcheck` is already the gate that polices it.
+  Then the observation grows by the rank, the nearest few karts and the
+  held item; the reward stops being lap time and becomes finishing
+  position.
+- **The engine classes.** Vary `engine_class` across the batch so one
+  policy drives all three, instead of one that is silently wrong on two
+  of them.
 - **Generalisation across courses.** `--tracks gp` already trains one
   policy on all twenty at once, with the batch spread across them. Hold
   out four and see whether it drives a course it has never seen.

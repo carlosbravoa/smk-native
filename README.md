@@ -130,7 +130,16 @@ make envcheck         # prove it is frame-for-frame the same game as the window
 make train TRACK=0    # PPO, in tools/rl/
 make watch RUN=runs/track0   # watch the CURRENT policy drive, in the real
                              # window - safe while the training is running
+
+# and race against it: the VS CPU driver becomes the trained policy
+python3 tools/rl/export_net.py runs/track0/policy.pt -o cpu.net
+./build-native/smk --players cpu --cpu-policy cpu.net --class 1
 ```
+
+The CPU driver **presses buttons** - it is a full `smk_player` in its own
+grid slot, going through `smk_player_step` like a person's keyboard, with
+no privileged control over its kart. Inference is 30 lines of C
+(`src/net.c`); there is no runtime to link.
 
 Three million agent steps - about half a minute on one GPU - is enough
 for a policy that finishes every lap of Mario Circuit 1 and beats

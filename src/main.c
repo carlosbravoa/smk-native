@@ -1029,6 +1029,11 @@ static int  finish_t;                    /* frames into the celebration */
 static bool race_reported;
 static bool obj_marks;   /* --obj-marks: show each object's ground point */
 static smk_autopilot autopilot;
+/* --cpu-policy's driver state, per view: the decision being held, how
+ * many frames are left of it, and its own button edges */
+static int      net_act = 1;
+static int      net_hold;
+static uint16_t net_pad_prev;
 static int  crossings;              /* finish-line crossings this race */
 static bool engine_throttle;        /* B held: the rev, countdown included */
 static int  fx_kind_now = -1;       /* the ground effect this frame ($80:D37A) */
@@ -1099,6 +1104,12 @@ static int32_t *pad_seq;
 static int pads_n, pads_i;
 static uint16_t pads_prev;
 static int pads_mushroom = -1;   /* from the file's header; -1 = not stated */
+/* --cpu-policy: the VS CPU driver is a trained network (src/net.c) rather
+ * than src/autopilot.c.  It presses buttons and nothing else, exactly as
+ * the autopilot does, so the kart it drives obeys every rule a person's
+ * does - see the note over smk_net_act. */
+static const char *cpu_policy_path;
+static smk_net cpu_net;
 static int replay_kart = 1000;          /* 1000 = P1 (Mario), 1100 = P2 (Toad)        */
 static int replay_i;
 static void step_kart(smk_kart *k, smk_track *trk,
@@ -1698,6 +1709,9 @@ static int show_kart = 1, show_grid = 1;
     X(smk_ui_result,   result)      \
     X(bool,            tt_mushroom) \
     X(smk_autopilot,   autopilot)   \
+    X(int,             net_act)      /* the decision --cpu-policy is holding */ \
+    X(int,             net_hold)     /* frames left of it, as trained        */ \
+    X(uint16_t,        net_pad_prev) /* its own button edges                 */ \
     X(int,             racer_draw_mask) \
     X(int8_t,          was_cool)     /* bump_cool before the field collided */ \
     X(uint16_t,        pad_held_prev) \
@@ -3418,6 +3432,8 @@ static void usage(const char *argv0)
            "  --autodrive     drive itself (a test aid, not the AI: it gets\n"
            "                  round most courses, not all)\n"
            "  --fast          one simulation tick per frame (headless tests)\n"
+           "  --cpu-policy F  the VS CPU driver is the trained policy in F\n"
+           "                  (tools/rl/export_net.py; see docs/RL.md)\n"
            "  --obj-marks     mark each object's ground point (magenta) and the\n"
            "                  road edges at that depth (cyan), to check placement\n"
            "  --rom-spawn     only the ROM's two live objects, which pop in\n"
@@ -3553,6 +3569,7 @@ int main(int argc, char **argv)
         if (!strcmp(a, "--shot") && i + 1 < argc) { shot = argv[++i]; explicit_start = 1; continue; }
         if (!strcmp(a, "--replay") && i + 1 < argc) { replay_path = argv[++i]; explicit_start = 1; continue; }
         if (!strcmp(a, "--pads") && i + 1 < argc) { pads_path = argv[++i]; explicit_start = 1; continue; }
+        if (!strcmp(a, "--cpu-policy") && i + 1 < argc) { cpu_policy_path = argv[++i]; continue; }
         ARG("--replay-kart", replay_kart)
         if (!strcmp(a, "--dump") && i + 1 < argc) { dump = argv[++i]; explicit_start = 1; continue; }
         #define FARG(name, var) if (!strcmp(a, name) && i + 1 < argc) { var = (float)atof(argv[++i]); continue; }
@@ -3630,6 +3647,27 @@ int main(int argc, char **argv)
         printf("pads: track %d, character %d, class %d, %d frames, mushroom %s\n",
                track, character, engine_class, pads_n,
                pads_mushroom < 0 ? "unstated" : pads_mushroom ? "yes" : "no");
+    }
+    if (cpu_policy_path) {
+        char nerr[256];
+        if (!smk_net_load(&cpu_net, cpu_policy_path, nerr, sizeof nerr)) {
+            fprintf(stderr, "error: %s\n", nerr);
+            return 1;
+        }
+        printf("cpu policy: %s (%d x %d, one decision every %d frames, "
+               "trained at %dcc)\n",
+               cpu_policy_path, cpu_net.hidden, cpu_net.n_act, cpu_net.frame_skip,
+               cpu_net.engine_class == 0 ? 50 : cpu_net.engine_class == 1 ? 100 : 150);
+        if (cpu_net.engine_class != engine_class)
+            fprintf(stderr,
+                    "warning: this race is %dcc and the policy learned at %dcc.\n"
+                    "         The acceleration curve and the top speeds are the\n"
+                    "         ROM's own per class, so its throttle and steering\n"
+                    "         timing belong to a different kart - it will drive\n"
+                    "         badly rather than merely differently.  Use --class %d.\n",
+                    engine_class == 0 ? 50 : engine_class == 1 ? 100 : 150,
+                    cpu_net.engine_class == 0 ? 50 : cpu_net.engine_class == 1 ? 100 : 150,
+                    cpu_net.engine_class);
     }
     if (character < 0 || character >= SMK_CHARACTERS) character = 0;
     drv = &SMK_DRIVERS[character];
@@ -4406,7 +4444,35 @@ int main(int argc, char **argv)
             }
             /* --autodrive drives EVERY view; a VS CPU view's second
              * driver is the same autopilot, always. */
-            if ((autodrive || views[v].bot)
+            if (cpu_net.ok && views[v].bot
+                && race_state == RACE_RUN && !replay_path) {
+                /* The trained policy, as the second player's driver.  It
+                 * gets the SAME observation smk_env_batch_step hands it
+                 * during training - one implementation of that vector,
+                 * in src/env.c - and it answers with an action index,
+                 * which becomes the same pad word a person's hands make.
+                 *
+                 * The decision is HELD for the frames it was trained on
+                 * (frame_skip, saved in the file).  Re-deciding every
+                 * frame would run the policy four times faster than the
+                 * rate it learned at, which is a different driver.
+                 */
+                if (--net_hold <= 0) {
+                    float obs[SMK_ENV_OBS];
+                    smk_obs_build(&trk, &crs, &player, &kart, me, obs);
+                    net_act = smk_net_act(&cpu_net, obs);
+                    net_hold = cpu_net.frame_skip;
+                }
+                uint16_t held = smk_env_action_pad(net_act);
+                in.up       = (held & 0x8000) != 0;
+                in.down     = (held & 0x4000) != 0;
+                in.left     = (held & 0x0200) != 0;
+                in.right    = (held & 0x0100) != 0;
+                in.hop_held = (held & 0x0020) != 0;
+                in.hop      = (held & ~net_pad_prev & 0x0020) != 0;
+                net_pad_prev = held;
+                in.item     = smk_env_action_uses_item(net_act) != 0;
+            } else if ((autodrive || views[v].bot)
                 && race_state == RACE_RUN && !replay_path) {
                 /* The autopilot presses buttons and nothing else, so the
                  * kart it drives is subject to every rule the player's is
@@ -4985,6 +5051,14 @@ int main(int argc, char **argv)
             {
                 int ev = smk_progress_step(me, &crs, &kart);
                 player_sector = me->sector;
+                /* SMK_CPU_TRACE: how the second player's driver is doing,
+                 * so --cpu-policy can be measured against the autopilot
+                 * headlessly instead of watched and guessed at */
+                if (getenv("SMK_CPU_TRACE") && views[cur_view].bot
+                    && (hud_race_frames % 60) == 0)
+                    printf("cpu f%ld lap%d sec%d spd%d at %d,%d\n",
+                           hud_race_frames, me->lap, me->sector, kart.speed,
+                           smk_kart_px(kart.x), smk_kart_px(kart.y));
                 if (ev > 0) {
                     /* he comes back with the sign (NOTES 168); the grid
                      * crossing enters lap 1 and shows nothing, so this
