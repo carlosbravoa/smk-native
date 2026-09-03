@@ -11145,3 +11145,55 @@ contain:
 * The dust/smoke question is a picture, and the way to answer it is a
   frame capture during a slide (`pix.lua`), not an argument about
   palettes.
+
+## 266. The drift puff on Ghost Valley: it IS dust, and the game picks the
+same effect on wood as on tarmac
+
+Following NOTES 265's two open items, with the user's own recording.
+
+**The effect the game chooses is not track-specific.**  `$80:D37A`
+dispatches the ground effect by surface class, and its first branch is
+`cls <= $1E || ($40 <= cls <= $52)`.  Ghost Valley's road is `$40`, `$42`
+and `$4E`; Mario Circuit's is `$40`.  They are all in that one branch, so
+both tracks get the SAME kind - `$24` on a deep drift, nothing otherwise.
+Whatever differs between the two, it is not which effect is picked.
+
+**And the puff is DUST.**  Captured from the running game at a deep-drift
+frame of the user's run (`$E2` bits 2 and 5 set, `$A8` = 2432, speed 911,
+class `$40`): two pale blobs sit either side of the wheels, and their
+colours are
+
+    rgb(173, 156, 82)   and   rgb(140, 123, 49)
+
+against a road of rgb(57,41,8) / rgb(66,49,24).  Sandy, not grey.  The
+user: *"it is dust coming off the wheels, not grey smoke"* - confirmed
+from the ROM's own output.
+
+**Our port draws no puff there at all.**  Shot at a comparable slide on
+the same track (the autopilot's own, `slide 1` in its trace), there is
+nothing either side of the kart.  So the gap is not a palette that came
+out grey - it is that the effect is not reaching the screen on this
+surface.  Which of the two - the kind not being picked, or the art not
+being drawn - is the next thing to find out, and it is a contained job
+now that both ends are pinned: the game's colours above, and our own
+`smk_effects_draw` taking `palette + 128 + pal * 16`.
+
+**Two rig notes, both of which cost time here:**
+
+* A frame number is only meaningful with its counter.  `demolog.lua`
+  numbers frames from the moment the race comes up; a plain
+  `register_frame_done` counter numbers them from boot.  Picking frames
+  out of a demolog CSV and capturing them with a boot-counted rig
+  captured the wrong moments, and the first read of those - "the original
+  draws no puff at all" - was wrong because of it.  `tmp/pixat.lua`
+  counts the way demolog does.
+* The port's `--replay` needs `--fast`, or the run is wall-clock bound
+  and `replay_i` never reaches the frame asked for
+  ([[port-timings-are-sdl-bound]] again).
+
+**Still open, and still not guessed at:** the slide SOUND on wood.  The
+dispatch above says the game picks the same effect kind on both tracks,
+and NOTES 265 measured that nothing is queued while sliding on either -
+so if there is an audible difference it is the continuous surface voice,
+and that needs `surfgrab.lua` run on `$40`, `$42` and `$4E` before
+anything is changed.
