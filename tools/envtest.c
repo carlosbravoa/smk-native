@@ -71,7 +71,29 @@ int main(int argc, char **argv)
         check(bad == 0, "every observation is finite on reset");
         check(amax <= 8.0f, "and inside a sane range (max |x| <= 8)");
 
-        /* the grid is where the game puts it, and it is on-course */
+        /* The reset alone proves nothing: a kart standing still has zero
+         * for every velocity, so a feature scaled wrongly by two orders
+         * of magnitude passes.  That is exactly what happened - the
+         * velocity split was divided by top/256 instead of top and ran
+         * to 441 - so the range is now checked while DRIVING. */
+        smk_env_batch_reset(b, obs);
+        float dmax = 0; int dbad = 0, dwhere = -1;
+        for (int s = 0; s < 1500; s++) {
+            smk_env_batch_autopilot(b, act);
+            smk_env_batch_step(b, act, obs, rew, done, trunc, info);
+            for (int j = 0; j < N * SMK_ENV_OBS; j++) {
+                if (!isfinite(obs[j])) dbad++;
+                if (fabsf(obs[j]) > dmax) { dmax = fabsf(obs[j]); dwhere = j % SMK_ENV_OBS; }
+            }
+        }
+        check(dbad == 0, "every observation stays finite through 1500 driven steps");
+        if (dmax > 8.0f)
+            printf("    the largest is %.1f, at index %d of the vector\n", dmax, dwhere);
+        check(dmax <= 8.0f, "and every feature stays inside [-8, 8] while driving");
+
+        /* the grid is where the game puts it, and it is on-course.
+         * From a fresh reset - the driving above left a race in progress. */
+        smk_env_batch_reset(b, obs);
         smk_env_state st;
         smk_env_batch_state(b, 0, &st);
         /* frame 1, not 0: the 336-frame countdown has already run, and

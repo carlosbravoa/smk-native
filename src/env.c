@@ -155,11 +155,17 @@ static void observe(const smk_env *e, float *o)
     /* the velocity in the KART's frame: how much is forward and how much
      * is sideways.  The slide is the whole game and this is where it shows */
     {
+        /* vx/vy ($22/$24) are 8.8 px per frame, the SAME units as speed
+         * ($EA), so both scale by the kart's own top speed.  They were
+         * divided by top/256 in the first draft, which put a hundred-odd
+         * into a vector everything else keeps inside [-1,1]. */
         float s, c, vx = (float)k->vx, vy = (float)k->vy;
         float th = (float)k->angle * 2.0f * (float)M_PI / 65536.0f;
         s = sinf(th); c = cosf(th);
-        o[i++] = ( vx * s - vy * c) / (top / 256.0f + 1.0f);   /* forward  */
-        o[i++] = ( vx * c + vy * s) / (top / 256.0f + 1.0f);   /* lateral  */
+        /* the game's angle convention is 0 = -Y, clockwise: forward is
+         * (sin, -cos) and the kart's right is (cos, sin) */
+        o[i++] = ( vx * s - vy * c) / top;      /* forward  */
+        o[i++] = ( vx * c + vy * s) / top;      /* lateral  */
     }
     {   /* the slip: heading against the direction of travel ($A2 vs $28) */
         float d = ang_delta(p->vel_angle, k->angle) * (float)M_PI;
