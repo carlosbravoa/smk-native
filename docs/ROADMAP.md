@@ -54,6 +54,19 @@ re-investigating.
 
 ## Shortcut & assumption ledger (current)
 
+**S43 — The RL environment's observation, actions, reward and episode
+rules are OURS.** `src/env.c` steps only the game's own code - the
+physics, the surfaces, the sector map and racing line, the `$7F:4000`
+direction field, the lap rule, the grid, the rescue and the 336-frame
+countdown are all the ROM's, and `make envcheck` proves it by replaying
+an environment race through the SDL binary and comparing the kart's
+position and speed on every frame (currently 8,966 of 8,966). What the
+game has no equivalent of - a 55-number observation, 13 actions, a
+reward, and where an episode starts and stops - is invented, and makes
+no claim about how Super Mario Kart works. Its own sub-ledger (the
+skipped turbo start, 3 laps instead of 5, no opponents yet, items as one
+binary action) is in [`docs/RL.md`](RL.md).
+
 **S29 — The spilled coin's ARC is ours; its art and its spin are the game's.**
 The three spin frames (VRAM tiles `$86`, `$A2`, `$60`, palette 6, ~4 frames
 each) and their source (the shared blob at `$C1:0000`, a tile's bytes at
