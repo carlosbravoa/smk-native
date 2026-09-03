@@ -293,6 +293,88 @@ on and the game warns when they differ.  The fix is to vary
 the environment already takes a config per environment, so that is a
 one-line change to `build_cfgs`.
 
+## Racing, not just driving
+
+```bash
+python3 tools/rl/train.py --gp --tracks gp --classes 0,1,2 --holdout 3,11,16,19
+```
+
+`--gp` runs the whole race, not a time trial: the seven opponents on the
+ROM's own racing lines, the rubber band (`$80AF0F`), kart against kart
+with the ROM's weight table, the item boxes and the roulette, everything
+that comes out of it, the AI's own weapons, and the projectiles.  All of
+it is the code `src/main.c` races, called in `main.c`'s order - the
+environment adds nothing to the game and skips nothing in it.
+
+The scripted driver, in that race, finishes **8th of 8 on every course**.
+It starts at the back and the shipped AI is quicker, so the baseline for
+a racer is much harsher than the baseline for a driver.
+
+### What the observation gains (55 -> 81)
+
+| | count | what |
+|---|---|---|
+| rank | 1 | place, normalised |
+| the nearest three karts | 12 | each as (how far ahead, how far to the side, closing speed, and whether it is in front **in the race** rather than on the screen) - in the kart's own frame, like everything else |
+| the item held | 10 | one-hot over the nine, plus whether the roulette is still spinning |
+| what is in the air | 3 | the nearest projectile that is not ours: ahead, to the side, how close |
+
+Every one of them is zero in a time trial, and **the width does not
+change with the mode**.  That is deliberate: one policy drives both, and
+a vector whose meaning depends on the mode is a vector nothing can check.
+
+### A fourteenth action
+
+An item is two decisions, not one.  `$81:B40A` reads UP and DOWN at the
+release: a banana's default is to be left behind and a shell's is to be
+thrown, so a single action flips both.
+
+### The reward gains one term
+
+What **place** it finished.  That is the only part of the reward that
+knows about the other karts, and deliberately so:
+
+- rewarding an overtake per event pays for a place taken and then lost;
+- rewarding rank every frame pays for sitting behind a leader who is
+  about to crash.
+
+Being hit costs the seconds and the four coins the game already takes,
+plus a small explicit penalty, because those seconds are spread thinly
+over the frames that follow and a spin is worth avoiding on purpose.
+
+### What GP cost to get right
+
+Five divergences from `main.c`, every one found by extending
+`tools/rl/check_obs.py` to GP rather than by reasoning about it:
+
+- the field drove all 336 countdown frames and was a third of a lap up at
+  GO - `main.c` gates the whole section on `race_state`
+- ...and then ran one frame behind for the rest of the race, because on
+  the lights-out frame `main.c` has already set `RACE_RUN` while the
+  per-view pass still zeroes the throttle
+- who drives which slot is `$81EE33`'s table (`smk_grid_order`), not the
+  slot index: it decides each kart's **weight** in the collision
+- a bump's *cost* was missing - one coin, or a spin with no coin left -
+  and coins set the top speed (`$D6 = $B4 + 8*min(coins,10)`), so that is
+  the race and not bookkeeping
+- `smk --pads` fired a mushroom where the race had a shell, because the
+  replay used the time trial's boost shortcut instead of the button
+
+The roulette's five random bits are `smk_item_roll` in `src/env.c`, drawn
+by both sides from one stream: the same box has to give the same item in
+a training race and in the window, or there is nothing left to compare.
+`SMK_ITEM_SEED` lines them up.
+
+### The known gap
+
+GP parity holds to float precision on **8 of 9** checks.  The ninth -
+Mario Circuit 1 from about frame 357 - does not: the same box still gives
+the two sides different items, and everything after that is a different
+race.  It is in `KNOWN_GAPS` in `check_obs.py`, which **prints it,
+measures it, and still fails on a divergence anywhere else or earlier**.
+A gate that is switched off is not a gate, and one that hides a number is
+worse.
+
 ## Did it learn the game, or twenty routes?
 
 The question matters more than it sounds: a policy that has memorised a
