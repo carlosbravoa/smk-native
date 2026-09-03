@@ -156,9 +156,23 @@ looks like it is learning:
 2. **`make envcheck`** - drive a race in the environment, export the
    inputs, replay them through the actual SDL binary, and compare the
    kart's position and speed on **every frame**. The bar is 100%, and it
-   currently holds for 8,966 consecutive frames of a five-lap race. Two
-   callers of the same physics can drift apart silently; this is what
-   stops that.
+   holds for 8,966 consecutive frames of a five-lap race. Two callers of
+   the same physics can drift apart silently; this is what stops that.
+
+   It checks **both** mushroom settings, and that is not fussiness. The
+   first version built its own config with the mushroom on - which is
+   what the shell grants - so a policy trained *without* one was never
+   tested. Its "use item" presses became real boosts in the window and
+   nothing in the environment, and the replay reached lap 1 where the
+   environment had finished five. A gate that only exercises the working
+   combination is not a gate. The `.pads` file now states the race it was
+   driven in (`# mushroom N`) and `--pads` honours it, so the two cannot
+   disagree out of band.
+
+   The real-time path is checked too, not just the headless one: the same
+   file played at the wall clock and under `--fast` gives **7,114 of
+   7,114 identical ticks**, so what you watch in a window is the run that
+   was measured.
 
 3. **the scripted driver as the baseline** - `train.py` prints
    `src/autopilot.c`'s time on the same courses under the same episode
