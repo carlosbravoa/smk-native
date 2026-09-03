@@ -34,6 +34,8 @@ def main():
     p.add_argument("--laps", type=int, default=5)
     p.add_argument("--headless", action="store_true",
                    help="report the time without opening a window")
+    p.add_argument("--windowed", action="store_true",
+                   help="a window rather than the game's default fullscreen")
     p.add_argument("--sample", action="store_true")
     p.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = p.parse_args()
@@ -63,8 +65,9 @@ def main():
         return
 
     smk = os.path.join(_ROOT, "build-native", "smk")
-    print(f"opening the game: {smk} --pads {pads}")
-    subprocess.run([smk, "--pads", pads])
+    cmd = [smk, "--pads", pads] + (["--windowed"] if args.windowed else [])
+    print("opening the game: " + " ".join(cmd))
+    subprocess.run(cmd)
 
 
 if __name__ == "__main__":

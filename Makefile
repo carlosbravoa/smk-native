@@ -66,14 +66,16 @@ train: game $(BASE)
 ## while the training is still going - it only reads the checkpoint.
 ##   make watch RUN=runs/gp TRACK=19
 watch: game $(BASE)
-	@$(PY) tools/rl/watch.py $(RUN) $(if $(TRACK),--track $(TRACK))
+	@$(PY) tools/rl/watch.py $(RUN) $(if $(TRACK),--track $(TRACK)) \
+	    $(if $(WINDOWED),--windowed)
 
 ## the same, without opening a window: just the lap time
 watch-time: game $(BASE)
 	@$(PY) tools/rl/watch.py $(RUN) --headless $(if $(TRACK),--track $(TRACK))
 
-RUN   ?= runs/track0
-TRACK ?=
+RUN      ?= runs/track0
+TRACK    ?=
+WINDOWED ?=
 
 ## the AI row chooser replayed against the real game's own logged inputs
 rowcheck: game
