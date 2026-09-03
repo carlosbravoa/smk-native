@@ -11388,6 +11388,14 @@ the font, the pipes and Lakitu all turn up immediately in compressed
 streams, and the entity/hazard sprites turn up in none of them.  SMK does
 not keep that art as plain 4bpp streams in banks `$C0-$CF`.
 
+**WITHDRAWN - see NOTES 271.**  The tile sets this table calls "live
+tiles" were contaminated: the VRAM diff that produced them spanned twelve
+frames, in which the kart's own rotation frames are re-uploaded, so what
+was searched for was largely kart art.  The upload path (NOTES 271) shows
+the entity sprites arrive from a WRAM staging buffer, which no ROM byte
+search would have matched.  The rest of this note stands only as a record
+of the wrong turn.
+
 **Stated honestly, this is a negative with a boundary**, not a proof of
 absence: the search covers banks `$C0-$CF` with this project's own LZ
 decompressor.  The art could sit outside that range, or in an encoding
@@ -11413,3 +11421,66 @@ So the choice is unchanged from NOTES 269, and it is the user's:
    data ships.
 3. **find the art first** - the rig is built and the method is proven;
    what is missing is where SMK keeps its object sprites.
+
+## 271. The negative in NOTES 269/270 was contaminated, and the upload
+path says where the art really is
+
+The user, on being told four of the five ripped tables are "not in the
+ROM": *"the whole problem is that we shouldn't need them if we were good
+enough to find the right sprites on the rom.  Is that correct?"*  Yes -
+and then: *"trace everything... I am quite sure the squashed drivers are
+sprites too.  Because there is no transformation for a sprite that is
+shown from his back, to look from the top when squashed.  Don't assume."*
+
+Both corrections land, and the second killed an assumption I had written
+into NOTES 270 as if it were a finding.  A top-down squashed kart cannot
+be a transform of a rear view.  It is art.
+
+**And the negative itself was contaminated.**  NOTES 269 isolated "the
+mole's 58 tiles" by diffing VRAM twelve frames either side of the latch.
+Twelve frames is long enough for the kart to turn - and the kart's own
+rotation frames are re-uploaded to VRAM every time it does.  Running the
+DMA trace over the same course:
+
+    VRAM tiles $589..$5BF  <- banks $84, $C0, $C1, $C2
+
+which are the per-driver KART sheets.  Every tile in that "mole" set was
+a kart tile.  The search that found nothing was searching for the wrong
+bytes, and the confident negative built on it - repeated for Koopa Beach
+and Bowser Castle in NOTES 270 - is withdrawn.
+
+**What the trace actually shows** (`tools/labs/dmalist.py`, which has been
+in the tree since NOTES 674's colour work and which I should have reached
+for first):
+
+    src bank $C0-$C6   ROM in place    the eight drivers' kart sheets,
+                                       VRAM $5800..$6CC0, streamed as the
+                                       kart rotates
+    src bank $84       ROM in place    VRAM $4000..$5940
+    src bank $7F       WRAM            28 transfers covering VRAM
+                                       $0000..$7E80 - everything else
+
+**Bank `$7F` is the answer.**  It is WRAM: the game DECOMPRESSED that art
+there and DMA'd it from there.  That is exactly why a byte-search of the
+ROM found the karts (stored in place, uncompressed) and the pipes and the
+HUD (plain compressed streams) and nothing else: the entity and hazard
+sprites reach VRAM through a staging buffer, and the ROM holds them in a
+form the search never compared against.
+
+So the art is in the ROM, as the user said it must be.  The route to it
+is now a chain with no guessing in it: take the VRAM tiles a sprite
+actually uses (from OAM - `0/m_objects.character`, since this MAME build
+has no OAM address space either), find the `$7F` transfer that covers
+them, take its `$7F` source address, and find the decompression that
+wrote that address.  Each link is observable.
+
+Two rig notes for whoever walks it: MAME write taps on `$420B` never
+fire in this build (the driver handles those registers internally) and
+debugger `wpset` did not fire either, so the DMA question is answered on
+the Python oracle, not in MAME.  VRAM and OAM in MAME are save-state
+items, not spaces: `emu.item(dev.items["0/m_vram"])`.
+
+`tools/labs/findart.py` keeps its value - it is what proved the karts and
+pipes ARE in place - but its negative result means only "not stored
+uncompressed or as a plain stream in $C0-$CF", which is a much smaller
+claim than the one NOTES 270 made.
