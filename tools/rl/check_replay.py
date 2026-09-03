@@ -30,17 +30,28 @@ _ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 _TRACE = re.compile(r"pads f(\d+) a(\d+) x(-?\d+) y(-?\d+) spd(-?\d+) lap(-?\d+)")
 
 
-def run(track: int, laps: int, character: int, engine_class: int) -> tuple[int, int, str]:
-    """Returns (frames compared, frames identical, a one-line verdict)."""
+def run(track: int, laps: int, character: int, engine_class: int,
+        driver=None) -> tuple[int, int, str]:
+    """Returns (frames compared, frames identical, a one-line verdict).
+
+    `driver` is None for src/autopilot.c, or (policy, norm, device) to
+    check a trained policy instead - the actions go down the same path
+    either way, so the scripted driver is the cheap default."""
     cfg = dict(track=track, character=character, engine_class=engine_class,
                mode=MODE_TT, laps=laps, max_frames=30000, stall_frames=0)
 
-    # 1. the scripted driver, in the environment, at one action a frame
     env = SMKVecEnv([EnvCfg(frame_skip=1, **cfg)])
-    env.reset()
+    obs = env.reset()
     acts, rows, finish = [], [], None
     for _ in range(30000):
-        a = int(env.autopilot_actions()[0])
+        if driver is None:
+            a = int(env.autopilot_actions()[0])
+        else:
+            import torch
+            policy, norm, device = driver
+            with torch.no_grad():
+                logits, _ = policy(torch.as_tensor(norm(obs), device=device))
+                a = int(logits.argmax(-1)[0])
         obs, rew, done, trunc, info = env.step(np.array([a], dtype=np.int32))
         st = env.state(0)
         acts.append(a)
@@ -104,12 +115,23 @@ def main():
     p.add_argument("--laps", type=int, default=2)
     p.add_argument("--character", type=int, default=0)
     p.add_argument("--engine-class", type=int, default=1, dest="engine_class")
+    p.add_argument("--policy", default="",
+                   help="check a trained policy instead of the scripted driver")
     args = p.parse_args()
     tracks = args.track if args.track else [0, 7, 19]
 
+    driver = None
+    if args.policy:
+        import torch
+        from policy import load_checkpoint
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        pol, norm, _ = load_checkpoint(args.policy, device)
+        driver = (pol, norm, device)
+
     ok = True
     for t in tracks:
-        n, same, verdict = run(t, args.laps, args.character, args.engine_class)
+        n, same, verdict = run(t, args.laps, args.character, args.engine_class,
+                               driver)
         print("  " + verdict)
         if n == 0 or same != n:
             ok = False

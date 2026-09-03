@@ -128,7 +128,8 @@ loop.
 make envtest          # the environment's gate, and its throughput
 make envcheck         # prove it is frame-for-frame the same game as the window
 make train TRACK=0    # PPO, in tools/rl/
-make watch TRACK=0    # watch the trained policy drive, in the real window
+make watch RUN=runs/track0   # watch the CURRENT policy drive, in the real
+                             # window - safe while the training is running
 ```
 
 Three million agent steps - about half a minute on one GPU - is enough

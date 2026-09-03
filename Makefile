@@ -12,7 +12,7 @@ ASAR    := vendor/asar-build/asar/bin/asar
 
 .PHONY: all game run bench shots selftest test verify info trace dis \
         jumptables health extract roundtrip romhack tools clean distclean help \
-        envtest envcheck train watch
+        envtest envcheck train watch watch-time
 
 all: game
 
@@ -56,18 +56,24 @@ envtest: game $(BASE)
 envcheck: game $(BASE)
 	@$(PY) tools/rl/check_replay.py
 
-## train a policy on one course (see docs/RL.md for the knobs)
+## train a policy on one course (see docs/RL.md for the knobs).  Every
+## evaluation drops a runs/<name>/latest.pads that `make watch` can play.
 train: game $(BASE)
-	@$(PY) tools/rl/train.py --track $(TRACK) --envs 256 --steps 20000000 \
-	    --out runs/track$(TRACK)
+	@$(PY) tools/rl/train.py --track $(or $(TRACK),0) --envs 256 \
+	    --steps 20000000 --out runs/track$(or $(TRACK),0)
 
-## watch the last trained policy drive, in the real window
+## watch a run's CURRENT policy drive, in the real window.  Safe to use
+## while the training is still going - it only reads the checkpoint.
+##   make watch RUN=runs/gp TRACK=19
 watch: game $(BASE)
-	@$(PY) tools/rl/export_pads.py runs/track$(TRACK)/policy.pt \
-	    --track $(TRACK) --laps 5 -o runs/track$(TRACK)/run.pads
-	@$(GAME) --pads runs/track$(TRACK)/run.pads
+	@$(PY) tools/rl/watch.py $(RUN) $(if $(TRACK),--track $(TRACK))
 
-TRACK ?= 0
+## the same, without opening a window: just the lap time
+watch-time: game $(BASE)
+	@$(PY) tools/rl/watch.py $(RUN) --headless $(if $(TRACK),--track $(TRACK))
+
+RUN   ?= runs/track0
+TRACK ?=
 
 ## the AI row chooser replayed against the real game's own logged inputs
 rowcheck: game

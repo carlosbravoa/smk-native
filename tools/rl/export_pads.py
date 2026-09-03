@@ -16,13 +16,54 @@ still print a good number, and the only way to catch that is to watch it.
 from __future__ import annotations
 
 import argparse
+import os
 
 import numpy as np
 import torch
 from torch.distributions import Categorical
 
-from smkenv import EnvCfg, SMKVecEnv, MODE_TT, OBS_DIM, frames_to_time, track_name
-from train import Policy, RunningNorm
+from smkenv import EnvCfg, SMKVecEnv, MODE_TT, frames_to_time, track_name
+from policy import load_checkpoint
+
+
+def write_pads(policy, norm, device, path, track, *, character=0, engine_class=1,
+               laps=5, frame_skip=4, max_frames=18000, mushroom=True,
+               sample=False) -> float | None:
+    """Drive one race and write the inputs out.  Returns the finishing
+    frame, or None if it did not finish.
+
+    `policy` may be None, which drives with src/autopilot.c instead - the
+    same file format, so the scripted baseline can be watched the same way.
+    """
+    cfg = EnvCfg(track=track, character=character, engine_class=engine_class,
+                 mode=MODE_TT, laps=laps, frame_skip=frame_skip,
+                 max_frames=max_frames, stall_frames=0, mushroom=int(mushroom))
+    env = SMKVecEnv([cfg])
+    obs = env.reset()
+    acts, finish = [], None
+    for _ in range(max_frames // frame_skip + 2):
+        if policy is None:
+            a = int(env.autopilot_actions()[0])
+        else:
+            with torch.no_grad():
+                logits, _ = policy(torch.as_tensor(norm(obs), device=device))
+                a = int(Categorical(logits=logits).sample()[0] if sample
+                        else logits.argmax(-1)[0])
+        acts.extend([a] * frame_skip)          # one entry a GAME frame
+        obs, rew, done, trunc, info = env.step(np.array([a], dtype=np.int32))
+        if done[0]:
+            finish = float(info[0][SMKVecEnv.INFO_FINISH_FRAME])
+            break
+        if trunc[0]:
+            break
+    env.close()
+
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    with open(path, "w") as f:
+        f.write(f"# track {track} character {character} "
+                f"class {engine_class} mode {MODE_TT}\n")
+        f.write("\n".join(str(a) for a in acts) + "\n")
+    return finish
 
 
 def main():
@@ -44,45 +85,16 @@ def main():
     p.add_argument("-o", "--out", default="policy.pads")
     args = p.parse_args()
 
-    cfg = EnvCfg(track=args.track, character=args.character,
-                 engine_class=args.engine_class, mode=MODE_TT, laps=args.laps,
-                 frame_skip=args.frame_skip, max_frames=args.max_frames,
-                 stall_frames=0, mushroom=int(args.mushroom))
-    env = SMKVecEnv([cfg])
-    obs = env.reset()
-
+    device = torch.device(args.device)
     policy = norm = None
     if args.policy:
-        device = torch.device(args.device)
-        ck = torch.load(args.policy, map_location=device, weights_only=False)
-        policy = Policy(hidden=ck["args"].get("hidden", 256)).to(device)
-        policy.load_state_dict(ck["policy"])
-        policy.eval()
-        norm = RunningNorm(OBS_DIM)
-        norm.load(ck["norm"])
+        policy, norm, _ = load_checkpoint(args.policy, device)
 
-    acts, finish = [], None
-    for _ in range(args.max_frames // args.frame_skip + 2):
-        if policy is None:
-            a = int(env.autopilot_actions()[0])
-        else:
-            with torch.no_grad():
-                logits, _ = policy(torch.as_tensor(norm(obs), device=device))
-                a = int(Categorical(logits=logits).sample()[0] if args.sample
-                        else logits.argmax(-1)[0])
-        acts.extend([a] * args.frame_skip)          # one entry a GAME frame
-        obs, rew, done, trunc, info = env.step(np.array([a], dtype=np.int32))
-        if done[0]:
-            finish = float(info[0][SMKVecEnv.INFO_FINISH_FRAME])
-            break
-        if trunc[0]:
-            break
-    env.close()
-
-    with open(args.out, "w") as f:
-        f.write(f"# track {args.track} character {args.character} "
-                f"class {args.engine_class} mode {MODE_TT}\n")
-        f.write("\n".join(str(a) for a in acts) + "\n")
+    finish = write_pads(policy, norm, device, args.out, args.track,
+                        character=args.character, engine_class=args.engine_class,
+                        laps=args.laps, frame_skip=args.frame_skip,
+                        max_frames=args.max_frames, mushroom=args.mushroom,
+                        sample=args.sample)
 
     who = args.policy or "the scripted driver"
     if finish is not None:
@@ -90,7 +102,7 @@ def main():
               f"{args.laps} laps in {frames_to_time(finish)}")
     else:
         print(f"{who} on {track_name(args.track)}: did not finish {args.laps} laps")
-    print(f"wrote {args.out} ({len(acts)} frames)\n"
+    print(f"wrote {args.out}\n"
           f"watch it:  ./build-native/smk --pads {args.out}")
 
 

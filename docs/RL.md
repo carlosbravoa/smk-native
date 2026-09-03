@@ -12,6 +12,24 @@ make train TRACK=0                 # PPO on Mario Circuit 1
 make watch TRACK=0                 # watch the result drive, in the real window
 ```
 
+## What it runs on
+
+No RL framework.  `tools/rl/train.py` is PPO in about 300 lines of
+PyTorch, for the same reason the physics has no engine behind it: a
+hidden `VecNormalize`, a default that quietly clips the reward, or a
+`done` flag that conflates a finish with a time-out is exactly the class
+of thing this tree refuses to have in the parts that matter.  The only
+dependencies are `torch` and `numpy`; the environment is reached through
+`ctypes`, so there is nothing to compile on the Python side either.
+
+The network is a two-layer 256-unit MLP with a policy head and a value
+head - about 150k parameters. On the machine this was developed on (an
+RTX 5070) it sits at **21% GPU utilisation and 887 MB**, because 55
+floats through two small matrices is not work. The GPU is a convenience,
+not a requirement: `--device cpu` costs perhaps a third of the
+throughput, since the bottleneck is neither the network nor the game but
+the Python loop between them.
+
 ## What it costs
 
 Measured on this machine, one core:
@@ -152,10 +170,37 @@ looks like it is learning:
 
 A lap time printed by a trainer is not evidence.  A policy that has found
 a hole in the reward - cutting a corner the sector map does not notice,
-riding a wall that happens to be fast - prints a good number too.
+riding a wall that happens to be fast - prints a good number too.  So the
+training is built to be watched, not only read.
+
+**While it is still running.**  `make watch` reads the checkpoint the
+trainer is writing, drives a five-lap time trial with whatever the policy
+can do at that moment, and opens the game with it.  It only reads, so it
+is safe to run against a live training directory as often as you like:
 
 ```bash
-python3 tools/rl/export_pads.py runs/track0/policy.pt --track 0 -o run.pads
+make watch RUN=runs/gp                  # the course the run is watching
+make watch RUN=runs/gp TRACK=19         # any course, trained on or not
+make watch-time RUN=runs/gp TRACK=19    # just the lap time, no window
+```
+
+**A record of the whole run.**  Every evaluation also drops a
+`latest.pads` in the run directory and keeps a numbered copy
+(`watch_u00200.pads`, `watch_u00400.pads`, ...), so the run can be played
+back later, update by update, and the driving compared with itself:
+
+```bash
+./build-native/smk --pads runs/gp/watch_u00200.pads   # early
+./build-native/smk --pads runs/gp/latest.pads         # now
+```
+
+`--no-watch` turns it off; it costs one five-lap roll-out per evaluation,
+which is a few hundred milliseconds.
+
+**A finished policy.**
+
+```bash
+python3 tools/rl/export_pads.py runs/gp/policy.pt --track 0 -o run.pads
 ./build-native/smk --pads run.pads
 ```
 

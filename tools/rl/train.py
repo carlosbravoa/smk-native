@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import time
 from dataclasses import asdict
 
@@ -28,69 +29,10 @@ import torch
 import torch.nn as nn
 from torch.distributions import Categorical
 
-from smkenv import (EnvCfg, SMKVecEnv, GP_TRACKS, N_ACTIONS, OBS_DIM,
+from smkenv import (EnvCfg, SMKVecEnv, GP_TRACKS, OBS_DIM,
                     frames_to_time, track_name)
-
-
-# ---- the policy ----------------------------------------------------------
-class Policy(nn.Module):
-    """A small MLP.  The observation is 55 engineered numbers, not pixels,
-    so there is nothing for a convolution to do and the whole network fits
-    in a fraction of the time one batch of environment steps takes."""
-
-    def __init__(self, obs_dim: int = OBS_DIM, n_act: int = N_ACTIONS, hidden: int = 256):
-        super().__init__()
-        self.body = nn.Sequential(
-            nn.Linear(obs_dim, hidden), nn.Tanh(),
-            nn.Linear(hidden, hidden), nn.Tanh(),
-        )
-        self.pi = nn.Linear(hidden, n_act)
-        self.v = nn.Linear(hidden, 1)
-        # orthogonal init with a small policy head: the standard recipe,
-        # and it matters - a large initial logit spread makes the first
-        # updates thrash
-        for m in self.modules():
-            if isinstance(m, nn.Linear):
-                nn.init.orthogonal_(m.weight, np.sqrt(2))
-                nn.init.zeros_(m.bias)
-        nn.init.orthogonal_(self.pi.weight, 0.01)
-        nn.init.orthogonal_(self.v.weight, 1.0)
-
-    def forward(self, x):
-        h = self.body(x)
-        return self.pi(h), self.v(h).squeeze(-1)
-
-
-class RunningNorm:
-    """Welford mean/variance for the observation.
-
-    Not optional.  The vector mixes distances in hundreds of pixels with
-    sines in [-1,1]; without this the first layer spends its capacity on
-    scale and the run looks like the algorithm is at fault.
-    """
-
-    def __init__(self, dim: int):
-        self.mean = np.zeros(dim, dtype=np.float64)
-        self.var = np.ones(dim, dtype=np.float64)
-        self.count = 1e-4
-
-    def update(self, x: np.ndarray) -> None:
-        bm, bv, bc = x.mean(0), x.var(0), x.shape[0]
-        d = bm - self.mean
-        tot = self.count + bc
-        self.mean += d * bc / tot
-        m_a, m_b = self.var * self.count, bv * bc
-        self.var = (m_a + m_b + d * d * self.count * bc / tot) / tot
-        self.count = tot
-
-    def __call__(self, x: np.ndarray) -> np.ndarray:
-        return np.clip((x - self.mean) / np.sqrt(self.var + 1e-8), -10, 10).astype(np.float32)
-
-    def state(self) -> dict:
-        return {"mean": self.mean.tolist(), "var": self.var.tolist(), "count": self.count}
-
-    def load(self, s: dict) -> None:
-        self.mean = np.array(s["mean"]); self.var = np.array(s["var"]); self.count = s["count"]
+from policy import Policy, RunningNorm, load_checkpoint
+from export_pads import write_pads
 
 
 # ---- the environments ----------------------------------------------------
@@ -345,6 +287,26 @@ def train(args):
                       f"{frames_to_time(got) if got else 'did not finish':<10}{mark}")
             torch.save({"policy": policy.state_dict(), "norm": norm.state(),
                         "args": vars(args)}, os.path.join(args.out, "policy.pt"))
+            # Leave something to WATCH, not just a number to read.  Every
+            # evaluation drops the current policy's inputs for one course,
+            # so a five-lap run of whatever it can do right now is always
+            # one command away while the training is still going:
+            #     ./build-native/smk --pads runs/<name>/latest.pads
+            if args.watch:
+                wt = args.watch_track if args.watch_track >= 0 else tracks[0]
+                f = write_pads(policy, norm, device,
+                               os.path.join(args.out, "latest.pads"), wt,
+                               character=args.character,
+                               engine_class=args.engine_class, laps=5,
+                               frame_skip=args.frame_skip,
+                               mushroom=bool(args.mushroom))
+                # and keep this one, so the whole run can be replayed later
+                shutil.copyfile(os.path.join(args.out, "latest.pads"),
+                                os.path.join(args.out, f"watch_u{up:05d}.pads"))
+                print(f"    watch:  ./build-native/smk --pads "
+                      f"{os.path.join(args.out, 'latest.pads')}   "
+                      f"({track_name(wt)}, 5 laps, "
+                      f"{frames_to_time(f) if f else 'did not finish'})")
 
     env.close()
     print(f"saved {os.path.join(args.out, 'policy.pt')}")
@@ -383,6 +345,11 @@ def main():
     p.add_argument("--log-every", type=int, default=10, dest="log_every")
     p.add_argument("--eval-every", type=int, default=100, dest="eval_every")
     p.add_argument("--eval", type=str, default="", help="load a policy and evaluate it")
+    p.add_argument("--no-watch", dest="watch", action="store_false",
+                   help="do not write a watchable .pads at each evaluation")
+    p.set_defaults(watch=True)
+    p.add_argument("--watch-track", type=int, default=-1, dest="watch_track",
+                   help="which course the watchable run drives (default: the first)")
     args = p.parse_args()
 
     if args.eval:
