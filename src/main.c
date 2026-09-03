@@ -310,6 +310,15 @@ static int player_slip_units;   /* signed, $10000 = full turn */
 static int player_airborne;
 static int hud_lap, hud_rank;
 static long hud_race_frames;             /* frames since the lights */
+static void obs_trace(const float *obs, int act)
+{
+    static long at = -2;
+    if (at == -2) { const char *e = getenv("SMK_OBS_TRACE"); at = e ? atol(e) : -1; }
+    if (at < 0 || hud_race_frames != at) return;
+    printf("obs f%ld act %d:", hud_race_frames, act);
+    for (int q = 0; q < SMK_ENV_OBS; q++) printf(" %.6f", obs[q]);
+    printf("\n");
+}
 static int  hud_countdown;               /* Lakitu's frame, from the arm */
 static int  lap_sign_t = -1;             /* his lap sign, from the crossing */
 static bool item_used_once;              /* the slot shows the used look after it */
@@ -1034,6 +1043,9 @@ static smk_autopilot autopilot;
 static int      net_act = 1;
 static int      net_hold;
 static uint16_t net_pad_prev;
+
+/* SMK_OBS_TRACE=frame - see the note at its call site */
+static void obs_trace(const float *obs, int act);
 static int  crossings;              /* finish-line crossings this race */
 static bool engine_throttle;        /* B held: the rev, countdown included */
 static int  fx_kind_now = -1;       /* the ground effect this frame ($80:D37A) */
@@ -4220,11 +4232,6 @@ int main(int argc, char **argv)
                 in.quit = true;
             }
             /* the one mushroom */
-            if (in.item && tt_mushroom && race_state == RACE_RUN
-                && smk_player_boost(&player)) {
-                tt_mushroom = false;
-                player.item_held = false;
-            }
             /* the debug track cycle belongs to the direct mode only */
             if (shell) in.next_track = in.prev_track = false;
             if (in.next_track || in.prev_track || in.next_pal || in.prev_pal) {
@@ -4417,6 +4424,15 @@ int main(int argc, char **argv)
                  * environment produced.  If these two ever disagree, the
                  * env and the game have drifted apart and every lap time
                  * the trainer prints is about a different game. */
+                /* the observation, on the same replayed trajectory - so
+                 * tools/rl/check_obs.py can compare it against the
+                 * environment's without the two drivers having to agree
+                 * about anything except the buttons */
+                if (getenv("SMK_OBS_TRACE")) {
+                    float obs[SMK_ENV_OBS];
+                    smk_obs_build(&trk, &crs, &player, &kart, me, obs);
+                    obs_trace(obs, act);
+                }
                 if (getenv("SMK_PADS_TRACE"))
                     printf("pads f%ld a%d x%d y%d spd%d lap%d\n",
                            hud_race_frames, act, smk_kart_px(kart.x),
@@ -4447,7 +4463,17 @@ int main(int argc, char **argv)
             }
             /* --autodrive drives EVERY view; a VS CPU view's second
              * driver is the same autopilot, always. */
-            if (cpu_net.ok && views[v].bot
+            /* SMK_OBS_TRACE=frame: what a synthetic driver SEES on that
+             * race frame, so it can be diffed against what the training
+             * environment showed at the same point.  One implementation
+             * of the vector is not the same thing as one set of inputs
+             * to it - the mushroom bug lived in the gap between those
+             * two, and tools/rl/check_obs.py now closes it. */
+            /* --autodrive as well as the VS CPU view: watching the
+             * policy drive alone, full screen, is the clearest look at
+             * it there is - a split screen halves exactly the thing you
+             * are trying to see. */
+            if (cpu_net.ok && (views[v].bot || autodrive)
                 && race_state == RACE_RUN && !replay_path) {
                 /* The trained policy, as the second player's driver.  It
                  * gets the SAME observation smk_env_batch_step hands it
@@ -4465,6 +4491,7 @@ int main(int argc, char **argv)
                     smk_obs_build(&trk, &crs, &player, &kart, me, obs);
                     net_act = smk_net_act(&cpu_net, obs);
                     net_hold = cpu_net.frame_skip;
+                    obs_trace(obs, net_act);
                 }
                 uint16_t held = smk_env_action_pad(net_act);
                 in.up       = (held & 0x8000) != 0;
@@ -4482,6 +4509,11 @@ int main(int argc, char **argv)
                  * (src/autopilot.c). */
                 smk_autopilot_out ap;
                 smk_autopilot_step(&autopilot, &trk, &crs, &player, &kart, &ap);
+                if (getenv("SMK_OBS_TRACE")) {
+                    float obs[SMK_ENV_OBS];
+                    smk_obs_build(&trk, &crs, &player, &kart, me, obs);
+                    obs_trace(obs, -1);
+                }
                 in.up = ap.accel; in.down = ap.brake;
                 in.left = ap.left; in.right = ap.right;
                 in.hop = ap.hop; in.hop_held = ap.hop_held;
@@ -4538,6 +4570,29 @@ int main(int argc, char **argv)
                         player.mole_dir = 0;
                     }
                 }
+            }
+            /* The time trial's one mushroom, consumed HERE - inside the
+             * per-view pass, after every driver has chosen, and before
+             * the kart is stepped.
+             *
+             * It used to sit outside this loop and before the drivers
+             * ran, so only a person's press ever reached it: in.item is
+             * an edge cleared at the bottom of the tick, and both the
+             * autopilot and --cpu-policy set it further down.  A
+             * synthetic driver therefore carried its mushroom for the
+             * whole race - which for a trained policy is worse than
+             * losing a boost, because `item_held` is IN its observation.
+             * It spent the race in a state training barely showed it and
+             * drove accordingly.
+             *
+             * Before the step, because that is where src/env.c applies
+             * it, and a boost that lands a frame later is a different
+             * race from the one the policy learned. */
+            if (in.item && tt_mushroom && race_state == RACE_RUN
+                && smk_player_boost(&player)) {
+                tt_mushroom = false;
+                player.item_held = false;
+                in.item = false;
             }
             step_kart(&kart, &trk, &phys, &in);
             if (replay_path && getenv("SMK_REPLAY_TRACE") && replay_i < replay.n) {
@@ -5057,7 +5112,7 @@ int main(int argc, char **argv)
                 /* SMK_CPU_TRACE: how the second player's driver is doing,
                  * so --cpu-policy can be measured against the autopilot
                  * headlessly instead of watched and guessed at */
-                if (getenv("SMK_CPU_TRACE") && views[cur_view].bot
+                if (getenv("SMK_CPU_TRACE") && (views[cur_view].bot || autodrive)
                     && (hud_race_frames % 60) == 0)
                     printf("cpu f%ld lap%d sec%d spd%d at %d,%d\n",
                            hud_race_frames, me->lap, me->sector, kart.speed,

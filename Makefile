@@ -52,9 +52,11 @@ ailap: game $(BASE)
 envtest: game $(BASE)
 	@$(NATIVE)/smk_envtest $(BASE)
 
-## prove src/env.c and src/main.c step the same race, frame for frame
+## prove src/env.c and src/main.c step the same race, frame for frame,
+## and show a driver the same observation while doing it
 envcheck: game $(BASE)
 	@$(PY) tools/rl/check_replay.py
+	@$(PY) tools/rl/check_obs.py
 
 ## train a policy on one course (see docs/RL.md for the knobs).  Every
 ## evaluation drops a runs/<name>/latest.pads that `make watch` can play.
@@ -170,4 +172,5 @@ check: $(BASE)
 	@$(PY) tools/test.py | tail -1
 	@./build-native/smk_envtest rom/smk_usa.sfc | tail -1
 	@$(PY) tools/rl/check_replay.py | tail -1
+	@$(PY) tools/rl/check_obs.py | tail -1
 	@SDL_VIDEODRIVER=dummy ./build-native/smk --frames 60 >/dev/null && echo "smoke: game binary runs"

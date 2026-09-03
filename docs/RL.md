@@ -174,7 +174,19 @@ looks like it is learning:
    7,114 identical ticks**, so what you watch in a window is the run that
    was measured.
 
-3. **the scripted driver as the baseline** - `train.py` prints
+3. **`make envcheck` also runs `check_obs.py`** - the same race in both,
+   driven from one fixed input sequence so the trajectories are
+   identical, stopping at matched frames and comparing all 55
+   observation numbers. Proving the two step the same race is *not* the
+   same as proving they show a driver the same world, and both of the
+   bugs that reached the user lived in exactly that gap: the time-trial
+   mushroom the game granted and the environment did not, and then the
+   one the game would not let a synthetic driver spend, so `item_held`
+   stayed true for a whole race on one side only. It immediately found a
+   third - `smk_obj_ticks`, the moles' pop-up clock, which main.c sets
+   from `fx_ticks` and the environment never set at all.
+
+4. **the scripted driver as the baseline** - `train.py` prints
    `src/autopilot.c`'s time on the same courses under the same episode
    rules before it starts, and the evaluation is reported as a delta
    against it. A policy that cannot beat the script has not done

@@ -103,6 +103,16 @@ struct smk_env {
     uint16_t    pad_prev;
     int         sector;          /* the last valid sector, = me.sector    */
     long        frames;          /* game frames since the lights          */
+    /* The game's own fx_ticks: every simulated frame since the race was
+     * loaded, countdown included, never reset.  It is not decoration -
+     * smk_collide_objects reads it through smk_obj_ticks for the moles'
+     * pop-up timing, and main.c takes the pickup collector's alternation
+     * from its parity.  The environment used its own post-countdown
+     * clock for the second and nothing at all for the first, so a mole
+     * was up in one and down in the other; tools/rl/check_obs.py found
+     * it on Rainbow Road at frame 597, same position, speed 667 against
+     * the mole cap of 0x100. */
+    unsigned    ticks;
     int         steps;           /* agent steps                           */
     float       prog;            /* last continuous progress, in sectors  */
     float       prog_best;
@@ -390,6 +400,8 @@ static void frame(smk_env *e, uint16_t held, uint16_t pressed)
     /* $84DBD5: which obstacles are on the track for this lap segment */
     smk_course_spawn(&e->crs, e->sector, 0, false);
 
+    /* the moles' clock, as main.c hands it over */
+    smk_obj_ticks = e->ticks;
     bool grounded = k->z == 0;
     int was_hazard = p->hazard;
     smk_player_step(p, k, &e->trk, held, pressed);
@@ -408,8 +420,9 @@ static void frame(smk_env *e, uint16_t held, uint16_t pressed)
         p->coins -= fee;
         e->rescues++;
     }
-    /* the collector serves P1 on odd frames (NOTES 110) */
-    if ((e->frames & 1) == 1) smk_pickup_step(e->rom, &e->trk, p, k, grounded);
+    /* the collector serves P1 on odd frames (NOTES 110), off the same
+     * clock main.c uses */
+    if ((e->ticks & 1u) == 1u) smk_pickup_step(e->rom, &e->trk, p, k, grounded);
     /* the Thwomps only move once the first lap is complete */
     smk_course_movers_step(&e->crs, e->me.lap >= 2);
 
@@ -445,6 +458,7 @@ static void frame(smk_env *e, uint16_t held, uint16_t pressed)
     smk_progress_step(&e->me, &e->crs, k);
     e->sector = e->me.sector;
     e->frames++;
+    e->ticks++;
 }
 
 /* ---- the reward (OURS, entirely) ---------------------------------------
