@@ -1098,6 +1098,7 @@ static const char *pads_path;
 static int32_t *pad_seq;
 static int pads_n, pads_i;
 static uint16_t pads_prev;
+static int pads_mushroom = -1;   /* from the file's header; -1 = not stated */
 static int replay_kart = 1000;          /* 1000 = P1 (Mario), 1100 = P2 (Toad)        */
 static int replay_i;
 static void step_kart(smk_kart *k, smk_track *trk,
@@ -1895,6 +1896,13 @@ static bool load_race(const smk_rom *rom, int track, int theme, int character,
     /* one mushroom in a time trial, and nothing else (the user's rule for
      * this shell; the ROM's own grant is not decoded - ledger S19) */
     tt_mushroom = (mode == SMK_MODE_TT);
+    /* A --pads file says whether the race it was driven in had the
+     * mushroom, and that has to win.  The shell always grants one; an
+     * agent may have been trained without it, and then its "use item"
+     * presses fire a boost here that never happened there - the two
+     * races come apart at the first press and the replay is of nothing.
+     * That is a whole class of bug, so the FILE describes its own race. */
+    if (pads_path && pads_mushroom >= 0) tt_mushroom = (pads_mushroom != 0);
     player.item_held = tt_mushroom;
     memset(&result, 0, sizeof result);
     result.best_slot = -1;
@@ -3603,12 +3611,13 @@ int main(int argc, char **argv)
         char line[256];
         while (fgets(line, sizeof line, f)) {
             if (line[0] == '#') {
-                int t, c, cl, m;
+                int t, c, cl, m, mush;
                 if (sscanf(line, "# track %d character %d class %d mode %d",
                            &t, &c, &cl, &m) == 4) {
                     track = t; theme = -1; character = c; engine_class = cl;
                     mode_want = m;
                 }
+                if (sscanf(line, "# mushroom %d", &mush) == 1) pads_mushroom = mush;
                 continue;
             }
             if (line[0] == '\0' || line[0] == '\n') continue;
@@ -3618,8 +3627,9 @@ int main(int argc, char **argv)
         fclose(f);
         if (mode_want == SMK_MODE_TT) want_tt = 1;
         else if (mode_want == SMK_MODE_GP) want_race = 1;
-        printf("pads: track %d, character %d, class %d, %d frames\n",
-               track, character, engine_class, pads_n);
+        printf("pads: track %d, character %d, class %d, %d frames, mushroom %s\n",
+               track, character, engine_class, pads_n,
+               pads_mushroom < 0 ? "unstated" : pads_mushroom ? "yes" : "no");
     }
     if (character < 0 || character >= SMK_CHARACTERS) character = 0;
     drv = &SMK_DRIVERS[character];

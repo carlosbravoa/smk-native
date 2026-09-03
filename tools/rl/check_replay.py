@@ -26,19 +26,30 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from smkenv import EnvCfg, SMKVecEnv, MODE_TT, frames_to_time, track_name  # noqa: E402
 
+
+def write_header(path, track, character, engine_class, mushroom, acts):
+    """The same file export_pads.write_pads writes - the header has to
+    describe the race, or the game replays a different one."""
+    with open(path, "w") as f:
+        f.write(f"# track {track} character {character} "
+                f"class {engine_class} mode {MODE_TT}\n")
+        f.write(f"# mushroom {int(bool(mushroom))}\n")
+        f.write("\n".join(str(a) for a in acts) + "\n")
+
 _ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 _TRACE = re.compile(r"pads f(\d+) a(\d+) x(-?\d+) y(-?\d+) spd(-?\d+) lap(-?\d+)")
 
 
 def run(track: int, laps: int, character: int, engine_class: int,
-        driver=None) -> tuple[int, int, str]:
+        driver=None, mushroom: bool = True) -> tuple[int, int, str]:
     """Returns (frames compared, frames identical, a one-line verdict).
 
     `driver` is None for src/autopilot.c, or (policy, norm, device) to
     check a trained policy instead - the actions go down the same path
     either way, so the scripted driver is the cheap default."""
     cfg = dict(track=track, character=character, engine_class=engine_class,
-               mode=MODE_TT, laps=laps, max_frames=30000, stall_frames=0)
+               mode=MODE_TT, laps=laps, max_frames=30000, stall_frames=0,
+               mushroom=int(bool(mushroom)))
 
     env = SMKVecEnv([EnvCfg(frame_skip=1, **cfg)])
     obs = env.reset()
@@ -65,10 +76,7 @@ def run(track: int, laps: int, character: int, engine_class: int,
 
     with tempfile.TemporaryDirectory() as tmp:
         pads = os.path.join(tmp, "check.pads")
-        with open(pads, "w") as f:
-            f.write(f"# track {track} character {character} "
-                    f"class {engine_class} mode {MODE_TT}\n")
-            f.write("\n".join(str(a) for a in acts) + "\n")
+        write_header(pads, track, character, engine_class, mushroom, acts)
 
         # 2. the same inputs through the real game
         smk = os.path.join(_ROOT, "build-native", "smk")
@@ -102,7 +110,8 @@ def run(track: int, laps: int, character: int, engine_class: int,
             same += 1
         elif first is None:
             first = f
-    verdict = (f"{track_name(track)}: {same}/{n} frames identical"
+    verdict = (f"{track_name(track)}{' +mushroom' if mushroom else ' no mushroom'}: "
+               f"{same}/{n} frames identical"
                + (f", first divergence at frame {first}" if first else "")
                + (f", {laps} laps in {frames_to_time(finish)}" if finish else ", did not finish"))
     return n, same, verdict
@@ -128,13 +137,20 @@ def main():
         pol, norm, _ = load_checkpoint(args.policy, device)
         driver = (pol, norm, device)
 
+    # BOTH mushroom settings.  The gate used to build its own config with
+    # the mushroom on, which happens to be what the shell grants, so it
+    # never exercised a run driven WITHOUT one - and a policy trained that
+    # way pressed "use item" into a boost the environment never gave it.
+    # Every action-12 press came apart from there.  The header carries the
+    # answer now, and this is what proves the header is honoured.
     ok = True
     for t in tracks:
-        n, same, verdict = run(t, args.laps, args.character, args.engine_class,
-                               driver)
-        print("  " + verdict)
-        if n == 0 or same != n:
-            ok = False
+        for mush in (True, False):
+            n, same, verdict = run(t, args.laps, args.character,
+                                   args.engine_class, driver, mush)
+            print("  " + verdict)
+            if n == 0 or same != n:
+                ok = False
     print("the environment and the SDL game step the same race"
           if ok else "DIVERGED - src/env.c and src/main.c are not running the same game")
     return 0 if ok else 1

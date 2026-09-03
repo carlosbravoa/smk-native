@@ -62,6 +62,9 @@ def write_pads(policy, norm, device, path, track, *, character=0, engine_class=1
     with open(path, "w") as f:
         f.write(f"# track {track} character {character} "
                 f"class {engine_class} mode {MODE_TT}\n")
+        # the race this was driven in, so `smk --pads` can reproduce it
+        # rather than assume the shell's own grant
+        f.write(f"# mushroom {int(bool(mushroom))}\n")
         f.write("\n".join(str(a) for a in acts) + "\n")
     return finish
 

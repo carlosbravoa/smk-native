@@ -321,7 +321,11 @@ def main():
     p.add_argument("--character", type=int, default=0)
     p.add_argument("--engine-class", type=int, default=1, dest="engine_class")
     p.add_argument("--laps", type=int, default=3)
-    p.add_argument("--mushroom", action="store_true")
+    # ON by default, because the game's own time trial grants one and a
+    # policy that trained without it drives a different race from the one
+    # `smk --pads` will replay.
+    p.add_argument("--no-mushroom", dest="mushroom", action="store_false")
+    p.set_defaults(mushroom=True)
     p.add_argument("--frame-skip", type=int, default=4, dest="frame_skip")
     p.add_argument("--max-frames", type=int, default=10800, dest="max_frames")
     p.add_argument("--stall-frames", type=int, default=300, dest="stall_frames")
