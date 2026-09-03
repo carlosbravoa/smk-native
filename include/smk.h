@@ -330,7 +330,15 @@ typedef struct {
     int      shrink_t;         /* $84: 1088 frames small after lightning    */
     int      squash_t;         /* bug 13: frames flat under a Thwomp (OURS) */
     int      mole_on;          /* bug 12: a mole rides the kart (sticks until shaken) */
-    int      mole_hops;        /* hops so far toward shaking it off (OURS: 3) */
+    /* Shaking it off is WAGGLING the d-pad, left and right - the user,
+     * who has played the original: "P1 cannot get rid of the moles
+     * pressing left right repeatedly as in the original game".  The
+     * count and the rule are theirs, not measured: their own `moles`
+     * recording never shakes one (NOTES 210), and the ROM's own release
+     * has not been found.  LABELLED as such, and it replaces a shake-off
+     * that was purely my invention (three hops). */
+    int      mole_hops;        /* alternations counted so far        */
+    int      mole_dir;         /* the last direction pressed: -1 / +1 */
     int      fc, ca;           /* $FC countdown, $CA hold counter           */
     /* hazards (NOTES 113): water = the $22 wade, fall = the $24/$26 drop
      * and Lakitu's rescue.  The caller supplies the rescue target - the
@@ -1118,6 +1126,9 @@ bool smk_objgfx_load(const smk_rom *rom, int theme, smk_objgfx *out);
 /* How far a kart must have travelled from where its rescue timer last
  * reset to count as NOT stuck.  Ours, labelled: the ROM's own rescue
  * trigger is not decoded (NOTES 057/169). */
+/* How many left-right alternations shake a mole off.  OURS, from the
+ * user's account of the original (see smk_player.mole_hops). */
+#define SMK_MOLE_SHAKE       6
 #define SMK_AI_STUCK_PX      128
 #define SMK_AI_RESCUE_FRAMES 600
 typedef struct {
@@ -1819,10 +1830,12 @@ typedef struct {
     /* readouts, for tuning the driver against a real course */
     int dbg_bend, dbg_need, dbg_limit, dbg_aim, dbg_dev;
     int dbg_flips, last_steer;   /* steering reversals: the weave, counted */
+    int item_wait;             /* frames before it uses what it is holding */
     long dbg_err_sum; int dbg_err_n;   /* mean |heading error|: the weave's SIZE */
 } smk_autopilot;
 typedef struct {
     bool accel, brake, left, right, hop, hop_held;
+    bool item;                 /* the item button, as a person presses it */
 } smk_autopilot_out;
 void smk_autopilot_init(smk_autopilot *a);
 void smk_autopilot_step(smk_autopilot *a, const smk_track *trk,

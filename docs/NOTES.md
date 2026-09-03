@@ -10922,3 +10922,80 @@ players row was a fourth row of the mode screen.  The row became its own
 screen, so the cursor and the selection were the same thing kept in two
 fields - and the selftest's cup walk, which sets `mode_sel` directly, was
 quietly overwritten by the stale `mode_cur` on its first step.
+
+## 263. A playtest list: the engine that would not stop, and six others
+
+The user, playing two-player.  Seven reports; six are answered here and
+the seventh needs a capture that has not been run.
+
+**The engine stuck on pause, on leaving a race, and at the finish.**  The
+engine is a SYNTHESISED voice on SDL_mixer's music hook, not a channel -
+so `Mix_Pause(-1)` never touched it - and nothing steps it while the tick
+is skipped, so it held its last note for ever.  Silenced now whenever no
+driver is being stepped: paused, or on any shell screen that is not the
+race.
+
+**The feather's camera, and what the ROM actually does.**  The user:
+*"when jumping with a feather, the camera doesnt do a 360.  Only the
+player."*  Measured, and it overturns the port rather than confirming the
+complaint (tools/labs/feathercam.py, spincam2.py):
+
+    feather ($18)      $94 - $A4 = $C0 flat, every frame of the flight,
+                       while $AA sweeps a whole circle
+    spin-out ($0E/$10) the same: $C0 flat
+    tumble  ($1A)      $A4 + $C0 + $AA/2 - NOTES 196's measurement
+
+So the ORIGINAL does not turn the camera for a feather: the kart spins
+and the view holds still.  The port was turning it a HALF circle in six
+different states, because NOTES 196's rule for the tumble had been
+applied to everything that carries `$AA` - and NOTES 196 says in its own
+text that the banana's spins leave `$94` alone.  The tumble is the
+exception, not the rule.  Now `cam_spin` is `$1A` only, which is both
+what the game does and steadier to look at.  If a 360 camera is wanted it
+is a deliberate deviation and gets ledgered as one.
+
+**The moles.**  Two reports: player 2's CPU cannot shake one off at all,
+and player 1 cannot shake one off by waggling.  Both were true.  Shaking
+was three fresh HOPS, which was my invention (NOTES 210 says so: "the
+user never shook theirs, so the real shake-off is unmeasured").  The user
+has played the original: it is the d-pad, left and right, repeatedly.
+That is their account, not a measurement, and it is labelled as such -
+but an account from someone who has played it beats an invention.
+
+It needed a real fix underneath, too: **the port never produced a d-pad
+EDGE**.  `$C4` bits 0 and 1 are the Right and Left presses (NOTES 106)
+and `step_kart` only ever set the hop's edge, so anything asking "was
+that a fresh press" of a direction got no for an answer.  Six
+ALTERNATIONS now shake a mole off - hammering one way does nothing - and
+the CPU driver waggles instead of steering while one is riding, which is
+what a person does.  `SMK_MOLE_TEST=frame` puts one on P1's head so the
+shake can be driven without hunting for one on Donut Plains.
+
+**Two attack items meeting.**  They pass through each other; the user
+wants them to cancel, "flipped down and fall", which is the death this
+port already draws ($80:F85D's hop).  Added to `smk_proj_step`: anything
+moving cancels anything else moving, a banana lying on the road takes no
+part.  OURS - the ROM's own object-against-object test is not decoded -
+and the box is the same one every other contact uses.
+
+**An AI hit playing twice.**  It was playing $39 AND $66 together, on an
+older reading that "hitting an AI is both".  The user, hearing it: "the
+sound gets triggered 2 times for the same item".  Both ids are their own
+naming by ear rather than a decoded call site, so the hit keeps the one
+they called "ai player takes a hit".
+
+**The CPU driver never used an item.**  It does now: a short deterministic
+wait after the roulette settles, then one press.  The wait comes from the
+driver's own tick counter, not a random number, so a replay stays a
+replay.  OURS and labelled - when the game's own AI fires is not decoded,
+and this driver is emulating a person anyway.
+
+**Still open: the slide sound on Ghost Valley.**  The user: *"sliding in
+ghost valley should sound different than sliding in mario circuit."*
+What can be said without a capture: the ROM's skid is a FIXED id -
+`$80:A9A8` is `lda #$002A` with no table and no surface index - so a
+difference cannot come from there.  It would have to be the continuous
+SURFACE sound, and the port only holds six of those ($50 $54 $56 $58 $5A
+$5C, all off-road); Ghost Valley's wooden road is none of them.  Settling
+it needs the surface-audio rig (force the course to one class, record,
+subtract), which has not been run.  Not guessed at in the meantime.

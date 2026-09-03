@@ -108,6 +108,16 @@ static int probe(const smk_track *trk, int px, int py, uint16_t h, int *road)
     return clear;
 }
 
+/* THE ITEM BUTTON.  The user, on the second view's driver: "2p-cpu player
+ * must use the items.  At least randomly for now."  So it presses the
+ * button like a person: a short wait after the roulette settles, then a
+ * press.  The wait is DETERMINISTIC - it comes from the driver's own tick
+ * counter, not from a random number - because a replay has to stay a
+ * replay.  OURS, labelled: when the game's own AI fires is not decoded,
+ * and this driver is emulating a person anyway. */
+#define AP_ITEM_MIN  30        /* half a second at the least */
+#define AP_ITEM_SPAN 120       /* and up to two and a half   */
+
 void smk_autopilot_step(smk_autopilot *a, const smk_track *trk,
                         const smk_course *crs, const smk_player *p,
                         const smk_kart *k, smk_autopilot_out *out)
@@ -122,6 +132,17 @@ void smk_autopilot_step(smk_autopilot *a, const smk_track *trk,
         { const char *e = getenv("SMK_AP_DEAD"); if (e) ap_dead = atoi(e); }
     }
     memset(out, 0, sizeof *out);
+    /* what it is holding, before any of the steering's early returns */
+    if (!p->item_held) {
+        a->item_wait = 0;
+    } else if (a->item_wait == 0) {
+        a->item_wait = AP_ITEM_MIN + (int)((unsigned)a->tick * 37u % AP_ITEM_SPAN);
+    } else if (a->item_wait > 1) {
+        a->item_wait--;
+    } else if (!k->airborne && !p->hazard) {
+        out->item = true;                 /* one press, then it is spent */
+        a->item_wait = 0;
+    }
     if (crs->sectors <= 0) { out->accel = true; return; }
 
     int px = smk_kart_px(k->x), py = smk_kart_px(k->y);

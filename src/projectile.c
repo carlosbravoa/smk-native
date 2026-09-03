@@ -227,6 +227,33 @@ void smk_proj_step(smk_proj *list, int n, const smk_track *trk,
         }
         p->x = nx; p->y = ny;
     }
+
+    /* TWO OF THEM MEETING.  The user: "two attack items colliding cancel
+     * each other (animation is the same as implemented in other actions:
+     * they get flipped down and 'fall')" - which is the death this file
+     * already has, $80:F85D's hop.  A banana lying on the road is not an
+     * attack, so it takes no part; anything moving does.  OURS: the ROM's
+     * own object-against-object test is not decoded, so the box is the
+     * same SMK_PROJ_HIT_R every other contact uses. */
+    for (int i = 0; i < n; i++) {
+        smk_proj *a = &list[i];
+        if (a->kind == SMK_PROJ_NONE || a->dying || a->carry > 0) continue;
+        if (a->kind == SMK_PROJ_BANANA) continue;          /* sitting there */
+        for (int j = i + 1; j < n; j++) {
+            smk_proj *b = &list[j];
+            if (b->kind == SMK_PROJ_NONE || b->dying || b->carry > 0) continue;
+            if (b->kind == SMK_PROJ_BANANA) continue;
+            int dx = smk_kart_px(a->x + a->wx) - smk_kart_px(b->x + b->wx);
+            int dy = smk_kart_px(a->y + a->wy) - smk_kart_px(b->y + b->wy);
+            if (dx < 0) dx = -dx;
+            if (dy < 0) dy = -dy;
+            if (dx >= SMK_PROJ_HIT_R || dy >= SMK_PROJ_HIT_R) continue;
+            a->dying = b->dying = true;
+            a->zv = b->zv = SMK_PROJ_DIE_HOP;
+            a->vx = a->vy = b->vx = b->vy = 0;
+            break;
+        }
+    }
 }
 
 int smk_proj_hit(smk_proj *list, int n, const smk_kart *k, int kart_index)

@@ -1066,6 +1066,7 @@ static smk_sfx_prev sfx_prev = { .rank_prev = -1, .rev = 1.0f };
  * other player".  Each view records a WISH; the frame turns the loop on
  * if either of them wants it. */
 static int  cur_view;        /* whose copy the per-driver globals hold */
+static uint16_t pad_held_prev;  /* last frame's pad, for the d-pad edges */
 static bool slot_is_driven(int q);
 #define SFX_WISHES 12
 static struct { char name[24]; bool want[2]; } sfx_wish[SFX_WISHES];
@@ -1106,6 +1107,13 @@ static void step_kart(smk_kart *k, smk_track *trk,
     if (in->right)    held |= 0x0100;
     if (in->hop_held) held |= 0x0020;        /* L (R is the same button) */
     if (in->hop)      pressed |= 0x0020;     /* a fresh press hops       */
+    /* The d-pad's own EDGES.  $C4 bits 0 and 1 are the Right and Left
+     * presses (NOTES 106) and nothing was ever setting them - the port
+     * only ever handed the hop an edge - so anything that asks "was this
+     * a fresh press" of a direction got no for an answer.  The mole's
+     * waggle is the first thing that needed it. */
+    pressed |= (uint16_t)(held & ~pad_held_prev & 0x0300);
+    pad_held_prev = held;
     /* the rescue target: the ROM takes the kart's waypoint ($80B373 reads
      * $0900/$0A00 by $C0); ours is the course's waypoint for the sector
      * under the kart, with the flow field's heading */
@@ -1157,7 +1165,7 @@ static void step_kart(smk_kart *k, smk_track *trk,
         if (getenv("SMK_SQUASH_TRACE")) printf("squash f%ld: the player\n", hud_race_frames);
     } else if (k->hazard_hit == 3) {                 /* bug 12: the mole grabs on */
         if (!player.mole_on) {
-            player.mole_on = 1; player.mole_hops = 0;
+            player.mole_on = 1; player.mole_hops = 0; player.mole_dir = 0;
             if (getenv("SMK_MOLE_TRACE")) printf("mole ON f%ld\n", hud_race_frames);
         }
     } else if (k->hazard_hit) {
@@ -1685,6 +1693,7 @@ static int show_kart = 1, show_grid = 1;
     X(smk_autopilot,   autopilot)   \
     X(int,             racer_draw_mask) \
     X(int8_t,          was_cool)     /* bump_cool before the field collided */ \
+    X(uint16_t,        pad_held_prev) \
     X(smk_sfx_prev,    sfx_prev)    /* every sound's edge detector, per driver */ \
     X(smk_coin *,      coins_fx)    /* his own coins in the air */ \
     X(smk_sprites *,   view_karts)   /* this driver's own kart sheet */ \
@@ -3963,6 +3972,13 @@ int main(int argc, char **argv)
                 paused = false;
             smk_audio_pause(paused);
             if (paused) accum = 0.0f;
+            /* The engine is a SYNTHESISED voice on the music hook, not a
+             * mixer channel, so pausing the channels does not touch it -
+             * and nothing steps it while the tick is skipped, so it holds
+             * its last note for ever.  The user: "when pressing pause,
+             * exiting the game, or finishing a race, the P1's engine is
+             * always stuck".  Silence it whenever no driver is stepping. */
+            if (paused || !in_race) smk_engine_off();
         }
 
         bool stepped = false;
@@ -4248,6 +4264,17 @@ int main(int argc, char **argv)
                 in.up = ap.accel; in.down = ap.brake;
                 in.left = ap.left; in.right = ap.right;
                 in.hop = ap.hop; in.hop_held = ap.hop_held;
+                if (ap.item) in.item = true;   /* it uses what it picks up */
+                /* A MOLE ON ITS HEAD.  The user: "P2-cpu cannot get rid of
+                 * the moles."  It could not - shaking one off is a d-pad
+                 * waggle and this driver only ever steered - so while one
+                 * is riding, the waggle REPLACES the steering.  The kart
+                 * is capped at a crawl anyway, and it is what a person
+                 * does: stop driving and shake. */
+                if (player.mole_on) {
+                    bool l = (autopilot.tick & 2) != 0;
+                    in.left = l; in.right = !l;
+                }
             }
             static long trace_lo = -1, trace_hi = -1;
             if (trace_lo < 0) {
@@ -4270,11 +4297,27 @@ int main(int argc, char **argv)
                         (int)(kart.z >> 8),
                         smk_track_surface(&trk, smk_kart_px(kart.x), smk_kart_px(kart.y)),
                         autopilot.lost);
-            /* shaking the mole off: three fresh hops (OURS - the user let
-             * one ride forever by doing nothing, which is the measured
-             * baseline; the shake count is not) */
-            if (player.mole_on && in.hop && ++player.mole_hops >= 3)
-                player.mole_on = 0;
+            /* WAGGLE IT OFF.  $C4 bits 0 and 1 are the Right and Left
+             * EDGES (NOTES 106), so this counts fresh presses that
+             * ALTERNATE - holding one way, or hammering one way, does
+             * nothing.  The rule is the user's account of the original;
+             * the count is ours.  (It was three hops before, which was
+             * mine and answered to nothing at all.) */
+            if (player.mole_on) {
+                int dir = (player.pad & 1) ? +1 : (player.pad & 2) ? -1 : 0;
+                if (getenv("SMK_MOLE_TRACE"))
+                    printf("mole f%ld pad %04X dir %+d last %+d count %d\n",
+                           hud_race_frames, player.pad, dir, player.mole_dir,
+                           player.mole_hops);
+                if (dir && dir != player.mole_dir) {
+                    player.mole_dir = dir;
+                    if (++player.mole_hops >= SMK_MOLE_SHAKE) {
+                        player.mole_on = 0;
+                        player.mole_hops = 0;
+                        player.mole_dir = 0;
+                    }
+                }
+            }
             step_kart(&kart, &trk, &phys, &in);
             if (replay_path && getenv("SMK_REPLAY_TRACE") && replay_i < replay.n) {
                 const smk_demo_frame *r = &replay.f[replay_i];
@@ -4307,15 +4350,22 @@ int main(int argc, char **argv)
                 }
             }
             input_edges_clear(&in);
-            /* $94 = $A4 + $C0 + $AA/2 - and $AA lives in EVERY spin, not
-             * just the shell tumble: the feather's $80B6D1 steps it, the
-             * banana states carry it.  The camera turning with the spin
-             * is the user's round-2 bug 14. */
-            cam_spin = (player.state == 0x0A || player.state == 0x0C
-                        || player.state == 0x0E || player.state == 0x10
-                        || player.state == 0x18 || player.state == 0x1A)
-                     ? player.plag / 2 : 0;
+            /* $94 = $A4 + $C0 + $AA/2, and ONLY in the object tumble.
+             *
+             * NOTES 196 measured that for state $1A and said in the same
+             * breath that the banana's spins leave $94 at $A4 + $C0 - but
+             * the port applied the half-turn to every state that carries
+             * $AA.  Measured now for the rest (tools/labs/feathercam.py,
+             * spincam2.py): through the FEATHER's flight and through both
+             * SLIDE SPIN-OUT states, $94 - $A4 sits at $C0 while $AA
+             * sweeps a whole circle.  The kart spins; the camera does not.
+             * So the tumble is the exception, not the rule. */
+            cam_spin = (player.state == 0x1A) ? player.plag / 2 : 0;
             camera_from_kart(&cam, &kart);
+            if (getenv("SMK_CAM_TRACE") && race_state == RACE_RUN)
+                printf("cam f%ld st %02X plag %6d spin %6d kart.angle %5u cam %.3f\n",
+                       hud_race_frames, player.state, player.plag, cam_spin,
+                       kart.angle, cam.angle);
             if (force_steer) {
                 in.left  = force_steer < 0;
                 in.right = force_steer > 0;
@@ -4379,6 +4429,15 @@ int main(int argc, char **argv)
                             else item.word = (uint16_t)(0xC000 | tid);
                         }
                         if (tid >= 0 && tid != 99 && hud_race_frames == tframe + 1) item_btn = true;
+                    }
+                    {   /* SMK_MOLE_TEST=frame: put a mole on P1's head on
+                         * that race frame, so the shake-off can be driven
+                         * without hunting for one on Donut Plains */
+                        static int mf = -2;
+                        if (mf == -2) { const char *e = getenv("SMK_MOLE_TEST"); mf = e ? atoi(e) : -1; }
+                        if (mf >= 0 && hud_race_frames == mf && !player.mole_on) {
+                            player.mole_on = 1; player.mole_hops = 0; player.mole_dir = 0;
+                        }
                     }
                     {   /* SMK_SQUASH_TEST=frame: flatten P1 and kart 1 on
                          * that frame - bug 13's art, eyeballed headlessly */
@@ -4614,12 +4673,15 @@ int main(int argc, char **argv)
                                    q, SMK_DRIVERS[racers[q].character % SMK_CHARACTERS].name,
                                    smk_kart_px(racers[q].k.x), smk_kart_px(racers[q].k.y), racers[q].rank, hq,
                                    smk_kart_px(kart.x), smk_kart_px(kart.y), racers[0].rank);
-                        if (hq) {
-                            /* the user: hitting an AI is BOTH - the hit and
-                             * the spin it puts them into */
-                            smk_sfx_play(SMK_SFX_AI_HIT);
-                            smk_sfx_play(SMK_SFX_AI_FELL);
-                        }
+                        /* ONE sound.  This used to play $39 and $66
+                         * together on the reading that "hitting an AI is
+                         * both"; the user, hearing it: "AI players get to
+                         * fall twice in traps (the sound gets triggered 2
+                         * times for the same item)".  Both ids are their
+                         * own naming by ear, not a decoded call site, so
+                         * the hit keeps the one they named "ai player
+                         * takes a hit". */
+                        if (hq) smk_sfx_play(SMK_SFX_AI_HIT);
                         if (hq == SMK_PROJ_BANANA) smk_racer_hit(&racers[q], 1, (int)(fx_ticks & 1));
                         else if (hq == SMK_PROJ_MUSHROOM) { if (racers[q].star_t <= 0) racers[q].shrink_t = racers[q].shrink_t > 0 ? 0 : 0x440; }   /* shrink only; a second one restores (bug 21) */
                         else if (hq != SMK_PROJ_NONE) smk_racer_hit(&racers[q], 2, (int)(fx_ticks & 1));
