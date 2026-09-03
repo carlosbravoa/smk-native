@@ -2274,9 +2274,12 @@ int  smk_env_batch_size(const smk_env_batch *b);
 void smk_env_batch_reset(smk_env_batch *b, float *obs);
 /* obs[n][SMK_ENV_OBS], rew[n], done[n], trunc[n], info[n][SMK_ENV_INFO].
  * Envs auto-reset: the observation returned with a terminal step is the
- * next episode's first. */
+ * next episode's first, and `final_obs` (optional, same shape as obs)
+ * receives the state the episode was actually left in - which is what a
+ * TRUNCATED step has to be bootstrapped from. */
 void smk_env_batch_step(smk_env_batch *b, const int32_t *actions, float *obs,
-                        float *rew, uint8_t *done, uint8_t *trunc, float *info);
+                        float *rew, uint8_t *done, uint8_t *trunc, float *info,
+                        float *final_obs);
 /* the scripted driver's choice for each env: a baseline, and the sharpest
  * test that the observation and reward are wired up correctly */
 void smk_env_batch_autopilot(smk_env_batch *b, int32_t *actions);

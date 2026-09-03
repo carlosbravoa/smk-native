@@ -80,7 +80,7 @@ int main(int argc, char **argv)
         float dmax = 0; int dbad = 0, dwhere = -1;
         for (int s = 0; s < 1500; s++) {
             smk_env_batch_autopilot(b, act);
-            smk_env_batch_step(b, act, obs, rew, done, trunc, info);
+            smk_env_batch_step(b, act, obs, rew, done, trunc, info, NULL);
             for (int j = 0; j < N * SMK_ENV_OBS; j++) {
                 if (!isfinite(obs[j])) dbad++;
                 if (fabsf(obs[j]) > dmax) { dmax = fabsf(obs[j]); dwhere = j % SMK_ENV_OBS; }
@@ -108,14 +108,14 @@ int main(int argc, char **argv)
         static float o1[N * SMK_ENV_OBS], r1[N];
         for (int s = 0; s < 200; s++) {
             for (int i = 0; i < N; i++) act[i] = (s / 7 + i) % SMK_ENV_ACTIONS_N;
-            smk_env_batch_step(b, act, o1, r1, done, trunc, info);
+            smk_env_batch_step(b, act, o1, r1, done, trunc, info, NULL);
         }
         float sum1 = 0; for (int i = 0; i < N * SMK_ENV_OBS; i++) sum1 += o1[i];
         smk_env_batch_reset(b, obs);
         static float o2[N * SMK_ENV_OBS], r2[N];
         for (int s = 0; s < 200; s++) {
             for (int i = 0; i < N; i++) act[i] = (s / 7 + i) % SMK_ENV_ACTIONS_N;
-            smk_env_batch_step(b, act, o2, r2, done, trunc, info);
+            smk_env_batch_step(b, act, o2, r2, done, trunc, info, NULL);
         }
         float sum2 = 0; for (int i = 0; i < N * SMK_ENV_OBS; i++) sum2 += o2[i];
         check(sum1 == sum2, "the same actions from the same seed replay exactly");
@@ -126,7 +126,7 @@ int main(int argc, char **argv)
         double fwd = 0;
         for (int s = 0; s < 60; s++) {
             for (int i = 0; i < N; i++) act[i] = 1;         /* accelerate */
-            smk_env_batch_step(b, act, obs, rew, done, trunc, info);
+            smk_env_batch_step(b, act, obs, rew, done, trunc, info, NULL);
             for (int i = 0; i < N; i++) fwd += rew[i];
         }
         check(fwd > 0.0, "holding accelerate off the grid earns a positive return");
@@ -149,7 +149,7 @@ int main(int argc, char **argv)
         smk_env_batch_reset(g, gobs);
         for (int s = 0; s < 9000 / 4; s++) {
             smk_env_batch_autopilot(g, gact);
-            smk_env_batch_step(g, gact, gobs, grew, gdone, gtrunc, ginfo);
+            smk_env_batch_step(g, gact, gobs, grew, gdone, gtrunc, ginfo, NULL);
             for (int i = 0; i < 20; i++) {
                 if (!fin[i] && !tru[i]) ret[i] += grew[i];
                 if (gdone[i])  fin[i] = 1;
@@ -181,7 +181,7 @@ int main(int argc, char **argv)
     double t0 = now();
     for (long s = 0; s < STEPS; s++) {
         for (int i = 0; i < N; i++) act[i] = 1;
-        smk_env_batch_step(b, act, obs, rew, done, trunc, info);
+        smk_env_batch_step(b, act, obs, rew, done, trunc, info, NULL);
     }
     double dt = now() - t0;
     double agent_steps = (double)STEPS * N;

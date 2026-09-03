@@ -16,8 +16,10 @@ so one call hands over every action and gets back every observation.
     obs, rew, done, trunc, info = env.step(actions)
 
 Environments auto-reset: the observation returned with a terminal step is
-already the next episode's first.  ``trunc`` tells a time-out apart from a
-real finish, which is what a correct value bootstrap needs.
+already the next episode's first, and ``env.final_obs[i]`` holds the state
+env *i* was actually left in.  A finish is a true terminal and its value
+is zero; a truncation is not, and has to be bootstrapped from
+``final_obs`` rather than from the fresh episode's opening state.
 """
 from __future__ import annotations
 
@@ -179,6 +181,11 @@ class SMKVecEnv:
         self.done = np.zeros(self.n, dtype=np.uint8)
         self.trunc = np.zeros(self.n, dtype=np.uint8)
         self.info = np.zeros((self.n, INFO_DIM), dtype=np.float32)
+        #: the state an episode was actually left in, written only for the
+        #: envs that ended this step.  A truncated episode has to be
+        #: bootstrapped from THIS, not from `obs`, which by then already
+        #: holds the next episode's first state.
+        self.final_obs = np.zeros((self.n, OBS_DIM), dtype=np.float32)
         self._act = np.zeros(self.n, dtype=np.int32)
 
     def _bind(self) -> None:
@@ -193,7 +200,8 @@ class SMKVecEnv:
         c.smk_env_batch_size.argtypes = [ctypes.c_void_p]
         c.smk_env_batch_size.restype = ctypes.c_int
         c.smk_env_batch_reset.argtypes = [ctypes.c_void_p, f32]
-        c.smk_env_batch_step.argtypes = [ctypes.c_void_p, i32, f32, f32, u8, u8, f32]
+        c.smk_env_batch_step.argtypes = [ctypes.c_void_p, i32, f32, f32, u8, u8,
+                                         f32, f32]
         c.smk_env_batch_autopilot.argtypes = [ctypes.c_void_p, i32]
         c.smk_env_batch_state.argtypes = [ctypes.c_void_p, ctypes.c_int,
                                           ctypes.POINTER(_State)]
@@ -208,7 +216,8 @@ class SMKVecEnv:
     def step(self, actions) -> tuple:
         np.copyto(self._act, np.asarray(actions, dtype=np.int32).reshape(self.n))
         self._c.smk_env_batch_step(self._b, self._act, self.obs, self.rew,
-                                   self.done, self.trunc, self.info)
+                                   self.done, self.trunc, self.info,
+                                   self.final_obs)
         return self.obs, self.rew, self.done, self.trunc, self.info
 
     def autopilot_actions(self) -> np.ndarray:

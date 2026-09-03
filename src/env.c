@@ -549,7 +549,7 @@ void smk_env_batch_reset(smk_env_batch *b, float *obs)
 /* One agent step = cfg.frame_skip game frames with the action held, which
  * is how a person's input actually looks at 60 Hz. */
 static void step_one(smk_env *e, int action, float *obs, float *rew,
-                     uint8_t *done, uint8_t *trunc, float *info)
+                     uint8_t *done, uint8_t *trunc, float *info, float *final_obs)
 {
     course_for_step = &e->crs;
     if (action < 0 || action >= SMK_ENV_ACTIONS_N) action = 0;
@@ -604,18 +604,26 @@ static void step_one(smk_env *e, int action, float *obs, float *rew,
         info[6] = (float)e->finish_frame;
         info[7] = (float)e->cfg.track;
     }
-    /* autoreset, as a vectorised learner expects: the observation handed
-     * back with a terminal step is already the NEXT episode's first.  The
-     * final observation is not needed by PPO's bootstrap here because a
-     * finish is a true terminal (value 0) and a truncation is bootstrapped
-     * from the value BEFORE the reset - which is what tools/rl/train.py
-     * does, using `truncated` to tell the two apart. */
-    if (e->done || e->truncated) env_reset_one(e);
+    /* Autoreset, as a vectorised learner expects: the observation handed
+     * back with a terminal step is already the NEXT episode's first.
+     *
+     * That is why final_obs exists.  A FINISH is a true terminal and its
+     * value is zero, so the reset costs nothing.  A TRUNCATION is not -
+     * the episode was still worth something when our patience ran out,
+     * and bootstrapping it from the fresh episode's starting state
+     * (which is what the returned observation now holds) is simply the
+     * wrong number.  So the state as it was left is written here, and
+     * tools/rl/train.py bootstraps a truncated step from it. */
+    if (e->done || e->truncated) {
+        if (final_obs) observe(e, final_obs);
+        env_reset_one(e);
+    }
     if (obs) observe(e, obs);
 }
 
 void smk_env_batch_step(smk_env_batch *b, const int32_t *actions, float *obs,
-                        float *rew, uint8_t *done, uint8_t *trunc, float *info)
+                        float *rew, uint8_t *done, uint8_t *trunc, float *info,
+                        float *final_obs)
 {
     for (int i = 0; i < b->n; i++)
         step_one(&b->env[i], actions[i],
@@ -623,7 +631,8 @@ void smk_env_batch_step(smk_env_batch *b, const int32_t *actions, float *obs,
                  rew   ? rew   + i : NULL,
                  done  ? done  + i : NULL,
                  trunc ? trunc + i : NULL,
-                 info  ? info  + (size_t)i * SMK_ENV_INFO : NULL);
+                 info  ? info  + (size_t)i * SMK_ENV_INFO : NULL,
+                 final_obs ? final_obs + (size_t)i * SMK_ENV_OBS : NULL);
 }
 
 /* The scripted driver's action for each env, so the harness has a

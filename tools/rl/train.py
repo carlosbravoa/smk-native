@@ -226,6 +226,10 @@ def train(args):
     # way to get a quietly wrong advantage.
     end_buf = np.zeros((T, n), dtype=np.float32)
     cut_buf = np.zeros((T, n), dtype=np.float32)
+    # the value of the state a TRUNCATED episode was left in.  Without it
+    # the bootstrap would use the fresh episode's opening state, which is
+    # simply a different number.
+    boot_buf = np.zeros((T, n), dtype=np.float32)
 
     raw = env.reset()
     norm.update(raw)
@@ -254,6 +258,12 @@ def train(args):
             rew_buf[t] = rew
             end_buf[t] = done
             cut_buf[t] = np.maximum(done, trunc)
+            cut_only = np.nonzero(trunc & ~done)[0]
+            if len(cut_only):
+                with torch.no_grad():
+                    _, fv = policy(torch.as_tensor(
+                        norm(env.final_obs[cut_only]), device=device))
+                boot_buf[t, cut_only] = fv.cpu().numpy()
             ep_ret += rew
             ep_len += 1
             for i in np.nonzero(np.maximum(done, trunc))[0]:
@@ -270,14 +280,20 @@ def train(args):
             _, v = policy(torch.as_tensor(obs, device=device))
             val_buf[T] = v.cpu().numpy()
 
-        # GAE.  A truncated episode keeps its bootstrap (end=0) and only
-        # stops the trace (cut=1); a finish stops both.
+        # GAE.  Three cases, and conflating any two of them is the
+        # commonest way to get a quietly wrong advantage:
+        #   finished   value 0 after it, and the trace stops
+        #   truncated  bootstrapped from the state it was LEFT in
+        #              (boot_buf, not val_buf[t+1] - by then the env has
+        #              already reset), and the trace stops
+        #   otherwise  the ordinary one-step bootstrap
         adv = np.zeros((T, n), dtype=np.float32)
         last = np.zeros(n, dtype=np.float32)
         for t in reversed(range(T)):
-            nonterm = 1.0 - end_buf[t]
-            delta = rew_buf[t] + args.gamma * val_buf[t + 1] * nonterm - val_buf[t]
-            last = delta + args.gamma * args.lam * (1.0 - cut_buf[t]) * last
+            cut = cut_buf[t]
+            nxt = np.where(cut > 0, boot_buf[t], val_buf[t + 1]) * (1.0 - end_buf[t])
+            delta = rew_buf[t] + args.gamma * nxt - val_buf[t]
+            last = delta + args.gamma * args.lam * (1.0 - cut) * last
             adv[t] = last
         ret = adv + val_buf[:T]
 
