@@ -11588,21 +11588,60 @@ stream".  There is no such source.  Against live VRAM `$500..$51F`:
 in all four recordings.  The fix deletes the header, the prefix and the
 mask.
 
-### What is still ripped
+### What is still ripped, and where it is
 
 `src/flatart.inc` (the squashed racers) and `src/itemart.inc` (the
-projectile ladders) remain, and remain unlocated.  What is known:
+projectile ladders) remain.  Neither is "not in the ROM" any more; both
+are located, and what is missing in each case is a measurement, not a
+search.
 
-* the squashed racers are NOT in the per-theme sheets and NOT in the 26
-  static streams; they are per-driver, so the kart sheets at `$Cx:2000`
-  are the place to look, but the 48 frames the port reads are followed by
-  compressed data, not more frames.  No recording contains a squash, so
-  there is nothing to grab the live tiles from - forcing one is the next
-  step.
-* the projectiles are drawn by the game as ONE 8x8 sprite each -
-  `$C1:0000` tiles 13 and 15 for the green and red shells, which
-  `smk_projart_load` already reads - because the SNES cannot scale a
-  sprite.  The 21-tier ladders in `itemart.inc` are a port-side
-  pre-render, not ROM data, and scaling the base tile at runtime (which
-  the port does for every other object) would replace them.  The mushroom,
-  egg and fireball base tiles are still unlocated.
+**The squashed racers are in the KART SHEETS.**  Not in a compressed
+stream at all - in the uncompressed per-driver sheets at `$Cx:2000` that
+`smk_sprites_load` already reads, in the tail the port's 48-frame
+indexing walks over.  Rendering the 3x3 tile block at sheet tile 733
+(sheet offset `$7B20`, i.e. tile column 13 of the last three tile rows)
+out of all eight driver banks gives eight DIFFERENT drivers seen from
+directly above, each in the same flattened chassis with the same white
+grille, in the same order and the same per-driver colours as the eight
+blocks of the rip.  Mario's red cap, Luigi's green, Bowser's spiked green
+shell with gold horns, Peach's blonde, Toad's white cap with red spots:
+each one matches its ripped block.  That is the art.
+
+What is NOT measured is the COMPOSITION - which rows of that block the
+game actually draws, and where it anchors them.  The rip is 28x12, wide
+and short; the ROM block is 24x24, and the difference is the middle row
+(the arms).  Drawing cap-over-grille and skipping the arms row would give
+the rip's proportions, but that is inference and it is not going in
+without a measurement.
+
+Getting one needs the event, and NO recording contains it.  What was
+tried, and failed, so the next person does not repeat it:
+
+* pinning the player's kart on a Thwomp's own square (its world position
+  is at entity-block `+$18`/`+$1C`, the same layout the kart uses) and
+  holding it there for 400 frames while the block rose and fell: the
+  kart's state `$A6` only ever went 0 / `$16` / `$1C`, and its VRAM
+  settled.  A Thwomp landing on a kart does not squash it.
+* forcing every kart state `$00`..`$40` for 24 frames each and dumping
+  VRAM: no state draws the flattened pose.
+
+Which fits what the port already models (NOTES 204 and the round-2
+note): the flatten is the HIT-WHILE-SMALL path, so forcing it needs a
+shrunken kart run over by a full-size one, not a Thwomp.  That is the
+next step - or one recording of it.
+
+**The projectiles are single 8x8 sprites, and there is no ROM ladder.**
+The SNES cannot scale a sprite, and the game does not store a size ladder
+for thrown items the way it does for the theme entities: the whole flying
+item vocabulary is the 8x8 tiles at VRAM `$4E0..$4FF`, of which
+`$4FB..$4FE` are the green and red shells - `$C1:0000` tiles 12..15,
+which `smk_projart_load` already decodes.  In a whole race of the
+`attack` recording the only projectile characters drawn are `$FB`,
+`$FC`, `$FD` and `$FE`.
+
+So `itemart.inc`'s 21-tier ladders are a PORT-SIDE PRE-RENDER of a rip,
+not ROM data, and the port already scales every other object at runtime.
+Replacing them with a scaled base tile deletes the file - once the
+mushroom, egg and fireball base tiles are pinned the same way the shells
+were (they are somewhere in `$4E0..$4FA`; no recording seen so far throws
+one).
