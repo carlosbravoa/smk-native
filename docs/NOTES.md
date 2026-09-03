@@ -11484,3 +11484,125 @@ items, not spaces: `emu.item(dev.items["0/m_vram"])`.
 pipes ARE in place - but its negative result means only "not stored
 uncompressed or as a plain stream in $C0-$CF", which is a much smaller
 claim than the one NOTES 270 made.
+
+## 272. Three of the five ripped tables were the ROM's own art, in a
+stream the port already decompressed
+
+The user, on being told four of the five ripped sprite tables were "not
+in the ROM": *"the whole problem is that we shouldn't need them if we
+were good enough to find the right sprites on the rom.  Is that
+correct?"*  Yes.  They were all there.  The mole, the cheep-cheep and the
+Thwomp were not merely in the ROM - they were already in the port's own
+memory, loaded every race by `smk_objgfx_load`, while `main.c` drew
+ripped pixels over the top of them.
+
+**The chain NOTES 271 asked for, walked.**  `tools/labs/mame/spritegrab.lua`
+takes VRAM, CGRAM and MAME's decoded object table at one frame of a
+recording; the object table says which OBJ characters a sprite is built
+from, which is the link the VRAM diff of NOTES 269 could not supply.
+
+    OBJ base $4000, name select 1  ->  character c is VRAM tile $400+c
+                                       (table 0) or $600+c (table 1)
+
+Then `tools/labs/spritesrc.py` asks which ROM stream holds those live
+tiles, over the candidate set `tools/labs/decompsites.py` finds
+statically: every `LDY #src / LDA #bank / LDX #dst / JSL $84:E09E` in the
+ROM - 29 call sites, 26 distinct streams.
+
+**The answer, for every theme at once.**  The per-theme entity sheet is
+`SMK_OBJ_TABLE` at `$81:EBD3`, three bytes a theme, and it lands at
+
+    stream tile n  ==  VRAM tile $4C0 + n     (identity, no offset)
+
+verified tile-for-tile against live VRAM in four recordings:
+
+| theme | stream | entity | tiles identical |
+|---|---|---|---|
+| 0 Mario Circuit | `$C0:0000` | pipes | 55/64 |
+| 2 Donut Plains | `$C0:05D6` | **mole** | 52/57 |
+| 5 Koopa Beach | `$C1:1706` | **cheep-cheep** | 52/57 |
+| 6 Bowser Castle | `$C0:1070` | **Thwomp** | 52/57 |
+| 7 Rainbow Road | `$C0:1070` | Thwomp, re-tinted | (same stream) |
+
+(The five that differ each time are duplicate tiles, where the match
+lands on an earlier identical copy.)
+
+**And the port already had it.**  `smk_objgfx_load` reads exactly this
+table, and `obj_texel` already composes the near tier the way the game's
+own OAM composes it.  That composition was re-measured here, at the frame
+each entity is drawn at its largest tier:
+
+    mole    char $C0 over char $C2, each 16x16 sprite MIRRORED -> 32x32
+    Thwomp  the same
+    fish    char $C0 alone, 16x16, no mirror (`obj_whole`, themes 3 and 5)
+
+which is `SMK_OBJ_NEAR_TOP 0`, `SMK_OBJ_NEAR_BOT 2`, `SMK_OBJ_NEAR_W 32`
+- the constants the port already had.  So the fix is subtraction: delete
+the three special cases and let the general entity path draw them.
+
+The OAM entries also give the PALETTE, which was guessed before and is
+now read: mole palette 7, cheep-cheep 6, Bowser Castle Thwomp 4.  Only
+`smk_obj_pal`'s theme-5 case changes (it was returning 7).  Rainbow Road
+has no recording, so its palette stays OURS and is labelled as such - but
+its ART is now known to be Bowser Castle's, which is half of what "the
+flashy color is totally wrong, probably even the sprite used" was
+pointing at.
+
+**Deleted**: `src/molart.inc`, `src/fishart.inc`, `src/rrthwomp.inc` and
+the three importers that generated them (`molesheet.py`, `fishsheet.py`,
+`rrthwomp.py`).  12.7 KB of ripped pixels gone, replaced by nothing - the
+loader was already running.
+
+### Why NOTES 269/270 got a false negative
+
+`tools/labs/findart.py` could not have found any of this, for two
+independent reasons, both in four lines of it:
+
+* it scanned banks **`$C0-$CF` only**.  The ground-effect stream is in
+  bank `$84`.
+* it stepped `off += max(2, used)` from even offsets.  The ground-effect
+  stream starts at `$9C19`, an **odd** address.
+
+and the signatures it searched for came from a twelve-frame VRAM diff
+that had caught kart rotation re-uploads (NOTES 271).  Three faults, one
+conclusion, which was wrong.  `tools/labs/spritesrc.py` replaces it:
+candidates come from call sites, not from a byte sweep.
+
+### The ground effects were reading one byte late
+
+`effects.c` had `FX_TILE_STREAM $C4:9C1A`.  The game's own loader is
+
+    $81EA29  LDY #$9C19 / LDA #$0084 / LDX #$6C00 / JSL $84E09E
+             then DMA $0400 bytes $7F:6C00 -> VRAM $5000, and again $6000
+
+`$C4:9C19` and `$84:9C19` are the same ROM bytes (both file `$49C19`).
+Started one byte late the stream still decodes - to 1012 bytes instead of
+1024 - which is why the code carried a "20-byte header", twelve invented
+bytes in front of it, and a mask over two junk rows, and still recorded
+that one tile "differs in one more pixel, from a source not found in any
+stream".  There is no such source.  Against live VRAM `$500..$51F`:
+
+    old ($C4:9C1A + fudges)   24/32 tiles exact
+    new ($C4:9C19, tile t)    32/32 tiles exact
+
+in all four recordings.  The fix deletes the header, the prefix and the
+mask.
+
+### What is still ripped
+
+`src/flatart.inc` (the squashed racers) and `src/itemart.inc` (the
+projectile ladders) remain, and remain unlocated.  What is known:
+
+* the squashed racers are NOT in the per-theme sheets and NOT in the 26
+  static streams; they are per-driver, so the kart sheets at `$Cx:2000`
+  are the place to look, but the 48 frames the port reads are followed by
+  compressed data, not more frames.  No recording contains a squash, so
+  there is nothing to grab the live tiles from - forcing one is the next
+  step.
+* the projectiles are drawn by the game as ONE 8x8 sprite each -
+  `$C1:0000` tiles 13 and 15 for the green and red shells, which
+  `smk_projart_load` already reads - because the SNES cannot scale a
+  sprite.  The 21-tier ladders in `itemart.inc` are a port-side
+  pre-render, not ROM data, and scaling the base tile at runtime (which
+  the port does for every other object) would replace them.  The mushroom,
+  egg and fireball base tiles are still unlocated.

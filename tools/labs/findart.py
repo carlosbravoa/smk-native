@@ -12,6 +12,15 @@ every decompressible stream in the graphics banks for them.
 
 It is find_entity_gfx.py generalised: that one carried three hard-coded
 pipe signatures, this one takes them from a dump.
+
+SUPERSEDED by tools/labs/spritesrc.py - use that.  This one produced the
+false negative of NOTES 269/270 and it had to: it scanned banks $C0-$CF
+only (the ground effects are in bank $84) and stepped two bytes at a time
+from even offsets (that stream starts at the odd $9C19).  Both are fixed
+below, at the cost of a much slower sweep, but the sweep is the wrong
+idea anyway - spritesrc.py takes its candidates from the ROM's own
+decompression call sites, so a stream no caller ever loads is never a
+candidate and a stream some caller loads always is.
 """
 import sys, os, collections
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
@@ -43,24 +52,23 @@ def main():
 
     # decompress every plausible stream once, then ask which live tiles it holds
     streams = []
-    for bank in range(0xC0, 0xD0):
+    banks = list(range(0x80, 0x90)) + list(range(0xC0, 0xD0))
+    for bank in banks:
         try:
             start = r.snes_to_pc(bank << 16)
         except Exception:
             continue
         if start + 0x10000 > len(data):
             continue
-        off = 0
-        while off < 0x10000:
+        for off in range(0x10000):            # EVERY offset: streams start odd too
             try:
-                out, used = decompress(data, start + off, max_out=0x8000)
+                out, _used = decompress(data, start + off, max_out=0x8000)
             except Exception:
-                off += 2
                 continue
             if len(out) >= 512:
                 streams.append((bank, off, bytes(out)))
-            off += max(2, used)
-    print("  %d decompressible streams of 512+ bytes in banks $C0-$CF" % len(streams))
+    print("  %d decompressible streams of 512+ bytes in banks $80-$8F and $C0-$CF"
+          % len(streams))
 
     hits = collections.defaultdict(list)
     for bank, off, out in streams:

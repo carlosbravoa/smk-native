@@ -389,9 +389,26 @@ uint32_t smk_track_texel(const smk_track *t, int wx, int wy)
     return t->palette[t->tiles[tile * SMK_TILE_BYTES + ((wy & 7) << 3) + (wx & 7)]];
 }
 
-/* See SMK_OBJ_PAL in smk.h for the evidence and what is labelled here. */
+/* See SMK_OBJ_PAL in smk.h for the evidence and what is labelled here.
+ *
+ * The indices come from the OBJECT TABLE the running game builds: the
+ * `pal` field of the OAM entries that draw the entity, read out of MAME's
+ * decoded object table at the frame the entity is drawn largest
+ * (tools/labs/mame/spritegrab.lua, NOTES 272).  Measured:
+ *
+ *   theme 2  Donut Plains  mole         pal 7  ($F0)
+ *   theme 5  Koopa Beach   cheep-cheep  pal 6  ($E0)
+ *   theme 6  Bowser Castle Thwomp       pal 4  ($C0)
+ *
+ * Theme 7 (Rainbow Road) is NOT measured - no recording of it exists - so
+ * it takes the default.  Its ART is the same stream as theme 6's, which is
+ * measured: both entries of SMK_OBJ_TABLE point at $C0:1070. */
 int smk_obj_pal(int theme)
 {
     if (theme < 0) theme = 0;
-    return (theme % SMK_THEME_COUNT) == 6 ? 0xC0 : SMK_OBJ_PAL;
+    switch (theme % SMK_THEME_COUNT) {
+    case 5:  return 0xE0;
+    case 6:  return 0xC0;
+    default: return SMK_OBJ_PAL;
+    }
 }

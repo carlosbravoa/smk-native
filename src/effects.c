@@ -18,12 +18,20 @@
  * Data, all read from the ROM here:
  *   templates  - the stream at $C5:EE00, which decompresses to WRAM $2000;
  *                the record's block address is an offset into it
- *   puff tiles - the stream at $C4:9C1A: 8x8 4bpp subtiles for VRAM $101..
- *                at 20 + 32k (row-major, 16 per row); VRAM $100 is the 12
- *                bytes before it plus its 20-byte header (what the game
- *                really displays), VRAM $110 is subtile 15 with its two
- *                junk rows masked (LABELLED: the live tile differs in one
- *                more pixel, from a source not found in any stream)
+ *   puff tiles - the stream at $C4:9C19, which the game itself decompresses
+ *                ($81:EA29 LDY #$9C19 / LDA #$0084 / LDX #$6C00, then DMAs
+ *                $0400 bytes to VRAM $5000 and again to $6000).  It is
+ *                exactly 32 tiles and tile t IS VRAM $100+t - verified
+ *                byte-for-byte against live VRAM in four recordings,
+ *                32/32 tiles each (NOTES 272).
+ *
+ *                This used to read $C4:9C1A, one byte later.  That is a
+ *                different, also-decodable stream: 1012 bytes instead of
+ *                1024, which is why the code needed a "20-byte header",
+ *                twelve invented bytes in front of it and a mask over two
+ *                junk rows - and why one tile still differed from the live
+ *                one "from a source not found in any stream".  There is no
+ *                such source; the start address was one byte off.
  *   scripts, records, wobble table - ROM bank $80
  */
 #include "smk.h"
@@ -32,7 +40,7 @@
 #include <string.h>
 
 #define FX_TEMPLATE_STREAM 0xC5EE00u
-#define FX_TILE_STREAM     0xC49C1Au
+#define FX_TILE_STREAM     0xC49C19u
 #define FX_WRAM_BASE       0x2000u
 #define FX_RECORDS         0x80D1CEu
 #define FX_WOBBLE          0x80D46Fu
@@ -74,26 +82,10 @@ bool smk_effects_load(const smk_rom *rom, smk_effects *fx)
     long ng = smk_decompress_into(rom->data, rom->size,
                                   smk_snes_to_pc(rom, FX_TILE_STREAM),
                                   tiles, sizeof tiles, 0, NULL);
-    if (nt < 0x1400 || ng < 20 + 32 * 22) return false;
+    if (nt < 0x1400 || ng < 32 * 32) return false;
 
-    /* the 32 subtiles VRAM $100..$11F */
-    uint8_t raw[32];
-    for (int t = 0; t < 32; t++) {
-        int k = (t & 0xF) - 1 + ((t >> 4) & 1) * 16;     /* stream subtile */
-        if ((t & 0xF) == 0) {
-            memset(raw, 0, 12);
-            memcpy(raw + 12, tiles, 20);                    /* VRAM $100 */
-            if (t == 0x10) {
-                memcpy(raw, tiles + 20 + 32 * 15, 32);      /* VRAM $110 */
-                for (int y = 0; y < 8; y++) {               /* mask the junk */
-                    uint8_t keep = (uint8_t)(raw[16 + y * 2] | raw[17 + y * 2]);
-                    raw[y * 2] &= keep; raw[y * 2 + 1] &= keep;
-                }
-            }
-        } else
-            memcpy(raw, tiles + 20 + 32 * k, 32);
-        decode_tile(raw, fx->tiles[t]);
-    }
+    /* the 32 subtiles VRAM $100..$11F, one stream tile each, in order */
+    for (int t = 0; t < 32; t++) decode_tile(tiles + t * 32, fx->tiles[t]);
 
     /* sprite tiles $000-$03F: one stream, 64 tiles, tile n at n*32 - the
      * game's own upload to VRAM $4000 (tools/labs/dmalist.py) */

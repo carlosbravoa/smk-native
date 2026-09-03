@@ -2,9 +2,6 @@
 #include "smk.h"
 #include "itemart.inc"
 #include "flatart.inc"
-#include "rrthwomp.inc"
-#include "fishart.inc"
-#include "molart.inc"
 
 #ifndef SMK_BUILD
 #define SMK_BUILD "dev"
@@ -2104,6 +2101,28 @@ static uint8_t obj_texel(int base, int aw, int ax, int ay)
     return obj_art.px[tl][(ay % 8) * 8 + (ax % 8)];
 }
 
+/* Where the ink sits inside the near tier's 32x32 sprite block.
+ *
+ * The ripped tables this replaced were cropped to the creature; the ROM's
+ * tier is a sprite block with it inset, so anything that sized itself by
+ * the art's width (the mole, at two draw sites) has to size itself by the
+ * ink's width instead or it comes out short and hangs off its anchor.
+ * Returns false if the tier is empty. */
+static bool obj_near_ink(int *l, int *r, int *b)
+{
+    int lo = SMK_OBJ_NEAR_W, hi = -1, bot = -1;
+    for (int ay = 0; ay < SMK_OBJ_NEAR_H; ay++)
+        for (int ax = 0; ax < SMK_OBJ_NEAR_W; ax++) {
+            if (!obj_texel(0, SMK_OBJ_NEAR_W, ax, ay)) continue;
+            if (ax < lo) lo = ax;
+            if (ax > hi) hi = ax;
+            if (ay > bot) bot = ay;
+        }
+    if (hi < lo || bot < 0) return false;
+    *l = lo; *r = hi; *b = bot;
+    return true;
+}
+
 
 /* The shadow, from the ROM's own 32x8 ellipse.
  *
@@ -2231,20 +2250,16 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
          * the ROM's ladder is a hardware limit we do not have. */
         int obase = SMK_OBJ_PIPE0;         /* unused by the near sampler */
         int aw = SMK_OBJ_NEAR_W, ah = SMK_OBJ_NEAR_H;
-        /* Rainbow Road's Thwomp is the ripped BLUE sprite through RR's
-         * own palettes - "the flashy color is totally wrong. Probably
-         * even the sprite used" (round 2, bug 8).  Palette 1 fits it
-         * with zero error and palette 2 is its flash coloring (three
-         * entries differ); the alternation period is OURS. */
-        const uint8_t *rrart = trk->theme == 7 ? SMK_RRTHWOMP : NULL;
-        if (rrart) { aw = SMK_RRTHWOMP_W; ah = SMK_RRTHWOMP_H; }
-        /* Koopa Beach's entity is ONE white cheep-cheep, not the theme
-         * sheet's four-fish block (round 2, bug 10) - the ripped ladder
-         * on KB's own palette, two flip frames (the flip period is OURS,
-         * half a hop). */
-        const smk_itemart_tier *fart = trk->theme == 5
-            ? &SMK_FISHART[(fx_ticks / 18 + (unsigned)i) & 1] : NULL;
-        if (fart) { aw = fart->w; ah = fart->h; }
+        /* Rainbow Road's Thwomp is the SAME ART as Bowser Castle's:
+         * SMK_OBJ_TABLE ($81:EBD3) gives $C0:1070 for theme 6 and for
+         * theme 7 alike, and that stream is byte-for-byte the live VRAM
+         * tiles $4C0.. in a Bowser Castle recording (NOTES 272).  So
+         * "the flashy color is totally wrong.  Probably even the sprite
+         * used" (round 2, bug 8) was half right: the sprite is one
+         * sprite, and only the tint differs.  The flash alternates two
+         * OBJ palettes; both the pair and the period are OURS - theme 7
+         * has no recording to measure either from. */
+        const bool rrflash = trk->theme == 7;
         /* The SIZE is the game's own scale, and the band only picks which
          * drawing supplies the detail.
          *
@@ -2292,7 +2307,16 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
              * art (zero-error on DP's palette 7), bottom at the ground. */
             int mstep = smk_mole_step(fx_ticks, i);
             if (mstep <= 0) return;                    /* underground */
-            const smk_itemart_tier *mt = &SMK_MOLART[0];
+            /* The art is the THEME SHEET's own near tier, from the ROM:
+             * SMK_OBJ_TABLE[2] = $C0:05D6, decompressed by
+             * smk_objgfx_load, whose 57 tiles ARE live VRAM $4C0.. (52 of
+             * 57 identical, the rest duplicates).  obj_texel already
+             * composes the near tier the way the game's own OAM does -
+             * measured at the frame a mole is drawn biggest: char $C0 over
+             * char $C2, each 16x16 sprite mirrored to make a symmetric
+             * 32x32 figure (NOTES 272).  This used to be src/molart.inc,
+             * 5.7 KB of pixels ripped from a screenshot. */
+            const int mw = SMK_OBJ_NEAR_W, mh = SMK_OBJ_NEAR_H;
             /* the mole RESTS +6,+6 from its hole - every recorded block
              * sat exactly there - so it projects from that point, not
              * the list entry; ~12 world px wide (OURS, sized to the
@@ -2301,23 +2325,35 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
             if (!smk_project(cam, (float)course->ent[i].x + 6.0f,
                              (float)course->ent[i].y + 6.0f, rw, rh,
                              &mpx, &mpy, &msc)) return;
-            float ms = 10.0f * msc / (float)mt->w;
-            int mdw = (int)((float)mt->w * ms + 0.5f);
-            int mdh = (int)((float)mt->h * ms + 0.5f);
-            int vis = mdh * mstep / 6;
-            if (mdw < 1 || vis < 1) return;
-            int mx0 = (int)mpx - mdw / 2, my0 = (int)mpy - vis;
+            /* The ripped ladder was cropped to the mole; the ROM tier is a
+             * 32x32 sprite block with the mole inset in it.  So size by the
+             * INK, the way the entity path does, or the mole comes out
+             * 32/26 too small and floating off its hole. */
+            int mil, mir, mib;
+            if (!obj_near_ink(&mil, &mir, &mib)) return;
+            float ms = 10.0f * msc / (float)(mir - mil + 1);
+            int mdw = (int)((float)mw * ms + 0.5f);
+            int mdh = (int)((float)mh * ms + 0.5f);
+            if (mdw < 1 || mdh < 1) return;
+            /* the visible height rises out of the hole, measured from the
+             * INK's bottom row rather than the block's */
+            int mink_b = (mib + 1) * mdh / mh;
+            int vis = mink_b * mstep / 6;
+            if (vis < 1) return;
+            int mx0 = (int)mpx - (mil + mir + 1) * mdw / (2 * mw);
+            int my0 = (int)mpy - vis;
+            int mpal = smk_obj_pal(trk->theme);
             for (int dy = 0; dy < vis; dy++) {
                 int yy = my0 + dy;
                 if (yy < 0 || yy >= rh) continue;
-                int ty = dy * mt->h / mdh;
+                int ty = (dy + mink_b - vis) * mh / mdh;
                 for (int dx2 = 0; dx2 < mdw; dx2++) {
                     int xx = mx0 + dx2;
                     if (xx < 0 || xx >= rw) continue;
-                    int tx = dx2 * mt->w / mdw;
-                    uint8_t v = mt->px[ty * mt->w + tx];
+                    int tx = dx2 * mw / mdw;
+                    uint8_t v = obj_texel(obase, mw, tx, ty);
                     if (!v) continue;
-                    fb[yy * rw + xx] = trk->palette[(0x80 + SMK_MOLART_PAL * 16 + v) & 0xFF];
+                    fb[yy * rw + xx] = trk->palette[((unsigned)mpal + v) & 0xFF];
                 }
             }
             return;
@@ -2395,7 +2431,7 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
         float depth = (SMK_PROJ_LES * (float)smk_render_proj_width(rw, rh) / 256.0f) / sc;
         int lift = (int)(smk_mover_world(course, i)
                          * (SMK_PROJ_LES / depth) * ((float)rh / 112.0f));
-        if (fart) {
+        if (trk->theme == 5) {
             /* the cheep-cheep HOPS - measured off the recording (NOTES
              * 209): the jump velocity saws 316 -> -316 at 18 a frame in
              * 8.8 units, a ~35-frame leap peaking ~11 world px; each
@@ -2431,9 +2467,7 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
             int lo = 999, hi = -1, bot = -1;
             for (int ay = 0; ay < ah; ay++)
                 for (int ax = 0; ax < aw; ax++) {
-                    if (!(fart ? fart->px[ay * aw + ax]
-                        : rrart ? rrart[ay * aw + ax]
-                                : obj_texel(obase, aw, ax, ay))) continue;
+                    if (!obj_texel(obase, aw, ax, ay)) continue;
                     if (ax < lo) lo = ax;
                     if (ax > hi) hi = ax;
                     if (ay > bot) bot = ay;
@@ -2458,14 +2492,10 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
                 int xx = x0 + dx;
                 if (xx < 0 || xx >= rw) continue;
                 int tx = dx * aw / pw;
-                uint8_t v = fart ? fart->px[ty * aw + tx]
-                          : rrart ? rrart[ty * aw + tx]
-                                  : obj_texel(obase, aw, tx, ty);
+                uint8_t v = obj_texel(obase, aw, tx, ty);
                 if (!v) continue;
-                int pbase = fart ? 0x80 + SMK_FISHART_PAL * 16
-                          : rrart
-                          ? (((fx_ticks >> 3) & 1u) ? SMK_RRTHWOMP_PAL2
-                                                    : SMK_RRTHWOMP_PAL1)
+                int pbase = rrflash
+                          ? (((fx_ticks >> 3) & 1u) ? 0xA0 : 0x90)
                           : smk_obj_pal(trk->theme);
                 fb[yy * rw + xx] = trk->palette[((unsigned)pbase + v) & 0xFF];
             }
@@ -2972,23 +3002,33 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
                             hf, fb, rw, rh, rw);
         }
         if (player.mole_on) {
-            /* the mole RIDES THE DRIVER (bug 12): the ripped art over the
-             * kart sprite's head, wobbling with the frame counter */
-            const smk_itemart_tier *mt = &SMK_MOLART[0];
-            int mdw = mt->w * scale * 2 / 3, mdh = mt->h * scale * 2 / 3;
-            int mcx = rw / 2 + (int)(((fx_ticks >> 3) & 1u) ? 1 : -1) * scale;
-            int mcy = prow - lift - 22 * scale;
-            for (int dy = 0; dy < mdh; dy++) {
-                int yy = mcy - mdh + dy;
-                if (yy < 0 || yy >= rh) continue;
-                int ty = dy * mt->h / mdh;
-                for (int dx2 = 0; dx2 < mdw; dx2++) {
-                    int xx = mcx - mdw / 2 + dx2;
-                    if (xx < 0 || xx >= rw) continue;
-                    int tx = dx2 * mt->w / mdw;
-                    uint8_t v = mt->px[ty * mt->w + tx];
-                    if (!v) continue;
-                    fb[(size_t)yy * rw + xx] = trk->palette[(0x80 + SMK_MOLART_PAL * 16 + v) & 0xFF];
+            /* the mole RIDES THE DRIVER (bug 12): the theme sheet's near
+             * tier over the kart sprite's head, wobbling with the frame
+             * counter.  Same art as the one in its hole - obj_texel folds
+             * $C0 over $C2 and mirrors - sized by the INK so it keeps the
+             * size it had when it was 26 px of ripped pixels. */
+            int mil, mir, mib;
+            if (obj_near_ink(&mil, &mir, &mib)) {
+                const int mw = SMK_OBJ_NEAR_W, mh = SMK_OBJ_NEAR_H;
+                int inkw = mir - mil + 1;
+                int mdw = mw * (26 * scale * 2 / 3) / inkw;
+                int mdh = mh * (26 * scale * 2 / 3) / inkw;
+                int mcx = rw / 2 + (int)(((fx_ticks >> 3) & 1u) ? 1 : -1) * scale;
+                int mcy = prow - lift - 22 * scale;
+                int mpal = smk_obj_pal(trk->theme);
+                for (int dy = 0; dy < mdh; dy++) {
+                    int yy = mcy - mdh + dy;
+                    if (yy < 0 || yy >= rh) continue;
+                    int ty = dy * mh / mdh;
+                    for (int dx2 = 0; dx2 < mdw; dx2++) {
+                        int xx = mcx - (mil + mir + 1) * mdw / (2 * mw) + dx2;
+                        if (xx < 0 || xx >= rw) continue;
+                        int tx = dx2 * mw / mdw;
+                        uint8_t v = obj_texel(0, mw, tx, ty);
+                        if (!v) continue;
+                        fb[(size_t)yy * rw + xx] =
+                            trk->palette[((unsigned)mpal + v) & 0xFF];
+                    }
                 }
             }
         }
