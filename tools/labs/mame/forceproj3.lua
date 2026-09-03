@@ -48,9 +48,16 @@ emu.register_frame_done(function()
     for i = 0, 127 do mem:write_u8(b + i, saved[i]) end
     local own = OWNERS[si]
     mem:write_u16(b + 0x6A, own); mem:write_u16(b + 0x70, 10); mem:write_u16(b + 0x6E, 0xF6FB)
-    -- just ahead of P1, along its heading is unknown here: use P1's spot
-    mem:write_u16(b + 0x16, mem:read_u16(0x7E1016)); mem:write_u16(b + 0x18, mem:read_u16(0x7E1018))
-    mem:write_u16(b + 0x1A, mem:read_u16(0x7E101A)); mem:write_u16(b + 0x1C, mem:read_u16(0x7E101C))
+    -- AHEAD of player 1 along its heading $2A (65536 = a turn, 0 = -y),
+    -- so the thing sits on the road in front of the camera; the first
+    -- attempt put it under the kart and most were never drawn
+    local a = mem:read_u16(0x7E102A) * 2 * math.pi / 65536
+    local AHEAD = tonumber(os.getenv("AHEAD") or "56")
+    local px = mem:read_u16(0x7E1018) + math.floor(AHEAD * math.sin(a) + 0.5)
+    local py = mem:read_u16(0x7E101C) - math.floor(AHEAD * math.cos(a) + 0.5)
+    mem:write_u16(b + 0x16, 0); mem:write_u16(b + 0x18, px & 0xFFFF)
+    mem:write_u16(b + 0x1A, 0); mem:write_u16(b + 0x1C, py & 0xFFFF)
+    mem:write_u16(b + 0x1E, 0); mem:write_u16(b + 0x20, 0); mem:write_u16(b + 0x22, 0); mem:write_u16(b + 0x24, 0)
     mem:write_u16(b + 0x12, 0x8000)
     watch = {f0 = n, tag = string.format("syn_o%02X", own >> 8)}
     print(string.format("f%d synthesised variant 5 owner $%04X (char field $%02X)", n, own, mem:read_u8(0x7E0000 + own + 0xC0)))

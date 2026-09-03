@@ -18,6 +18,8 @@ local EVERY= tonumber(os.getenv("EVERY") or "1")  -- park every N frames (1 = ho
 local LEN  = tonumber(os.getenv("LEN") or "400")
 local RELEASE = tonumber(os.getenv("RELEASE") or "0") -- thwomp: stop parking once the block has hit (E2 bit 10)
 local released = false
+local THROTTLE = tonumber(os.getenv("THROTTLE") or "0")
+local SPEEDPOKE = tonumber(os.getenv("SPEEDPOKE") or "0") -- after release: write this speed to $EA each frame, log what came back  -- after release, hold B on the kart's pad word ($C4)
 local FROM = tonumber(os.getenv("FROM") or "2500")
 local OUT  = os.getenv("OUT") or "tmp/fsq"
 local n, dumped = 0, 0
@@ -60,6 +62,12 @@ emu.register_frame_done(function()
     print(string.format("f%d shrank %s", n, WHO))
   end
   if WHO == "thwomp" and RELEASE ~= 0 and (mem:read_u16(P1+0xE2) & 0x400) ~= 0 then released = true end
+  if released and SPEEDPOKE ~= 0 then
+    local back = mem:read_u16(P1+0xEA)
+    if (n % 5) == 0 then print(string.format("f%d speed read back %d", n, back)) end
+    mem:write_u16(P1+0xEA, SPEEDPOKE)
+  end
+  if released and THROTTLE ~= 0 then mem:write_u16(P1+0xC4, mem:read_u16(P1+0xC4) | 0x8000) end
   if WHO == "thwomp" and not released then
     -- entity block 0's world position, +$18/+$1C (NOTES 272); hold P1 on it
     local ex, ey = mem:read_u16(0x7E1818), mem:read_u16(0x7E181C)
@@ -87,10 +95,11 @@ emu.register_frame_done(function()
   end
   for k = 0, 1 do
     local b = 0x7E1000 + k * 0x100
-    local key = string.format("%04X %04X %04X", mem:read_u16(b+0xA6), mem:read_u16(b+0xE2), mem:read_u16(b+0x8C))
+    local spd = mem:read_u16(b+0xEA); if spd > 32767 then spd = spd - 65536 end
+    local key = string.format("%04X %04X %04X %d", mem:read_u16(b+0xA6), mem:read_u16(b+0xE2), mem:read_u16(b+0x8C), (math.abs(spd) < 8) and 1 or 0)
     if prev[k] ~= key then
-      print(string.format("f%d kart %d: state $%04X $E2 $%04X $8C $%04X $84 $%04X", n, k,
-        mem:read_u16(b+0xA6), mem:read_u16(b+0xE2), mem:read_u16(b+0x8C), mem:read_u16(b+0x84)))
+      print(string.format("f%d kart %d: state $%04X $E2 $%04X $8C $%04X $84 $%04X speed %d", n, k,
+        mem:read_u16(b+0xA6), mem:read_u16(b+0xE2), mem:read_u16(b+0x8C), mem:read_u16(b+0x84), spd))
       prev[k] = key
     end
   end

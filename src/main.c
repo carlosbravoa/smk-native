@@ -2253,10 +2253,11 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
          * theme 7 alike, and that stream is byte-for-byte the live VRAM
          * tiles $4C0.. in a Bowser Castle recording (NOTES 272).  So
          * "the flashy color is totally wrong.  Probably even the sprite
-         * used" (round 2, bug 8) was half right: the sprite is one
-         * sprite, and only the tint differs.  The flash alternates two
-         * OBJ palettes; both the pair and the period are OURS - theme 7
-         * has no recording to measure either from. */
+         * used" (round 2, bug 8) was half right: one sprite, only the
+         * tint differs.  The flash is MEASURED (NOTES 273): a Rainbow Road
+         * race forced by poking cup 3 / course 4 into $0150/$0152 during
+         * the menus (tools/labs/mame/rrflash.lua) draws the Thwomp's OBJ
+         * palette as 4, 7, 1, 7, one frame each, round and round. */
         const bool rrflash = trk->theme == 7;
         /* The SIZE is the game's own scale, and the band only picks which
          * drawing supplies the detail.
@@ -2492,9 +2493,8 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
                 int tx = dx * aw / pw;
                 uint8_t v = obj_texel(obase, aw, tx, ty);
                 if (!v) continue;
-                int pbase = rrflash
-                          ? (((fx_ticks >> 3) & 1u) ? 0xA0 : 0x90)
-                          : smk_obj_pal(trk->theme);
+                static const int RR_FLASH[4] = { 0xC0, 0xF0, 0x90, 0xF0 };   /* palettes 4 7 1 7 */
+                int pbase = rrflash ? RR_FLASH[fx_ticks & 3] : smk_obj_pal(trk->theme);
                 fb[yy * rw + xx] = trk->palette[((unsigned)pbase + v) & 0xFF];
             }
         }
@@ -2875,10 +2875,10 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
          * one tier at a time.  The port draws the largest tier, scaled by
          * the same law as before.  The shell is one drawing in two spin
          * frames, green in palette 6 and red in palette 5; the spin was
-         * MEASURED on two shells at 4 frames of A then 8 of B.  Palettes
-         * measured off OAM: banana 6, green 6, mushroom 5.  Red 5,
-         * fireball 6, egg 5 are read off the art (INFERRED: every special
-         * in every recording flew off-screen). */
+         * MEASURED on three shells at 4 frames of A then 8 of B.  Palettes
+         * measured off OAM: banana 6, green 6, red 5, mushroom 5.
+         * Fireball 6 and egg 5 are read off the art (INFERRED: Bowser's
+         * and Yoshi's specials were never on screen in any recording). */
         {
             int kind, ipal;
             switch (pr->kind) {

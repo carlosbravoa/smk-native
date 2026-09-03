@@ -11702,12 +11702,26 @@ poison mushroom, fireball, egg.  There is ONE shell drawing: palette 6
 is the green shell, palette 5 the red.
 
 Measured off OAM (`tools/labs/mame/forceproj.lua`, every real spawn in
-eight recordings, plus `forceproj3.lua`, which synthesises spawns from a
-captured block): banana palette 6, green shell 6, poison mushroom 5; the
-shell spins A for 4 frames then B for 8 (two shells).  Red 5, fireball
-6 and egg 5 are read off the art under each palette - every CPU special
-in every recording was thrown off-screen, and the synthesised ones drew
-only for one owner (the mushroom).  INFERRED and labelled.
+eight recordings): banana palette 6, green shell 6, red shell 5 (the
+player's own red shell in the `win` recording, drawn from the shell
+ladders in palette 5), poison mushroom 5; the shell spins A for 4 frames
+then B for 8 (three shells).  The AI specials are variant 5 with the
+art picked by the owner's character: DK Jr's is the banana, Peach's and
+Toad's the mushroom (both seen).  Bowser's fireball and Yoshi's egg were
+never on screen in any recording; their palettes 6 and 5 are read off
+the art and labelled INFERRED.  Synthesising spawns from a captured
+block (`forceproj3.lua`) draws nothing - the block is more than its 128
+bytes - and is written down as a dead end.
+
+### Rainbow Road, fabricated
+
+No recording of Rainbow Road exists, so `tools/labs/mame/rrpal.lua`
+makes one: poke cup 3 / course 4 into `$0150`/`$0152` every frame while
+the menus run and the recording's own inputs start the race there
+(`$0124` = 5, the port's track 5, theme 7).  The Thwomp's OBJ palette,
+logged every frame (`rrflash.lua`): **4, 7, 1, 7**, one frame each,
+round and round.  The port had two palettes alternating every eight
+ticks, OURS; now measured.
 
 `smk_projart_load` now decodes that sheet's largest tiers and the draw
 scales them by the law it already used; the old loader's "`$C1:0000`
