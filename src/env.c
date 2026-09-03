@@ -509,6 +509,20 @@ smk_env_batch *smk_env_batch_create(const char *rom_path, const smk_env_cfg *cfg
             smk_env_batch_destroy(b);
             return NULL;
         }
+        if (b->env[i].cfg.frame_skip < 1) b->env[i].cfg.frame_skip = 1;
+        /* Every observation that reads the racing line indexes it by the
+         * kart's sector, so a course with no sector data would index
+         * wx[-1].  Refuse it here rather than read out of bounds later. */
+        {
+            static smk_course probe;
+            if (!smk_course_load(&b->rom, b->env[i].cfg.track, &probe)
+                || probe.sectors <= 0) {
+                snprintf(err, errn, "env %d: track %d has no course data",
+                         i, b->env[i].cfg.track);
+                smk_env_batch_destroy(b);
+                return NULL;
+            }
+        }
     }
     return b;
 }
@@ -564,6 +578,8 @@ static void step_one(smk_env *e, int action, float *obs, float *rew,
         }
     }
     e->steps++;
+    e->wall_hits += hit_wall;
+    e->offroad_frames += off;
     e->prog = smk_progress_line(&e->me, &e->crs, &e->kart);
     if (e->prog > e->prog_best + 0.01f) { e->prog_best = e->prog; e->stall = 0; }
     else e->stall += e->cfg.frame_skip;
