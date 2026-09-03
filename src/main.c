@@ -1,6 +1,5 @@
 /* SDL2 host for the Super Mario Kart reimplementation. */
 #include "smk.h"
-#include "itemart.inc"
 
 #ifndef SMK_BUILD
 #define SMK_BUILD "dev"
@@ -2868,50 +2867,47 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
         if (cs < 1) cs = 1;
         if (cs > scale) cs = scale;
         int lift = (int)(pr->z / 25029) * scale;
-        /* THE ROAD ITEMS' ART (NOTES 192): the size ladders the game's own
-         * scaler produces, from the ripped sheet, drawn through the OBJ
-         * palettes they quantize to without error.  The tier is picked by
-         * the width the karts' 1/distance law asks for, then drawn at the
-         * screen scale; the shell spins through its three frames every
-         * four frames (OURS, the rate). */
+        /* THE PROJECTILE ART, from the ROM (NOTES 273).  Measured in the
+         * running game (tools/labs/mame/forceproj.lua): a projectile is
+         * ONE sprite from name-table-1 character $60, into which the game
+         * streams the tier it needs out of the sheet at $C4:0594 - so the
+         * ladder the ripped itemart.inc pre-rendered does exist, delivered
+         * one tier at a time.  The port draws the largest tier, scaled by
+         * the same law as before.  The shell is one drawing in two spin
+         * frames, green in palette 6 and red in palette 5; the spin was
+         * MEASURED on two shells at 4 frames of A then 8 of B.  Palettes
+         * measured off OAM: banana 6, green 6, mushroom 5.  Red 5,
+         * fireball 6, egg 5 are read off the art (INFERRED: every special
+         * in every recording flew off-screen). */
         {
-            const smk_itemart_tier *lad; int nl, frames = 1, ipal;
+            int kind, ipal;
             switch (pr->kind) {
-            case SMK_PROJ_GREEN: case SMK_PROJ_RED:
-                lad = pr->kind == SMK_PROJ_RED ? SMK_ITEMART_SHELL_RED : SMK_ITEMART_SHELL;
-                nl = SMK_ITEMART_SHELL_N; frames = SMK_ITEMART_SHELL_FRAMES;
-                ipal = pr->kind == SMK_PROJ_RED ? SMK_ITEMART_SHELL_RED_PAL : SMK_ITEMART_SHELL_PAL; break;
-            case SMK_PROJ_MUSHROOM: lad = SMK_ITEMART_MUSHROOM; nl = SMK_ITEMART_MUSHROOM_N; ipal = SMK_ITEMART_MUSHROOM_PAL; break;
-            case SMK_PROJ_EGG:      lad = SMK_ITEMART_EGG;      nl = SMK_ITEMART_EGG_N;      ipal = SMK_ITEMART_EGG_PAL; break;
-            case SMK_PROJ_FIREBALL: lad = SMK_ITEMART_FIREBALL; nl = SMK_ITEMART_FIREBALL_N; ipal = SMK_ITEMART_FIREBALL_PAL; break;
-            default:                lad = SMK_ITEMART_BANANA;   nl = SMK_ITEMART_BANANA_N;   ipal = SMK_ITEMART_BANANA_PAL; break;
+            case SMK_PROJ_GREEN:    kind = SMK_PROJART_SHELL_A;  ipal = 6; break;
+            case SMK_PROJ_RED:      kind = SMK_PROJART_SHELL_A;  ipal = 5; break;
+            case SMK_PROJ_MUSHROOM: kind = SMK_PROJART_MUSHROOM; ipal = 5; break;
+            case SMK_PROJ_EGG:      kind = SMK_PROJART_EGG;      ipal = 5; break;
+            case SMK_PROJ_FIREBALL: kind = SMK_PROJART_FIREBALL; ipal = 6; break;
+            default:                kind = SMK_PROJART_BANANA;   ipal = 6; break;
             }
-            /* the LARGEST tier, scaled by the pipe law (the user: "use our
-             * scaling formula from the higher res shell, switching to the
-             * low res sprites makes them look awful too soon") */
+            /* the spin: only while it travels (a dropped one sits still) */
+            bool moving = pr->speed != 0 || pr->vx || pr->vy;
+            if (kind == SMK_PROJART_SHELL_A && moving && (fx_ticks % 12u) >= 4u)
+                kind = SMK_PROJART_SHELL_B;
+            const uint8_t *art = proj_art.px[kind];
             float ks2 = sc * SMK_CAM_TRAIL / SMK_PROJ_LES;
             if (ks2 > (float)scale) ks2 = (float)scale;
-            float want = 16.0f * ks2 / (float)scale;             /* native px, for the record */
-            int ntier = nl / frames; (void)ntier;
-            int tier = 0;
-            /* the shell's three frames are its spin: only while it travels
-             * (a dropped one sits still) - the user */
-            bool moving = pr->speed != 0 || pr->vx || pr->vy;
-            const smk_itemart_tier *t = &lad[tier * frames + (frames > 1 && moving ? (int)((fx_ticks >> 2) % (unsigned)frames) : 0)];
-            float s = ks2 * (16.0f / (float)t->w); (void)want;
-            if (s < 0.1f) s = 0.1f;
-            int dw = (int)((float)t->w * s + 0.5f), dh = (int)((float)t->h * s + 0.5f);
-            if (dw < 1 || dh < 1) continue;
+            if (ks2 < 0.1f) ks2 = 0.1f;
+            int dw = (int)(16.0f * ks2 + 0.5f), dh = dw;
+            if (dw < 1) continue;
             int x0 = (int)px - dw / 2, y0 = (int)py - dh - lift;
             for (int yy = 0; yy < dh; yy++) {
                 int sy = y0 + yy;
                 if (sy < 0 || sy >= rh) continue;
-                int ty = yy * t->h / dh;
+                int ty = yy * 16 / dh;
                 for (int xx = 0; xx < dw; xx++) {
                     int sx = x0 + xx;
                     if (sx < 0 || sx >= rw) continue;
-                    int tx = xx * t->w / dw;
-                    uint8_t v = t->px[ty * t->w + tx];
+                    uint8_t v = art[ty * 16 + xx * 16 / dw];
                     if (!v) continue;
                     fb[(size_t)sy * rw + sx] = trk->palette[(0x80 + ipal * 16 + v) & 0xFF];
                 }

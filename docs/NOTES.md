@@ -11645,3 +11645,78 @@ Replacing them with a scaled base tile deletes the file - once the
 mushroom, egg and fireball base tiles are pinned the same way the shells
 were (they are somewhere in `$4E0..$4FA`; no recording seen so far throws
 one).
+
+## 273. The last two ripped tables: the squash is the head of the pose
+you are in, and the projectiles are a sheet the game streams one tier
+at a time
+
+Both remaining rips are gone.  Neither needed art the port did not
+already have, and both needed the event forced, because no recording
+contained it.
+
+### The squashed racer (flatart.inc, 28 KB)
+
+`tools/labs/mame/forcesquash.lua` forces it in the real game two ways:
+shrink a kart with the lightning handler's own writes (`$E2|=$300`,
+`$E4=$1000`, `$8C|=3`, `$84=$440`, docs/ITEMS.md), or park it on a
+Thwomp's square (entity block `+$18/+$1C`, the kart layout) until the
+block lands.  Both draw the same thing, and it is not a separate sprite:
+two OAM entries where there were four, both character `$80` of table 1,
+one plain at x and one h-flipped at x+16, on the row the kart's LOWER
+sprites used to occupy - and the tiles in that slot are the **top-left
+16x16 quarter of the pose frame the kart was showing the frame before**,
+verified tile-for-tile across three runs (`tools/labs/squashfind.py`).
+The driver's head, doubled in width, on the ground.  That is the pancake
+the rip was a screenshot of; its "white grille" is the face and its
+"dark sides" are the shadow oval.  The 3x3 block at sheet tile 733 that
+NOTES 272 pointed at is something else (the driver from above; never
+seen drawn) and is not used.
+
+So `draw_flat` now samples the sprite frame the port already holds, and
+the same drawing serves the lightning-shrunk kart: the game draws a
+small kart this way too (`$84` counts down from `$440`, the mini-kart
+tiles show during the countdown, then the head quarter).  The port's
+"half the art scale" for shrink_t was OURS and is now measured wrong;
+removed.  What stays OURS: the squash duration (SMK_SQUASH_T), and the
+shrink's countdown art.
+
+Dead ends, written down: standing a full-size kart on a Thwomp and
+watching only the state byte `$A6` sees nothing (NOTES 272) - the flatten
+does not change it; and the Python oracle cannot be used for any kart
+art at all, its VRAM stays blank across `$580..$6FF` (the two oracle
+labs that tried, projtiles.py and squashlab.py, are deleted).
+
+### The projectiles (itemart.inc, 21 KB)
+
+NOTES 272 said the game has no ladder for thrown items and draws them
+from `$4FB..$4FE`.  Wrong on both counts, and the catalogue that said so
+had filtered by the wrong characters: `$FB..$FE` are the HUD's roulette
+icons.  A projectile in flight is ONE sprite from **name-table-1
+character `$60`** (VRAM `$660..$671`), and the game DMAs into that slot
+the tier it needs out of the sheet at **`$C4:0594`** (decompressed by
+`$81:E58D`, 120 tiles): six ladders of twenty tiles, each four 16x16
+tiers stored as four consecutive tiles (TL TR BL BR - a thrown green
+shell filled `$660 $661 $670 $671` from sheet tiles 20 21 22 23) and
+four 8x8 tiers, in the order banana, shell frame A, shell frame B,
+poison mushroom, fireball, egg.  There is ONE shell drawing: palette 6
+is the green shell, palette 5 the red.
+
+Measured off OAM (`tools/labs/mame/forceproj.lua`, every real spawn in
+eight recordings, plus `forceproj3.lua`, which synthesises spawns from a
+captured block): banana palette 6, green shell 6, poison mushroom 5; the
+shell spins A for 4 frames then B for 8 (two shells).  Red 5, fireball
+6 and egg 5 are read off the art under each palette - every CPU special
+in every recording was thrown off-screen, and the synthesised ones drew
+only for one owner (the mushroom).  INFERRED and labelled.
+
+`smk_projart_load` now decodes that sheet's largest tiers and the draw
+scales them by the law it already used; the old loader's "`$C1:0000`
+tiles 13 and 15" were the HUD icons.  itemart.inc, itemsheet.py: deleted.
+
+### What ships now
+
+Every one of the five ripped tables is gone: mole, cheep-cheep and
+Thwomp from the theme sheets (NOTES 272), the squash from the kart's own
+pose frame, the projectiles from `$C4:0594`.  `src/*.inc` holds measured
+motion paths only.  The README's claim that no game data ships is true
+again.

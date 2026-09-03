@@ -2087,21 +2087,27 @@ bool smk_itemicons_load(const smk_rom *rom, smk_itemicons *out);
 /* CORRECTED: in this OBSEL the small sprite is 8x8 and the large 16x16,
  * so a shell is ONE tile - $FC green, $FE red, $F9 the banana - and the
  * "16x16" karts are the four-quadrant 16x16s of NOTES 182. */
-typedef struct { bool ok; uint8_t px[3][8 * 8]; } smk_projart;     /* banana, green, red */
+/* The projectile art, from the ROM (NOTES 273).  The sheet at $C4:0594
+ * is six size ladders of twenty tiles each - four 16x16 tiers stored as
+ * four consecutive tiles (TL TR BL BR), then four 8x8 tiers - in this
+ * order: banana, shell frame A, shell frame B, poison mushroom, fireball,
+ * egg.  The running game streams the tier it needs into VRAM $660 and
+ * draws one sprite from it (tools/labs/mame/forceproj.lua); the port
+ * keeps each ladder's LARGEST tier and scales it, as for every object.
+ * One shell drawing serves both shells: palette 6 is green, 5 is red. */
+#define SMK_PROJART_BANANA   0
+#define SMK_PROJART_SHELL_A  1
+#define SMK_PROJART_SHELL_B  2
+#define SMK_PROJART_MUSHROOM 3
+#define SMK_PROJART_FIREBALL 4
+#define SMK_PROJART_EGG      5
+#define SMK_PROJART_N        6
+#define SMK_PROJART_SRC      0xC40594u
+typedef struct { bool ok; uint8_t px[SMK_PROJART_N][16 * 16]; } smk_projart;
 /* The road items' art: size ladders as the game's own scaler draws them,
  * imported from a rip of that output (src/itemart.inc, NOTES 192) since
  * the ROM holds no tiles for them.  Palette-indexed against the OBJ
  * palettes, 0 transparent. */
-typedef struct { uint8_t w, h; uint8_t px[16 * 16]; } smk_itemart_tier;
-/* which tier of a ladder for a wanted width in native px: nearest */
-static inline int smk_itemart_pick(const smk_itemart_tier *t, int n, float want)
-{
-    int best = 0;
-    for (int i = 1; i < n; i++)
-        if ((want - (float)t[i].w) * (want - (float)t[i].w)
-            < (want - (float)t[best].w) * (want - (float)t[best].w)) best = i;
-    return best;
-}
 bool smk_projart_load(const smk_rom *rom, smk_projart *out);
 #define SMK_PROJ_PAL 4
 

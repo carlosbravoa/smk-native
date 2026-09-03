@@ -302,17 +302,24 @@ static void tile8(const uint8_t *src, uint8_t *dst64)
 
 bool smk_projart_load(const smk_rom *rom, smk_projart *out)
 {
-    /* One 8x8 tile each, found by searching decompressed blobs for the
-     * bytes VRAM held: the shells in the shared blob at $C1:0000 (VRAM
-     * tile n = blob tile n - $EF), the banana in the blob at $C1:4552. */
-    static uint8_t a[65536], d[65536];
+    /* $C4:0594, decompressed by the game itself ($81:E58D) - six ladders
+     * of twenty tiles; the largest tier of each is its first four tiles,
+     * TL TR BL BR (measured: a thrown green shell drew VRAM $660..$671
+     * from sheet tiles 20 21 22 23 in that order, NOTES 273). */
+    static uint8_t buf[0x2000];
     memset(out, 0, sizeof *out);
-    long na = smk_decompress_into(rom->data, rom->size, smk_snes_to_pc(rom, 0xC10000u), a, sizeof a, 0, NULL);
-    long nd = smk_decompress_into(rom->data, rom->size, smk_snes_to_pc(rom, 0xC14552u), d, sizeof d, 0, NULL);
-    if (na < 16 * 32) return false;
-    tile8(a + 13 * 32, out->px[1]);                     /* $FC green */
-    tile8(a + 15 * 32, out->px[2]);                     /* $FE red   */
-    if (nd >= 69 * 32) tile8(d + 68 * 32, out->px[0]);  /* $F9 banana */
+    long n = smk_decompress_into(rom->data, rom->size, smk_snes_to_pc(rom, SMK_PROJART_SRC),
+                                 buf, sizeof buf, 0, NULL);
+    if (n < 120 * 32) return false;
+    for (int k = 0; k < SMK_PROJART_N; k++)
+        for (int q = 0; q < 4; q++) {
+            uint8_t t[64];
+            tile8(buf + (k * 20 + q) * 32, t);
+            int ox = (q & 1) * 8, oy = (q >> 1) * 8;
+            for (int y = 0; y < 8; y++)
+                for (int x = 0; x < 8; x++)
+                    out->px[k][(oy + y) * 16 + ox + x] = t[y * 8 + x];
+        }
     out->ok = true;
     return true;
 }
