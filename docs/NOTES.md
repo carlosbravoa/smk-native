@@ -11366,3 +11366,50 @@ would delete the largest of the five with no rip and no loss.
 Which leaves, for a public repository: `itemart` replaceable with work,
 `molart` measured as not reachable, and `fishart` / `flatart` /
 `rrthwomp` untested by the same rig.
+
+## 270. The survey: what of the ripped art is reachable from the ROM, and
+what this means for publishing
+
+NOTES 269 built the rig and gave one answer (the mole: no).  Running it
+across the rest settles the question the publishing decision turns on.
+
+| ripped table | reachable from the ROM? | evidence |
+|---|---|---|
+| `itemart` green/red shells | **YES** | `$C1:0000` tiles 13 and 15 - `smk_projart_load` already decodes them |
+| `itemart` banana | **YES** | `$C1:4552` tile 68, same |
+| `itemart` mushroom / egg / fireball | not found | not in that blob's neighbourhood; unlocated |
+| `molart` | **NO** | 58 live tiles, 0 of 584 candidate streams, no raw sheet (best implied base: 4 of 56) |
+| `fishart` (Koopa Beach OBJ region) | **NO** | 201 live tiles, 1 stray match |
+| `flatart` (Bowser Castle OBJ region) | **NO** | 218 live tiles, 10 matches, all of them the HUD blob |
+| `rrthwomp` | untested | no Rainbow Road recording exists |
+
+The pattern is consistent and it is not a near miss: the karts, the HUD,
+the font, the pipes and Lakitu all turn up immediately in compressed
+streams, and the entity/hazard sprites turn up in none of them.  SMK does
+not keep that art as plain 4bpp streams in banks `$C0-$CF`.
+
+**Stated honestly, this is a negative with a boundary**, not a proof of
+absence: the search covers banks `$C0-$CF` with this project's own LZ
+decompressor.  The art could sit outside that range, or in an encoding
+the decompressor does not model.  Finding it is a decode task of unknown
+size - the same family as the near-object source that took NOTES 154-160
+to close.
+
+**What it means for the repository.**  "Reproduce them on first build"
+cannot be delivered for four of the five files today.  And the one that
+is partly reachable does not help on its own: replacing the shell and
+banana ladders with runtime scaling would leave `itemart.inc` in the tree
+for the mushroom, egg and fireball, so nothing gets deleted and nothing
+gets unblocked.  A 60% smaller file of ripped pixels is still ripped
+pixels.
+
+So the choice is unchanged from NOTES 269, and it is the user's:
+
+1. **publish without them** - guard the five tables so the port builds and
+   runs without the art, and anyone with their own rips regenerates it
+   with the tools already here.  Costs: no in-flight items, mole,
+   cheep-cheeps, squashed racers or RR Thwomp in a stock clone.
+2. **publish with them and correct the three claims** that say no game
+   data ships.
+3. **find the art first** - the rig is built and the method is proven;
+   what is missing is where SMK keeps its object sprites.
