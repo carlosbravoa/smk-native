@@ -11310,3 +11310,59 @@ back.
 
 Rendered after the change, our puff's two colours are `rgb(140,123,49)`
 and `rgb(173,156,82)` - the game's own, to the byte.
+
+## 269. Can the ripped art be reproduced from the ROM?  A rig, and one
+measured no
+
+The user wants the repository public, and the blocker is five `.inc`
+tables of ripped sprite pixels against a repo that says three times it
+ships no game data.  Their instruction: *"make sure we reproduce them on
+first build."*  That can only mean from the ROM - the sheets they were
+ripped from cannot be shipped either - so the question is whether the
+art is in there.
+
+**The rig, and it is general.**  `find_entity_gfx.py` answered this once
+for the pipes by carrying three hard-coded signatures.  Now:
+
+* `tools/labs/mame/vramgrab.lua` dumps the live VRAM (and CGRAM) at the
+  first frame a condition holds, out of a recording.
+* `tools/labs/findart.py` takes any dump, pulls every non-blank 4bpp tile
+  out of it, decompresses every stream in banks `$C0-$CF` and reports
+  which streams hold which live tiles.
+
+One MAME note that cost an hour: **VRAM is not an address space in this
+build.**  `ppu.spaces["vram"]` is nil; it is a SAVE-STATE ITEM, and
+`device.items["0/m_vram"]` returns an INDEX, not an object - `emu.item(i)`
+gives the object and `:read(n)` one byte.  The first attempt wrote a
+0-byte file and looked like a failed grab.
+
+**The method works**: pointed at a whole race frame it finds the object
+stream at `$C1:0F9B` (57 tiles, the pipes) that the port already decodes,
+plus the HUD and font streams.
+
+**And the mole is NOT in there.**  Bracketing the latch in the user's
+`moles` recording - `$50` goes non-zero at frame 1642, so VRAM at 1638
+against 1650 - gives **58 tiles that appear when the mole does**, in the
+OBJ region `$589..$5BF`.  Of those 58:
+
+* **none** occur in any of the 584 decompressible streams of 512+ bytes
+  in banks `$C0-$CF` (two incidental single-tile matches, both flat);
+* they form **no raw sheet**: voting every raw occurrence on an implied
+  base `addr - tile*32`, the best base accounts for 4 tiles of 56.
+
+So the mole's art is assembled into VRAM by something this project does
+not yet model, and it cannot be reproduced on first build today.  That is
+a decode task, not a packaging one.
+
+**One of the five IS replaceable, though, and it is the biggest.**
+`src/itemart.inc` is 21 KB of pre-scaled renderings of the thrown items -
+and `smk_projart_load` ALREADY decodes those items' base tiles out of the
+ROM (`$C1:0000` tiles 13/15 for the green and red shells, `$C1:4552` tile
+68 for the banana).  It is loaded at startup and then never drawn: every
+flying item is drawn from the ripped ladder instead.  The port scales
+karts and objects at runtime from ROM tiles already; doing the same here
+would delete the largest of the five with no rip and no loss.
+
+Which leaves, for a public repository: `itemart` replaceable with work,
+`molart` measured as not reachable, and `fishart` / `flatart` /
+`rrthwomp` untested by the same rig.
