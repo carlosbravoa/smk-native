@@ -2248,6 +2248,11 @@ typedef struct {
     int      start_hold;    /* countdown frame the throttle goes down on,
                                -1 = never: the turbo start, as a knob      */
     int      start_jitter;  /* px of random offset on the grid, 0 = exact  */
+    /* Mean frames between a random knock - the game's own banana spin,
+     * shell tumble or kart bump.  0 = never.  It is how a memorised route
+     * is told apart from a learned one, and the cheapest stand-in for
+     * opponents until the GP environment exists.  See src/env.c. */
+    int      disrupt;
     uint32_t seed;
     /* the reward's weights, all OURS - see the note over reward() */
     float    w_progress, w_time, w_wall, w_offroad, w_rescue, w_finish;

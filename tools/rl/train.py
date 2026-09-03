@@ -36,25 +36,40 @@ from export_pads import write_pads
 
 
 # ---- the environments ----------------------------------------------------
+def parse_tracks(spec: str, track: int) -> list[int]:
+    if spec == "gp":
+        return list(GP_TRACKS)
+    if spec:
+        return [int(t) for t in spec.split(",")]
+    return [track]
+
+
+def holdout_of(args) -> set[int]:
+    return {int(t) for t in args.holdout.split(",")} if args.holdout else set()
+
+
 def build_cfgs(args) -> list[EnvCfg]:
-    if args.tracks == "gp":
-        tracks = GP_TRACKS
-    elif args.tracks:
-        tracks = [int(t) for t in args.tracks.split(",")]
-    else:
-        tracks = [args.track]
+    tracks = [t for t in parse_tracks(args.tracks, args.track)
+              if t not in holdout_of(args)]
+    if not tracks:
+        raise SystemExit("every track was held out - nothing to train on")
+    classes = [int(c) for c in args.classes.split(",")] if args.classes \
+        else [args.engine_class]
     cfgs = []
     for i in range(args.envs):
         cfgs.append(EnvCfg(
             track=tracks[i % len(tracks)],
             character=args.character,
-            engine_class=args.engine_class,
+            # spread the classes across the batch so one policy drives all
+            # of them, instead of one that is silently wrong on the others
+            engine_class=classes[(i // max(len(tracks), 1)) % len(classes)],
             laps=args.laps,
             frame_skip=args.frame_skip,
             max_frames=args.max_frames,
             stall_frames=args.stall_frames,
             mushroom=int(args.mushroom),
             start_jitter=args.jitter,
+            disrupt=args.disrupt,
             seed=args.seed + i,
         ))
     return cfgs
@@ -138,6 +153,7 @@ def train(args):
 
     cfgs = build_cfgs(args)
     tracks = sorted({c.track for c in cfgs})
+    held = sorted(holdout_of(args))
     env = SMKVecEnv(cfgs)
     n = env.n
 
@@ -150,7 +166,7 @@ def train(args):
         json.dump({"args": vars(args), "env": asdict(cfgs[0]),
                    "tracks": tracks}, f, indent=2)
 
-    base = autopilot_baseline(args, tracks)
+    base = autopilot_baseline(args, sorted(set(tracks) | set(held)))
     print("the scripted driver, on the same courses and the same episode rules:")
     for t in tracks:
         print(f"  {track_name(t):<18} "
@@ -277,6 +293,22 @@ def train(args):
                   f"len {ln:6.0f}  entropy {ent.item():.3f}")
 
         if up % args.eval_every == 0 or up == updates:
+            # The courses it never trained on are reported apart from the
+            # ones it did.  That gap is the whole question of whether it
+            # learned the game or learned twenty routes, and averaging
+            # the two together would hide it.
+            if held:
+                hres = evaluate(policy, norm, args, held, device)
+                hf = [hres[t]["frames"] for t in held]
+                print(f"    HELD OUT ({len(held)} courses never trained on): "
+                      f"{sum(x is not None for x in hf)}/{len(held)} finished"
+                      + (f", mean {frames_to_time(np.mean([x for x in hf if x]))}"
+                         if any(hf) else ""))
+                for t in held:
+                    got, b = hres[t]["frames"], base.get(t)
+                    mark = f"   ({(got - b) / 60:+.2f}s vs the script)" if got and b else ""
+                    print(f"      {track_name(t):<18} "
+                          f"{frames_to_time(got) if got else 'did not finish':<10}{mark}")
             res = evaluate(policy, norm, args, tracks, device)
             for t in tracks:
                 got, b = res[t]["frames"], base[t]
@@ -330,6 +362,15 @@ def main():
     p.add_argument("--max-frames", type=int, default=10800, dest="max_frames")
     p.add_argument("--stall-frames", type=int, default=300, dest="stall_frames")
     p.add_argument("--jitter", type=int, default=0, help="px of start jitter")
+    p.add_argument("--holdout", default="",
+                   help="courses to keep OUT of training and report separately - "
+                        "the test of whether it learned the game or the routes")
+    p.add_argument("--classes", default="",
+                   help="engine classes to spread across the batch, e.g. 0,1,2")
+    p.add_argument("--disrupt", type=int, default=0,
+                   help="mean frames between a random knock (the game's own "
+                        "banana spin, shell tumble or kart bump).  Forces "
+                        "reacting rather than replaying a route.")
     p.add_argument("--envs", type=int, default=64)
     p.add_argument("--steps", type=int, default=20_000_000)
     p.add_argument("--rollout", type=int, default=128)
@@ -364,7 +405,7 @@ def main():
         norm = RunningNorm(OBS_DIM); norm.load(ck["norm"])
         tracks = GP_TRACKS if args.tracks == "gp" else \
             ([int(t) for t in args.tracks.split(",")] if args.tracks else [args.track])
-        base = autopilot_baseline(args, tracks)
+        base = autopilot_baseline(args, sorted(set(tracks) | set(held)))
         res = evaluate(policy, norm, args, tracks, device)
         print(f"{'course':<18} {'policy':<10} {'the script':<10}  delta")
         for t in tracks:

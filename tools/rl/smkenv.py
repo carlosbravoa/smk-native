@@ -85,6 +85,7 @@ class _Cfg(ctypes.Structure):
         ("max_frames", ctypes.c_int), ("stall_frames", ctypes.c_int),
         ("mushroom", ctypes.c_int), ("countdown", ctypes.c_int),
         ("start_hold", ctypes.c_int), ("start_jitter", ctypes.c_int),
+        ("disrupt", ctypes.c_int),
         ("seed", ctypes.c_uint32),
         ("w_progress", ctypes.c_float), ("w_time", ctypes.c_float),
         ("w_wall", ctypes.c_float), ("w_offroad", ctypes.c_float),
@@ -122,6 +123,7 @@ class EnvCfg:
     countdown: int = 1             # run the game's own 336-frame start
     start_hold: int = -1           # countdown frame to hold the throttle from
     start_jitter: int = 0
+    disrupt: int = 0               # mean frames between a random knock
     seed: int = 1
     # --- the reward's weights ---
     w_progress: float = 1.0
@@ -232,7 +234,7 @@ class SMKVecEnv:
 
     # ``info`` columns, by name
     INFO_LAP, INFO_FRAMES, INFO_PROGRESS, INFO_SPEED = 0, 1, 2, 3
-    INFO_WALLS, INFO_RESCUES, INFO_FINISH_FRAME, INFO_TRACK = 4, 5, 6, 7
+    INFO_WALLS, INFO_RESCUES, INFO_FINISH_FRAME, INFO_DISRUPTED = 4, 5, 6, 7
 
     def close(self) -> None:
         if getattr(self, "_b", None):

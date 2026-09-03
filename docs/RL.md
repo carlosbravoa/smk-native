@@ -281,6 +281,64 @@ on and the game warns when they differ.  The fix is to vary
 the environment already takes a config per environment, so that is a
 one-line change to `build_cfgs`.
 
+## Did it learn the game, or twenty routes?
+
+The question matters more than it sounds: a policy that has memorised a
+route has learned an open-loop sequence, and the first bump from another
+kart ends it.  There are two answers, one structural and one measured.
+
+**Structurally it cannot memorise a route.**  Look at what is in the 55
+numbers: velocity in the kart's own frame, the slip angle, the next four
+waypoints as bearings *relative to heading*, the offset from the line,
+the flow field *relative to heading*, and twelve rangefinders.  There is
+no absolute position, no track identity, no sector index, no lap counter
+and no clock.  `sector_fraction` is the fraction between two waypoints
+and does not say which two.  The policy cannot encode "at twelve seconds,
+turn left" because it has no clock, and cannot encode "on Rainbow Road,
+do this" because it does not know which course it is on.  It is a
+reactive function of local geometry or it is nothing.
+
+**Measured, on four courses it never trained on.**  `--holdout 3,11,16,19`
+keeps them out of the batch entirely and reports them apart from the rest
+at every evaluation, because averaging the two hides the only number that
+answers this:
+
+| never trained on | policy | vs the scripted driver |
+|---|---|---|
+| Bowser Castle 1 | 1'41"96 | -25.20s |
+| Choco Island 2 | 1'23"45 | -18.62s |
+| Koopa Beach 2 | 0'46"66 | -17.57s |
+| Rainbow Road | 1'03"66 | -6.97s |
+
+4 of 4 finished, all four faster than the scripted driver, on courses the
+network had never seen.  It is a competent driver on an unseen track, not
+an expert one - the held-out times are slower than the same courses when
+trained on, and that gap is the honest size of the generalisation.
+
+**And measured under disruption.**  `--disrupt N` knocks the kart about
+with the game's own hits - the banana spin, the shell tumble, the
+kart-to-kart bump - at a mean of every N frames.
+`tools/rl/robustness.py` sweeps the rate.  The reading is the SHAPE: a
+route replayer falls off a cliff at the first knock, a driver degrades.
+
+```
+                     trained clean        trained with --disrupt 450
+ knock every   finishes   vs clean      finishes   vs clean
+       never        95%                     100%
+       15.0s        92%     +12.7s           97%     +7.7s
+        7.5s        88%     +25.9s           98%    +17.3s
+        3.3s        72%     +50.1s           98%    +40.5s
+        1.7s        67%    +144.3s           95%   +117.9s
+```
+
+Both degrade rather than collapse, which is the structural argument
+showing up in behaviour.  Training *with* disruption is dramatically
+better under it - 95% still finishing while being knocked 114 times in a
+run - at the cost of a little outright pace.  It is also the cheapest
+stand-in for opponents until the GP environment exists, because being
+spun by a shell is being spun by a shell whether or not there is a kart
+behind it.
+
 ## Where to take it next
 
 - **Racing, rather than driving.** This is the big one, and the reason

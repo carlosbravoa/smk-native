@@ -110,7 +110,7 @@ struct smk_env {
     uint32_t    rng;
     /* what the last step did, for the info block */
     float       last_reward;
-    int         wall_hits, offroad_frames, rescues;
+    int         wall_hits, offroad_frames, rescues, disrupted;
     int         done, truncated;
     long        finish_frame;
 };
@@ -358,7 +358,7 @@ static void env_reset_one(smk_env *e)
     e->prog = smk_progress_line(&e->me, &e->crs, &e->kart);
     e->prog_best = e->prog;
     e->stall = 0;
-    e->wall_hits = e->offroad_frames = e->rescues = 0;
+    e->wall_hits = e->offroad_frames = e->rescues = e->disrupted = 0;
     e->done = e->truncated = 0;
     e->last_reward = 0.0f;
     e->finish_frame = -1;
@@ -412,6 +412,35 @@ static void frame(smk_env *e, uint16_t held, uint16_t pressed)
     if ((e->frames & 1) == 1) smk_pickup_step(e->rom, &e->trk, p, k, grounded);
     /* the Thwomps only move once the first lap is complete */
     smk_course_movers_step(&e->crs, e->me.lap >= 2);
+
+    /* ---- disruption (OURS, and the point of it) ----------------------
+     *
+     * The user: "I want it to race a real race as a player, learning
+     * patterns in track, not memorizing one single route.  If it is the
+     * latter any minor disruption will break the workflow."
+     *
+     * Exactly right, and this is the instrument for both halves of it.
+     * A policy that has memorised a route is a policy that has learned
+     * an open-loop sequence, and the way to tell is to knock it off the
+     * sequence and see whether it recovers or flails.
+     *
+     * The knocks are the GAME'S, not synthetic noise: $81:9982's banana
+     * spin, $81:9ACE's shell tumble, and the kart-to-kart bump - the
+     * three things that will actually happen to it in a race it is not
+     * driving alone.  Turned on during training it is the cheapest
+     * possible stand-in for opponents and items until the real GP
+     * environment exists; turned on at evaluation it MEASURES the
+     * brittleness rather than arguing about it.
+     */
+    if (e->cfg.disrupt > 0 && e->frames > 120
+        && (int)(xrand(&e->rng) % (uint32_t)e->cfg.disrupt) == 0) {
+        switch (xrand(&e->rng) % 3u) {
+        case 0: smk_player_hit_banana(p, k); break;
+        case 1: smk_player_hit_shell(p, k, (int)(xrand(&e->rng) & 1u)); break;
+        default: smk_player_hit_bump(p, k); break;
+        }
+        e->disrupted++;
+    }
 
     smk_progress_step(&e->me, &e->crs, k);
     e->sector = e->me.sector;
@@ -491,6 +520,7 @@ void smk_env_cfg_default(smk_env_cfg *c)
     c->countdown = 1;
     c->start_hold = -1;       /* a plain launch, not the turbo start */
     c->start_jitter = 0;
+    c->disrupt = 0;           /* mean frames between a random knock; 0 = none */
     c->seed = 1;
     c->w_progress = 1.0f;
     c->w_time     = 0.002f;
@@ -616,7 +646,7 @@ static void step_one(smk_env *e, int action, float *obs, float *rew,
         info[4] = (float)e->wall_hits;
         info[5] = (float)e->rescues;
         info[6] = (float)e->finish_frame;
-        info[7] = (float)e->cfg.track;
+        info[7] = (float)e->disrupted;
     }
     /* Autoreset, as a vectorised learner expects: the observation handed
      * back with a terminal step is already the NEXT episode's first.
