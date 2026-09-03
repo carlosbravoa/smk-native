@@ -1,7 +1,6 @@
 /* SDL2 host for the Super Mario Kart reimplementation. */
 #include "smk.h"
 #include "itemart.inc"
-#include "flatart.inc"
 
 #ifndef SMK_BUILD
 #define SMK_BUILD "dev"
@@ -2503,30 +2502,39 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
 }
 
 /* One AI kart, split out for the same reason as draw_entity. */
-/* The SQUASHED racer (bug 13): the user's ripped flattened art, drawn like
- * the road items - nearest-neighbour at a continuous scale, through the
- * driver palette its block quantised to (tools/labs/flatsheet.py), anchored
- * at the wheels like every kart sprite.  The big art always, by the pipe
- * law; frame 1 is the straight pose. */
-static void draw_flat(uint32_t *fb, int rw, int rh, const uint32_t *palette,
-                      int ch, int frame, int cx, int cy, float s)
+/* The SQUASHED racer - and the SHRUNKEN one, which is the same drawing.
+ *
+ * MEASURED (tools/labs/mame/forcesquash.lua, NOTES 273): a kart that has
+ * been shrunk by lightning, or landed on by a Thwomp, is drawn from the
+ * TOP-LEFT 16x16 QUARTER of its current pose frame - the driver's head -
+ * as that quarter, unflipped, and its mirror beside it, on the row the
+ * kart's lower sprites used to occupy.  Two OAM entries where there were
+ * four; no other art is involved, so the head comes out doubled in
+ * width and sitting on the ground, which is the pancake the ripped
+ * flatart.inc was a screenshot of.  The pose still turns with the
+ * heading, so the quarter is taken from whatever frame the kart would
+ * otherwise be showing. */
+static void draw_flat(uint32_t *fb, int rw, int rh, const uint32_t *palette, int pal,
+                      const smk_sprites *spr, int frame, int cx, int cy, float s)
 {
-    if (ch < 0 || ch >= SMK_CHARACTERS || s <= 0.0f) return;
-    const smk_flat_tier *t = &SMK_FLATART[ch][frame];
-    int dw = (int)((float)t->w * s + 0.5f), dh = (int)((float)t->h * s + 0.5f);
+    if (!spr || frame < 0 || frame >= spr->frames || s <= 0.0f) return;
+    const int Q = SMK_SPR_PX / 2;                   /* the 16x16 quarter */
+    int dw = (int)((float)Q * s + 0.5f), dh = (int)((float)Q * s + 0.5f);
     if (dw < 1 || dh < 1) return;
-    int x0 = cx - dw / 2, y0 = cy - dh;          /* anchored at the wheels */
+    int x0 = cx - dw, y0 = cy - dh;                 /* left half, then its mirror */
+    const uint8_t *px = spr->px[frame];
     for (int yy = 0; yy < dh; yy++) {
         int sy = y0 + yy;
         if (sy < 0 || sy >= rh) continue;
-        int ty = yy * t->h / dh;
+        int ty = yy * Q / dh;
         for (int xx = 0; xx < dw; xx++) {
-            int sx = x0 + xx;
-            if (sx < 0 || sx >= rw) continue;
-            int tx = xx * t->w / dw;
-            uint8_t v = t->px[ty * t->w + tx];
+            int tx = xx * Q / dw;
+            uint8_t v = px[ty * SMK_SPR_PX + tx];
             if (!v) continue;
-            fb[(size_t)sy * rw + sx] = palette[(t->pal + v) & 0xFF];
+            uint32_t c = palette[(pal + v) & 0xFF];
+            int sl = x0 + xx, sr = cx + (dw - 1 - xx);
+            if (sl >= 0 && sl < rw) fb[(size_t)sy * rw + sl] = c;
+            if (sr >= 0 && sr < rw) fb[(size_t)sy * rw + sr] = c;
         }
     }
 }
@@ -2617,7 +2625,6 @@ static void draw_ai_kart(const smk_rom *rom, const smk_track *trk,
         float kd = sqrtf(kdx * kdx + kdy * kdy);
         if (kd < SMK_OBJ_NEAR) kd = SMK_OBJ_NEAR;
         float kwant = (float)KTIER[0].h * SMK_KART_SCALE_K / kd;
-        if (racers[k].shrink_t > 0) kwant *= 0.5f;      /* lightning: OURS, half size */
         if (kwant > (float)KTIER[0].h) kwant = (float)KTIER[0].h;
         int kt = 0;
         for (int t = 1; t < 4; t++)
@@ -2649,7 +2656,6 @@ static void draw_ai_kart(const smk_rom *rom, const smk_track *trk,
          * drawing while the size is still large is the step the eye sees. */
         float ks = sc * SMK_CAM_TRAIL / SMK_PROJ_LES;
         if (ks > (float)kscale) ks = (float)kscale;
-        if (racers[k].shrink_t > 0) ks *= 0.5f;
         /* ON THE SNES'S OWN PIXEL GRID (the user: "they jitter a lot in
          * the X axis").  MEASURED, tools/labs/aixjit.py over a traced
          * race: the drawn size was changing 15 times a SECOND, and every
@@ -2672,8 +2678,8 @@ static void draw_ai_kart(const smk_rom *rom, const smk_track *trk,
         int fdraw = mirror ? 0 : f;
         bool hf2 = hf;
         (void)kt;
-        if (racers[k].squash_t > 0) {              /* bug 13: flattened */
-            draw_flat(fb, rw, rh, trk->palette, ch, 1,
+        if (racers[k].squash_t > 0 || racers[k].shrink_t > 0) {   /* flattened / shrunk */
+            draw_flat(fb, rw, rh, trk->palette, d2->pal, &other[k], fdraw,
                       (int)lroundf(px), (int)lroundf(py), ks);
             return;
         }
@@ -2919,7 +2925,6 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
         if (scale < 1) scale = 1;
         /* small after lightning ($84): OURS, half the art scale; the star
          * ($4E bit 15): OURS, the palette cycling through the drivers' */
-        if (player.shrink_t > 0 && scale > 1) scale /= 2;
         /* MEASURED (tools/labs/starpal2.py, NOTES 189): the starred kart's
          * OAM palette runs 5 4 7 6 1 0 3 2, ONE frame each, round and round
          * - every sprite palette, at 60 Hz.  Holding each for four frames
@@ -2979,9 +2984,13 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
         if (lift > 0)
             draw_shadow(fb, rw, rh, (float)(rw / 2), (float)prow,
                         SMK_PROJ_LES * (float)smk_render_proj_width(rw, rh) / 256.0f / SMK_CAM_TRAIL);
-        if (player.squash_t > 0)                   /* bug 13: flattened */
-            draw_flat(fb, rw, rh, trk->palette, (int)(drv - SMK_DRIVERS), 1,
+        if (player.squash_t > 0 || player.shrink_t > 0) {   /* flattened / shrunk */
+            int fq = frame == 1000 ? 0
+                   : (frame == SMK_POSE_LEAN || frame == -SMK_POSE_LEAN) ? SMK_SPR_LEAN
+                   : (frame < 0 ? -frame : frame);
+            draw_flat(fb, rw, rh, trk->palette, ppal, karts, fq,
                       rw / 2, prow - lift, (float)scale);
+        }
         else if (frame == SMK_POSE_LEAN || frame == -SMK_POSE_LEAN)
             /* the SAME block as the straight pose, drawn UNFOLDED so its
              * own right half shows: that is the lean (NOTES 182) */
