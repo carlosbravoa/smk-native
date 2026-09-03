@@ -30,3 +30,6 @@ assets/rips/*
 !assets/rips/README.md
 assets/captures/*
 !assets/captures/README.md
+
+# MAME save states hold the console's RAM and VRAM - game data; keep them local
+tools/labs/mame/sessions/snes/
