@@ -3,11 +3,11 @@
 y=110 of the hazard sheet, TWO animation frames a tier) against Koopa
 Beach's CGRAM (tmp/cgram_c20.bin) -> src/fishart.inc."""
 from PIL import Image
-cg=open('tmp/cgram_c20.bin','rb').read()
+cg=open('assets/captures/cgram_c20.bin','rb').read()
 def rgb(i):
     c=cg[i*2]|cg[i*2+1]<<8; return ((c&31)*8,((c>>5)&31)*8,((c>>10)&31)*8)
 PALS=[[rgb(128+p*16+i) for i in range(16)] for p in range(8)]
-im=Image.open('tmp/new/itemson-the-road-2.gif').convert('RGB'); px=im.load(); bg=px[0,0]
+im=Image.open('assets/rips/itemson-the-road-2.gif').convert('RGB'); px=im.load(); bg=px[0,0]
 BOXES=[(2,110,16,15),(20,110,16,15),(38,111,15,14),(55,111,15,14),(72,112,13,13),(87,112,13,13),
        (102,113,12,12),(116,113,13,12),(131,115,11,10),(144,115,11,10)]
 def quant(box,pal):

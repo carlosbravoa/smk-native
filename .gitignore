@@ -19,3 +19,14 @@ __pycache__/
 *.pyc
 rom/music/
 rom/sfx/
+
+# Scratch.  NOTHING that is needed may live here - the labs read from
+# assets/rips (hand-supplied sheets) and assets/captures (live dumps).
+tmp/
+error.log
+
+# Game artwork and live memory dumps: local only, same rule as rom/.
+assets/rips/*
+!assets/rips/README.md
+assets/captures/*
+!assets/captures/README.md

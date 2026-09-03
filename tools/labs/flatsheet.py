@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Import the flattened-racer sheet (tmp/new/flattened-racers-after-thwomp.png,
+"""Import the flattened-racer sheet (assets/rips/flattened-racers-after-thwomp.png,
 the user's rip: what a Thwomp landing on a kart leaves) into src/flatart.inc:
 per DRIVER, three poses in two sizes, palette-indexed against the driver
 palettes in tmp/cgram.bin so every theme's re-tint applies (as itemart does).
@@ -7,11 +7,11 @@ The sheet holds 8 blocks (4 x 2) of 3 x 32px cells, big sprite on top,
 small below.  Block -> driver and block -> palette were fitted: each block
 quantizes to one OBJ palette with near-zero error (printed)."""
 from PIL import Image
-cg=open('tmp/cgram.bin','rb').read()
+cg=open('assets/captures/cgram.bin','rb').read()
 def rgb(i):
     c=cg[i*2]|cg[i*2+1]<<8; return ((c&31)*8,((c>>5)&31)*8,((c>>10)&31)*8)
 PAL={b:[rgb(b+i) for i in range(16)] for b in (0x80,0x90,0xA0,0xB0)}
-im=Image.open('tmp/new/flattened-racers-after-thwomp.png').convert('RGB'); px=im.load(); bg=px[0,0]
+im=Image.open('assets/rips/flattened-racers-after-thwomp.png').convert('RGB'); px=im.load(); bg=px[0,0]
 # driver index (SMK_DRIVERS order) -> (sheet block, palette base)
 DRV=[('Mario',0,0x90),('Luigi',3,0xA0),('Bowser',2,0x80),('Peach',6,0xB0),
      ('DK Jr',1,0xB0),('Yoshi',4,0xA0),('Koopa',5,0x80),('Toad',7,0x90)]

@@ -87,7 +87,7 @@ log("\n  the driver's sprite changes with steering at a standstill: %s"
 # that difference is the whole question the user is asking (lean vs turn).
 for name, idx in (("neutral", N[0]), ("left", L[0]), ("right", R[0])):
     vr, _, _, oam, cg = snaps[idx][1]
-    open("tmp/lean_%s_vram.bin" % name, "wb").write(vr)
-    open("tmp/lean_%s_oam.bin" % name, "wb").write(oam)
-    open("tmp/lean_%s_cgram.bin" % name, "wb").write(cg)
+    open("assets/captures/lean_%s_vram.bin" % name, "wb").write(vr)
+    open("assets/captures/lean_%s_oam.bin" % name, "wb").write(oam)
+    open("assets/captures/lean_%s_cgram.bin" % name, "wb").write(cg)
 log("\ndumped VRAM/OAM/CGRAM for neutral, left and right")

@@ -30,5 +30,5 @@ while time.time() - t0 < 900:
 else: raise SystemExit("never reached the race")
 c.run_frames_scanline(int(os.environ.get("SETTLE", "120")))
 tag = "_c%d%d" % (cup, course)
-open("tmp/vram%s.bin" % tag, "wb").write(bytes(b.vram)); open("tmp/cgram%s.bin" % tag, "wb").write(bytes(b.cgram)); open("tmp/oam%s.bin" % tag, "wb").write(bytes(b.oam))
+open("assets/captures/vram%s.bin" % tag, "wb").write(bytes(b.vram)); open("assets/captures/cgram%s.bin" % tag, "wb").write(bytes(b.cgram)); open("assets/captures/oam%s.bin" % tag, "wb").write(bytes(b.oam))
 log("track $%02X theme $%02X saved%s" % (b.wram[0x0124], b.wram[0x0126], tag))

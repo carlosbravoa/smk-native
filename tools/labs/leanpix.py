@@ -20,9 +20,9 @@ from PIL import Image, ImageDraw
 OBJ_BASE = 0x4000          # word address, established from the coin tiles
 
 def load(name):
-    v = open('tmp/lean_%s_vram.bin' % name, 'rb').read()
-    o = open('tmp/lean_%s_oam.bin' % name, 'rb').read()
-    c = open('tmp/lean_%s_cgram.bin' % name, 'rb').read()
+    v = open('assets/captures/lean_%s_vram.bin' % name, 'rb').read()
+    o = open('assets/captures/lean_%s_oam.bin' % name, 'rb').read()
+    c = open('assets/captures/lean_%s_cgram.bin' % name, 'rb').read()
     return v, o, c
 
 def colour(cg, i):

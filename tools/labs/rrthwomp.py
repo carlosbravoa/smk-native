@@ -3,11 +3,11 @@
 quantized to RR's own OBJ palette 1 (zero error; palette 2 is the same
 sprite's flash coloring - 3 entries differ) -> src/rrthwomp.inc."""
 from PIL import Image
-cg=open('tmp/cgram_c34.bin','rb').read()
+cg=open('assets/captures/cgram_c34.bin','rb').read()
 def rgb(i):
     c=cg[i*2]|cg[i*2+1]<<8; return ((c&31)*8,((c>>5)&31)*8,((c>>10)&31)*8)
 pal=[rgb(128+16+i) for i in range(16)]
-im=Image.open('tmp/new/itemson-the-road-2.gif').convert('RGB'); px=im.load(); bg=px[0,0]
+im=Image.open('assets/rips/itemson-the-road-2.gif').convert('RGB'); px=im.load(); bg=px[0,0]
 x0,y0,w,h=158,20,24,32
 out=[]; err=n=0
 for j in range(h):

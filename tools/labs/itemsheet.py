@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Import the ripped road-item sheet (tmp/new/items-on-the-road.png,
+"""Import the ripped road-item sheet (assets/rips/items-on-the-road.png,
 QuadFactor's rip of the game's own scaler output) into src/itemart.inc:
 per item, per size tier, a palette-INDEXED sprite against the game's own
 OBJ palettes (tmp/cgram.bin from the oracle), so it is drawn through the
 ROM's colours and a red shell is the green one on palette 1."""
 import sys, os
 from PIL import Image
-im=Image.open('tmp/new/items-on-the-road.png').convert('RGB'); px=im.load(); bg=px[0,0]
-cg=open('tmp/cgram.bin','rb').read()
+im=Image.open('assets/rips/items-on-the-road.png').convert('RGB'); px=im.load(); bg=px[0,0]
+cg=open('assets/captures/cgram.bin','rb').read()
 def rgb(i):
     c=cg[i*2]|cg[i*2+1]<<8; return ((c&31)*8,((c>>5)&31)*8,((c>>10)&31)*8)
 PALS=[[rgb(128+p*16+i) for i in range(16)] for p in range(8)]

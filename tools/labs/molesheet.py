@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Import the mole ladder from the user's ripped hazard sheet
-(tmp/new/itemson-the-road-2.gif, row at y=87, left half - the right half is the explosion: a ten-step size ladder) into src/molart.inc, palette-indexed against the
+(assets/rips/itemson-the-road-2.gif, row at y=87, left half - the right half is the explosion: a ten-step size ladder) into src/molart.inc, palette-indexed against the
 Donut Plains CGRAM (tmp/cgram_c12.bin) like the road items (bug 12)."""
 from PIL import Image
-cg=open('tmp/cgram_c12.bin','rb').read()
+cg=open('assets/captures/cgram_c12.bin','rb').read()
 def rgb(i):
     c=cg[i*2]|cg[i*2+1]<<8; return ((c&31)*8,((c>>5)&31)*8,((c>>10)&31)*8)
 PALS=[[rgb(128+p*16+i) for i in range(16)] for p in range(8)]
-im=Image.open('tmp/new/itemson-the-road-2.gif').convert('RGB'); px=im.load(); bg=px[0,0]
+im=Image.open('assets/rips/itemson-the-road-2.gif').convert('RGB'); px=im.load(); bg=px[0,0]
 BOXES=[(2,87,26,21),(30,89,22,19),(54,92,16,16),(72,94,14,14),(88,96,13,12),
        (103,96,11,12),(116,98,9,10),(127,100,7,8),(136,102,5,6),(143,104,4,4)]
 def quant(box,pal):

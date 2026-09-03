@@ -7,7 +7,7 @@ from smktool.gfx import write_png
 r0, r1, P = int(sys.argv[1]), int(sys.argv[2]), int(sys.argv[3])
 C0 = int(os.environ.get("C0", "0")); C1 = int(os.environ.get("C1", "32")); SC = int(os.environ.get("SC", "4"))
 out = sys.argv[4] if len(sys.argv) > 4 else "tmp/vram_r%d_%d_c%d_%d_p%d.png" % (r0, r1, C0, C1, P)
-v = open("tmp/vram.bin","rb").read(); cg = open("tmp/cgram.bin","rb").read()
+v = open("assets/captures/vram.bin","rb").read(); cg = open("assets/captures/cgram.bin","rb").read()
 def rgb(i):
     c = cg[i*2] | cg[i*2+1] << 8
     return ((c & 31) * 8, ((c >> 5) & 31) * 8, ((c >> 10) & 31) * 8)
