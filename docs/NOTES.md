@@ -11242,7 +11242,17 @@ explicitly as OURS, "for the user to judge".  It is the same invented
 loop on every surface, which is precisely why our Ghost Valley sounds
 like our Mario Circuit.
 
-That makes this a decision rather than a decode, and it is the user's:
-either the loop goes (matching the measurement), or it stays as a
-deliberate, ledgered addition.  Nothing is changed here on my own
-judgement - the measurement is the deliverable.
+That makes this a decision rather than a decode, and it is the user's.
+They took the third option, and the wording matters: *"keep it but as a
+known issue.  It is not something we decided to have because it is
+better."*
+
+So the loop stays and the ledger gains a category it did not have.  Up to
+now everything the port does beyond the ROM was a DELIBERATE deviation -
+the speedometer, the side-by-side split, the track map - each argued for
+and each better than nothing.  This is not that.  It is a placeholder
+that sounds wrong, kept only because silence there feels worse, and it
+now sits in ROADMAP under **"Known issues (measured, not decided)"**
+rather than among the deviations.  The distinction is the whole point: a
+reader who finds the skid in the ledger must not conclude it was
+designed.

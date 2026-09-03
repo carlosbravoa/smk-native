@@ -631,6 +631,26 @@ Stubborn ones, and ones marked fixed that are not:
 22. ~~Check the duration of being small (from the ROM).~~ $84 = $440
     (1088 frames), and shrinklab watched it tick 1 a frame live.
 
+## Known issues (measured, not decided)
+
+Things the port does that the game does not, kept for now because taking
+them out would leave a hole - but they are NOT deliberate improvements
+and must not be filed with the ledger's ledgered deviations (the
+speedometer, the side-by-side split, the track map).  The user's own
+distinction: *"keep it but as a known issue.  It is not something we
+decided to have because it is better."*
+
+1. **The skid loop is invented, and the same on every surface**
+   (NOTES 219 / 267).  MEASURED three ways that the game has no
+   sustained slide sound at all: nothing is queued while sliding on
+   either of the user's two recordings; over 46 drift onsets at speed on
+   Ghost Valley the number of DSP voices that START is 2 (noise); and
+   the one skid-looking call, `$80:A9A8`'s `$2A`, is the SPIN-OUT settle
+   path, not the drift.  Ours plays on `$A8 > 6000` with a cooldown, the
+   same sample everywhere - which is why our Ghost Valley sounds like
+   our Mario Circuit (the user's report).  Kept because silence there
+   feels worse; wrong all the same.  Removing it is one line.
+
 ## Where to pick up next
 
 The driving is gated by two human runs at their best numbers (crash

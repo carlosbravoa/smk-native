@@ -1374,14 +1374,25 @@ static void step_kart(smk_kart *k, smk_track *trk,
         }
         if (k->bump_cool == SMK_BUMP_COOL && was_bump != SMK_BUMP_COOL)
             smk_sfx_play(was_speed > 0x500 ? SMK_SFX_BUMP_HARD : SMK_SFX_BUMP_SOFT);
-        /* THE SKID (NOTES 221/223).  A HELD voice, and the user pinned
-         * exactly when it should sound: "it should sound exactly at the
-         * same times you are displaying some smoke from the tyres" -
-         * which is the game's own condition, not a slide threshold of
-         * mine.  Effect kind $24 is the drift smoke on a ROAD class
-         * ($80:D37A's own branch); the other surfaces have their own
-         * kinds and their own sounds, which is why the user hears a
-         * different one off-road. */
+        /* THE SKID - A KNOWN ISSUE, NOT A DELIBERATE ADDITION.
+         *
+         * When it sounds is the game's own condition (effect kind $24,
+         * $80:D37A's road branch) and the user pinned that themselves:
+         * "it should sound exactly at the same times you are displaying
+         * some smoke from the tyres" (NOTES 221/223).  But WHAT sounds is
+         * invented, and the game plays nothing there at all - MEASURED
+         * three ways (NOTES 267): nothing queued while sliding on either
+         * recording; over 46 drift onsets at speed the number of DSP
+         * voices that START is 2, which is noise; and the one
+         * skid-looking call, $80:A9A8's $2A, is the spin-out settle path
+         * and not the drift.
+         *
+         * It is the same sample on every surface, which is why Ghost
+         * Valley sounds like Mario Circuit here (the user's report).
+         * KEPT at their word - "keep it but as a known issue.  It is not
+         * something we decided to have because it is better" - so it is
+         * in ROADMAP's "Known issues (measured, not decided)" and NOT
+         * with the ledgered deviations.  Deleting it is this one line. */
         sfx_loop_want("skid", fx_kind_now == 0x24 && race_state == RACE_RUN);
         /* THE OFF-ROAD HISS (NOTES 236).  The user: "when driving on
          * grass there is a sound coming up, like S-S-S".  It is never
