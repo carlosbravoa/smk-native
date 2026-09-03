@@ -11197,3 +11197,52 @@ and NOTES 265 measured that nothing is queued while sliding on either -
 so if there is an audible difference it is the continuous surface voice,
 and that needs `surfgrab.lua` run on `$40`, `$42` and `$4E` before
 anything is changed.
+
+## 267. "Same sample, higher pitch?" - no: there is no sustained slide
+sound on either track
+
+The user, on NOTES 265/266's open item: *"regarding #3, is it possible
+that the game plays the same sample as in mario circuit for sliding, but
+with a higher pitch?"*
+
+A good hypothesis, and exactly the kind a queue tap would miss - a held
+voice never goes through the sound queue, which is how the engine works.
+So `tools/labs/mame/slidevoice.lua` reads the DSP itself: every voice's
+SRCN, PITCH and ENVX, per frame, with the drift bits and the class under
+the kart, run on the user's Ghost Valley time trial and on their Mario
+Circuit race.
+
+**Nothing starts when a drift starts.**  Over 46 drift onsets at speed on
+Ghost Valley, the number of times a voice/sample pair appears that was not
+already sounding is **2** - noise.  (Mario Circuit's onsets show several
+at 26-42%, but that track's music is busy and the same test on its
+non-drift frames shows the same pairs coming and going; music, not skid.)
+
+**And the engine is not doing it either.**  The engine voice ($02 for
+Mario) has the same median pitch drifting and not - 20624 both - on
+Ghost Valley.  The rev's own surface branch cannot be it: `$80:B121`
+takes the off-road decrement only for surface TYPE >= `$14`, and Ghost
+Valley's road is types `$00`, `$02` and `$0E`.  (Mario Circuit's dust
+`$54` IS type `$14`, so THAT surface does pull the rev down - a real
+difference, but between road and dust, not between the two tracks'
+roads.)
+
+**Which agrees with what was already on the record.**  NOTES 219, on the
+skid: *"Nothing repeats on the chip through a drift, so it is not a
+sustained sound."*  And the one decoded call that looks like a skid -
+`$80:A9A8`'s `$2A` - is on the SPIN-OUT settle path (`$A6 = $1C`), not on
+the drift at all (NOTES 233 named it "spin out").  Three independent
+measurements now say the same thing.
+
+**So the answer is no, and it points at us.**  The game plays no
+sustained slide sample on either track, at any pitch - so it cannot be
+playing a pitched-up one.  What our port plays there is the `skid` loop,
+which NOTES 219 wired on `$A8 > 6000` with a cooldown and labelled
+explicitly as OURS, "for the user to judge".  It is the same invented
+loop on every surface, which is precisely why our Ghost Valley sounds
+like our Mario Circuit.
+
+That makes this a decision rather than a decode, and it is the user's:
+either the loop goes (matching the measurement), or it stays as a
+deliberate, ledgered addition.  Nothing is changed here on my own
+judgement - the measurement is the deliverable.
