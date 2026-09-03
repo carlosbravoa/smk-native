@@ -26,8 +26,11 @@ static uint32_t stream_pc(const smk_rom *rom, uint32_t table, int track)
 
 bool smk_course_load(const smk_rom *rom, int track, smk_course *out)
 {
+    /* -1: no driver has claimed a segment yet */
     if (track < 0 || track >= SMK_TRACK_COUNT) return false;
     memset(out, 0, sizeof *out);
+    /* -1: no driver has claimed a segment yet, so the first spawn fills */
+    out->seg = out->seg_of[0] = out->seg_of[1] = -1;
 
     /* Unpainted cells are $7F, NOT 0 - MEASURED against the game's own
      * $7F:5000 (NOTES 124): it holds 1412 cells at $7F and 78 at sector 0,
@@ -249,21 +252,45 @@ int smk_course_segment(const smk_course *c, int waypoint)
  * words.  (The old $819136 reading had it backwards - "two in 1P" - and
  * that is why BC1 and RR were missing half their Thwomps, round 2 bug
  * 12's regression.) */
-void smk_course_spawn(smk_course *c, int waypoint, bool two_player)
+/* How many object blocks ONE driver holds.  MEASURED as four from the
+ * user's own cheep-cheep and choco recordings (tools/selftest.c pins the
+ * windows those captures showed).  $81:9136 reads `lda #$0004` and takes
+ * two off it unless `$B6` is set, but what `$B6` is has never been
+ * established here, so the recordings are the authority and the
+ * disassembly is left as a note rather than a rule. */
+#define OBJ_PER_DRIVER 4
+
+void smk_course_spawn(smk_course *c, int waypoint, int slot, bool two_player)
 {
+    if (slot < 0 || slot > 1) return;
+    int base = slot * OBJ_PER_DRIVER;
+    /* OURS, and only because two-player's own count is not measured: each
+     * driver gets the window a lone driver gets, in its own slots.  The
+     * two used to share one list and refill it from their own segments,
+     * so an object blinked in and out of BOTH screens as their segments
+     * disagreed - the user's "invisible thwomps ... rendering either-or
+     * each of the screens", pipes with them. */
+    /* a course with no obstacles at all (Ghost Valley) holds no blocks */
+    c->nlive = c->nent ? (two_player ? OBJ_PER_DRIVER * 2 : OBJ_PER_DRIVER) : 0;
     int seg = smk_course_segment(c, waypoint);
-    int want = two_player ? 2 : 4;
-    if (seg < 0) { c->nlive = 0; c->seg = -1; return; }
-    if (seg == c->seg && c->nlive == want) return;
-    c->seg = seg;
-    c->nlive = 0;
-    memset(c->dead, 0, sizeof c->dead);   /* a fresh segment brings them back */
+    if (seg < 0 || !c->nent) {
+        for (int i = 0; i < OBJ_PER_DRIVER; i++) c->live[base + i] = -1;
+        c->seg_of[slot] = -1;
+        if (slot == 0) c->seg = -1;
+        return;
+    }
+    if (seg == c->seg_of[slot]) return;
+    c->seg_of[slot] = seg;
+    if (slot == 0) c->seg = seg;             /* the respawn bookkeeping's own */
     /* the offset comes from the game's own table, not seg*8: entry 4 is
      * ZERO, so the last segment respawns the first window (bug 14) */
     int first = (seg < 8 ? c->seg_off[seg] : 0) / 2;
     if (first >= c->nent) first = 0;         /* $84DC35: fall back to the start */
-    for (int i = 0; i < want && first + i < c->nent; i++)
-        c->live[c->nlive++] = first + i;
+    for (int i = 0; i < OBJ_PER_DRIVER; i++) {
+        int e = first + i;
+        c->live[base + i] = e < c->nent ? e : -1;
+        if (e < c->nent) c->dead[e] = 0;     /* a fresh segment brings it back */
+    }
 }
 
 /* ---- Movers (NOTES 152) ------------------------------------------------

@@ -624,8 +624,9 @@ typedef struct {
     uint8_t  seg_thresh[8];
     int      nseg;
     int      seg;              /* the live segment, from smk_course_spawn */
-    int      nlive;            /* $819136: 2 slots one-player, 4 two      */
-    int      live[4];          /* indices into ent[]                      */
+    int      seg_of[2];        /* ...per DRIVER, so two views cannot fight */
+    int      nlive;            /* four blocks a driver, so eight in 2P    */
+    int      live[8];          /* indices into ent[], -1 for an empty slot */
     uint16_t lap_word;                 /* $80D4 param, meaning undecoded   */
     /* finish-line rectangle */
     int      fin_cell, fin_w, fin_h;
@@ -1263,7 +1264,15 @@ void smk_collide_objects(smk_kart *k, const smk_course *crs);
 /* $84DBD5: which lap segment a waypoint is in, and which obstacles that
  * spawns.  Call once a frame with the player's waypoint. */
 int  smk_course_segment(const smk_course *c, int waypoint);
-void smk_course_spawn(smk_course *c, int waypoint, bool two_player);
+/* Refill one DRIVER's object blocks for the segment its waypoint is in.
+ *
+ * A lone driver holds FOUR, measured from the user's own recordings (see
+ * src/course.c).  Two-player's own count is not measured, so `slot` (the
+ * view) simply takes its own four at live[slot*4] - OURS, and labelled.
+ * Anything less has the two drivers refilling ONE list from their own
+ * segments, which is the user's "invisible thwomps ... rendering
+ * either-or each of the screens", pipes with them. */
+void smk_course_spawn(smk_course *c, int waypoint, int slot, bool two_player);
 extern smk_course *course_for_step;
 
 int  smk_race_rank(const smk_racer *racers, int who, const smk_course *crs);
@@ -1852,7 +1861,6 @@ enum { SMK_PLAYERS_1, SMK_PLAYERS_CPU, SMK_PLAYERS_2, SMK_PLAYERS_MODES };
 typedef struct {
     smk_ui_screen screen;
     int  mode_sel;        /* SMK_UI_MODE_*; Grand Prix is disabled */
-    int  mode_cur;        /* the cursor: 0..2 a mode, 3 the players row */
     int  players;         /* SMK_PLAYERS_*                         */
     int  pads;            /* controllers attached, set by the host  */
     int  player_sel;      /* SMK_DRIVERS index                     */

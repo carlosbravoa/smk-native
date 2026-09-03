@@ -119,6 +119,7 @@ void smk_collide_objects(smk_kart *k, const smk_course *crs)
     int nvis = (smk_obj_show_all || !crs->nlive) ? crs->nent : crs->nlive;
     for (int j = 0; j < nvis; j++) {
         int i = (smk_obj_show_all || !crs->nlive) ? j : crs->live[j];
+        if (i < 0) continue;                 /* an empty block */
         int dx = kx - (int)crs->ent[i].x, dy = ky - (int)crs->ent[i].y;
         int d2 = dx * dx + dy * dy;
         if (d2 >= SMK_OBJ_RADIUS * SMK_OBJ_RADIUS || d2 == 0) continue;

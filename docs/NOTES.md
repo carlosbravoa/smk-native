@@ -10864,3 +10864,61 @@ say "left edge" so the next reader does not have to find this twice.
 Checked in our own output: the coin's cell lands at 238..269 in a
 512-wide view, centre 254 against the kart's 256 - one SNES pixel left,
 the game's own 127 against 128.
+
+## 262. Three two-player bugs: whose coins, whose weapons, whose objects
+
+The user, testing 2P: *"1. when I get or lose a coin, both players get the
+coin toss animation.  2. When passing near the 2p-cpu, it attacks me as if
+it was an ai-driver (one of the pack), and here that should not happen
+because he is not technically another from the pack.  He is emulating a
+human player.  3. I got invisible thwomps, because they seem to be
+rendering either-or each of the screens.  Same happens with pipes and
+probably with other elements in the game."*
+
+All three are the same mistake in three places: state that belongs to a
+DRIVER left in the world, or the other way round.
+
+**1. The coins.**  The coin effects are drawn in the driver's own SCREEN
+space - the hop is a capture relative to his kart (NOTES 261), not a
+world position - so one shared array meant player 1's toss played over
+player 2's kart too.  One set per view now, stepped per view.  (NOTES 259
+had moved the STEP into the world pass on the theory that coins are
+world state.  They are not; that was the wrong half of the same error.)
+
+**2. The weapons.**  `VS CPU` is our own autopilot on a kart, which is a
+DRIVER: it presses buttons and takes what a player takes.  The AI's
+weapon loop walked slots 1..7 and let any of them drop a shell on the
+player, so the bot attacked with an AI's tools.  It skips any slot a view
+drives now - the same `slot_is_driven` that already keeps the shipped AI
+from steering it.
+
+**3. The objects, and this one had a second bug inside it.**  The live
+object blocks are refilled by `smk_course_spawn(course, waypoint, ...)`,
+which was called once per view from `step_kart` and wrote ONE shared
+list.  So each driver refilled it from his own segment and the last one
+through the frame won: an object near player 1 was simply not in the list
+while player 2's segment held it, and it blinked in and out of both
+screens as they disagreed.  Drawing and collision read the same list
+(NOTES 151), so it vanished from both at once - "invisible thwomps".
+
+Each driver now holds his own four blocks at `live[slot * 4]`, and
+`seg_of[slot]` remembers his own segment, so one driver moving on cannot
+touch the other's.  A new selftest check pins exactly that: two drivers in
+different segments, then one drives into the other's - his pair follows,
+the other's does not move.
+
+**And the count.**  `$81:9136` reads `lda #$0004` and takes two off it
+unless `$B6` is set, which I first read as "four in two-player, two in
+one".  The selftest already said otherwise, and it was right to: FOUR in
+one player is MEASURED, off the user's own cheep-cheep and choco
+recordings.  What `$B6` is has never been established here, so the
+recordings stay the authority and the disassembly is written down as a
+note rather than acted on.  Two-player's own count is not measured at
+all, so each driver simply gets what a lone driver gets - OURS, and
+labelled as such in both the header and the source.
+
+Also removed on the way: `smk_ui.mode_cur`, which NOTES 257 added when the
+players row was a fourth row of the mode screen.  The row became its own
+screen, so the cursor and the selection were the same thing kept in two
+fields - and the selftest's cup walk, which sets `mode_sel` directly, was
+quietly overwritten by the stale `mode_cur` on its first step.

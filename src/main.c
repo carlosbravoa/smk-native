@@ -286,7 +286,13 @@ static unsigned item_roll(void)
     return (item_rng >> 16) & 31u;
 }
 static smk_flagart flag_art;
-static smk_coin    coins_fx[SMK_COINFX_MAX];
+/* The coin effects are drawn in the DRIVER's own screen space - the
+ * captured hop is relative to his kart, not to the world - so one set per
+ * view.  Shared, player 1's coin toss played over player 2's kart as
+ * well: "when I get or lose a coin, both players get the coin toss
+ * animation" (the user). */
+static smk_coin    coins_fx_all[2][SMK_COINFX_MAX];
+static smk_coin   *coins_fx = coins_fx_all[0];
 static int celebrating;
 /* How far the celebration camera has turned, in ROM angle units.  The
  * SPRITES are projected from a cam_heading passed separately to
@@ -1127,7 +1133,8 @@ static void step_kart(smk_kart *k, smk_track *trk,
     }
     /* $84DBD5 runs every frame: the lap segment the player's waypoint
      * falls in decides which obstacles are on the track (NOTES 127) */
-    if (course_for_step) smk_course_spawn(course_for_step, player_sector, nviews > 1);
+    if (course_for_step)
+        smk_course_spawn(course_for_step, player_sector, cur_view, nviews > 1);
     bool grounded = k->z == 0;                   /* $1F,x before this frame's jump update */
     smk_player_step(&player, k, trk, held, pressed);
     /* Not while Lakitu has it.  smk_collide_objects pushes the kart's
@@ -1679,6 +1686,7 @@ static int show_kart = 1, show_grid = 1;
     X(int,             racer_draw_mask) \
     X(int8_t,          was_cool)     /* bump_cool before the field collided */ \
     X(smk_sfx_prev,    sfx_prev)    /* every sound's edge detector, per driver */ \
+    X(smk_coin *,      coins_fx)    /* his own coins in the air */ \
     X(smk_sprites *,   view_karts)   /* this driver's own kart sheet */ \
     X(int,             show_kart) \
     X(int,             show_grid) \
@@ -1874,6 +1882,8 @@ static bool load_race(const smk_rom *rom, int track, int theme, int character,
      * somebody else: its grid slot, its driver, its sprite sheet and its
      * own camera.  A CPU view keeps no player of its own - the AI drives
      * that kart and this only watches it. */
+    memset(coins_fx_all, 0, sizeof coins_fx_all);
+    coins_fx = coins_fx_all[0];
     nviews = (players_mode == SMK_PLAYERS_1) ? 1 : 2;
     views[0].slot = 0;
     views[0].drives = true;
@@ -1896,6 +1906,7 @@ static bool load_race(const smk_rom *rom, int track, int theme, int character,
         views[1].drives = true;
         views[1].bot = (players_mode == SMK_PLAYERS_CPU);
         views[1].me = &racers[1];
+        views[1].coins_fx = coins_fx_all[1];
         views[1].drv = &SMK_DRIVERS[p2_character % SMK_CHARACTERS];
         views[1].view_karts = &karts_p2;
         if (!smk_sprites_load(rom, views[1].drv->sheet, &karts_p2))
@@ -2710,7 +2721,7 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
             for (int j = 0; j < nvis && n < (int)(sizeof item / sizeof item[0]); j++) {
                 int i = (smk_obj_show_all || !course->nlive)
                       ? j : course->live[j];
-                if (course->dead[i]) continue;
+                if (i < 0 || course->dead[i]) continue;
                 float dx = (float)course->ent[i].x - cam->x;
                 float dy = (float)course->ent[i].y - cam->y;
                 item[n].dep = dx * sinf(a2) + dy * -cosf(a2);
@@ -4107,6 +4118,8 @@ int main(int argc, char **argv)
                 hud_race_frames++;
                 smk_race_frame = hud_race_frames;   /* so a kart can stamp its own finish */
             }
+            for (int v = 0; v < nviews; v++)
+                smk_coinfx_step(coins_fx_all[v], SMK_COINFX_MAX);
             smk_blocks_step();
             /* Thwomps are parked through lap one and released when it is
              * complete - crossing 2 is the first finished lap (NOTES
@@ -4117,12 +4130,6 @@ int main(int argc, char **argv)
                 smk_course_movers_step(&crs, mv_on || crossings >= 2);
             }
             smk_obj_ticks = fx_ticks;   /* the moles' clock, shared with collide */
-            /* ONE set of coins in the air, stepped once a frame.  This
-             * moved out of the per-driver pass with the two-player split
-             * and was not put back, so the two-coin item and every
-             * spilled coin spawned and then froze (the user: "the coin
-             * item ... now there is nothing happening"). */
-            smk_coinfx_step(coins_fx, SMK_COINFX_MAX);
             if (getenv("SMK_MV_TRACE") && (fx_ticks % 300) == 0)
                 printf("mv f%ld cross %d z0 %d p0 %d z1 %d p1 %d\n",
                        hud_race_frames, crossings,
@@ -4535,6 +4542,13 @@ int main(int argc, char **argv)
                      * the five drops measured (S31). */
                     if (!replay_path)
                         for (int q = 1; q < SMK_CHARACTERS; q++) {
+                            /* a slot a VIEW drives is a driver, not one of
+                             * the pack - our own autopilot is emulating a
+                             * person and does not get the AI's weapons
+                             * (the user: "he is not technically another
+                             * from the pack.  He is emulating a human
+                             * player") */
+                            if (slot_is_driven(q)) continue;
                             smk_racer *r = &racers[q];
                             if (r->weapon_cool > 0) r->weapon_cool--;
                             if (r->star_t > 0) r->star_t--;

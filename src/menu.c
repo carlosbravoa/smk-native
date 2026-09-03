@@ -152,7 +152,6 @@ void smk_ui_init(smk_ui *ui)
     memset(ui, 0, sizeof *ui);
     ui->screen = SMK_UI_TITLE;
     ui->mode_sel = SMK_UI_MODE_RACE;
-    ui->mode_cur = SMK_UI_MODE_RACE;
     ui->players = SMK_PLAYERS_1;
     ui->player2_sel = 1;         /* Luigi, until it is chosen */
     ui->engine_class = 0;        /* 50cc */
@@ -197,7 +196,6 @@ bool smk_ui_step(smk_ui *ui, const smk_rom *rom, const smk_ui_input *in)
              * track the row is not there to land on */
             if (ui->players != SMK_PLAYERS_1 && ui->mode_sel == SMK_UI_MODE_TT)
                 ui->mode_sel = SMK_UI_MODE_RACE;
-            ui->mode_cur = ui->mode_sel;
             ui->screen = SMK_UI_MODE;
         }
         break;
@@ -205,10 +203,9 @@ bool smk_ui_step(smk_ui *ui, const smk_rom *rom, const smk_ui_input *in)
 
     case SMK_UI_MODE: {
         int rows = smk_ui_mode_rows(ui);
-        if (in->up)   ui->mode_cur = (ui->mode_cur + rows - 1) % rows;
-        if (in->down) ui->mode_cur = (ui->mode_cur + 1) % rows;
-        if (ui->mode_cur >= rows) ui->mode_cur = rows - 1;
-        ui->mode_sel = ui->mode_cur;
+        if (ui->mode_sel >= rows) ui->mode_sel = rows - 1;
+        if (in->up)   ui->mode_sel = (ui->mode_sel + rows - 1) % rows;
+        if (in->down) ui->mode_sel = (ui->mode_sel + 1) % rows;
         if (in->back) ui->screen = SMK_UI_PLAYERS;
         if (in->confirm) {
             ui->gp = (ui->mode_sel == SMK_UI_MODE_GP);
@@ -374,7 +371,7 @@ static void draw_mode(const smk_ui *ui, const smk_font *f,
         const uint32_t *c = (i == SMK_UI_MODE_GP) ? off
                           : (ui->mode_sel == i ? sel : lo);
         int x = (VW - (int)strlen(row[i]) * 8) / 2;
-        if (ui->mode_cur == i && ((ui->tick / 12) & 1) == 0)
+        if (ui->mode_sel == i && ((ui->tick / 12) & 1) == 0)
             fill(fb, w, h, x - 12, y - 2, 8, 12, 0xFFFFC040);
         text(f, fb, w, h, x, y, row[i], c);
     }

@@ -1488,7 +1488,7 @@ int main(int argc, char **argv)
             char d2[128];
             d2[0] = 0;
             for (size_t i = 0; i < sizeof R / sizeof R[0]; i++) {
-                smk_course_spawn(&c7, R[i].wp, false);
+                smk_course_spawn(&c7, R[i].wp, 0, false);
                 /* FOUR live in 1P, measured off the cheep-cheep / choco
                  * recordings (the old "two" reading of $819136 was
                  * backwards); the windows' first two entities are the
@@ -1504,10 +1504,33 @@ int main(int argc, char **argv)
                 }
             }
             check("the obstacles respawn per lap segment, four slots a window", !bad, d2);
+            /* TWO DRIVERS, TWO SETS.  They used to refill one list from
+             * their own segments, so an object blinked in and out of both
+             * screens (the user).  Each takes its own four now, and one
+             * driver moving on cannot disturb the other's. */
+            {
+                smk_course_spawn(&c7, R[0].wp, 0, true);   /* p1 in segment 0 */
+                smk_course_spawn(&c7, R[2].wp, 1, true);   /* p2 in segment 1 */
+                int a0 = c7.live[0], b0 = c7.live[4], b1 = c7.live[5];
+                bool apart = a0 != b0;          /* the windows really differ */
+                /* p1 drives into p2's segment: he picks that window up, and
+                 * p2's own slots do not move underneath him */
+                smk_course_spawn(&c7, R[2].wp, 0, true);
+                char d3[160];
+                snprintf(d3, sizeof d3, "nlive %d, windows %s, p1 %d,%d p2 %d,%d (was %d,%d)",
+                         c7.nlive, apart ? "differ" : "SAME",
+                         c7.live[0], c7.live[1], c7.live[4], c7.live[5], b0, b1);
+                check("two drivers hold their own object blocks",
+                      c7.nlive == 8 && apart
+                      && c7.live[0] == b0 && c7.live[1] == b1
+                      && c7.live[4] == b0 && c7.live[5] == b1, d3);
+            }
+            smk_course_spawn(&c7, R[0].wp, 0, false);   /* back to one driver */
+
             /* Ghost Valley has no static obstacles at all */
             static smk_course cg;
             if (smk_course_load(&rom, 16, &cg)) {
-                smk_course_spawn(&cg, 10, false);
+                smk_course_spawn(&cg, 10, 0, false);
                 check("Ghost Valley spawns no static obstacles",
                       cg.nseg == 0 && cg.nent == 0 && cg.nlive == 0, NULL);
             }
@@ -1686,7 +1709,7 @@ int main(int argc, char **argv)
             check("the $84DAC5 spawn offsets read 0/8/16/24 then ZERO",
                   bc1.seg_off[0] == 0 && bc1.seg_off[1] == 8 && bc1.seg_off[2] == 16
                   && bc1.seg_off[3] == 24 && bc1.seg_off[4] == 0, d);
-            smk_course_spawn(&bc1, 40, false);
+            smk_course_spawn(&bc1, 40, 0, false);
             check("BC1's last segment respawns the FIRST window (oracle: wp 40)",
                   bc1.nlive == 4 && bc1.live[0] == 0 && bc1.live[1] == 1
                   && bc1.live[3] == 3
