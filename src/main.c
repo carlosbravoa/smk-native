@@ -3655,10 +3655,13 @@ int main(int argc, char **argv)
             return 1;
         }
         printf("cpu policy: %s (%d x %d, one decision every %d frames, "
-               "trained at %dcc)\n",
+               "trained at %s)\n",
                cpu_policy_path, cpu_net.hidden, cpu_net.n_act, cpu_net.frame_skip,
-               cpu_net.engine_class == 0 ? 50 : cpu_net.engine_class == 1 ? 100 : 150);
-        if (cpu_net.engine_class != engine_class)
+               cpu_net.engine_class < 0 ? "every class" :
+               cpu_net.engine_class == 0 ? "50cc" :
+               cpu_net.engine_class == 1 ? "100cc" : "150cc");
+        /* -1: it was trained across the classes and drives all of them */
+        if (cpu_net.engine_class >= 0 && cpu_net.engine_class != engine_class)
             fprintf(stderr,
                     "warning: this race is %dcc and the policy learned at %dcc.\n"
                     "         The acceleration curve and the top speeds are the\n"

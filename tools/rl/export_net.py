@@ -53,7 +53,11 @@ def main():
         # being asked to drive a different one
         f.write(struct.pack("<6i", OBS_DIM, hidden, N_ACTIONS,
                             int(targs.get("frame_skip", 4)),
-                            int(targs.get("engine_class", 1)),
+                            # -1 means "any": a run that spread --classes
+                            # across the batch drives all of them, and
+                            # claiming one would make the game warn wrongly
+                            (-1 if len(str(targs.get("classes", "")).split(",")) > 1
+                             else int(targs.get("engine_class", 1))),
                             int(bool(targs.get("mushroom", True)))))
         for a in (norm.mean, inv_std, w1, b1, w2, b2, wp, bp):
             f.write(np.ascontiguousarray(a, dtype=np.float32).tobytes())
@@ -61,8 +65,13 @@ def main():
     n = sum(a.size for a in (w1, b1, w2, b2, wp, bp))
     print(f"wrote {out}: {n:,} parameters, {os.path.getsize(out) / 1024:.0f} KB, "
           f"hidden {hidden}, one decision every {targs.get('frame_skip', 4)} frames")
-    cc = {0: 50, 1: 100, 2: 150}.get(int(targs.get("engine_class", 1)), "?")
-    print(f"trained at {cc}cc" + (" with the mushroom" if targs.get("mushroom", True) else ""))
+    multi = len(str(targs.get("classes", "")).split(",")) > 1
+    cc = "every class" if multi else \
+        f"{ {0: 50, 1: 100, 2: 150}.get(int(targs.get('engine_class', 1)), '?') }cc"
+    held = targs.get("holdout", "")
+    print(f"trained at {cc}"
+          + (" with the mushroom" if targs.get("mushroom", True) else "")
+          + (f", holding out courses {held}" if held else ""))
     print(f"use it:  ./build-native/smk --players cpu --cpu-policy {out}")
 
 
