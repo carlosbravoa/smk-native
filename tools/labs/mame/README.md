@@ -56,6 +56,27 @@ proper lap of a track the attract mode never shows - are trivial for a
 human with a pad.  `play.sh` records such a session so it can be replayed
 HERE, deterministically, with any instrumentation attached:
 
+The recordings that are kept, and what each one settled:
+
+    attack        an AI dropping its weapons - NOTES 190, and the SILENT
+                  release measured in NOTES 264
+    cc100         a 100cc GP - the class and coin rules (NOTES 173)
+    cheep-cheep   Koopa Beach's jumping fish
+    choco         Choco Island's dirt and its moles
+    crash         wall impacts, and one of make check's replay gates
+    flag          a 50cc GP - NOTES 170/171, and the roulette gate
+    ghost-valley  a clean five-lap 100cc time trial: the engine rev law
+                  end to end (NOTES 265), the drift dust (NOTES 266/268)
+                  and the absence of any slide sound (NOTES 267)
+    gv, gv1       Ghost Valley blocks; gv1 is a replay gate
+    moles         the mole latch and its ride (NOTES 210)
+    starts        the three launches (NOTES 143)
+    thwomp, win   Thwomp motion; the winner's pose
+
+They are the user's own hands at the pad, and they are committed because
+a measurement that cannot be re-run is not a measurement - every number
+above can be produced again from these files.
+
     tools/labs/mame/play.sh gv        # play; Esc when done
     tools/labs/mame/replay.sh gv tools/labs/mame/watch_blocks.lua 180
 
