@@ -369,3 +369,110 @@ float smk_mover_world(const smk_course *c, int slot)
 {
     return (float)smk_mover_z(c, slot) / SMK_MOVER_UNIT;
 }
+
+/* ---- The lap rule, in ONE place ($808994 / $808962, NOTES 052/055/056)
+ *
+ * This was written twice: once in ai.c for the seven opponents and once
+ * inline in main.c for the player.  Two copies of one decoded rule is
+ * exactly the thing this project does not do - the AI regression could
+ * pass while the player's lap counting was broken - so both now call
+ * this, and so does the RL environment, which needs the same progress
+ * word as its reward.
+ *
+ * The rule, as decoded:
+ *   - $808962: off-course ($7F) KEEPS the old sector, and while airborne
+ *     a sector whose waypoint attribute has bit 7 set is rejected - the
+ *     anti-shortcut guard on jump zones.
+ *   - $8089B6/$8089ED: the lap is the high byte of the progress word.
+ *     Forward over the strip does `+$0100, and #$FF00`, backward
+ *     subtracts it, and $F8,x holds the maximum progress ever reached,
+ *     so a lap only counts when it beats everything seen before.
+ *   - The cooldown is OURS (NOTES 055), and labelled: the strip carries
+ *     paint from both ends of the loop, so one transit can oscillate the
+ *     sector.  Without it a +1 was followed by an unguarded -1 and the
+ *     counter locked.  One lap event per transit.
+ *
+ * Returns the EVENT, so the caller keeps its own bookkeeping - the lap
+ * sign, the splits, a kart's finish frame - without this function having
+ * to know about any of them:
+ *
+ *    +1  a forward crossing that advanced the watermark: a lap
+ *    -1  a backward crossing over the strip
+ *     0  nothing this frame
+ */
+int smk_progress_step(smk_racer *me, const smk_course *crs, const smk_kart *k)
+{
+    uint8_t cell = smk_course_cell(crs, smk_kart_px(k->x), smk_kart_px(k->y));
+    int sec = cell & SMK_SECT_OFF;
+    if (sec == SMK_SECT_OFF || sec >= crs->sectors) return 0;
+    if (k->airborne && (crs->wattr[sec] & 0x80)) return 0;
+
+    if (me->lap_cool > 0) me->lap_cool--;
+    /* the rescue timer's own watermark, on EVERY on-course frame - it is
+     * not part of the crossing test (NOTES 169) */
+    {
+        int prog2 = (me->lap << 8) | sec;
+        if (prog2 > me->rescue_max) me->rescue_max = prog2;
+    }
+
+    int event = 0;
+    if ((cell & SMK_SECT_FINISH) && me->lap_cool == 0) {
+        if (me->sector != sec) me->esc_len = 0;
+        if (me->sector >= crs->sectors - 2 && sec <= 1) {
+            int prog = ((me->lap + 1) << 8) | sec;
+            if (prog > me->progress_max) {
+                me->lap++;
+                me->progress_max = prog;
+                me->lap_cool = 90;
+                event = 1;
+            }
+        } else if (sec >= crs->sectors - 2 && me->sector <= 1) {
+            me->lap--;
+            me->lap_cool = 90;
+            event = -1;
+        }
+    }
+    me->sector = sec;
+    return event;
+}
+
+/* Continuous progress along the racing line, for a learner's reward.
+ *
+ * OURS, and labelled as such: the game has no such quantity.  The
+ * progress WORD is the ROM's, but it steps once a sector - up to 128
+ * times a lap, so once every ~30 frames - which is far too coarse to
+ * shape a policy with.  This adds the fraction of the way from the
+ * current sector's waypoint to the next, by projecting the kart onto
+ * that segment, and returns laps*sectors + sector + fraction.
+ *
+ * It is monotonic in the same sense the watermark is only if the kart
+ * drives forward; going backwards genuinely decreases it, which is what
+ * a reward wants (the watermark's clamp would hide the mistake).
+ */
+float smk_progress_line(const smk_racer *me, const smk_course *crs,
+                        const smk_kart *k)
+{
+    if (crs->sectors <= 0) return 0.0f;
+    int sec = me->sector;
+    if (sec < 0 || sec >= crs->sectors) return (float)(me->lap * crs->sectors);
+    int nx = (sec + 1) % crs->sectors;
+    float ax = crs->wx[sec],  ay = crs->wy[sec];
+    float bx = crs->wx[nx],   by = crs->wy[nx];
+    /* the world wraps at 1024 px; take the short way round on both axes */
+    float dx = bx - ax, dy = by - ay;
+    if (dx >  SMK_WORLD_PX / 2) dx -= SMK_WORLD_PX;
+    if (dx < -SMK_WORLD_PX / 2) dx += SMK_WORLD_PX;
+    if (dy >  SMK_WORLD_PX / 2) dy -= SMK_WORLD_PX;
+    if (dy < -SMK_WORLD_PX / 2) dy += SMK_WORLD_PX;
+    float px = (float)smk_kart_px(k->x) - ax;
+    float py = (float)smk_kart_px(k->y) - ay;
+    if (px >  SMK_WORLD_PX / 2) px -= SMK_WORLD_PX;
+    if (px < -SMK_WORLD_PX / 2) px += SMK_WORLD_PX;
+    if (py >  SMK_WORLD_PX / 2) py -= SMK_WORLD_PX;
+    if (py < -SMK_WORLD_PX / 2) py += SMK_WORLD_PX;
+    float len2 = dx * dx + dy * dy;
+    float t = len2 > 0.0f ? (px * dx + py * dy) / len2 : 0.0f;
+    if (t < 0.0f) t = 0.0f;
+    if (t > 1.0f) t = 1.0f;
+    return (float)(me->lap * crs->sectors + sec) + t;
+}

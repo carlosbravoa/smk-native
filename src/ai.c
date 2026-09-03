@@ -273,56 +273,15 @@ static uint16_t heading_to(const smk_kart *k, int tx, int ty)
 void smk_racer_step(smk_racer *r, const smk_track *trk,
                        const smk_course *crs, const smk_physics *phys)
 {
-    uint8_t cell = smk_course_cell(crs, smk_kart_px(r->k.x), smk_kart_px(r->k.y));
-    int sec = cell & SMK_SECT_OFF;
-    /* DECODED ($808962): keep the old sector when off-course ($7F), and
-     * while airborne reject sectors whose waypoint attribute has bit 7 set
-     * - the anti-shortcut rule for jump zones. */
-    if (sec != SMK_SECT_OFF && sec < crs->sectors
-        && !(r->k.airborne && (crs->wattr[sec] & 0x80))) {
-        /* DECODED ($8089B6/$8089ED): the lap lives in the high byte of the
-         * kart's progress word - crossing the line forward does
-         * `+$0100, and #$FF00`; crossing backward subtracts it; and $F8,x
-         * keeps the maximum progress so a lap only counts when it exceeds
-         * everything seen before.  We keep lap and sector as fields and
-         * apply the same wrap and guard. */
-        /* the crossing only counts ON the strip ($808994 is called from
-         * the strip-accept path), forward guarded by max progress.  The
-         * strip holds paint of BOTH ends of the loop, so the sector can
-         * oscillate across one transit; without a cooldown that fired
-         * +1 then an unguarded -1 and left the counter locked (NOTES 055).
-         * One lap event per transit. */
-        if (r->lap_cool > 0) r->lap_cool--;
-        /* Progress for the rescue timer: monotonic max, on EVERY on-course
-         * frame.  This block used to sit inside the finish-strip test
-         * below - the indentation shows it was never meant to - so
-         * no_prog was only cleared while a kart stood on the strip, once
-         * a lap.  A lap is far more than the 600 frames the rescue waits
-         * for, so every AI kart was fished up and set down at its own
-         * waypoint in the middle of every lap: the user's "they
-         * disappear and re-appear a few meters further" (NOTES 169). */
-        {
-            int prog2 = (r->lap << 8) | sec;
-            if (prog2 > r->rescue_max) r->rescue_max = prog2;
-        }
-        if ((cell & SMK_SECT_FINISH) && r->lap_cool == 0) {
-            if (r->sector != sec) r->esc_len = 0;
-            if (r->sector >= crs->sectors - 2 && sec <= 1) {
-                int prog = ((r->lap + 1) << 8) | sec;
-                if (prog > r->progress_max) {
-                    r->lap++;
-                    r->progress_max = prog;
-                    r->lap_cool = 90;
-                    /* the last crossing is this kart's finish */
-                    if (r->lap >= SMK_RACE_CROSSINGS && r->finish_frame < 0)
-                        r->finish_frame = smk_race_frame;
-                }
-            } else if (sec >= crs->sectors - 2 && r->sector <= 1) {
-                r->lap--;
-                r->lap_cool = 90;
-            }
-        }
-        r->sector = sec;
+    /* The lap rule is ONE implementation, in src/course.c: the AI, the
+     * player and the RL environment all step the same decoded code.  It
+     * used to be written out here and again in main.c, so the AI
+     * regression could pass while the player's lap counting was broken.
+     * All that stays here is what is the AI's own: its finish frame. */
+    if (smk_progress_step(r, crs, &r->k) > 0) {
+        /* the last crossing is this kart's finish */
+        if (r->lap >= SMK_RACE_CROSSINGS && r->finish_frame < 0)
+            r->finish_frame = smk_race_frame;
     }
 
     /* DECODED steering ($80B0B1 / NOTES 056): on course the AI's target

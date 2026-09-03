@@ -1310,6 +1310,25 @@ void smk_grid_order(const smk_rom *rom, int p1, int p2, bool two_players, int ou
 void smk_racer_step(smk_racer *r, const smk_track *trk,
                     const smk_course *crs, const smk_physics *phys);
 
+/* The lap rule (src/course.c), shared by the AI and the player - one
+ * decoded implementation, not two.  Returns +1 on a forward crossing that
+ * advanced the progress watermark, -1 on a backward one, 0 otherwise; the
+ * caller keeps its own bookkeeping. */
+int smk_progress_step(smk_racer *me, const smk_course *crs, const smk_kart *k);
+/* Continuous distance along the racing line, in sectors.  See src/course.c. */
+float smk_progress_line(const smk_racer *me, const smk_course *crs,
+                        const smk_kart *k);
+
+/* The lap rule (src/course.c), shared by the AI, the player and the RL
+ * environment - one decoded implementation, not three.  Returns +1 on a
+ * forward crossing that advanced the progress watermark, -1 on a
+ * backward one, 0 otherwise; the caller keeps its own bookkeeping. */
+int smk_progress_step(smk_racer *me, const smk_course *crs, const smk_kart *k);
+/* Continuous distance along the racing line, in sectors: OURS, for a
+ * learner's reward shaping.  See src/course.c. */
+float smk_progress_line(const smk_racer *me, const smk_course *crs,
+                        const smk_kart *k);
+
 /* The projection constants, from the ROM's own DSP-1 geometry
  * (docs/NOTES.md 084).  depth(line) = K/(line - H) world px from the eye;
  * LES is the DSP's own screen distance and makes depth/scale exact. */
@@ -2210,3 +2229,68 @@ void smk_proj_step(smk_proj *list, int n, const smk_track *trk,
 /* does any live projectile touch this kart?  Returns its kind (and
  * starts it dying) or SMK_PROJ_NONE.  The owner is immune for a while. */
 int  smk_proj_hit(smk_proj *list, int n, const smk_kart *k, int kart_index);
+
+/* ---- The reinforcement-learning environment (src/env.c, docs/RL.md) -----
+ *
+ * The port driving itself: the same physics, surfaces, lap rule and
+ * rescue the game runs, stepped from an action instead of a gamepad, with
+ * no window and no renderer.  Everything in THIS block that is not the
+ * ROM's - the observation, the action set, the reward, the episode rules -
+ * is OURS and is a training harness, not a claim about the game.
+ */
+#define SMK_ENV_RAYS       12
+#define SMK_ENV_OBS        55     /* see observe() in src/env.c            */
+#define SMK_ENV_ACTIONS_N  13
+#define SMK_ENV_INFO       8      /* floats of per-step diagnostics        */
+
+typedef struct {
+    int      track;         /* 0..23                                       */
+    int      character;     /* 0..7                                        */
+    int      engine_class;  /* 0 = 50cc, 1 = 100cc, 2 = 150cc              */
+    int      mode;          /* SMK_MODE_TT (alone) or SMK_MODE_GP          */
+    int      laps;          /* laps that end the episode (game's own is 5) */
+    int      frame_skip;    /* game frames one action is held for          */
+    int      max_frames;    /* the episode's budget, in game frames        */
+    int      stall_frames;  /* give up after this long with no progress    */
+    int      mushroom;      /* hand a time trial its one mushroom          */
+    int      countdown;     /* run the game's own 336-frame start          */
+    int      start_hold;    /* countdown frame the throttle goes down on,
+                               -1 = never: the turbo start, as a knob      */
+    int      start_jitter;  /* px of random offset on the grid, 0 = exact  */
+    uint32_t seed;
+    /* the reward's weights, all OURS - see the note over reward() */
+    float    w_progress, w_time, w_wall, w_offroad, w_rescue, w_finish;
+} smk_env_cfg;
+void smk_env_cfg_default(smk_env_cfg *c);
+
+typedef struct {
+    float x, y, progress;
+    int   heading, speed, lap, sector, coins, track;
+    long  frames;
+} smk_env_state;
+
+typedef struct smk_env       smk_env;
+typedef struct smk_env_batch smk_env_batch;
+
+int  smk_env_obs_dim(void);
+int  smk_env_action_count(void);
+/* One ROM, shared read-only; one mutable world per env.  cfgs is an array
+ * of n, so a batch can span tracks, characters and classes at once. */
+smk_env_batch *smk_env_batch_create(const char *rom_path, const smk_env_cfg *cfgs,
+                                    int n, char *err, size_t errn);
+void smk_env_batch_destroy(smk_env_batch *b);
+int  smk_env_batch_size(const smk_env_batch *b);
+void smk_env_batch_reset(smk_env_batch *b, float *obs);
+/* obs[n][SMK_ENV_OBS], rew[n], done[n], trunc[n], info[n][SMK_ENV_INFO].
+ * Envs auto-reset: the observation returned with a terminal step is the
+ * next episode's first. */
+void smk_env_batch_step(smk_env_batch *b, const int32_t *actions, float *obs,
+                        float *rew, uint8_t *done, uint8_t *trunc, float *info);
+/* the scripted driver's choice for each env: a baseline, and the sharpest
+ * test that the observation and reward are wired up correctly */
+void smk_env_batch_autopilot(smk_env_batch *b, int32_t *actions);
+void smk_env_batch_state(const smk_env_batch *b, int i, smk_env_state *out);
+/* an action index as the pad word the game reads, so `smk --pads FILE`
+ * can drive the real window from a trained policy's choices */
+uint16_t smk_env_action_pad(int action);
+int      smk_env_action_uses_item(int action);

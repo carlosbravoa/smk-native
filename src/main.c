@@ -1891,7 +1891,10 @@ static bool load_race(const smk_rom *rom, int track, int theme, int character,
     memset(&result, 0, sizeof result);
     result.best_slot = -1;
     course_for_step = &crs;
-    player_sector = 0;
+    /* the grid sits in the LAST sector, which is what smk_racer_start
+     * gives every kart - the player's own carried 0 for the first
+     * frame, which is one lap segment out for smk_course_spawn */
+    player_sector = crs.sectors - 1;
     fx_state.kind = -1;
     show_kart = 1;
     show_grid = (mode == SMK_MODE_TT) ? show_grid : 1;
@@ -4897,43 +4900,29 @@ int main(int argc, char **argv)
                                    kart.x, kart.y, player.heading,
                                    kart.vx, kart.vy, 1); }
 
-            /* player lap counting - the decoded rule via racer state */
+            /* Player lap counting: smk_progress_step, the same decoded
+             * rule src/ai.c drives the other seven with (src/course.c).
+             * It was written out here as a second copy; what stays is
+             * what belongs to the player alone - Lakitu's sign and the
+             * time trial's splits. */
             {
-                uint8_t cell = smk_course_cell(&crs, smk_kart_px(kart.x),
-                                               smk_kart_px(kart.y));
-                int sec = cell & SMK_SECT_OFF;
-                if (sec != SMK_SECT_OFF && sec < crs.sectors
-                    && !(kart.airborne && (crs.wattr[sec] & 0x80))) {
-                    if (me->lap_cool > 0) me->lap_cool--;
-                    if ((cell & SMK_SECT_FINISH) && me->lap_cool == 0) {
-                        if (me->sector >= crs.sectors - 2 && sec <= 1) {
-                            int prog = ((me->lap + 1) << 8) | sec;
-                            if (prog > me->progress_max) {
-                                me->lap++;
-                                me->progress_max = prog;
-                                me->lap_cool = 90;
-                                /* he comes back with the sign (NOTES 168);
-                                 * the grid crossing enters lap 1 and shows
-                                 * nothing, so this starts at lap 2 */
-                                if (me->lap >= 2) lap_sign_t = 0;
-                                if (race_state == RACE_RUN && !race_over)
-                                    race_over = smk_tt_crossing(
-                                        &result, &crossings,
-                                        &lap_start_frames, hud_race_frames);
-                            }
-                        } else if (sec >= crs.sectors - 2 && me->sector <= 1) {
-                            me->lap--;
-                            me->lap_cool = 90;
-                            /* `crossings` is deliberately NOT decremented:
-                             * the forward branch above is guarded by
-                             * progress_max, so a re-crossing never counts
-                             * twice, and a counter that only ever goes up
-                             * cannot desync from the splits it indexes. */
-                        }
-                    }
-                    me->sector = sec;
-                    player_sector = sec;
+                int ev = smk_progress_step(me, &crs, &kart);
+                player_sector = me->sector;
+                if (ev > 0) {
+                    /* he comes back with the sign (NOTES 168); the grid
+                     * crossing enters lap 1 and shows nothing, so this
+                     * starts at lap 2 */
+                    if (me->lap >= 2) lap_sign_t = 0;
+                    if (race_state == RACE_RUN && !race_over)
+                        race_over = smk_tt_crossing(
+                            &result, &crossings,
+                            &lap_start_frames, hud_race_frames);
                 }
+                /* `crossings` is deliberately NOT decremented on a
+                 * backward crossing: the forward branch is guarded by
+                 * progress_max, so a re-crossing never counts twice, and
+                 * a counter that only ever goes up cannot desync from
+                 * the splits it indexes. */
             }
 
             /* the race is over: report it, bank the best lap, show it */
