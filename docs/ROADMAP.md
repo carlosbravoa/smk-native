@@ -206,13 +206,18 @@ a starred kart knocking obstacles out (the real pipe's flight is not
 measured); and the road items' spin rate. The road items' ART is the ripped
 sheet's ladders through the ROM's own palettes (NOTES 192: the game
 computes them, the ROM holds no tiles; the red shell's small tiers are a
-remap of the green's, labelled). The AI's own weapons are IN
-(NOTES 190, from the user's `attack` recording): the same two projectile
-slots as the human's, carried behind the kart 58 frames then let go —
-MEASURED; OURS: the 160 px trigger distance and the 640-frame cooldown
-(bracketed by five events), the fireball's flight, the road art of the
-mushroom / egg / fireball (roulette icons in borrowed palettes), the AI
-star's length. The coinless
+remap of the green's, labelled). The AI's own weapons are the ROM's
+machine now (NOTES 279, `$80:EEF9`): the leading human as the victim, its
+rank-neighbour as the attacker, 61 frames of adjacency and a random draw
+against a per-character mask by the victim's rank, a drop or a forward
+throw or a 300-frame star by distance windows, a 180-frame cooldown, the
+game's two blocks — read from the ROM and checked against its own words on
+five recordings; the objects ride behind the kart 58 frames (a drop) or 64
+(a throw) then go, MEASURED.  OURS: the drop's "driving straight" test
+stands on the port's heading error where the ROM reads `$2C`; the thrown
+object's arc (measured ~48 frames to ~10 px, not yet fitted); the fireball's
+flight; the road art of the mushroom / egg / fireball (roulette icons in
+borrowed palettes). The coinless
 bump's spin (NOTES 187) is decoded and measured; OURS: an AI kart's coin
 count only falls (its pickups are not modelled), so the AI spins on its
 third bump where the real one may have refilled.

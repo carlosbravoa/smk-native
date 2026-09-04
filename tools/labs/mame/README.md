@@ -41,6 +41,11 @@ Files:
   19 in time trial, demo 3 Peach/Yoshi on track 18.
 * `demo_tt_track19.csv`, `demo_gp_track18.csv` - two of those, kept for
   the replay tool (`smk_demoreplay rom.sfc <csv> 1000`).
+* `aidrops.lua` - every arming of the two projectile blocks by an AI
+  owner, with the field's state; `objtrack.lua` follows one block through
+  a window (`BLK`, `F0`, `F1`); `cool.lua` logs the attack machine's own
+  words (`$0FEC/$0FE8/$0FEA/$0FEE`) and the blocks' owners as they change
+  (NOTES 279).
 * `p1dump.lua` - the player's whole block every other frame over a
   window (`F0`, `F1`), for finding the fields an event changes by
   diffing; the poison mushroom's shrink was read off it (NOTES 278).

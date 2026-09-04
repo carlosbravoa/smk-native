@@ -508,6 +508,58 @@ int main(int argc, char **argv)
                          SMK_AI_DECEL[0], SMK_AI_DECEL[1], SMK_AI_DECEL[2], SMK_AI_DECEL[3],
                          SMK_AI_DA_BONUS[0], SMK_AI_DA_BONUS[1], SMK_AI_DA_BONUS[2], SMK_AI_DA_BONUS[3], SMK_AI_DA_BONUS[4]);
                 check("$80B064 decel rates and $80B099 handicap bonus read as the recordings show", ok, det);
+                /* THE ATTACK's tables (NOTES 279): the mask rows by
+                 * character and victim rank, the types, the windows */
+                smk_ai_attack_load(&rom);
+                bool ta = SMK_AI_ATTACK_MASK[4][0] == 0 && SMK_AI_ATTACK_MASK[4][6] == 3
+                       && SMK_AI_ATTACK_MASK[5][0] == 3 && SMK_AI_ATTACK_MASK[0][6] == 0xFFFF
+                       && SMK_AI_ATTACK_MASK[2][5] == 0 && SMK_AI_ATTACK_MASK[2][6] == 0xFFFF
+                       && SMK_AI_ATTACK_TYPE[0][0] == 0x0C && SMK_AI_ATTACK_TYPE[0][1] == 0x08
+                       && SMK_AI_ATTACK_TYPE[4][0] == 0x0A && SMK_AI_ATTACK_TYPE[4][3] == 0x04
+                       && SMK_AI_ATTACK_WIN[0][0] == 0xC0 && SMK_AI_ATTACK_WIN[0][1] == 0x10
+                       && SMK_AI_ATTACK_WIN[1][0] == 0x90 && SMK_AI_ATTACK_WIN[1][1] == 0x30
+                       && SMK_AI_ATTACK_WIN[2][0] == 0x40 && SMK_AI_ATTACK_WIN[2][1] == 0x20;
+                snprintf(det, sizeof det, "DK mask %d/%d Yoshi %d Mario r6 %04X; types %02X %02X %02X %02X; windows %d-%d %d-%d %d-%d",
+                         SMK_AI_ATTACK_MASK[4][0], SMK_AI_ATTACK_MASK[4][6], SMK_AI_ATTACK_MASK[5][0], SMK_AI_ATTACK_MASK[0][6],
+                         SMK_AI_ATTACK_TYPE[0][0], SMK_AI_ATTACK_TYPE[0][1], SMK_AI_ATTACK_TYPE[4][0], SMK_AI_ATTACK_TYPE[4][3],
+                         SMK_AI_ATTACK_WIN[0][1], SMK_AI_ATTACK_WIN[0][0], SMK_AI_ATTACK_WIN[1][1], SMK_AI_ATTACK_WIN[1][0],
+                         SMK_AI_ATTACK_WIN[2][1], SMK_AI_ATTACK_WIN[2][0]);
+                check("the attack tables: masks by character and victim rank, the types, the windows ($80EF95/$80F007)", ta, det);
+                /* and the machine: DK Jr leading a player 100 px behind
+                 * on lap 2 arms on the 61st frame and drops at once; the
+                 * next attack waits the 180-frame cooldown; a leading
+                 * player with DK Jr 100 px behind gets a forward throw */
+                {
+                    smk_ai_attack st; smk_ai_attack_init(&st, 1);
+                    smk_racer rr[8]; memset(rr, 0, sizeof rr);
+                    smk_proj pj[SMK_PROJ_MAX]; memset(pj, 0, sizeof pj);
+                    for (int i = 0; i < 8; i++) { rr[i].character = i; rr[i].rank = i; rr[i].lap = 2; rr[i].k.speed = 700; rr[i].k.x = (int32_t)(500 + i * 100) * SMK_POS_ONE; rr[i].k.y = 500 * SMK_POS_ONE; }
+                    rr[4].character = 4; rr[0].character = 0;
+                    /* DK Jr (slot 4) rank 0 at x 500, the player (slot 0) rank 1 at x 600 */
+                    rr[4].rank = 0; rr[0].rank = 1; rr[4].k.x = 500 * SMK_POS_ONE; rr[0].k.x = 600 * SMK_POS_ONE;
+                    for (int i = 1; i < 8; i++) if (i != 4) rr[i].rank = i + 1 > 7 ? 7 : i + 1;
+                    rr[1].rank = 2; rr[2].rank = 3; rr[3].rank = 4; rr[5].rank = 5; rr[6].rank = 6; rr[7].rank = 7;
+                    bool hum[8] = { true };
+                    int first = -1, second = -1, t1 = 0, t2 = 0, who = -1;
+                    for (int f = 0; f < 400; f++) {
+                        int ty = 0; int w = smk_ai_attack_step(&st, rr, 8, hum, pj, SMK_PROJ_MAX, &ty);
+                        if (w >= 0 && first < 0) { first = f; t1 = ty; who = w; }
+                        else if (w >= 0 && second < 0) { second = f; t2 = ty; }
+                        for (int i = 0; i < SMK_PROJ_MAX; i++) pj[i].kind = SMK_PROJ_NONE;   /* the block is freed again */
+                    }
+                    /* the player leads, DK Jr 100 px behind: a throw */
+                    smk_ai_attack_init(&st, 1);
+                    rr[0].rank = 0; rr[4].rank = 1; rr[0].k.x = 500 * SMK_POS_ONE; rr[4].k.x = 600 * SMK_POS_ONE;
+                    int tf = -1, tt = 0;
+                    for (int f = 0; f < 400 && tf < 0; f++) { int ty = 0; if (smk_ai_attack_step(&st, rr, 8, hum, pj, SMK_PROJ_MAX, &ty) >= 0) { tf = f; tt = ty; } }
+                    snprintf(det, sizeof det, "first at f%d type $%02X by slot %d, second at f%d type $%02X (gap %d); leader case at f%d type $%02X",
+                             first, t1, who, second, t2, second - first, tf, tt);
+                    /* armed on the 61st frame, fired on the next - the recordings' 4775 -> 4776;
+                     * then 180 of cooldown, 61 of adjacency and the firing frame: 242, the
+                     * 100cc race's fastest real gap being 243 */
+                    check("the attack machine: arms on the 61st frame, fires the next, waits 180, and throws forward at a leader",
+                          first == 62 && t1 == 0x04 && who == 4 && second - first == 242 && tf == 62 && tt == 0x0A, det);
+                }
             }
             int v = (int16_t)(rom.data[a] | rom.data[a + 1] << 8);
             if (v == SMK_AI_RANK_BONUS[rk]) tbl++;

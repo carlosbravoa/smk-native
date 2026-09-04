@@ -274,6 +274,7 @@ static smk_projart   proj_art;
 static int         cur_track;        /* for the item block ($81:8B73[track]) */
 static smk_proj    projs[SMK_PROJ_MAX];
 static unsigned    item_rng = 0x2545F491u;
+static smk_ai_attack ai_attack;      /* the field's one attack machine (NOTES 279) */
 static unsigned item_roll(void)
 {
     /* The stream lives in src/env.c now, because the RL environment has
@@ -1969,6 +1970,7 @@ static bool load_race(const smk_rom *rom, int track, int theme, int character,
     finish_t = 0;
     memset(&item, 0, sizeof item);
     memset(projs, 0, sizeof projs);
+    smk_ai_attack_init(&ai_attack, item_rng);
     cur_track = track;
     /* the results screen names the track from the UI's own field, which
      * only the shell sets - so a --race or --timetrial run showed a blank */
@@ -3779,6 +3781,8 @@ int main(int argc, char **argv)
     { const char *e = getenv("SMK_FORCE_STEER"); if (e) force_steer = atoi(e); }
     if (!smk_ai_catchup_load(&rom))
         fprintf(stderr, "warning: AI catch-up table not loaded\n");
+    if (!smk_ai_attack_load(&rom))
+        fprintf(stderr, "warning: AI attack tables not loaded\n");
     if (!smk_physics_load(&rom, engine_class, &phys)) {
         fprintf(stderr, "error: cannot load physics tables\n");
         return 1;
@@ -4996,32 +5000,29 @@ int main(int argc, char **argv)
                      * rides behind the kart for 58 frames and is let go.
                      * The cooldown and the distance are OURS, bounded by
                      * the five drops measured (S31). */
-                    if (!replay_path)
-                        for (int q = 1; q < SMK_CHARACTERS; q++) {
-                            /* a slot a VIEW drives is a driver, not one of
-                             * the pack - our own autopilot is emulating a
-                             * person and does not get the AI's weapons
-                             * (the user: "he is not technically another
-                             * from the pack.  He is emulating a human
-                             * player") */
-                            if (slot_is_driven(q)) continue;
-                            smk_racer *r = &racers[q];
-                            if (r->weapon_cool > 0) r->weapon_cool--;
-                            if (r->star_t > 0) r->star_t--;
-                            int wp = smk_ai_weapon_of(r->character % SMK_CHARACTERS);
-                            if (wp == SMK_AI_WEAPON_NONE || r->weapon_cool > 0 || r->hit_t > 0) continue;
-                            if (r->lap < 2 || r->finish_frame >= 0) continue;
-                            int ddx = smk_kart_px(r->k.x) - smk_kart_px(kart.x);
-                            int ddy = smk_kart_px(r->k.y) - smk_kart_px(kart.y);
-                            if (ddx * ddx + ddy * ddy > SMK_AI_NEAR * SMK_AI_NEAR) continue;
-                            if (wp == SMK_AI_WEAPON_STAR) r->star_t = 0x200;
-                            else smk_proj_ai_drop(projs, SMK_PROJ_MAX, wp, &r->k, q);
-                            r->weapon_cool = SMK_AI_COOL;
-                            if (getenv("SMK_ITEM_TRACE"))
-                                printf("f%ld AI %d (%s) uses weapon %d at (%d,%d), player %d px away, lap %d\n", hud_race_frames, q,
-                                       SMK_DRIVERS[r->character % SMK_CHARACTERS].name, wp,
-                                       smk_kart_px(r->k.x), smk_kart_px(r->k.y), (int)sqrt((double)(ddx * ddx + ddy * ddy)), r->lap);
+                    if (!replay_path) {
+                        /* THE ATTACK (NOTES 279): the ROM's one machine
+                         * for the field, in the library.  A slot a VIEW
+                         * drives is a driver, not one of the pack, and
+                         * never an attacker (the user: "he is emulating a
+                         * human player"). */
+                        for (int q = 0; q < SMK_CHARACTERS; q++)
+                            if (racers[q].star_t > 0) racers[q].star_t--;
+                        bool humans[SMK_CHARACTERS];
+                        for (int q = 0; q < SMK_CHARACTERS; q++) humans[q] = slot_is_driven(q);
+                        int atype = 0;
+                        int who = smk_ai_attack_step(&ai_attack, racers, SMK_CHARACTERS, humans,
+                                                     projs, SMK_PROJ_MAX, &atype);
+                        if (who >= 0 && getenv("SMK_ITEM_TRACE")) {
+                            int vv = racers[0].rank <= racers[1].rank ? 0 : 1;
+                            int ddx = smk_kart_px(racers[who].k.x) - smk_kart_px(racers[vv].k.x);
+                            int ddy = smk_kart_px(racers[who].k.y) - smk_kart_px(racers[vv].k.y);
+                            printf("f%ld AI %d (%s) attacks slot %d: type $%02X at (%d,%d), victim %d px away, rank %d vs %d, lap %d\n",
+                                   hud_race_frames, who, SMK_DRIVERS[racers[who].character % SMK_CHARACTERS].name, vv, atype,
+                                   smk_kart_px(racers[who].k.x), smk_kart_px(racers[who].k.y),
+                                   (int)sqrt((double)(ddx * ddx + ddy * ddy)), racers[who].rank, racers[vv].rank, racers[vv].lap);
                         }
+                    }
                     /* the projectiles fly, and anything they touch reacts */
                     const smk_kart *field_k[SMK_CHARACTERS];
                     for (int q = 0; q < SMK_CHARACTERS; q++) field_k[q] = &racers[q].k;

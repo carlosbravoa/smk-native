@@ -2182,13 +2182,13 @@ bool smk_projart_load(const smk_rom *rom, smk_projart *out);
  * player is near.  The object rides behind the kart for SMK_AI_CARRY
  * frames at exactly the kart's velocity, then is let go where it is. */
 #define SMK_AI_CARRY        58    /* MEASURED: 58 frames at the kart's velocity, then still */
-#define SMK_AI_NEAR         160   /* px; MEASURED drops at 53..153 - OURS as a bound */
-#define SMK_AI_COOL         640   /* frames; MEASURED intervals 646/874/884 - OURS as a floor */
 #define SMK_FIRE_WEAVE_AMP  20    /* OURS (the user: "fireballs move sideways"): px either side */
 #define SMK_FIRE_WEAVE_T    96    /* OURS: frames per full weave (40 was "too fast" - the user)   */
 #define SMK_AI_WEAPON_NONE  0
 #define SMK_AI_WEAPON_STAR  100   /* not a projectile kind */
 int  smk_ai_weapon_of(int character);    /* SMK_PROJ_* kind, or SMK_AI_WEAPON_STAR / NONE */
+
+
 #define SMK_PROJ_SPEED_ADD  0x300 /* MEASURED: kart speed + $300         */
 #define SMK_PROJ_RED_DELAY  8     /* $40,x                              */
 #define SMK_PROJ_RED_TURN   0x0400
@@ -2214,14 +2214,69 @@ typedef struct {
     uint8_t  bounced;          /* set on the frame it hit a wall (for the sound) */
     bool     dying;         /* hopping out of existence                  */
     int      carry;         /* AI drop: frames still riding behind its kart */
+    bool     throw_after;   /* AI forward attack: thrown when the carry ends */
     int32_t  wx, wy;        /* the fireball's weave offset, kart units       */
     int      safe;          /* frames the owner cannot touch it          */
 } smk_proj;
+
+/* THE ATTACK, decoded ($80:EEF9-$80:F141, NOTES 279).  One machine for
+ * the whole field, run once a frame:
+ *
+ *   victim     the human slot that is AHEAD of the two ($10E6 vs $11E6:
+ *              block 0, or block 1 when 0 is behind it)
+ *   gates      the victim not in trouble ($10 bit 5), on lap 2 or later
+ *              ($C0 >= $8100), moving; a 180-frame cooldown after any
+ *              attack ($0FEC); the attacker computer-driven ($10 bit 13)
+ *   attacker   the victim's neighbour in rank: the kart BEHIND a leading
+ *              victim, the kart AHEAD of any other
+ *   arming     the same neighbour for 61 frames ($0FE8 against $3C),
+ *              then $81:BB70's random word AND a mask by the attacker's
+ *              character and the VICTIM's rank ($EF95 rows): 0 arms at
+ *              once, 3 one time in four, $FFFF never; the attack TYPE
+ *              comes from the sibling table ($F007 rows)
+ *   $04  drop   the attacker (ahead) within [16,192) px and driving
+ *              straight ($2C within 8 of its rest) - the object carried
+ *              58 frames and let go
+ *   $0A  throw  the attacker (behind a leader) within [48,144) - carried
+ *              ~64 frames and thrown forward
+ *   $08 / $0C   Mario and Luigi: within [32,64), the attacker takes a
+ *              300-frame star ($86 = $12C) instead
+ *   then       $0FEC = 180, the counters cleared; a handler out of range
+ *              stays armed and retries every frame */
+typedef struct {
+    int      cool;        /* $0FEC */
+    int      adjacent;    /* $0FE8 */
+    int      armed;       /* $0FEA: 0, 4, 8, $A, $C */
+    int      neighbour;   /* $0FEE: the remembered attacker's character*2, -1 none */
+    uint16_t rng;         /* $1F26 */
+} smk_ai_attack;
+#define SMK_AI_ATTACK_COOL   180   /* $80F135: $0FEC = $B4                      */
+#define SMK_AI_ATTACK_ADJ     60   /* $80EF61: $3C, so the 61st frame attempts   */
+#define SMK_AI_STAR_T        300   /* $80F0C2: $86 = $12C                       */
+#define SMK_AI_THROW_CARRY    64   /* MEASURED: carried 64-66 frames, then thrown */
+bool smk_ai_attack_load(const smk_rom *rom);   /* the mask, type and window tables */
+void smk_ai_attack_init(smk_ai_attack *st, unsigned seed);
+/* Runs the machine one frame.  humans: which racers[] slots a person
+ * (or a view) drives - block 1 stands in for $1100 whether or not a
+ * person is on it, as the ROM compares it regardless.  Returns the
+ * attacker's slot when an attack was made this frame, else -1; *type_out
+ * gets the type.  Projectiles go to `projs`; stars set racers[].star_t. */
+int  smk_ai_attack_step(smk_ai_attack *st, smk_racer *racers, int n,
+                        const bool *humans, smk_proj *projs, int nproj,
+                        int *type_out);
+/* $81:BB70, the game's own random word, transcribed */
+uint16_t smk_rng_step(uint16_t *state);
+extern uint16_t SMK_AI_ATTACK_MASK[8][8];   /* [character][victim rank] */
+extern uint16_t SMK_AI_ATTACK_TYPE[8][8];
+extern uint16_t SMK_AI_ATTACK_WIN[4][2];    /* [drop, throw, star, drop-alt]: {max, min} */
 void smk_proj_ai_drop(smk_proj *list, int n, int kind, const smk_kart *k, int owner);
 void smk_proj_throw(smk_proj *list, int n, int kind, const smk_kart *k,
                     uint16_t heading, int owner, int target, bool backward,
                     bool ahead);
 /* one frame; `karts` indexed like racers[] for the red shell's target */
+/* the AI's forward attack: carried like a drop, then thrown ahead when
+ * the carry runs out (variant 5, NOTES 279) */
+void smk_proj_ai_throw(smk_proj *list, int n, int kind, const smk_kart *k, int owner);
 void smk_proj_step(smk_proj *list, int n, const smk_track *trk,
                    const smk_kart *const *karts, int nkarts);
 /* does any live projectile touch this kart?  Returns its kind (and

@@ -12196,3 +12196,99 @@ frames a lap against 4,299 before), and the answer wants ONE recording
 of Mario Circuit 2 at 50cc or 100cc.
 
 A rig knob, `SMK_AI_SNAP=1`, restores the one-frame snap for A/B runs.
+
+## 279. The AI's attack, decoded: one machine for the field, aimed at the leading human
+
+The user: *"today we have exaggerated rate of attack, which is not bad,
+but not accurate either"*, and *"Peach's drop is because she passed
+through a banana. Remember that AI is affected by elements."*  NOTES
+190 read five events off one recording and built a per-kart trigger
+from them - a 640-frame cooldown per kart, the player within 160 px,
+always a drop behind.  With five recordings and the routine itself,
+that was three guesses out of three.
+
+### What the recordings say (`ailog.lua`, `aidrops.lua`, `objtrack.lua`)
+
+Twenty-two AI armings of the two projectile blocks (`$1A00`/`$1A80`)
+across `attack`, `flag`, `cc100`, `cc150` and `moles`: every character
+attacks (DK Jr, Peach, Yoshi, Koopa, Bowser); two shapes, decided by
+where the player is:
+
+    variant 8  (type 4)   nine of ten with the player BEHIND the kart  - the drop
+    variant 10 (type $A)  twelve of twelve with the player AHEAD       - the throw
+
+distances 50-246 px; gaps between one kart's attacks from 123 frames to
+3,352.  A drop is carried 58 frames and let go (NOTES 190).  A throw is
+carried 64-66 frames and then THROWN: the object leaves at 1536 units
+(6 px a frame) along its owner's line with a ~10 px arc, flies ~48
+frames, lands and parks - the game's own thrown-banana handler (`$F6DB`)
+takes over.  `$E0` stays zero on every AI kart: none of it is an item
+use.
+
+### The routine ($80:EEF9-$80:F141), read and then watched running
+
+Watchpoints on the blocks' owner words named the caller (`$80:F093`,
+`$80:F067`); the listing around it, with the tables dumped as data:
+
+    $80EEF9  victim = block 0 if $10E6 < $11E6 else block 1 - the human slot that LEADS
+    $80EF13  victim's $10 bit 5 (in trouble) -> no
+    $80EF22  victim's $C0 < $8100 (lap 1) -> no          (skipped if $1F06 bit 2)
+    $80EF29  $0FEC, the cooldown: counting -> no
+    $80EF33  victim's speed 0 -> reset
+    $80EF37  attacker = the victim's rank-neighbour: BEHIND a leader ($94), AHEAD of anyone else ($96)
+    $80EF43  a new neighbour ($12, its character) -> remember it, reset
+    $80EF50  already armed ($0FEA) -> the handler, by type
+    $80EF59  attacker's $10 bit 13 (computer-driven; set on every AI kart in the logs) -> else no
+    $80EF61  $0FE8 counts frames adjacent; the 61st makes an ATTEMPT
+    $80EF76  mask = ($EF95[attacker character])[victim rank]; type = ($F007[..])[victim rank]
+    $80EF84  $81:BB70's random word AND mask == 0 -> armed with the type
+
+    masks   Mario Luigi Peach Koopa Toad   0 0 3 3 3 3 FFFF FFFF    (by the VICTIM's rank)
+            Bowser                         0 0 0 0 0 0 FFFF FFFF
+            DK Jr                          0 0 0 0 0 0 3 3
+            Yoshi                          3 3 3 3 3 3 FFFF FFFF
+    types   Mario Luigi                    C 8 8 8 8 8 8 8
+            the rest                       A 4 4 4 4 4 4 4
+
+    type 4   $80F07F  the drop:  attacker within [16,192) AND its $2C within 8 of $FF80 -> variant 4
+    type A   $80F055  the throw: attacker within [48,144) -> variant 5, at the attacker
+    type 8/C $80F0B6/$80F0A3  Mario and Luigi: within [32,64) -> the attacker's $86 = $12C, a star
+    after    $80F135  $0FEC = $B4 (180), the counters cleared; a handler out of range leaves it armed
+
+`cool.lua` on the machine's own words: `$0FEC` steps 1 a frame (once
+per frame, not per kart), `$0FE8` 1 a frame, `$0FEC` set to 180 at every
+firing - `attack` 3301/3892/4776/5422/6296, `cc100` 3656/4125/4813/5056/
+5445/6605 - and armed a frame before (4775 -> 4776, 5403 -> 5422 waiting
+for its window).  The 5056 firing set the cooldown with NO object born:
+both blocks were live, `$80F17A` found none free, and the attack was
+lost - the limiter that spaces the real rate below the machine's floor
+of 242 frames (the 100cc race's fastest real gap: 243).  `$1F26` is the
+random word and `$81:BB70` its shuffle, transcribed as `smk_rng_step`.
+
+`$2C`, the drop's second test: not the bearing in any unit (mean error
+100+), but a word that rests near -128 on the straights, swings to -500
+in corners, and sat at -132/-133/-118/-124/-136/-128/-137 at every
+drop - the AI's steering word, and the test is "driving straight".
+OURS: the port's heading error under $200 stands in for it.
+
+### The port
+
+`smk_ai_attack_step` in src/ai.c, one machine for the field in both
+main.c and the environment: the tables read from the ROM
+(`smk_ai_attack_load`, checked in the selftest with the machine's own
+timing - armed on the 61st frame, fired on the 62nd, 242 between), the
+victim by the ROM's compare (block 1 stands in for `$1100` whether a
+person drives it or not - in a one-player race that is the rival, which
+the code attacks when it leads the player: read, not yet observed), the
+neighbour by rank, the four handlers, the two-block limit with the
+cooldown consumed.  The throw is new: `smk_proj_ai_throw` carries the
+object 64 frames and releases it through `ai_release` at $600 along the
+owner's heading with the port's thrown-banana arc (OURS until fitted:
+the measured flight is ~48 frames to a ~10 px peak).  Mario and Luigi's
+star is 300 frames now, `$12C`, not the player's `$200`.
+
+Under the autopilot on Mario Circuit 1: 15 / 13 / 5 attacks a race at
+50/100/150cc (drops, throws and one star), against 9 / 12 / 17 before
+that were all drops; the recordings, with a human who pulls away, hold
+5 / 4 / 6 / 2 / 3.  The per-kart constants `SMK_AI_NEAR` and
+`SMK_AI_COOL` are gone.

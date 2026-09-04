@@ -144,6 +144,50 @@ void smk_proj_ai_drop(smk_proj *list, int n, int kind, const smk_kart *k, int ow
     p->safe = SMK_AI_CARRY + SMK_PROJ_OWNER_SAFE;
 }
 
+void smk_proj_ai_throw(smk_proj *list, int n, int kind, const smk_kart *k, int owner)
+{
+    smk_proj_ai_drop(list, n, kind, k, owner);
+    for (int i = 0; i < n; i++)
+        if (list[i].kind == kind && list[i].owner == owner && list[i].carry == SMK_AI_CARRY) {
+            list[i].carry = SMK_AI_THROW_CARRY;
+            list[i].throw_after = true;
+            return;
+        }
+}
+
+/* the release of a forward attack: the port's own forward throw of that
+ * kind, from where the object is, along the owner's heading.  MEASURED
+ * (NOTES 279): the thrown object leaves at ~6 px a frame and flies ~48
+ * frames with a ~10 px peak before parking; the port's thrown-banana
+ * arc is OURS and stands until fitted. */
+static void ai_release(smk_proj *p, const smk_kart *ok)
+{
+    smk_kart k = *ok;
+    k.x = p->x; k.y = p->y;
+    k.speed = 0x0600 - SMK_PROJ_SPEED_ADD * 2;     /* smk_proj_throw adds 2*$300: $600 flat */
+    int kind = p->kind, owner = p->owner;
+    memset(p, 0, sizeof *p);
+    p->kind = kind; p->owner = owner; p->target = -1;
+    p->safe = SMK_PROJ_OWNER_SAFE;
+    p->heading = ok->angle;
+    p->x = k.x; p->y = k.y; p->z = 0;
+    switch (kind) {
+    case SMK_PROJ_BANANA:
+    case SMK_PROJ_MUSHROOM:
+    case SMK_PROJ_EGG:
+        p->kind = SMK_PROJ_BANANA_AIR;          /* the thrown-banana handler ($F6DB) */
+        p->speed = 0x0600;
+        p->zv = 0x0180;
+        break;
+    default:                                    /* the shell family flies flat */
+        p->speed = 0x0600;
+        break;
+    }
+    set_velocity(p);
+    if (kind != SMK_PROJ_BANANA && kind != SMK_PROJ_MUSHROOM && kind != SMK_PROJ_EGG)
+        p->kind = kind;
+}
+
 void smk_proj_step(smk_proj *list, int n, const smk_track *trk,
                    const smk_kart *const *karts, int nkarts)
 {
@@ -166,6 +210,7 @@ void smk_proj_step(smk_proj *list, int n, const smk_track *trk,
                 smk_dsp_sincos(ok->angle, 8 * 256, &sx, &cy);
                 p->x = ok->x - ((int32_t)sx << (SMK_POS_SHIFT - 8));
                 p->y = ok->y + ((int32_t)cy << (SMK_POS_SHIFT - 8));
+                if (p->carry == 0 && p->throw_after) ai_release(p, ok);
             }
             continue;
         }

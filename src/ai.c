@@ -736,3 +736,154 @@ void smk_ai_rubber(smk_racer *racers, int n, const smk_course *crs, int cls)
         r->branch = smk_ai_branch;
     }
 }
+
+/* ---- The attack (NOTES 279) --------------------------------------------
+ *
+ * $80:EEF9-$80:F141, transcribed.  The port used to fire each AI's weapon
+ * on its own 640-frame cooldown whenever the player was within 160 px,
+ * always as a drop behind - the user: "exaggerated rate of attack, not
+ * accurate either".  The ROM runs ONE machine for the field, aimed at
+ * the leading human, armed by the victim's rank-neighbour after a
+ * minute's adjacency and a random draw against a per-character table,
+ * and answers with a drop, a forward throw or a star by the geometry.
+ * Everything below is read from the ROM at load or transcribed from it;
+ * what is OURS is named where it stands. */
+uint16_t SMK_AI_ATTACK_MASK[8][8];
+uint16_t SMK_AI_ATTACK_TYPE[8][8];
+uint16_t SMK_AI_ATTACK_WIN[4][2];
+
+static uint16_t rd16(const smk_rom *rom, uint32_t snes)
+{
+    uint32_t pc = smk_snes_to_pc(rom, snes);
+    return pc + 1 < rom->size ? (uint16_t)(rom->data[pc] | rom->data[pc + 1] << 8) : 0;
+}
+
+bool smk_ai_attack_load(const smk_rom *rom)
+{
+    /* $80EF95: eight pointers (by character*2) to rows of eight masks by
+     * the victim's rank; $80F007: the same shape for the attack type */
+    for (int ch = 0; ch < 8; ch++) {
+        uint16_t mrow = rd16(rom, 0x80EF95u + (uint32_t)ch * 2u);
+        uint16_t trow = rd16(rom, 0x80F007u + (uint32_t)ch * 2u);
+        for (int rk = 0; rk < 8; rk++) {
+            SMK_AI_ATTACK_MASK[ch][rk] = rd16(rom, 0x800000u | (uint32_t)(mrow + rk * 2));
+            SMK_AI_ATTACK_TYPE[ch][rk] = rd16(rom, 0x800000u | (uint32_t)(trow + rk * 2));
+        }
+    }
+    /* the distance windows, {max, min}: $F09B the drop, $F071 the throw,
+     * $F0D3 the star, $F097/$F09F the drop's other rows */
+    SMK_AI_ATTACK_WIN[0][0] = rd16(rom, 0x80F09Bu); SMK_AI_ATTACK_WIN[0][1] = rd16(rom, 0x80F09Du);
+    SMK_AI_ATTACK_WIN[1][0] = rd16(rom, 0x80F071u); SMK_AI_ATTACK_WIN[1][1] = rd16(rom, 0x80F073u);
+    SMK_AI_ATTACK_WIN[2][0] = rd16(rom, 0x80F0D3u); SMK_AI_ATTACK_WIN[2][1] = rd16(rom, 0x80F0D5u);
+    SMK_AI_ATTACK_WIN[3][0] = rd16(rom, 0x80F097u); SMK_AI_ATTACK_WIN[3][1] = rd16(rom, 0x80F099u);
+    return SMK_AI_ATTACK_TYPE[0][0] == 0x0C;      /* the shape the decode read */
+}
+
+/* $81:BB70, byte for byte: a 16-bit shuffle with an $AA55 trap */
+uint16_t smk_rng_step(uint16_t *state)
+{
+    uint16_t r = *state;
+    uint16_t a = (uint16_t)((r & 0xFF) << 8);     /* lda / and #$FF / xba */
+    a ^= r;                                       /* eor $1F26 */
+    a = (uint16_t)((a << 8) | (a >> 8));          /* xba */
+    r = a;                                        /* sta $1F26 */
+    a = (uint16_t)((a << 8) | (a >> 8));          /* xba */
+    a &= 0xFF;
+    a = (uint16_t)(a << 1);                       /* asl */
+    a ^= r;                                       /* eor $1F26 */
+    unsigned carry = a & 1;
+    a >>= 1;                                      /* lsr */
+    a ^= 0xFF80;
+    if (carry) a ^= 0x8180;
+    else if (a == 0xAA55) a ^= 0x8180;            /* the trap: never park on $AA55 */
+    *state = a;
+    return a;
+}
+
+void smk_ai_attack_init(smk_ai_attack *st, unsigned seed)
+{
+    memset(st, 0, sizeof *st);
+    st->neighbour = -1;
+    st->rng = (uint16_t)(seed ? seed : 0x1234);
+}
+
+static bool in_window(int d, const uint16_t win[2])
+{
+    return d < (int)win[0] && d >= (int)win[1];  /* $80F0FE: A < max, A >= min */
+}
+
+int smk_ai_attack_step(smk_ai_attack *st, smk_racer *racers, int n,
+                       const bool *humans, smk_proj *projs, int nproj,
+                       int *type_out)
+{
+    if (type_out) *type_out = 0;
+    if (n < 2) return -1;
+    /* $80EEF9: the victim is whichever of blocks 0 and 1 leads */
+    int v = racers[0].rank <= racers[1].rank ? 0 : 1;
+    smk_racer *vic = &racers[v];
+    (void)humans;
+    if (vic->trouble) return -1;                             /* $10 bit 5 */
+    if (vic->lap < 2) return -1;                             /* $C0 < $8100 */
+    if (st->cool > 0) { st->cool--; return -1; }            /* $0FEC */
+    if (vic->k.speed == 0) { st->adjacent = 0; st->armed = 0; return -1; }
+    /* the neighbour: behind a leader, ahead of anyone else */
+    smk_racer *att = NULL;
+    for (int i = 0; i < n; i++)
+        if (i != v && racers[i].rank == (vic->rank == 0 ? 1 : vic->rank - 1)) att = &racers[i];
+    if (!att) { st->adjacent = 0; st->armed = 0; return -1; }
+    int a = (int)(att - racers);
+    if (humans && humans[a]) return -1;                     /* $10 bit 13: computer-driven only */
+    int ch = att->character % SMK_CHARACTERS;
+    if (st->neighbour != ch * 2) { st->neighbour = ch * 2; st->adjacent = 0; st->armed = 0; return -1; }
+    int dist = (int)sqrtf((float)((smk_kart_px(att->k.x) - smk_kart_px(vic->k.x)) * (smk_kart_px(att->k.x) - smk_kart_px(vic->k.x))
+                                 + (smk_kart_px(att->k.y) - smk_kart_px(vic->k.y)) * (smk_kart_px(att->k.y) - smk_kart_px(vic->k.y))));
+    if (st->armed == 0) {
+        /* $80EF61: the 61st consecutive frame makes an attempt */
+        if (SMK_AI_ATTACK_ADJ >= st->adjacent) { st->adjacent++; return -1; }
+        st->adjacent = 0;
+        uint16_t rnd = smk_rng_step(&st->rng);
+        int rk = vic->rank & 7;
+        if (rnd & SMK_AI_ATTACK_MASK[ch][rk]) return -1;
+        st->armed = SMK_AI_ATTACK_TYPE[ch][rk];
+        if (st->armed == 0) return -1;
+    }
+    int kind = smk_ai_weapon_of(ch);
+    int type = st->armed;
+    bool done = false;
+    /* $80F17A takes a FREE block and the game has two ($1A00/$1A80);
+     * with none free the attack is lost and the cooldown still runs -
+     * seen in the 100cc recording, a cooldown set with no object born
+     * while both blocks were live.  The port's list is longer (OURS), so
+     * the AI is held to the game's two. */
+    int live = 0;
+    for (int i = 0; i < nproj; i++) if (projs[i].kind != SMK_PROJ_NONE) live++;
+    bool block_free = live < 2;
+    switch (type) {
+    case 0x04:                                              /* $80F07F: the drop, by the kart ahead */
+        if (!in_window(dist, SMK_AI_ATTACK_WIN[0])) break;
+        /* $80F10B: the attacker's $2C within 8 of its rest - its steering
+         * word, read off the recording (NOTES 279): a drop only while
+         * driving straight.  OURS: the port's heading error stands in for
+         * a word whose scale is not decoded. */
+        { int16_t err = (int16_t)(att->dbg_want - att->k.angle);
+          if (err > 0x0200 || err < -0x0200) break; }
+        if (block_free && kind != SMK_AI_WEAPON_NONE && kind != SMK_AI_WEAPON_STAR)
+            smk_proj_ai_drop(projs, nproj, kind, &att->k, a);
+        done = true; break;
+    case 0x0A:                                              /* $80F055: the throw, by the kart behind a leader */
+        if (!in_window(dist, SMK_AI_ATTACK_WIN[1])) break;
+        if (block_free && kind != SMK_AI_WEAPON_NONE && kind != SMK_AI_WEAPON_STAR)
+            smk_proj_ai_throw(projs, nproj, kind, &att->k, a);
+        done = true; break;
+    case 0x08: case 0x0C:                                   /* $80F0B6 / $80F0A3: the star */
+        if (!in_window(dist, SMK_AI_ATTACK_WIN[2])) break;
+        att->star_t = SMK_AI_STAR_T;
+        done = true; break;
+    default:
+        st->armed = 0; return -1;
+    }
+    if (!done) return -1;                                   /* out of range: stays armed, retries */
+    st->cool = SMK_AI_ATTACK_COOL; st->adjacent = 0; st->armed = 0;   /* $80F135 */
+    if (type_out) *type_out = type;
+    return a;
+}

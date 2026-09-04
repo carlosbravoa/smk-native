@@ -126,6 +126,7 @@ struct smk_env {
     smk_itemtab itemtab;         /* the ROM's own item tables              */
     smk_item    item;            /* the roulette and what is held          */
     smk_proj    projs[SMK_PROJ_MAX];
+    smk_ai_attack attack;        /* the field's attack machine (NOTES 279) */
     unsigned    roll;            /* the item roll's own stream             */
     bool        in_countdown;    /* the lights are still on                */
     bool        item_btn;        /* the item button this frame             */
@@ -475,6 +476,7 @@ static void env_reset_one(smk_env *e)
 
     memset(&e->item, 0, sizeof e->item);
     memset(e->projs, 0, sizeof e->projs);
+    smk_ai_attack_init(&e->attack, (unsigned)e->roll ^ 0x5A5Au);
     smk_autopilot_init(&e->ap);
     e->pad_prev = 0;
     e->sector = e->racers[0].sector;
@@ -734,21 +736,14 @@ static void frame(smk_env *e, uint16_t held, uint16_t pressed)
     }
 
     if (e->cfg.mode != SMK_MODE_TT && e->cfg.items && !e->in_countdown) {
-        /* the AI's own weapon (NOTES 190): one per character, only from
-         * lap 2, only when the player is near, on a cooldown */
-        for (int q = 1; q < SMK_CHARACTERS; q++) {
-            smk_racer *r = &e->racers[q];
-            if (r->weapon_cool > 0) r->weapon_cool--;
-            if (r->star_t > 0) r->star_t--;
-            int wp = smk_ai_weapon_of(r->character % SMK_CHARACTERS);
-            if (wp == SMK_AI_WEAPON_NONE || r->weapon_cool > 0 || r->hit_t > 0) continue;
-            if (r->lap < 2 || r->finish_frame >= 0) continue;
-            int ddx = smk_kart_px(r->k.x) - smk_kart_px(k->x);
-            int ddy = smk_kart_px(r->k.y) - smk_kart_px(k->y);
-            if (ddx * ddx + ddy * ddy > SMK_AI_NEAR * SMK_AI_NEAR) continue;
-            if (wp == SMK_AI_WEAPON_STAR) r->star_t = 0x200;
-            else smk_proj_ai_drop(e->projs, SMK_PROJ_MAX, wp, &r->k, q);
-            r->weapon_cool = SMK_AI_COOL;
+        /* the AI's attack: the ROM's one machine for the field (NOTES
+         * 279), the same call main.c makes */
+        {
+            for (int q = 0; q < SMK_CHARACTERS; q++)
+                if (e->racers[q].star_t > 0) e->racers[q].star_t--;
+            bool humans[SMK_CHARACTERS] = { true };
+            smk_ai_attack_step(&e->attack, e->racers, SMK_CHARACTERS, humans,
+                               e->projs, SMK_PROJ_MAX, NULL);
         }
         const smk_kart *field_k[SMK_CHARACTERS];
         for (int q = 0; q < SMK_CHARACTERS; q++) field_k[q] = &e->racers[q].k;
@@ -916,6 +911,7 @@ smk_env_batch *smk_env_batch_create(const char *rom_path, const smk_env_cfg *cfg
     b->env = calloc((size_t)n, sizeof *b->env);
     if (!b->env) { smk_rom_free(&b->rom); free(b); snprintf(err, errn, "out of memory"); return NULL; }
     smk_ai_catchup_load(&b->rom);
+    smk_ai_attack_load(&b->rom);
     static smk_itemtab tab;
     if (!smk_items_load(&b->rom, &tab))
         snprintf(err, errn, "warning: the item tables did not load");

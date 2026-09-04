@@ -253,10 +253,14 @@ draws a labelled yellow disc until it is caught.
 
 ## 8. Out of scope for this pass
 
-- **AI weapons** — DONE in NOTES 190: not bank `$85` entities at all but
-  the human's own two projectile slots, carried behind the AI kart for 58
-  frames and released; one weapon per character; only against the
-  player, from lap 2, when near.
+- **AI weapons** — DECODED in NOTES 279 (`$80:EEF9`): one machine for
+  the field aimed at the leading human, armed by its rank-neighbour after
+  61 adjacent frames and a random draw against a per-character mask by
+  the victim's rank, answering with a drop behind (carried 58 frames),
+  a forward throw (carried 64, then the thrown-banana handler) or a
+  300-frame star for Mario and Luigi, by distance windows, with a
+  180-frame cooldown and only when one of the two blocks is free.  The
+  objects use the human's own two blocks (NOTES 190).
 - **Boo's theft in 1P** (there is no second human) and the **battle
   items** (ids 9, 10).
 - **Sound** — every item names its sound above; nothing plays yet.
