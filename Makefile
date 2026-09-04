@@ -12,7 +12,7 @@ ASAR    := vendor/asar-build/asar/bin/asar
 
 .PHONY: all game run bench shots selftest test verify info trace dis \
         jumptables health extract roundtrip romhack tools clean distclean help \
-        envtest envcheck train watch watch-time
+        envtest envcheck train watch watch-time embed-policy
 
 all: game
 
@@ -57,6 +57,15 @@ envtest: game $(BASE)
 envcheck: game $(BASE)
 	@$(PY) tools/rl/check_replay.py
 	@$(PY) tools/rl/check_obs.py
+
+## compile a trained policy INTO the game, so VS CPU is the trained
+## driver with no flag.  The generated src/netpolicy.inc is gitignored -
+## see the note there and in tools/rl/embed_net.py.
+##   make embed-policy NET=runs/mix/cpu.net && make game
+embed-policy:
+	@$(PY) tools/rl/embed_net.py $(NET) -o src/netpolicy.inc
+
+NET ?= runs/mix/cpu.net
 
 ## train a policy on one course (see docs/RL.md for the knobs).  Every
 ## evaluation drops a runs/<name>/latest.pads that `make watch` can play.

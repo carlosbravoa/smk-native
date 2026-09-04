@@ -267,6 +267,47 @@ multiply-adds per decision.  At one decision every four frames that is
 roughly 1.3 MFLOP a second, next to a software Mode 7 renderer doing
 hundreds of millions.  `src/net.c` is thirty lines of arithmetic.
 
+### Building it into the game
+
+`--cpu-policy FILE` is the runtime way.  To make the trained driver simply
+be *what VS CPU means*, with no flag:
+
+```bash
+make embed-policy NET=runs/mix/cpu.net    # writes src/netpolicy.inc
+make game
+```
+
+The weights go in as **int8 with a float scale per output row**, and are
+expanded back to float once at startup - so `smk_net_act` is unchanged
+and the saving is in the binary rather than the arithmetic: 84 KB instead
+of 351.  The policy **head** stays float, because it is 14x256 (fourteen
+kilobytes) and its argmax *is* the decision, so its rounding error is the
+only one that turns straight into a different button.
+
+Measured on the game - five courses, laps completed in a fixed budget -
+the quantised build and the float `.net` complete **identically**
+(10/8/7/10/8 laps each).  A random-input probe reports 1.4% of decisions
+changing, but random Gaussian inputs produce far more near-ties than
+driving does; the lap counts are the number to trust.
+
+Two things it does NOT do, deliberately:
+
+- **`src/netpolicy.inc` is gitignored.**  Those are learned parameters
+  and not ROM bytes, but they were trained entirely against the
+  cartridge's physics, surfaces and racing lines and they encode how to
+  drive them - closer to the line this project draws than anything else
+  in the tree.  Generating it is a step you run; shipping it is a
+  decision to take deliberately.
+- **It only drives the 20 GP courses.**  `smk_net_drives_track` says so,
+  and off them the game falls back to `src/autopilot.c`.  The battle
+  arenas (20-23) have no racing line and no sector map, so every feature
+  the policy steers by is meaningless there: pointed at one it sat
+  still, measured.  Battle mode is not built either, but a shipped
+  default must not depend on that staying true.
+
+With no `netpolicy.inc` at all the game builds and plays exactly as
+before, with the scripted driver - verified, not assumed.
+
 ### What it is and is not, today
 
 Against `src/autopilot.c` in a real eight-kart race at the class it

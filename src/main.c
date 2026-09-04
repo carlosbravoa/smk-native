@@ -3678,15 +3678,27 @@ int main(int argc, char **argv)
                pads_mushroom < 0 ? "unstated" : pads_mushroom ? "yes" : "no");
     }
     { const char *e = getenv("SMK_ITEM_SEED"); if (e) item_rng = (unsigned)strtoul(e, NULL, 0); }
-    if (cpu_policy_path) {
+    {
+        /* --cpu-policy names one; otherwise the one built into the binary,
+         * if src/netpolicy.inc was generated.  With neither, cpu_net stays
+         * closed and src/autopilot.c drives, exactly as before. */
         char nerr[256];
-        if (!smk_net_load(&cpu_net, cpu_policy_path, nerr, sizeof nerr)) {
+        bool got = cpu_policy_path
+                 ? smk_net_load(&cpu_net, cpu_policy_path, nerr, sizeof nerr)
+                 : smk_net_builtin(&cpu_net, nerr, sizeof nerr);
+        if (!got && cpu_policy_path) {
             fprintf(stderr, "error: %s\n", nerr);
             return 1;
         }
+        if (!got && getenv("SMK_POLICY_TRACE"))
+            fprintf(stderr, "no built-in policy: %s\n", nerr);
+    }
+    if (cpu_net.ok) {
+        const char *cpu_policy_src = cpu_policy_path ? cpu_policy_path
+                                                     : "built in";
         printf("cpu policy: %s (%d x %d, one decision every %d frames, "
                "trained at %s)\n",
-               cpu_policy_path, cpu_net.hidden, cpu_net.n_act, cpu_net.frame_skip,
+               cpu_policy_src, cpu_net.hidden, cpu_net.n_act, cpu_net.frame_skip,
                cpu_net.engine_class < 0 ? "every class" :
                cpu_net.engine_class == 0 ? "50cc" :
                cpu_net.engine_class == 1 ? "100cc" : "150cc");
@@ -4508,7 +4520,8 @@ int main(int argc, char **argv)
              * policy drive alone, full screen, is the clearest look at
              * it there is - a split screen halves exactly the thing you
              * are trying to see. */
-            if (cpu_net.ok && (views[v].bot || autodrive)
+            if (cpu_net.ok && smk_net_drives_track(cur_track)
+                && (views[v].bot || autodrive)
                 && race_state == RACE_RUN && !replay_path) {
                 /* The trained policy, as the second player's driver.  It
                  * gets the SAME observation smk_env_batch_step hands it

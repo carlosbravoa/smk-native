@@ -45,6 +45,7 @@ long smk_decompress_into(const uint8_t *src, size_t srclen, size_t off,
 /* ---- track assets ----------------------------------------------------- */
 
 #define SMK_TRACK_COUNT   24          /* 20 GP courses + 4 battle courses */
+#define SMK_GP_TRACKS     20          /* ...and the GP ones are the first 20 */
 #define SMK_THEME_COUNT    8          /* Mario Circuit, Ghost Valley, ...     */
 
 /* Theme (tileset + palette) for a course, from the ROM's own table $81EC2F. */
@@ -2354,3 +2355,10 @@ bool smk_net_load(smk_net *n, const char *path, char *err, size_t errn);
 void smk_net_free(smk_net *n);
 /* the greedy action for this observation */
 int  smk_net_act(smk_net *n, const float *obs);
+/* The policy compiled into the binary, if src/netpolicy.inc was
+ * generated (tools/rl/embed_net.py).  False, with a reason, when it was
+ * not - and the game then drives with src/autopilot.c exactly as before. */
+bool smk_net_builtin(smk_net *n, char *err, size_t errn);
+/* Is the trained driver trusted on this course?  The 20 GP ones only:
+ * the battle arenas have no racing line, and the policy steers by it. */
+bool smk_net_drives_track(int track);
