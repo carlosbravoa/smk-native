@@ -734,7 +734,8 @@ int main(int argc, char **argv)
                     smk_ui u; memset(&u, 0, sizeof u); smk_ui_init(&u);
                     smk_ui_input go = { false, false, false, false, true, false };
                     smk_ui_input none = { 0 };
-                    u.screen = SMK_UI_MODE; u.mode_sel = SMK_UI_MODE_GP; smk_ui_step(&u, &rom, &go);   /* -> player */
+                    u.screen = SMK_UI_MODE; u.mode_sel = SMK_UI_MODE_GP; smk_ui_step(&u, &rom, &go);   /* -> class  */
+                    smk_ui_step(&u, &rom, &go);                                                   /* -> player */
                     smk_ui_step(&u, &rom, &go);                                                   /* -> course */
                     u.cup_sel = 0; bool started = smk_ui_step(&u, &rom, &go);                     /* -> race 0 */
                     int t0 = u.track;

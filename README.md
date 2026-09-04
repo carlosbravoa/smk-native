@@ -17,7 +17,7 @@ make game
 make run
 ```
 
-`make run` opens the shell: **title → players → mode → driver and class →
+`make run` opens the shell: **title → players → mode → class → driver →
 course → race**.  **Grand Prix** runs a cup's five courses in the ROM's
 order: after each race the times, then the points the ROM's table pays
 the top four (9, 6, 3, 1), then the championship.  The next race lines

@@ -1894,7 +1894,7 @@ void smk_autopilot_step(smk_autopilot *a, const smk_track *trk,
  * 4 time trial, 6 battle (NOTES 113) - and time trial is the one this
  * shell drives. */
 typedef enum {
-    SMK_UI_TITLE, SMK_UI_PLAYERS, SMK_UI_MODE, SMK_UI_PLAYER, SMK_UI_COURSE,
+    SMK_UI_TITLE, SMK_UI_PLAYERS, SMK_UI_MODE, SMK_UI_CLASS, SMK_UI_PLAYER, SMK_UI_COURSE,
     SMK_UI_RACE, SMK_UI_RESULT, SMK_UI_POINTS, SMK_UI_STANDINGS
 } smk_ui_screen;
 #define SMK_MODE_GP    0

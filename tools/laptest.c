@@ -78,7 +78,9 @@ static void shell_checks(smk_rom *rom)
     check(ui.screen == SMK_UI_MODE, "players -> mode");
     check(ui.mode_sel == SMK_UI_MODE_RACE, "the shell opens on SINGLE RACE");
     smk_ui_step(&ui, rom, &go);
-    check(ui.screen == SMK_UI_PLAYER, "single race -> driver");
+    check(ui.screen == SMK_UI_CLASS, "single race -> class");
+    smk_ui_step(&ui, rom, &go);
+    check(ui.screen == SMK_UI_PLAYER, "class -> driver");
     smk_ui_step(&ui, rom, &go);
     check(ui.screen == SMK_UI_COURSE, "driver -> course");
     smk_ui_input right = { 0 }; right.right = true;
@@ -136,7 +138,7 @@ static void shell_checks(smk_rom *rom)
     smk_ui_step(&ui, rom, &down);          /* wraps to GRAND PRIX */
     check(ui.mode_sel == SMK_UI_MODE_GP, "and wraps to Grand Prix");
     smk_ui_step(&ui, rom, &go);
-    check(ui.screen == SMK_UI_PLAYER, "Grand Prix is entered");
+    check(ui.screen == SMK_UI_CLASS, "Grand Prix is entered");
     check(ui.gp, "and arms the cup");
     smk_ui_init(&ui);
     smk_ui_step(&ui, rom, &go);
@@ -148,7 +150,7 @@ static void shell_checks(smk_rom *rom)
     smk_ui_step(&ui, rom, &up);
     check(ui.mode_sel == SMK_UI_MODE_RACE, "and back to Single Race");
     smk_ui_step(&ui, rom, &go);
-    check(ui.screen == SMK_UI_PLAYER, "a single race is entered");
+    check(ui.screen == SMK_UI_CLASS, "a single race is entered");
     check(!ui.gp, "with the cup unarmed");
 
     /* the driver screen picks BOTH drivers, never the same one */
@@ -159,6 +161,7 @@ static void shell_checks(smk_rom *rom)
     smk_ui_step(&ui, rom, &down);
     check(ui.players == SMK_PLAYERS_2, "two players");
     smk_ui_step(&ui, rom, &go);            /* -> mode   */
+    smk_ui_step(&ui, rom, &go);            /* -> class  */
     smk_ui_step(&ui, rom, &go);            /* -> driver */
     check(ui.screen == SMK_UI_PLAYER && !ui.picking_p2, "player 1 first");
     int p1 = ui.player_sel;

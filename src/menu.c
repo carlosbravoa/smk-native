@@ -375,8 +375,6 @@ void smk_ui_init(smk_ui *ui)
 
 /* ---- navigation ---------------------------------------------------- */
 
-#define PLAYER_CLASS_ROW 8       /* cursor value for the engine-class row */
-
 /* How many rows the mode screen shows.  TIME TRIAL is last and is only
  * there for one player, so this is all it takes to hide it. */
 int smk_ui_mode_rows(const smk_ui *ui)
@@ -434,10 +432,20 @@ bool smk_ui_step(smk_ui *ui, const smk_rom *rom, const smk_ui_input *in)
         if (in->confirm) {
             ui->gp = (ui->mode_sel == SMK_UI_MODE_GP);
             ui->picking_p2 = false;
-            ui->screen = SMK_UI_PLAYER;
+            ui->screen = SMK_UI_CLASS;
         }
         break;
     }
+
+    case SMK_UI_CLASS:
+        /* THE CLASS ON ITS OWN SCREEN, before the driver - the original's
+         * order, and the user's complaint about the combined screen:
+         * "selecting kart and difficulty is super counter intuitive". */
+        if (in->up)   ui->engine_class = (ui->engine_class + 2) % 3;
+        if (in->down) ui->engine_class = (ui->engine_class + 1) % 3;
+        if (in->back) ui->screen = SMK_UI_MODE;
+        if (in->confirm) { ui->picking_p2 = false; ui->screen = SMK_UI_PLAYER; }
+        break;
 
     case SMK_UI_PLAYER: {
         /* The same grid picks player 1 and then, in a two-view race,
@@ -445,20 +453,13 @@ bool smk_ui_step(smk_ui *ui, const smk_rom *rom, const smk_ui_input *in)
          * whichever of the two the cursor belongs to, so the navigation
          * below is written once. */
         int *sel = ui->picking_p2 ? &ui->player2_sel : &ui->player_sel;
-        int p = *sel;
-        if (p == PLAYER_CLASS_ROW) {
-            if (in->left)  ui->engine_class = (ui->engine_class + 2) % 3;
-            if (in->right) ui->engine_class = (ui->engine_class + 1) % 3;
-            if (in->up)    *sel = 4;
-        } else {
-            if (in->left)  *sel = (p & 4) | ((p + 3) & 3);
-            if (in->right) *sel = (p & 4) | ((p + 1) & 3);
-            if (in->up)    *sel = p < 4 ? p : p - 4;
-            if (in->down)  *sel = p < 4 ? p + 4 : PLAYER_CLASS_ROW;
-        }
+        int p = *sel & 7;                   /* a 4x2 grid, wrapping both ways */
+        if (in->left)  *sel = (p & 4) | ((p + 3) & 3);
+        if (in->right) *sel = (p & 4) | ((p + 1) & 3);
+        if (in->up || in->down) *sel = p ^ 4;
         if (in->back) {
             if (ui->picking_p2) ui->picking_p2 = false;
-            else ui->screen = SMK_UI_MODE;
+            else ui->screen = SMK_UI_CLASS;
         }
         if (in->confirm) {
             if (ui->players != SMK_PLAYERS_1 && !ui->picking_p2) {
@@ -742,62 +743,133 @@ static void draw_players(const smk_ui *ui, const smk_font *f,
     text_c(f, fb, w, h, 200, "ENTER SELECT   ESC BACK", lo);
 }
 
+/* a kart seen from the side, facing right: the measured rotation rule at
+ * a quarter turn (NOTES 041) */
+static void kart_side(const smk_rom *rom, const uint32_t *palette, int who,
+                      int vx, int vy, int mult, uint32_t *fb, int w, int h)
+{
+    const smk_sprites *s = driver_art(rom, who);
+    if (!s || !palette) return;
+    bool hf = false;
+    int fr = smk_sprite_for_heading(SMK_SPR_TIER0, 0x4000, &hf);
+    smk_draw_sprite(s, fr, palette, SMK_DRIVERS[who].pal,
+                    ui_ox + vx * ui_sc, ui_oy + vy * ui_sc, ui_sc * mult, hf,
+                    fb, w, h, w);
+}
+
+/* a 2-px frame around a card */
+static void frame_box(uint32_t *fb, int w, int h, int vx, int vy, int vw, int vh,
+                      uint32_t c)
+{
+    fill(fb, w, h, vx, vy, vw, 2, c);
+    fill(fb, w, h, vx, vy + vh - 2, vw, 2, c);
+    fill(fb, w, h, vx, vy, 2, vh, c);
+    fill(fb, w, h, vx + vw - 2, vy, 2, vh, c);
+}
+
+/* THE CLASS, on its own screen (OURS).  Three rows, and beside each a
+ * kart running at that class's pace, so the choice can be seen rather
+ * than read: the port's own top speeds per class are the ROM's
+ * ($80A4E1's tables), and 50/100/150 are in that proportion. */
+static void draw_class(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
+                       const uint32_t *palette, uint32_t *fb, int w, int h)
+{
+    uint32_t hi[4], lo[4], off[4], glow[4];
+    ramp(f, TEXT_HI, hi, 0xFFFFFFFF, 0xFF7A5A18);
+    ramp(f, TEXT_PAL, lo, 0xFFFFFFFF, 0xFF2A3E78);
+    ramp(f, TEXT_PAL, off, 0xFFFFFFFF, 0xFF2A3E78); dim(off);
+    shimmer(f, glow, ui->tick);
+    text_c(f, fb, w, h, 16, "SELECT CLASS", glow);
+    static const char *const TAG[3] = { "EASY", "NORMAL", "HARD" };
+    for (int c = 0; c < 3; c++) {
+        int vy = 44 + c * 50;
+        bool on = ui->engine_class == c;
+        fill(fb, w, h, 16, vy - 6, 224, 44, on ? 0x50FFC040 : 0x20FFFFFF);
+        if (on) frame_box(fb, w, h, 16, vy - 6, 224, 44, 0xFFFFD040);
+        char nm[8];
+        snprintf(nm, sizeof nm, "%s", class_name(c)); upper(nm);
+        text_big(f, fb, w, h, 28, vy, nm, on ? hi : lo, 2);
+        text(f, fb, w, h, 28, vy + 20, TAG[c], on ? lo : off);
+        /* the road strip and its kart, at the class's pace: 2, 3 and 4
+         * pixels a tick */
+        const int RX = 118, RW = 112;
+        fill(fb, w, h, RX, vy + 26, RW, 2, 0xFFE0E0E0);
+        int span = RW + 36;
+        int x = RX - 18 + (int)((ui->tick * (unsigned)(c + 2) / 2u) % (unsigned)span);
+        int who = ui->player_sel % SMK_CHARACTERS;
+        int bounce = on && ((ui->tick / 4) & 1) ? 1 : 0;
+        kart_side(rom, palette, who, x, vy + 26 - bounce, 1, fb, w, h);
+        if (on && ((ui->tick / 12) & 1) == 0)
+            fill(fb, w, h, 6, vy + 2, 6, 10, 0xFFFFC040);
+    }
+    text_c(f, fb, w, h, 202, "ENTER SELECT   ESC BACK", lo);
+}
+
+/* THE DRIVER.  A 4x2 grid of cards, each big enough to hold its kart
+ * whole - the user: "the selection block doesn't even cover the kart" -
+ * the karts seen from the side, the chosen one framed in gold and
+ * bouncing, and its name and weight class (the ROM's own $81:9277,
+ * NOTES 166) written large underneath. */
 static void draw_player(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
                         const uint32_t *palette, uint32_t *fb, int w, int h)
 {
-    uint32_t hi[4], lo[4], sel[4];
+    uint32_t hi[4], lo[4], off[4], p2[4], glow[4];
     ramp(f, TEXT_HI, hi, 0xFFFFFFFF, 0xFF7A5A18);
     ramp(f, TEXT_PAL, lo, 0xFFFFFFFF, 0xFF2A3E78);
-    ramp(f, TEXT_HI, sel, 0xFFFFFFFF, 0xFF7A5A18);
+    ramp(f, TEXT_PAL, off, 0xFFFFFFFF, 0xFF2A3E78); dim(off);
+    p2_pen(p2);
+    shimmer(f, glow, ui->tick);
     const char *who = ui->players == SMK_PLAYERS_1 ? "SELECT DRIVER"
                     : ui->picking_p2
                       ? (ui->players == SMK_PLAYERS_CPU ? "SELECT THE CPU"
-                                                        : "PLAYER 2")
-                      : "PLAYER 1";
-    text_c(f, fb, w, h, 16, who, hi);
-    int cursor = ui->picking_p2 ? ui->player2_sel : ui->player_sel;
+                                                        : "PLAYER 2, SELECT DRIVER")
+                      : "PLAYER 1, SELECT DRIVER";
+    text_c(f, fb, w, h, 10, who, glow);
+    int cursor = (ui->picking_p2 ? ui->player2_sel : ui->player_sel) & 7;
     int other  = ui->players == SMK_PLAYERS_1 ? -1
                : (ui->picking_p2 ? ui->player_sel : ui->player2_sel);
+    const int CW = 54, CH = 60, GAP = 6;
+    int x0 = (VW - (4 * CW + 3 * GAP)) / 2;
     for (int i = 0; i < SMK_CHARACTERS; i++) {
         int col = i & 3, row = i >> 2;
-        int vx = 24 + col * 54, vy = 44 + row * 62;
-        bool on = cursor == i;
-        if (on) fill(fb, w, h, vx - 4, vy - 4, 48, 56, 0x40FFFFFF);
-        /* the driver the OTHER player has already taken, marked but not
-         * chosen - so the second pick is not a guessing game */
-        else if (i == other && !ui->picking_p2)
-            fill(fb, w, h, vx - 4, vy - 4, 48, 56, 0x20406080);
-        else if (i == other)
-            fill(fb, w, h, vx - 4, vy - 4, 48, 56, 0x2040A0FF);
-        const smk_sprites *s = driver_art(rom, i);
-        if (s && palette)
-            smk_draw_sprite(s, SMK_SPR_REAR, palette, SMK_DRIVERS[i].pal,
-                            ui_ox + (vx + 20) * ui_sc, ui_oy + (vy + 20) * ui_sc,
-                            ui_sc, false,
-                            fb, w, h, w);
+        int vx = x0 + col * (CW + GAP), vy = 26 + row * (CH + GAP);
+        bool on = cursor == i, taken = i == other;
+        /* the card: plain, the other player's in their blue, the chosen
+         * one gold with a frame */
+        uint32_t card = taken ? 0x4870C0FF : 0x28FFFFFF;
+        if (on) {
+            unsigned ph = (ui->tick * 6) & 255;
+            unsigned k = ph < 128 ? ph : 255 - ph;
+            card = ((0x48u + k / 4u) << 24) | 0x00FFC040u;
+        }
+        fill(fb, w, h, vx, vy, CW, CH, card);
+        if (on) frame_box(fb, w, h, vx, vy, CW, CH, 0xFFFFD040);
+        int bounce = on && ((ui->tick / 4) & 1) ? 1 : 0;
+        kart_side(rom, palette, i, vx + CW / 2, vy + 44 - bounce, 1, fb, w, h);
         char nm[16];
-        snprintf(nm, sizeof nm, "%s", SMK_DRIVERS[i].name);
-        for (char *p = nm; *p; p++)
-            if (*p >= 'a' && *p <= 'z') *p -= 'a' - 'A';
-        text(f, fb, w, h, vx + 20 - (int)strlen(nm) * 4, vy + 40, nm,
-             on ? sel : lo);
-        if (i == other)
-            text(f, fb, w, h, vx + 20 - 4, vy + 48,
-                 ui->picking_p2 ? "1" : "2", lo);
+        snprintf(nm, sizeof nm, "%s", SMK_DRIVERS[i].name); upper(nm);
+        text(f, fb, w, h, vx + (CW - (int)strlen(nm) * 8) / 2, vy + 48, nm,
+             on ? hi : taken ? p2 : lo);
+        if (taken)
+            text(f, fb, w, h, vx + 4, vy + 4, ui->picking_p2 ? "P1" : "P2", p2);
     }
-    /* the engine class - the ROM's own "cc" ligature is glyph 42, but we
-     * spell it with letters so the row reads at any scale */
-    bool on = cursor == PLAYER_CLASS_ROW;
-    text(f, fb, w, h, 40, 176, "CLASS", on ? hi : lo);
-    for (int c = 0; c < 3; c++) {
-        const char *n = class_name(c);
-        int vx = 96 + c * 44;
-        bool cur = ui->engine_class == c;
-        if (cur) fill(fb, w, h, vx - 3, 174, (int)strlen(n) * 8 + 6, 12,
-                      on ? 0x60FFC040 : 0x30FFFFFF);
-        text(f, fb, w, h, vx, 176, n, cur ? sel : lo);
+    /* the chosen one, large, with what the ROM knows about it */
+    {
+        char nm[16];
+        snprintf(nm, sizeof nm, "%s", SMK_DRIVERS[cursor].name); upper(nm);
+        int tw = (int)strlen(nm) * 16;
+        fill(fb, w, h, (VW - tw) / 2 - 12, 158, tw + 24, 22, 0x30000000);
+        text_big(f, fb, w, h, (VW - tw) / 2, 161, nm, hi, 2);
+        uint8_t wt = SMK_KART_WEIGHT[cursor];
+        const char *cls = wt >= 0x1B ? "HEAVY   HARD TO BUMP"
+                        : wt == 0x1A ? "MEDIUM"
+                                     : "LIGHT   EASY TO BUMP";
+        text_c(f, fb, w, h, 184, cls, lo);
     }
-    text_c(f, fb, w, h, 202, "ENTER SELECT   ESC BACK", lo);
+    char foot[48];
+    snprintf(foot, sizeof foot, "%s   ENTER SELECT   ESC BACK", class_name(ui->engine_class));
+    upper(foot);
+    text_c(f, fb, w, h, 202, foot, off);
 }
 
 static void draw_course(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
@@ -871,6 +943,7 @@ void smk_ui_draw(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
     case SMK_UI_TITLE:   draw_title(ui, rom, f, palette, fb, w, h); break;
     case SMK_UI_PLAYERS: draw_players(ui, f, fb, w, h); break;
     case SMK_UI_MODE:    draw_mode(ui, f, fb, w, h); break;
+    case SMK_UI_CLASS:   draw_class(ui, rom, f, palette, fb, w, h); break;
     case SMK_UI_PLAYER: draw_player(ui, rom, f, palette, fb, w, h); break;
     case SMK_UI_COURSE: draw_course(ui, rom, f, rec, fb, w, h); break;
     default: break;

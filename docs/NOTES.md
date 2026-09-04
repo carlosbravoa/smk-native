@@ -11913,3 +11913,34 @@ race whose winner is not the points leader (15 to 10) and checks that
 the winner takes pole and the leader the second slot, and that the coins
 read 2/3/5 for slots 0/3/7.  NOTES 274's grid rule is superseded; its
 screens stand.
+
+## 276. The class and the driver, each on its own screen
+
+The user, after the cup: *"karts are not seen from the side, the
+selection block doesn't even cover the kart and selecting kart and
+difficulty (50cc etc) is super counter intuitive."*  All three were the
+one screen: a 4x2 grid of rear-view sprites in 40 px cells that a 32 px
+kart overflowed, with the engine class as a hidden ninth row reached by
+pressing down off the bottom of the grid and changed with left/right.
+
+Now (OURS, S20):
+
+* **SELECT CLASS** comes first, as the original orders it: three rows,
+  50cc / 100cc / 150cc at twice the font with EASY / NORMAL / HARD, and
+  beside each a road strip with the player's kart running along it at
+  that class's pace (2, 3 and 4 px a tick - the proportion of the ROM's
+  own class top speeds, not their values).  Up/down, Enter.
+* **SELECT DRIVER** is a 4x2 grid of 54x60 cards, each holding its kart
+  whole, seen from the side and facing right through the measured
+  rotation rule at a quarter turn (NOTES 041).  The chosen card is gold
+  with a 2 px frame and its kart bounces; the driver's name is written
+  at twice the font underneath with its weight class from the ROM's own
+  table at `$81:9277` (NOTES 166): HEAVY for Bowser and DK Jr, MEDIUM
+  for Mario and Luigi, LIGHT for the rest, which is the only thing the
+  game's bump code asks of a driver.  In a two-player pick the other
+  player's card is tinted blue and tagged P1/P2.  The class chosen
+  stands in the footer.
+
+The shell walk in `tools/laptest.c` and the selftest's cup walk gained
+the extra confirm.  Shot headlessly: the class screen, the driver
+screen, and the CPU pick with player 1's card marked.
