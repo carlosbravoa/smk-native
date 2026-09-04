@@ -762,6 +762,33 @@ int main(int argc, char **argv)
                     for (int i = 0; i < 8; i++) { if (g[i] == r.field[0].character) win_slot = sl[i];
                                                   if (g[i] == r.field[7].character) last_slot = sl[i]; }
                     bool gridok = win_slot == 0 && me_slot == 1 && last_slot == 7;
+                    /* and it is the LAST RACE'S order, not the points
+                     * (NOTES 275): a second race the points leader
+                     * finishes fourth in puts its winner on pole */
+                    {
+                        smk_ui v = u;
+                        smk_ui_result r2 = r;
+                        /* race two: last race's 4th wins (1+9 = 10), the
+                         * leader is 2nd (9+6 = 15, still the leader), 3rd
+                         * stays, the player (6) is 4th (7) */
+                        int lead = r.field[0].character;
+                        r2.field[0].character = r.field[3].character;
+                        r2.field[1].character = lead;
+                        r2.field[3].character = r.field[1].character;
+                        r2.field[0].player = 0; r2.field[1].player = 0; r2.field[3].player = 1;
+                        r2.position = 4;
+                        v.gp_race = 1; smk_ui_gp_award(&v, &r2);
+                        int order[8]; smk_ui_gp_order(&v, order);
+                        smk_ui_grid_slots(&v, g, sl);
+                        int lead_slot = -1, win2_slot = -1;
+                        for (int i = 0; i < 8; i++) { if (g[i] == lead) lead_slot = sl[i];
+                                                      if (g[i] == r2.field[0].character) win2_slot = sl[i]; }
+                        /* the leader still leads the championship (15 to 10) but starts second */
+                        gridok = gridok && order[0] == lead && lead_slot == 1 && win2_slot == 0;
+                    }
+                    /* starting coins by slot: 2 from pole, 5 from the back (NOTES 275) */
+                    gridok = gridok && smk_start_coins(&rom, 0) == 2 && smk_start_coins(&rom, 7) == 5
+                                    && smk_start_coins(&rom, 3) == 3;
                     r.position = 6; smk_ui_gp_award(&u, &r);                                      /* ranked out */
                     u.screen = SMK_UI_RESULT; smk_ui_step(&u, &rom, &go);
                     smk_ui_step(&u, &rom, &go); smk_ui_step(&u, &rom, &go); smk_ui_step(&u, &rom, &go);
@@ -769,7 +796,7 @@ int main(int argc, char **argv)
                     bool kept = u.gp_points[u.player_sel] == pts_me;                             /* no points when ranked out */
                     snprintf(det, sizeof det, "table %d %d %d %d; me %d pts winner %d; tracks %d -> %d; points %d/%d standings %d retry %d kept %d; slots win %d me %d last %d",
                              u.gp_pts_table[0], u.gp_pts_table[1], u.gp_pts_table[2], u.gp_pts_table[3], pts_me, pts_win, t0, t1, pt, pt2, st, retry, kept, win_slot, me_slot, last_slot);
-                    check("a cup: 9/6/3/1 from the ROM, points then standings, the next course on the standings grid, a retry when ranked out",
+                    check("a cup: 9/6/3/1 from the ROM, points then standings, the next grid from the last race's order, coins by slot, a retry when ranked out",
                           started && u.gp_pts_table[0] == 9 && u.gp_pts_table[3] == 1 && pts_me == 6 && pts_win == 9
                           && pt && pt2 && st && next && t1 != t0 && retry && kept && gridok, det);
                     (void)none;

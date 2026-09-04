@@ -11801,7 +11801,9 @@ block each driver happens to be.  main.c keeps a `grid_slot[]` beside
 lands where the race started.  OURS, by the user's rule; the ROM's own
 grid for races two to five is not decoded (its `$010E` order table is
 where to look).  The tie rule is NOTES 198's: points, then the last
-race's place, then driver index.
+race's place, then driver index.  **Superseded by NOTES 275**: the ROM
+seeds the grid from the previous race's finishing order, not the
+points, and the port does now too.
 
 A rig, `SMK_GP_RACE=N`, starts a cup at its Nth course so the final
 screens can be shot from one race; `SMK_MENU_NAV` takes `.` as a tick
@@ -11824,3 +11826,90 @@ the font over a drop shadow with the eight rear-view karts driving past
 on a road strip.  Nothing keeps state; everything is a function of the
 frame counter.  The only ROM art in any of it is the font and the kart
 sprites.
+
+## 275. The grid of the second race on, measured: the last race's order, and the coins with it
+
+NOTES 274 seeded races two to five from the championship points and
+labelled it OURS.  The user: *"let's implement it"* - the ROM's own rule.
+Read first, then forced.
+
+### Static: two writers of the order table
+
+`$010E` - the rank table, one kart block per entry, rank 1 first (NOTES
+174) - has exactly two writers in the listing: the live sort at
+`$80A047` (by `$C0` progress, swapping neighbours) and a swap at
+`$809DD9` inside the bump code (two colliding karts exchange their `$E6`
+rank words and their table entries).  Nothing in the results code
+(`$85:C0C6` on) stores to it; the bank-$81 grid builder `$81903C`
+(NOTES 161) walks it: entry 0 takes the front row.  So whatever the table
+holds when a race is set up IS the grid.
+
+### Dynamic: three races of the user's own hands
+
+`tools/labs/mame/gpgrid.lua` on the `moles` recording (a 50cc Flower
+Cup, three race starts): per race the grid at the start (x, y, `$E6`,
+`$010E`), the table and every kart's `$C0` at the end, and between races
+every frame on which the table or any `$E6` changes.
+
+    race 1  grid   $1700 on pole ... $1000 (P1) last     the ROM's row order
+            end    1000 1700 1600 1500 1400 1300 1100 1200
+    race 2  grid   k0 y 320 (pole)  k7 344  k6 368  k5 392  k4 416  k3 440  k1 464  k2 488
+            end    1000 1700 1600 1500 1400 1300 1100 1200
+    race 3  grid   the same order again
+
+Between the end of a race and the start of the next: NO change to
+`$010E` and none to any `$E6`.  The grid of race N+1 is the table as
+race N left it - the previous race's finishing order, its winner on
+pole.  And "finishing order" is the rank at the moment the mode leaves
+the race, by progress: P1's `$C0` was `$850D` there, the field a lap
+down at `$84xx`, nobody else across the line.
+
+### Forced: the points play no part
+
+In this recording the points order and the race order coincide, so a
+re-sort by points would have been invisible.  `POKE_AT=7400 SWAP_I=0
+SWAP_J=1` swaps the table's first two entries (and their `$E6`) in the
+middle of race 1's results screen, points untouched (P1 9, kart 7 six):
+
+    race 2  grid   k7 y 320 (pole)  k0 344 ...
+
+The grid followed the poked table.  Points do not sort the grid.
+
+### The points, found
+
+Diffing the low-WRAM dumps the script writes at every mode change: the
+only cells going 9/6/3/1 after race 1 to 18/12/6/2 after race 2 are
+`$10F0`, `$17F0`, `$16F0`, `$15F0` - **`$F0` in the kart block is the
+cup's points**, and `$85:C0DD`'s `lda $BEB4,y` pays them by the kart's
+index in `$010E` at the results.  A second poke (`SWAP_I=0 SWAP_J=4` at
+f6920, P1 to fifth in the table before the results ran) paid 9/6/3/1 to
+karts 4, 7, 6, 5 - the routine pays the top four of the table whatever
+the player's rank.  Whether a REAL ranked-out race reaches that routine
+is still not forced: a `RANKOUT_AT` poke of four AI `$C0` words to the
+last lap did not hold (the sort rebuilt the ranks from the field), so
+the retry's rule and the AI's points on it stay LABELLED as in NOTES 198,
+and the port still pays nobody on a ranked-out race.
+
+### The coins, with it
+
+`$81E3DA` (NOTES 173: 2 2 3 3 4 4 5 5, "by the kart's `$E6`, not
+modelled") is modelled now, because `$E6` IS the grid slot times two.
+`$81E3AA` jumps by the mode word `$2C`: GP (`$81E3B8`) loads
+`$0E00` from the table by `$10E6` and `$0E02` by `$11E6` - the two
+human-slot karts only; match race (`$81E3D0`) 3 each; time trial and
+battle (`$81E3CB`) 0.  The dumps agree: P1's `$0E00` is 5 at race 1's
+start (back row, `$E6` = `$0E`) and 2 at races 2 and 3 (pole).  The port
+gave every race 2; now `smk_start_coins(rom, slot)` reads the table for
+the player and the second view by their grid slot - 5 from the back of a
+single race or a cup's first course, 2 from pole.  The AI's coins have no
+storage in that routine, so `smk_racer_start`'s 2 stays labelled.
+
+### The port
+
+`smk_ui_grid_slots` orders the second race on by `gp_place` - the last
+race's finishing order - not the points; the standings' closing line
+names THIS race's winner on pole; the selftest's cup walk adds a second
+race whose winner is not the points leader (15 to 10) and checks that
+the winner takes pole and the leader the second slot, and that the coins
+read 2/3/5 for slots 0/3/7.  NOTES 274's grid rule is superseded; its
+screens stand.

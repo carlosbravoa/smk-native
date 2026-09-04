@@ -53,6 +53,16 @@ static uint8_t rd8(const smk_rom *rom, uint32_t snes)
     return pc < rom->size ? rom->data[pc] : 0;
 }
 
+#define T_COINS  0x81E3DAu
+
+int smk_start_coins(const smk_rom *rom, int slot)
+{
+    if (slot < 0) slot = 0;
+    if (slot >= SMK_CHARACTERS) slot = SMK_CHARACTERS - 1;
+    uint32_t pc = smk_snes_to_pc(rom, T_COINS + (uint32_t)slot * 2u);
+    return pc + 1 < rom->size ? (rom->data[pc] | rom->data[pc + 1] << 8) : 2;
+}
+
 int smk_cup_track(const smk_rom *rom, int cup, int course)
 {
     if (cup < 0 || cup >= SMK_CUPS || course < 0 || course >= SMK_CUP_COURSES)

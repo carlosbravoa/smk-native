@@ -1824,6 +1824,12 @@ void smk_font_draw(const smk_font *f, uint32_t *fb, int w, int h,
 extern const char *const SMK_CUP_NAMES[SMK_CUPS];
 /* $81EC1B: the game's own cup*5 + course -> track index */
 int smk_cup_track(const smk_rom *rom, int cup, int course);
+/* $81E3DA: a Grand Prix kart's starting coins by its grid slot - the
+ * table is indexed by the rank word $E6 (slot*2), 2 2 3 3 4 4 5 5, and
+ * $81E3B8 reads it for the two human-slot karts; a time trial or battle
+ * starts on 0 and a match race on 3 ($81E3CB/$81E3D0).  MEASURED in the
+ * user's cup recording: 5 from the back row, 2 from pole (NOTES 275). */
+int smk_start_coins(const smk_rom *rom, int slot);
 /* "MARIO CIRCUIT 1" - family from $81EC2F, ordinal from the cup order */
 const char *smk_track_name(const smk_rom *rom, int track);
 
@@ -1972,8 +1978,12 @@ void smk_ui_gp_order(const smk_ui *ui, int order[SMK_CHARACTERS]);
 /* Where each kart BLOCK lines up.  grid[] is smk_grid_order's output
  * (block -> driver); slots[] comes back block -> grid slot, 0 the pole.
  * The first race of a cup, and every race outside one, is the ROM's own
- * grid (SMK_GRID_SLOT); once a cup has a result the championship order
- * decides - the leader on pole (the user's rule, NOTES 274; OURS). */
+ * grid (SMK_GRID_SLOT).  From the second race on it is the PREVIOUS
+ * RACE'S FINISHING ORDER, its winner on pole: the game's rank table
+ * $010E is never rewritten between races and $81903C builds the grid
+ * straight from it - MEASURED, and forced with a poked table to prove
+ * the points play no part (NOTES 275).  A ranked-out retry lines up the
+ * same way (the same mechanism; the retry itself was not forced). */
 void smk_ui_grid_slots(const smk_ui *ui, const int grid[SMK_CHARACTERS],
                        int slots[SMK_CHARACTERS]);
 void smk_ui_draw_points(const smk_ui *ui, const smk_rom *rom, const smk_font *f,

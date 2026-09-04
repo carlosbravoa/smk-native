@@ -41,6 +41,11 @@ Files:
   19 in time trial, demo 3 Peach/Yoshi on track 18.
 * `demo_tt_track19.csv`, `demo_gp_track18.csv` - two of those, kept for
   the replay tool (`smk_demoreplay rom.sfc <csv> 1000`).
+* `gpgrid.lua` - a cup's grid from race to race: the order table
+  `$010E`, every kart's `$E6` and `$C0` at each start and end, every
+  change between races, and a low-WRAM dump per mode change.  `POKE_AT`
+  / `SWAP_I` / `SWAP_J` swap two table entries on a frame to prove the
+  points play no part (NOTES 275).
 * `pix.lua` - dumps a real frame's pixels to a PPM headlessly
   (`screen:pixels()`), the ground truth for anything visual.
 * `hdma.lua` - the live HDMA channel setup at a race frame; this is how

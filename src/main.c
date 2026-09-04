@@ -1827,8 +1827,8 @@ static bool load_race(const smk_rom *rom, int track, int theme, int character,
     smk_grid_order(rom, character, p2_character,
                    players_mode != SMK_PLAYERS_1, grid);
     /* and WHERE: the ROM's rows for a single race and a cup's first
-     * course, the championship order once the cup has a result - the
-     * leader on pole (NOTES 274) */
+     * course, the previous race's finishing order once the cup has a
+     * result - its winner on pole (NOTES 275) */
     smk_ui_grid_slots(&ui, grid, grid_slot);
     for (int i = 0; i < SMK_CHARACTERS; i++) {
         smk_racer_start(&racers[i], &crs, grid_slot[i]);
@@ -1853,10 +1853,11 @@ static bool load_race(const smk_rom *rom, int track, int theme, int character,
     kart = (smk_kart){ .x = (int32_t)(gx * SMK_POS_ONE),
                        .y = (int32_t)(gy * SMK_POS_ONE), .angle = gh };
     smk_player_reset(&player, gh);
-    /* Starting coins.  A GP kart gets the ROM's table entry ($81E3DA);
+    /* Starting coins.  A GP kart gets the ROM's table entry ($81E3DA)
+     * for its GRID SLOT - 5 from the back row, 2 from pole (NOTES 275);
      * a time trial starts on ZERO and stays there - measured in the
      * repo's own time-trial log, where P1's $0E00 is 0 on frame 0. */
-    player.coins = (mode == SMK_MODE_TT) ? 0 : 2;
+    player.coins = (mode == SMK_MODE_TT) ? 0 : smk_start_coins(rom, grid_slot[0]);
 
     /* A time trial is run ALONE - the attract loop's own $2C = 4 demo has
      * DK on the track by himself (NOTES 113) - so the other seven slots
@@ -1937,7 +1938,7 @@ static bool load_race(const smk_rom *rom, int track, int theme, int character,
         /* its kart IS its grid slot - smk_racer_start put it there */
         views[1].kart = racers[1].k;
         smk_player_reset(&views[1].player, views[1].kart.angle);
-        views[1].player.coins = (mode == SMK_MODE_TT) ? 0 : 2;
+        views[1].player.coins = (mode == SMK_MODE_TT) ? 0 : smk_start_coins(rom, grid_slot[1]);
         memset(&views[1].in, 0, sizeof views[1].in);
         smk_autopilot_init(&views[1].autopilot);
         views[1].cam_spin = 0;
@@ -3864,15 +3865,16 @@ int main(int argc, char **argv)
     cam = (smk_camera){ 0 };
     course_for_step = &crs;
     rom_for_step = &rom;
-    /* starting coins: the ROM's table at $81E3DA by the kart's $E6 field,
-     * entry 0 = 2 (LABELLED: $E6 is not modelled; the demo starts with 5) */
-    player.coins = 2;
     smk_grid_order(&rom, character, 0, false, grid);
     for (int i = 0; i < SMK_CHARACTERS; i++) {
         grid_slot[i] = SMK_GRID_SLOT(i);
         smk_racer_start(&racers[i], &crs, grid_slot[i]);
         racers[i].character = grid[i];
     }
+    /* starting coins: the ROM's table at $81E3DA by the kart's rank word
+     * $E6, which is its grid slot here - the back row starts on 5, which
+     * is what the demo (P1 last) shows (NOTES 275) */
+    player.coins = smk_start_coins(&rom, grid_slot[0]);
     me = &racers[0];
     views[0].slot = 0;
     views[0].drives = true;

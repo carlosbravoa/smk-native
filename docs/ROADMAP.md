@@ -735,11 +735,12 @@ In rough order of value:
 
 4. **~~Grand Prix (P8)~~ — IN (NOTES 198, 274).** Four cups of five in
    the ROM's order, 9/6/3/1 from `$85:BEB4` to the top four, a points
-   screen and an animated championship between races, the grid from the
-   standings (leader on pole), a retry when ranked out, final standings
-   with the trophy after the fifth.  LABELLED: the retry's exact rule and
-   text, whether the AI scores on a retried race, and the ROM's own grid
-   rule for races two to five (ours is the user's: by points).
+   screen and an animated championship between races, the grid of the
+   next race from this one's finishing order (measured, NOTES 275) and
+   the starting coins by grid slot with it, a retry when ranked out,
+   final standings with the trophy after the fifth.  LABELLED: the
+   retry's exact rule and text, and whether the AI scores on a retried
+   race.
 
 5. **~~Finish the rubber band's two loose ends (S25)~~ — CLOSED by
    NOTES 174.** Both were measured from the user's recorded race. `$DA`
@@ -1047,7 +1048,8 @@ green.
 - ✅ Time trial: five laps, splits, the top five per course kept on disk.
 - ✅ Single race: eight karts, the ROM's grid order, a finishing place.
 - ✅ Grand Prix: the cup, its points and championship screens, the grid
-  from the standings, the trophy (NOTES 198/274).
+  from the last race's order and the coins by slot, the trophy (NOTES
+  198/274/275).
 - ✅ The shell: title → mode → driver+class → course-by-cup → results, in
   the ROM's own font and palettes (NOTES 147/148).
 - ✅ Two-player, side by side: 1P / VS CPU / VS 2P (NOTES 255, S42).

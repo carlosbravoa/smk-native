@@ -254,7 +254,9 @@ void smk_racer_start(smk_racer *r, const smk_course *crs, int slot)
     r->sector = crs->sectors - 1;         /* the grid sits in the last sector */
     r->finish_frame = -1;                 /* has not finished */
     r->place = 0;
-    r->coins = 2;                         /* $81E3DA: the race's starting coins */
+    r->coins = 2;                         /* LABELLED: $81E3DA is read for the two
+                                           * human-slot karts only ($81E3B8); where
+                                           * an AI keeps coins is not decoded */
 }
 
 static uint16_t heading_to(const smk_kart *k, int tx, int ty)

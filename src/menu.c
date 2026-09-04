@@ -592,8 +592,19 @@ void smk_ui_grid_slots(const smk_ui *ui, const int grid[SMK_CHARACTERS],
         for (int i = 0; i < SMK_CHARACTERS; i++) slots[i] = SMK_GRID_SLOT(i);
         return;
     }
-    int order[SMK_CHARACTERS];
-    smk_ui_gp_order(ui, order);
+    /* the last race's finishing order, winner on pole; a driver with no
+     * place (the field was short) keeps its block's own row, after the
+     * placed ones */
+    int order[SMK_CHARACTERS], n = 0;
+    for (int p = 1; p <= SMK_CHARACTERS; p++)
+        for (int ch = 0; ch < SMK_CHARACTERS; ch++)
+            if (ui->gp_place[ch] == p) order[n++] = ch;
+    for (int i = 0; i < SMK_CHARACTERS && n < SMK_CHARACTERS; i++) {
+        int ch = grid[i] % SMK_CHARACTERS;
+        bool in = false;
+        for (int k = 0; k < n; k++) in |= order[k] == ch;
+        if (!in) order[n++] = ch;
+    }
     for (int i = 0; i < SMK_CHARACTERS; i++) {
         slots[i] = SMK_GRID_SLOT(i);
         for (int r = 0; r < SMK_CHARACTERS; r++)
@@ -1183,7 +1194,10 @@ void smk_ui_draw_standings(const smk_ui *ui, const smk_rom *rom, const smk_font 
             text_c(f, fb, w, h, 190, "RANKED OUT   THE COURSE AGAIN", off);
             if ((ui->tick / 20) & 1) text_c(f, fb, w, h, 208, "ENTER RETRY", glow);
         } else if (!final) {
+            /* the next grid is this race's order (NOTES 275), so the
+             * winner of THIS race takes pole, not the points leader */
             int lead = after[0];
+            for (int ch = 0; ch < SMK_CHARACTERS; ch++) if (ui->gp_place[ch] == 1) lead = ch;
             char line[48], nm[16];
             snprintf(nm, sizeof nm, "%s", SMK_DRIVERS[lead].name); upper(nm);
             snprintf(line, sizeof line, "%s ON POLE FOR THE NEXT RACE", nm);
