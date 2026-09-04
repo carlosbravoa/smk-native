@@ -41,10 +41,3 @@ runs/
 *.pads
 *.pt
 
-# The policy compiled into the game (tools/rl/embed_net.py).  These are
-# learned parameters and not ROM bytes, but they were trained entirely
-# against the cartridge's physics and racing lines and they encode how to
-# drive them - closer to the line this project draws than anything else
-# in the tree.  So it is GENERATED, never committed, and shipping it is a
-# decision to take deliberately rather than by accident.
-src/netpolicy.inc

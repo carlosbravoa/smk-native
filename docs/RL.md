@@ -290,14 +290,18 @@ the quantised build and the float `.net` complete **identically**
 changing, but random Gaussian inputs produce far more near-ties than
 driving does; the lap counts are the number to trust.
 
-Two things it does NOT do, deliberately:
+`src/netpolicy.inc` **is committed**, and it is ours.  No ROM bytes pass
+through it - these are parameters fitted by gradient descent.  The
+distinction that matters is the one the ripped art failed: art lifted out
+of the cartridge is a copy of the expression, while a policy is a
+function fitted to observed behaviour.  And the course data is not
+recoverable from it, which is not an argument but a measurement: the
+observation carries no absolute position, no course identity and no
+clock, which is exactly why the same policy drives courses it has never
+seen.  It cannot store a track.
 
-- **`src/netpolicy.inc` is gitignored.**  Those are learned parameters
-  and not ROM bytes, but they were trained entirely against the
-  cartridge's physics, surfaces and racing lines and they encode how to
-  drive them - closer to the line this project draws than anything else
-  in the tree.  Generating it is a step you run; shipping it is a
-  decision to take deliberately.
+One thing it does NOT do, deliberately:
+
 - **It only drives the 20 GP courses.**  `smk_net_drives_track` says so,
   and off them the game falls back to `src/autopilot.c`.  The battle
   arenas (20-23) have no racing line and no sector map, so every feature

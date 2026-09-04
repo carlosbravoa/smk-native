@@ -14,13 +14,21 @@ and the cost is only in the binary, not in the arithmetic.  A policy
 choosing the argmax of fourteen logits does not notice: the check below
 reports how many decisions change, and it is normally none.
 
-NOTE ON WHAT THIS FILE IS.  The output is learned parameters, not game
-data - no ROM bytes pass through it.  But they were trained entirely
-against the ROM's physics, surfaces and racing lines, and they encode how
-to drive them, which is closer to the line this project draws than
-anything else in the tree.  So the generated .inc is NOT committed by
-default (see .gitignore); building it is a step you run, and shipping it
-is a decision to take deliberately rather than by accident.
+NOTE ON WHAT THIS FILE IS.  The output is ours.  No ROM bytes pass
+through it: these are parameters fitted by gradient descent, and the
+line this project draws is around the cartridge's own code and data.
+
+The distinction that matters is the one the ripped art failed.  Art
+lifted out of the ROM is a COPY of the expression; a policy is a function
+fitted to observed behaviour, and behaviour is not the copyrighted thing.
+Nor is the track data recoverable from it - the observation carries no
+absolute position, no course identity and no clock, which is why the
+same policy drives courses it has never seen (docs/RL.md).  It cannot
+store a course, and that is measured rather than argued.
+
+The repository already tracks far more of the game than this: the .csv
+recordings under tools/labs/mame/ are per-frame captures of the running
+console's own RAM.  Weights sit well inside that line.
 """
 from __future__ import annotations
 
