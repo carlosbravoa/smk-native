@@ -658,7 +658,16 @@ static void draw_title(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
             int span = VW + 8 * 40;
             int x = (int)((ui->tick * 3u / 2u + (unsigned)i * 40u) % (unsigned)span) - 32;
             int bounce = ((ui->tick / 4 + (unsigned)i) & 1) ? 1 : 0;
-            portrait(rom, palette, i, x, road_y + bounce, 1, false, false, fb, w, h);
+            /* seen from the side, travelling right: the measured
+             * rotation rule at a quarter turn (NOTES 041) */
+            const smk_sprites *s = driver_art(rom, i);
+            if (s && palette) {
+                bool hf = false;
+                int fr = smk_sprite_for_heading(SMK_SPR_TIER0, 0x4000, &hf);
+                smk_draw_sprite(s, fr, palette, SMK_DRIVERS[i].pal,
+                                ui_ox + x * ui_sc, ui_oy + (road_y + bounce) * ui_sc,
+                                ui_sc, hf, fb, w, h, w);
+            }
         }
     }
     if ((ui->tick / 30) & 1)
@@ -681,8 +690,7 @@ static void draw_mode(const smk_ui *ui, const smk_font *f,
     int rows = smk_ui_mode_rows(ui);
     for (int i = 0; i < rows; i++) {
         int y = 84 + i * 24;
-        const uint32_t *c = (i == SMK_UI_MODE_GP) ? off
-                          : (ui->mode_sel == i ? sel : lo);
+        const uint32_t *c = ui->mode_sel == i ? sel : lo;
         int x = (VW - (int)strlen(row[i]) * 8) / 2;
         if (ui->mode_sel == i && ((ui->tick / 12) & 1) == 0)
             fill(fb, w, h, x - 12, y - 2, 8, 12, 0xFFFFC040);

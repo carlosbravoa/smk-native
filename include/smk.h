@@ -1921,7 +1921,7 @@ enum { SMK_UI_MODE_GP, SMK_UI_MODE_RACE, SMK_UI_MODE_TT, SMK_UI_MODES };
 enum { SMK_PLAYERS_1, SMK_PLAYERS_CPU, SMK_PLAYERS_2, SMK_PLAYERS_MODES };
 typedef struct {
     smk_ui_screen screen;
-    int  mode_sel;        /* SMK_UI_MODE_*; Grand Prix is disabled */
+    int  mode_sel;        /* SMK_UI_MODE_*                         */
     int  players;         /* SMK_PLAYERS_*                         */
     int  pads;            /* controllers attached, set by the host  */
     int  player_sel;      /* SMK_DRIVERS index                     */
