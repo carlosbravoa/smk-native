@@ -11743,3 +11743,84 @@ Thwomp from the theme sheets (NOTES 272), the squash from the kart's own
 pose frame, the projectiles from `$C4:0594`.  `src/*.inc` holds measured
 motion paths only.  The README's claim that no game data ships is true
 again.
+
+## 274. The cup, finished: points, championship, the grid from the standings
+
+The user: *"we have implemented the 5 track tournaments, but we are not
+tracking points after race and overall for the tournament ... after
+each race, the first screen shows times for the race. Then next screen
+is points awarded, and then the third screen is total championship
+points. the starting grid for each race is determined on this overall
+points."*  And: *"please add more glare. Everything that is menus and
+outside racing is our own."*
+
+NOTES 198 had the bookkeeping - the ROM's 9/6/3/1 from `$85:BEB4` to
+the top four, one STANDINGS screen - but the grid ignored it: every race
+of a cup lined up on the ROM's per-character order with the player last
+(NOTES 161/164), and nothing between the times and the standings said
+what the race had paid.
+
+### Three screens
+
+* **RESULT** - the times, as before, with the driver's own portrait
+  beside the table (the front view drawn as its half and mirror, NOTES
+  199; arms up on the measured 16-frame toggle when it won) and the cup
+  and race in the header.
+* **POINTS** (new, `SMK_UI_POINTS`) - the race's finishing order in two
+  columns of four: portrait, place, name, and the points the ROM's table
+  paid, with a `+` the font lacks drawn from rectangles.  The cells
+  arrive one every ten frames from the right, the number pops in at
+  three times the font and settles at two, and the winner's throws
+  sparks.  Ranked out (5th or worse, NOTES 198's rule), the table's
+  values show dimmed - what was at stake - and the footer says NO
+  POINTS.
+* **STANDINGS** - every driver at the total they HAD before the race,
+  the new points counting in one at a time over 40 frames, then the rows
+  re-sorting themselves into the new order (24 frames, ease-out, the
+  moving rows drawn over the still ones).  After the fifth race: FINAL
+  STANDINGS, the champion's portrait at twice the size sliding down the
+  right with the trophy over it - gold, silver or bronze for the human's
+  own rank, none from fourth down - and confetti.  The last-race place
+  column is dropped there to make the room.
+
+Enter before an animation ends jumps to its end; Enter at the end moves
+on.  Both are on `screen_t`, a per-screen frame clock the step resets
+whenever the screen changes (main.c jumps to RESULT itself, so the reset
+watches the field rather than trusting a transition).  The award keeps
+`gp_prev_points`/`gp_prev_place`/`gp_award` so the standings can animate
+FROM something; the first race of a cup has no order to come from and
+flies in already sorted.
+
+### The grid
+
+`smk_ui_grid_slots`: until a cup has a result, the ROM's grid
+(`SMK_GRID_SLOT`, player at the back); from the second race - and on a
+ranked-out retry - the championship order, leader on pole, whatever
+block each driver happens to be.  main.c keeps a `grid_slot[]` beside
+`grid[]` and every path that builds the field uses it, so a restart
+lands where the race started.  OURS, by the user's rule; the ROM's own
+grid for races two to five is not decoded (its `$010E` order table is
+where to look).  The tie rule is NOTES 198's: points, then the last
+race's place, then driver index.
+
+A rig, `SMK_GP_RACE=N`, starts a cup at its Nth course so the final
+screens can be shot from one race; `SMK_MENU_NAV` takes `.` as a tick
+with nothing pressed, so an animation can be shot at a chosen frame.
+Shot at every stage headlessly (points at +34 and done, standings
+mid-count and done, final with the champion) and the selftest's cup walk
+now goes RESULT -> POINTS -> POINTS(skipped) -> STANDINGS -> next
+course, and checks the grid for race two: the winner on slot 0, the
+player (second) on slot 1, the eighth on slot 7.
+
+### The glare (S20, OURS)
+
+`backdrop` now drifts soft diagonal bands over the navy, rolls a
+checkered ribbon along the top and bottom, and blinks forty sparkles at
+hashed places; gold headers shimmer between white and yellow on the
+ROM's TEXT_HI outline; silver and bronze pens cut to the font's own
+body/body/outline shape; a 16x16 trophy with a glint walking down the
+bowl; confetti from the tick alone.  The title draws its name at twice
+the font over a drop shadow with the eight rear-view karts driving past
+on a road strip.  Nothing keeps state; everything is a function of the
+frame counter.  The only ROM art in any of it is the font and the kart
+sprites.

@@ -17,10 +17,15 @@ make game
 make run
 ```
 
-`make run` opens the shell: **title → mode → driver and class → course →
-race**.  Grand Prix is not built yet; **Time Trial** is — five laps, a lap
-clock and splits, one mushroom, and the five fastest laps per course kept
-between sessions (under `$XDG_DATA_HOME/smk-port/laptimes.txt`).
+`make run` opens the shell: **title → players → mode → driver and class →
+course → race**.  **Grand Prix** runs a cup's five courses in the ROM's
+order: after each race the times, then the points the ROM's table pays
+the top four (9, 6, 3, 1), then the championship, whose order sets the
+next race's grid with the leader on pole; finish fifth or worse and you
+run the course again.  **Single Race** is one cup course on its own.
+**Time Trial** is five laps alone, a lap clock and splits, one mushroom,
+and the five fastest laps per course kept between sessions (under
+`$XDG_DATA_HOME/smk-port/laptimes.txt`).
 
 ```
 menu            arrows move    enter selects    esc back

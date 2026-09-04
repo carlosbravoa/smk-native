@@ -733,11 +733,13 @@ In rough order of value:
    Rainbow Road art, the squash's contact band, standing like a rock -
    is measured and in.
 
-4. **~~Grand Prix (P8)~~ — IN (NOTES 198).** Four cups of five in the
-   ROM's order, 9/6/3/1 from `$85:BEB4` to the top four, standings between
-   races, a retry when ranked out, final standings after the fifth.
-   LABELLED: the retry's exact rule and text, and whether the AI scores on
-   a retried race.
+4. **~~Grand Prix (P8)~~ — IN (NOTES 198, 274).** Four cups of five in
+   the ROM's order, 9/6/3/1 from `$85:BEB4` to the top four, a points
+   screen and an animated championship between races, the grid from the
+   standings (leader on pole), a retry when ranked out, final standings
+   with the trophy after the fifth.  LABELLED: the retry's exact rule and
+   text, whether the AI scores on a retried race, and the ROM's own grid
+   rule for races two to five (ours is the user's: by points).
 
 5. **~~Finish the rubber band's two loose ends (S25)~~ — CLOSED by
    NOTES 174.** Both were measured from the user's recorded race. `$DA`
@@ -919,7 +921,7 @@ call frequency (R1).
   guard, gated on 20/20 courses by `tools/laptest.c`.
 - ✅ The countdown: 336 measured frames, Lakitu and his light over it
   (NOTES 162), and the rev / wheelspin / turbo launch (NOTES 163).
-- Next: the cup around it — points and standings.
+- ✅ The cup around it: points, championship, the grid from the standings (NOTES 274).
 
 ### P3 — Kart physics (the core of "feel")   ✅ DONE for the player (NOTES 106-109)
 
@@ -1041,9 +1043,11 @@ it must be switchable so the original can always be seen.
 Everything in this phase is off by default until the faithful path is
 green.
 
-### P8 — Modes, menus, HUD, polish  (two modes ✅, the cup next)
+### P8 — Modes, menus, HUD, polish  (three modes ✅)
 - ✅ Time trial: five laps, splits, the top five per course kept on disk.
 - ✅ Single race: eight karts, the ROM's grid order, a finishing place.
+- ✅ Grand Prix: the cup, its points and championship screens, the grid
+  from the standings, the trophy (NOTES 198/274).
 - ✅ The shell: title → mode → driver+class → course-by-cup → results, in
   the ROM's own font and palettes (NOTES 147/148).
 - ✅ Two-player, side by side: 1P / VS CPU / VS 2P (NOTES 255, S42).

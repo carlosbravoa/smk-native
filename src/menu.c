@@ -136,15 +136,230 @@ static void fill(uint32_t *fb, int w, int h, int vx, int vy, int vw, int vh,
  * CGRAM set was drawn against (colour 0 there is $000031), which is what
  * TEXT_PAL's white body and blue outline expect behind them; the actual
  * backdrop the game draws is a tilemap we have not decoded. */
-static void backdrop(uint32_t *fb, int w, int h, const smk_font *f)
+/* ---- the dressing (OURS, S20) --------------------------------------
+ *
+ * The user: "everything that is menus and outside racing is our own.
+ * While it should feel 16-bit Mario Kart themed, we can still add a lot
+ * of fun and glare."  So: the navy field the ROM's pens were drawn for,
+ * with slow diagonal bands drifting across it, a scrolling checkered
+ * ribbon top and bottom, sparkles, gold that shimmers, medal pens for the
+ * podium, confetti and a trophy.  All of it is computed from the frame
+ * counter - nothing here keeps state - and none of it is ROM art except
+ * the font and the kart sprites. */
+static const smk_sprites *driver_art(const smk_rom *rom, int who);
+
+static uint32_t hash32(uint32_t x)
+{
+    x ^= x >> 16; x *= 0x7FEB352Du; x ^= x >> 15; x *= 0x846CA68Bu; x ^= x >> 16;
+    return x;
+}
+
+/* 0..1 ease-out, for things that arrive and settle */
+static float ease(int t, int len)
+{
+    if (t <= 0) return 0.0f;
+    if (t >= len) return 1.0f;
+    float u = 1.0f - (float)t / (float)len;
+    return 1.0f - u * u * u;
+}
+
+static uint32_t mix(uint32_t a, uint32_t b, int k)      /* k 0..255 toward b */
+{
+    unsigned r = (((a >> 16) & 255) * (255 - k) + ((b >> 16) & 255) * k) / 255;
+    unsigned g = (((a >> 8) & 255) * (255 - k) + ((b >> 8) & 255) * k) / 255;
+    unsigned bl = ((a & 255) * (255 - k) + (b & 255) * k) / 255;
+    return 0xFF000000u | (r << 16) | (g << 8) | bl;
+}
+
+static void backdrop(uint32_t *fb, int w, int h, const smk_font *f, unsigned tick)
 {
     (void)f;
+    /* the field: navy, darker at the top, with soft diagonal bands that
+     * drift down-right - a 16-bit "parallax" without a second layer */
+    int band = 24 * ui_sc;
+    int drift = (int)(tick / 2) % (2 * band);
     for (int y = 0; y < h; y++) {
         unsigned k = 100 + (unsigned)(60 * y / (h ? h : 1));
         unsigned r = 12 * k / 100, g = 16 * k / 100, b = 40 * k / 100;
-        uint32_t c = 0xFF000000u | (r << 16) | (g << 8) | b;
-        for (int x = 0; x < w; x++) fb[(size_t)y * (size_t)w + x] = c;
+        uint32_t c0 = 0xFF000000u | (r << 16) | (g << 8) | b;
+        uint32_t c1 = 0xFF000000u | ((r + 3) << 16) | ((g + 4) << 8) | (b + 9);
+        uint32_t *row = fb + (size_t)y * (size_t)w;
+        int phase = (y - drift) % (2 * band);
+        if (phase < 0) phase += 2 * band;
+        for (int x = 0; x < w; x++) {
+            int p = phase + x;
+            row[x] = ((p / band) & 1) ? c1 : c0;
+        }
     }
+    /* the checkered ribbon, top and bottom, rolling to the left */
+    {
+        int sq = 6;
+        int shift = (int)(tick / 4) % (2 * sq);
+        for (int rowi = 0; rowi < 2; rowi++) {
+            int vy = rowi ? VH - sq : 0;
+            for (int vx = -2 * sq; vx < VW + 2 * sq; vx += sq) {
+                int cell = ((vx + 2 * sq) / sq + rowi) & 1;
+                fill(fb, w, h, vx - shift, vy, sq, sq, cell ? 0xFFF0F0F0 : 0xFF202030);
+            }
+        }
+    }
+    /* sparkles: fixed places, each on its own blink */
+    for (unsigned i = 0; i < 40; i++) {
+        uint32_t hv = hash32(i * 2654435761u);
+        int vx = (int)(hv % VW), vy = 8 + (int)((hv >> 9) % (VH - 16));
+        unsigned period = 70 + (hv >> 20) % 50;
+        unsigned ph = (tick + (hv >> 13)) % period;
+        if (ph > 12) continue;
+        int k = ph < 6 ? (int)ph : 12 - (int)ph;         /* 0..6..0 */
+        uint32_t c = mix(0xFF404880, 0xFFFFFFFF, k * 42);
+        fill(fb, w, h, vx, vy, 1, 1, c);
+        if (k >= 3) {
+            fill(fb, w, h, vx - 1, vy, 1, 1, c); fill(fb, w, h, vx + 1, vy, 1, 1, c);
+            fill(fb, w, h, vx, vy - 1, 1, 1, c); fill(fb, w, h, vx, vy + 1, 1, 1, c);
+        }
+    }
+}
+
+/* gold whose body pens breathe between white and yellow: the ROM's TEXT_HI
+ * outline, our shimmer */
+static void shimmer(const smk_font *f, uint32_t out[4], unsigned tick)
+{
+    ramp(f, TEXT_HI, out, 0xFFFFFFFF, 0xFF7A5A18);
+    unsigned ph = (tick * 5) & 255;
+    int k = ph < 128 ? (int)ph * 2 : (255 - (int)ph) * 2;
+    out[1] = mix(0xFFFFFFFF, 0xFFFFE070, k);
+    out[2] = mix(0xFFFFF4C0, 0xFFFFC020, k);
+}
+
+/* the podium pens: gold is the ROM's own TEXT_HI; silver and bronze are
+ * ours, cut to the same shape (body, body, outline) */
+static void medal(const smk_font *f, int rank, uint32_t out[4])
+{
+    switch (rank) {
+    case 0: ramp(f, TEXT_HI, out, 0xFFFFFFFF, 0xFF7A5A18); break;
+    case 1: out[0] = 0; out[1] = 0xFFFFFFFF; out[2] = 0xFFC8D0E0; out[3] = 0xFF505A78; break;
+    case 2: out[0] = 0; out[1] = 0xFFF8D0A0; out[2] = 0xFFD08848; out[3] = 0xFF5A3010; break;
+    default: ramp(f, TEXT_PAL, out, 0xFFFFFFFF, 0xFF2A3E78); break;
+    }
+}
+
+/* player 2's pen, so two humans can tell their rows apart */
+static void p2_pen(uint32_t out[4])
+{
+    out[0] = 0; out[1] = 0xFFC0E8FF; out[2] = 0xFF70C0FF; out[3] = 0xFF104880;
+}
+
+static void text_big(const smk_font *f, uint32_t *fb, int w, int h,
+                     int vx, int vy, const char *s, const uint32_t col[4], int mult)
+{
+    smk_font_draw(f, fb, w, h, ui_ox + vx * ui_sc, ui_oy + vy * ui_sc,
+                  s, ui_sc * mult, col);
+}
+
+/* the font has no '+' (src/font.c), so one is drawn: 5x5, centred */
+static void plus(uint32_t *fb, int w, int h, int vx, int vy, uint32_t c, int mult)
+{
+    fill(fb, w, h, vx, vy + 2 * mult, 5 * mult, mult, c);
+    fill(fb, w, h, vx + 2 * mult, vy, mult, 5 * mult, c);
+}
+
+/* A trophy, 16x16 pixel art (OURS): '#' body, 'o' the shine, ' ' clear. */
+static const char *const TROPHY[16] = {
+    "  ############  ",
+    " #o###########  ",
+    "# o##########  #",
+    "# o##########  #",
+    " #o##########  #",
+    "  #o########  # ",
+    "    ########    ",
+    "     ######     ",
+    "      ####      ",
+    "       ##       ",
+    "       ##       ",
+    "      ####      ",
+    "     ######     ",
+    "    ########    ",
+    "   ##########   ",
+    "   ##########   ",
+};
+
+static void trophy(uint32_t *fb, int w, int h, int vx, int vy, int rank, int mult,
+                   unsigned tick)
+{
+    uint32_t body, shine, dark;
+    if (rank == 0)      { body = 0xFFF0C030; shine = 0xFFFFF0A0; dark = 0xFF906010; }
+    else if (rank == 1) { body = 0xFFC8D0E0; shine = 0xFFFFFFFF; dark = 0xFF707A90; }
+    else                { body = 0xFFD08848; shine = 0xFFF8D0A0; dark = 0xFF7A4818; }
+    /* a glint that walks down the bowl */
+    int glint = (int)(tick / 6) % 24;
+    for (int y = 0; y < 16; y++)
+        for (int x = 0; x < 16; x++) {
+            char ch = TROPHY[y][x];
+            if (ch == ' ') continue;
+            uint32_t c = ch == 'o' ? shine : body;
+            if (ch == '#' && y >= 6) c = (x >= 6 && x <= 9) ? body : dark;
+            if (ch == '#' && y < 6 && x + y == glint) c = shine;
+            fill(fb, w, h, vx + x * mult, vy + y * mult, mult, mult, c);
+        }
+}
+
+/* confetti: a shower that never repeats itself in any way anyone would
+ * notice, from the tick alone */
+static void confetti(uint32_t *fb, int w, int h, unsigned tick, int count)
+{
+    static const uint32_t C[6] = { 0xFFFF4040, 0xFFFFD040, 0xFF40E060,
+                                   0xFF40A0FF, 0xFFFF70D0, 0xFFFFFFFF };
+    for (int i = 0; i < count; i++) {
+        uint32_t hv = hash32((uint32_t)i * 40503u + 7u);
+        int speed = 1 + (int)((hv >> 4) % 3);
+        int x0 = (int)(hv % VW);
+        int y = (int)(((hv >> 12) % 260u + tick * (unsigned)speed / 2u) % 260u) - 20;
+        int sway = (int)(((tick + (hv >> 8)) / 8) % 4);
+        int x = x0 + (sway == 3 ? 1 : sway) - 1;
+        int wobble = (int)(((tick + i) / 6) & 1);
+        fill(fb, w, h, x, y, 2 + wobble, 2, C[(hv >> 16) % 6]);
+    }
+}
+
+/* the driver's portrait: the FRONT view, drawn as the game draws it -
+ * its left half and that half's mirror (NOTES 199) - or the rear view */
+static void portrait(const smk_rom *rom, const uint32_t *palette, int who,
+                     int vx, int vy, int mult, bool front, bool arms_up,
+                     uint32_t *fb, int w, int h)
+{
+    const smk_sprites *s = driver_art(rom, who);
+    if (!s || !palette) return;
+    int cx = ui_ox + vx * ui_sc, cy = ui_oy + vy * ui_sc;
+    if (front)
+        smk_draw_sprite_mirror(s, arms_up ? SMK_SPR_WIN_FRAME : SMK_SPR_FRONT,
+                               palette, SMK_DRIVERS[who].pal, cx, cy,
+                               ui_sc * mult, fb, w, h, w);
+    else
+        smk_draw_sprite(s, SMK_SPR_REAR, palette, SMK_DRIVERS[who].pal,
+                        cx, cy, ui_sc * mult, false, fb, w, h, w);
+}
+
+/* the half-size portrait for a list row (the far-tier sampler, sprite.c) */
+static void portrait_mini(const smk_rom *rom, const uint32_t *palette, int who,
+                          int vx, int vy, uint32_t *fb, int w, int h)
+{
+    const smk_sprites *s = driver_art(rom, who);
+    if (!s || !palette) return;
+    smk_draw_sprite_mirror2(s, SMK_SPR_FRONT, palette, SMK_DRIVERS[who].pal,
+                            ui_ox + vx * ui_sc, ui_oy + vy * ui_sc, ui_sc, true,
+                            fb, w, h, w);
+}
+
+static void upper(char *s)
+{
+    for (; *s; s++) if (*s >= 'a' && *s <= 'z') *s -= 'a' - 'A';
+}
+
+static const char *ordinal(int place)
+{
+    static const char *const ORD[SMK_CHARACTERS + 1] = {
+        "", "1ST", "2ND", "3RD", "4TH", "5TH", "6TH", "7TH", "8TH" };
+    return ORD[place < 0 ? 0 : place > SMK_CHARACTERS ? SMK_CHARACTERS : place];
 }
 
 void smk_ui_init(smk_ui *ui)
@@ -169,10 +384,19 @@ int smk_ui_mode_rows(const smk_ui *ui)
     return ui->players == SMK_PLAYERS_1 ? SMK_UI_MODES : SMK_UI_MODES - 1;
 }
 
+/* How long the two cup screens take to play out.  Enter before the end
+ * jumps to the end; Enter at the end moves on. */
+#define POINTS_DONE     104
+#define STANDINGS_DONE  112
+
 bool smk_ui_step(smk_ui *ui, const smk_rom *rom, const smk_ui_input *in)
 {
     ui->tick++;
     if (ui->denied_t > 0) ui->denied_t--;
+    /* a screen's clock starts when it is entered, however it was entered
+     * (main.c jumps to RESULT itself) */
+    if (ui->screen != ui->last_screen) { ui->last_screen = ui->screen; ui->screen_t = 0; }
+    else ui->screen_t++;
 
     switch (ui->screen) {
     case SMK_UI_TITLE:
@@ -282,11 +506,19 @@ bool smk_ui_step(smk_ui *ui, const smk_rom *rom, const smk_ui_input *in)
         break;
 
     case SMK_UI_RESULT:
-        if (in->confirm || in->back) ui->screen = ui->gp ? SMK_UI_STANDINGS : SMK_UI_COURSE;
+        if (in->confirm || in->back) ui->screen = ui->gp ? SMK_UI_POINTS : SMK_UI_COURSE;
+        break;
+
+    case SMK_UI_POINTS:
+        if (in->confirm || in->back) {
+            if (ui->screen_t < POINTS_DONE) ui->screen_t = POINTS_DONE;
+            else ui->screen = SMK_UI_STANDINGS;
+        }
         break;
 
     case SMK_UI_STANDINGS:
         if (in->back) { ui->gp = false; ui->screen = SMK_UI_COURSE; break; }
+        if (in->confirm && ui->screen_t < STANDINGS_DONE) { ui->screen_t = STANDINGS_DONE; break; }
         if (in->confirm) {
             if (ui->ranked_out) {                       /* the same course again */
                 ui->ranked_out = false;
@@ -313,10 +545,59 @@ void smk_ui_gp_award(smk_ui *ui, const smk_ui_result *res)
 {
     if (!ui->gp) return;
     ui->ranked_out = res->position > 4;
+    for (int i = 0; i < SMK_CHARACTERS; i++) {
+        ui->gp_prev_points[i] = ui->gp_points[i];
+        ui->gp_prev_place[i] = ui->gp_place[i];
+        ui->gp_award[i] = 0;
+    }
     for (int p = 0; p < res->entries && p < SMK_CHARACTERS; p++) {
         int ch = res->field[p].character % SMK_CHARACTERS;
         ui->gp_place[ch] = p + 1;
-        if (!ui->ranked_out && p < 4) ui->gp_points[ch] += ui->gp_pts_table[p];
+        if (!ui->ranked_out && p < 4) {
+            ui->gp_award[ch] = ui->gp_pts_table[p];
+            ui->gp_points[ch] += ui->gp_pts_table[p];
+        }
+    }
+}
+
+/* by points, then by the given race's place, then by driver index */
+static void order_by(const int *points, const int *place, int order[SMK_CHARACTERS])
+{
+    for (int i = 0; i < SMK_CHARACTERS; i++) order[i] = i;
+    for (int i = 1; i < SMK_CHARACTERS; i++) {
+        int v = order[i], j = i - 1;
+        for (; j >= 0; j--) {
+            int a = order[j];
+            bool worse = points[a] < points[v]
+                      || (points[a] == points[v] && place[a] > place[v]);
+            if (!worse) break;
+            order[j + 1] = order[j];
+        }
+        order[j + 1] = v;
+    }
+}
+
+void smk_ui_gp_order(const smk_ui *ui, int order[SMK_CHARACTERS])
+{
+    order_by(ui->gp_points, ui->gp_place, order);
+}
+
+void smk_ui_grid_slots(const smk_ui *ui, const int grid[SMK_CHARACTERS],
+                       int slots[SMK_CHARACTERS])
+{
+    bool raced = false;
+    for (int i = 0; ui->gp && i < SMK_CHARACTERS; i++)
+        if (ui->gp_place[i] > 0) raced = true;
+    if (!raced) {
+        for (int i = 0; i < SMK_CHARACTERS; i++) slots[i] = SMK_GRID_SLOT(i);
+        return;
+    }
+    int order[SMK_CHARACTERS];
+    smk_ui_gp_order(ui, order);
+    for (int i = 0; i < SMK_CHARACTERS; i++) {
+        slots[i] = SMK_GRID_SLOT(i);
+        for (int r = 0; r < SMK_CHARACTERS; r++)
+            if (order[r] == grid[i] % SMK_CHARACTERS) { slots[i] = r; break; }
     }
 }
 
@@ -340,17 +621,38 @@ static const char *class_name(int c)
 
 /* ---- screens -------------------------------------------------------- */
 
-static void draw_title(const smk_ui *ui, const smk_font *f,
-                       uint32_t *fb, int w, int h)
+static void draw_title(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
+                       const uint32_t *palette, uint32_t *fb, int w, int h)
 {
-    uint32_t hi[4], lo[4];
+    uint32_t hi[4], lo[4], gold[4];
     ramp(f, TEXT_HI, hi, 0xFFFFFFFF, 0xFF7A5A18);
     ramp(f, TEXT_PAL, lo, 0xFFFFFFFF, 0xFF2A3E78);
-    text_c(f, fb, w, h, 60, "SUPER MARIO KART", hi);
+    shimmer(f, gold, ui->tick);
+    /* the name, twice the font's size, with a drop shadow under it */
+    {
+        const char *s = "SUPER MARIO KART";
+        int x = (VW - (int)strlen(s) * 16) / 2;
+        uint32_t shadow[4] = { 0, 0xFF101830, 0xFF101830, 0xFF101830 };
+        text_big(f, fb, w, h, x + 2, 50, s, shadow, 2);
+        text_big(f, fb, w, h, x, 48, s, gold, 2);
+    }
     text_c(f, fb, w, h, 76, "A NATIVE PORT", lo);
+    /* the field drives past along the bottom: the eight drivers' rear
+     * views on a road strip, in a loop */
+    {
+        int road_y = 150;
+        fill(fb, w, h, 0, road_y - 34, VW, 42, 0x50000000);
+        fill(fb, w, h, 0, road_y + 4, VW, 2, 0xFFE0E0E0);
+        for (int i = 0; i < SMK_CHARACTERS; i++) {
+            int span = VW + 8 * 40;
+            int x = (int)((ui->tick * 3u / 2u + (unsigned)i * 40u) % (unsigned)span) - 32;
+            int bounce = ((ui->tick / 4 + (unsigned)i) & 1) ? 1 : 0;
+            portrait(rom, palette, i, x, road_y + bounce, 1, false, false, fb, w, h);
+        }
+    }
     if ((ui->tick / 30) & 1)
-        text_c(f, fb, w, h, 140, "PRESS ENTER", hi);
-    text_c(f, fb, w, h, 200, "READS YOUR OWN ROM", lo);
+        text_c(f, fb, w, h, 176, "PRESS ENTER", hi);
+    text_c(f, fb, w, h, 204, "READS YOUR OWN ROM", lo);
 }
 
 static void draw_mode(const smk_ui *ui, const smk_font *f,
@@ -545,9 +847,9 @@ void smk_ui_draw(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
 {
     if (!f->ok) return;
     layout(w, h, true);
-    backdrop(fb, w, h, f);
+    backdrop(fb, w, h, f, ui->tick);
     switch (ui->screen) {
-    case SMK_UI_TITLE:   draw_title(ui, f, fb, w, h); break;
+    case SMK_UI_TITLE:   draw_title(ui, rom, f, palette, fb, w, h); break;
     case SMK_UI_PLAYERS: draw_players(ui, f, fb, w, h); break;
     case SMK_UI_MODE:    draw_mode(ui, f, fb, w, h); break;
     case SMK_UI_PLAYER: draw_player(ui, rom, f, palette, fb, w, h); break;
@@ -558,22 +860,39 @@ void smk_ui_draw(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
 
 void smk_ui_draw_result(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
                         const smk_records *rec, const smk_ui_result *res,
-                        uint32_t *fb, int w, int h)
+                        const uint32_t *palette, uint32_t *fb, int w, int h)
 {
     layout(w, h, true);
     if (!f->ok) return;
-    backdrop(fb, w, h, f);
-    uint32_t hi[4], lo[4], gold[4], off[4];
+    backdrop(fb, w, h, f, ui->tick);
+    uint32_t hi[4], lo[4], gold[4], off[4], glow[4];
     ramp(f, TEXT_HI, hi, 0xFFFFFFFF, 0xFF7A5A18);
     ramp(f, TEXT_PAL, lo, 0xFFFFFFFF, 0xFF2A3E78);
     ramp(f, TEXT_HI, gold, 0xFFFFFFFF, 0xFF7A5A18);
     ramp(f, TEXT_PAL, off, 0xFFFFFFFF, 0xFF2A3E78); dim(off);
+    shimmer(f, glow, ui->tick);
 
     bool race = res->position > 0;
-    text_c(f, fb, w, h, 10, race ? (ui->gp ? "GRAND PRIX" : "SINGLE RACE") : "TIME TRIAL", hi);
+    if (ui->gp) {
+        char line[48];
+        snprintf(line, sizeof line, "%s   RACE %d OF %d", SMK_CUP_NAMES[ui->cup_sel % SMK_CUPS],
+                 ui->gp_race + 1, SMK_CUP_COURSES);
+        text_c(f, fb, w, h, 10, line, glow);
+    } else {
+        text_c(f, fb, w, h, 10, race ? "SINGLE RACE" : "TIME TRIAL", glow);
+    }
     text_c(f, fb, w, h, 24, smk_track_name(rom, ui->track), gold);
 
     if (race && res->entries > 0) {
+        /* the player's own kart beside the table, waving if it won */
+        {
+            int me = ui->player_sel % SMK_CHARACTERS;
+            bool won = res->position == 1;
+            bool arms = won && ((ui->screen_t / SMK_WIN_TOGGLE) & 1) == 0;
+            fill(fb, w, h, 212, 56, 40, 48, 0x30FFFFFF);
+            portrait(rom, palette, me, 232, 100, 1, true, arms, fb, w, h);
+            if (won) confetti(fb, w, h, ui->tick, 40);
+        }
         /* THE FIELD, which is what the user asked for: "you get times:
          * your times, and the AI's total times and positions after the
          * race".  Laid out for the room we have rather than for the
@@ -654,53 +973,247 @@ void smk_ui_draw_result(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
     text_c(f, fb, w, h, 200, "ENTER CONTINUE", lo);
 }
 
-void smk_ui_draw_standings(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
-                           uint32_t *fb, int w, int h)
+/* ---- the two cup screens (NOTES 274) --------------------------------
+ *
+ * After the times: THE POINTS - the race's finishing order in two
+ * columns of four, each driver's portrait, place and what the ROM's
+ * table paid him, arriving one by one; then THE CHAMPIONSHIP - every
+ * driver at the totals they HAD, the new points counting in, and the
+ * rows re-sorting themselves into the new order.  After the fifth race
+ * the champion takes the floor with a trophy and the confetti.  Enter
+ * during the animation jumps to its end; Enter at the end moves on.
+ * The layout and the motion are ours (S20); the numbers are the cup's. */
+
+/* who the human players are, for the pens */
+static bool is_p1(const smk_ui *ui, int ch) { return ch == ui->player_sel % SMK_CHARACTERS; }
+static bool is_p2(const smk_ui *ui, int ch)
+{
+    return ui->players == SMK_PLAYERS_2 && ch == ui->player2_sel % SMK_CHARACTERS;
+}
+
+static void cup_header(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
+                       const char *what, uint32_t *fb, int w, int h)
+{
+    uint32_t glow[4], gold[4];
+    shimmer(f, glow, ui->tick);
+    ramp(f, TEXT_HI, gold, 0xFFFFFFFF, 0xFF7A5A18);
+    char line[48];
+    snprintf(line, sizeof line, "%s", SMK_CUP_NAMES[ui->cup_sel % SMK_CUPS]);
+    text_c(f, fb, w, h, 9, line, glow);
+    snprintf(line, sizeof line, "RACE %d OF %d   %s", ui->gp_race + 1, SMK_CUP_COURSES,
+             smk_track_name(rom, ui->track));
+    text_c(f, fb, w, h, 21, line, gold);
+    if (what) {
+        /* a banner behind the title */
+        int tw = (int)strlen(what) * 8;
+        fill(fb, w, h, (VW - tw) / 2 - 10, 33, tw + 20, 12, 0x60FFC040);
+        text_c(f, fb, w, h, 35, what, glow);
+    }
+}
+
+void smk_ui_draw_points(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
+                        const uint32_t *palette, uint32_t *fb, int w, int h)
 {
     layout(w, h, true);
     if (!f->ok) return;
-    backdrop(fb, w, h, f);
-    uint32_t hi[4], lo[4], gold[4], off[4];
+    backdrop(fb, w, h, f, ui->tick);
+    uint32_t lo[4], off[4], p2[4], pen[4];
+    ramp(f, TEXT_PAL, lo, 0xFFFFFFFF, 0xFF2A3E78);
+    ramp(f, TEXT_PAL, off, 0xFFFFFFFF, 0xFF2A3E78); dim(off);
+    p2_pen(p2);
+    cup_header(ui, rom, f, ui->ranked_out ? "RANKED OUT" : "RACE POINTS", fb, w, h);
+
+    /* the finishing order: by the place each driver took */
+    int order[SMK_CHARACTERS], n = 0;
+    for (int p = 1; p <= SMK_CHARACTERS; p++)
+        for (int ch = 0; ch < SMK_CHARACTERS; ch++)
+            if (ui->gp_place[ch] == p) order[n++] = ch;
+    for (int ch = 0; ch < SMK_CHARACTERS && n < SMK_CHARACTERS; ch++) {
+        bool in = false;
+        for (int i = 0; i < n; i++) in |= order[i] == ch;
+        if (!in) order[n++] = ch;
+    }
+
+    int t = (int)ui->screen_t;
+    for (int i = 0; i < SMK_CHARACTERS; i++) {
+        int ch = order[i];
+        int col = i / 4, row = i % 4;
+        int t0 = 6 + i * 10;                 /* when this cell arrives */
+        if (t < t0) continue;
+        float e = ease(t - t0, 12);
+        int vx = 8 + col * 124 + (int)((1.0f - e) * 70.0f);
+        int vy = 48 + row * 35;
+        bool me = is_p1(ui, ch), other = is_p2(ui, ch);
+        int rank = i;                        /* 0..3 get the medal pens */
+        uint32_t medalpen[4]; medal(f, rank, medalpen);
+        const uint32_t *c = rank < 4 ? medalpen : off;
+        /* the cell: a pale card, the human's pulsing */
+        uint32_t card = other ? 0x5070C0FF : 0x28FFFFFF;
+        if (me) {                            /* pulsing gold */
+            unsigned ph = (ui->tick * 6) & 255;
+            unsigned k = ph < 128 ? ph : 255 - ph;
+            card = ((0x40u + k / 4u) << 24) | 0x00FFC040u;
+        }
+        fill(fb, w, h, vx, vy, 118, 34, card);
+        fill(fb, w, h, vx, vy + 33, 118, 1, 0x60000000);
+        portrait(rom, palette, ch, vx + 18, vy + 32, 1, true, rank == 0, fb, w, h);
+        char nm[16];
+        snprintf(nm, sizeof nm, "%s", SMK_DRIVERS[ch].name); upper(nm);
+        text(f, fb, w, h, vx + 38, vy + 4, ordinal(i + 1), c);
+        text(f, fb, w, h, vx + 38, vy + 16, nm, me ? medalpen : other ? p2 : rank < 4 ? lo : off);
+        if (me)    text(f, fb, w, h, vx + 66, vy + 4, "P1", medalpen);
+        if (other) text(f, fb, w, h, vx + 66, vy + 4, "P2", p2);
+        /* the points: pop in big, settle to double size.  Ranked out,
+         * nothing is paid: the table's values show dimmed, what was at
+         * stake, and the footer says so. */
+        int pts = ui->ranked_out ? (rank < 4 ? ui->gp_pts_table[rank] : 0) : ui->gp_award[ch];
+        int pop_at = t0 + 8;
+        if (t >= pop_at) {
+            char num[8];
+            snprintf(num, sizeof num, "%d", pts);
+            int mult = t < pop_at + 5 ? 3 : 2;
+            int px = vx + 118 - 8 * mult - 4, py = vy + 17 - 4 * mult;
+            memcpy(pen, pts > 0 && !ui->ranked_out ? c : off, sizeof pen);
+            if (pts > 0 && !ui->ranked_out) plus(fb, w, h, px - 7, py + 4 * mult - 2, pen[1], 1);
+            text_big(f, fb, w, h, px, py, num, pen, mult);
+            /* the winner's cell throws sparks for a while */
+            if (rank == 0 && pts > 0 && !ui->ranked_out && t < pop_at + 40) {
+                for (int k = 0; k < 6; k++) {
+                    unsigned a = (unsigned)(t - pop_at) * 7u + (unsigned)k * 43u;
+                    int r = 6 + (t - pop_at) / 2;
+                    int sx = px + 8 + (int)(r * ((int)(a % 24) - 12) / 12);
+                    int sy = py + 8 + (int)(r * ((int)((a / 24) % 24) - 12) / 12);
+                    fill(fb, w, h, sx, sy, 2, 2, 0xFFFFF080);
+                }
+            }
+        }
+    }
+    if (t >= POINTS_DONE) {
+        uint32_t glow[4]; shimmer(f, glow, ui->tick);
+        if (ui->ranked_out) {
+            text_c(f, fb, w, h, 194, "NO POINTS   TOP FOUR ONLY", off);
+            if ((ui->tick / 20) & 1) text_c(f, fb, w, h, 208, "ENTER RUN IT AGAIN", glow);
+        } else if ((ui->tick / 20) & 1) {
+            text_c(f, fb, w, h, 208, "ENTER STANDINGS", glow);
+        }
+    }
+}
+
+void smk_ui_draw_standings(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
+                           const uint32_t *palette, uint32_t *fb, int w, int h)
+{
+    layout(w, h, true);
+    if (!f->ok) return;
+    backdrop(fb, w, h, f, ui->tick);
+    uint32_t hi[4], lo[4], gold[4], off[4], p2[4], glow[4];
     ramp(f, TEXT_HI, hi, 0xFFFFFFFF, 0xFF7A5A18);
     ramp(f, TEXT_PAL, lo, 0xFFFFFFFF, 0xFF2A3E78);
     ramp(f, TEXT_HI, gold, 0xFFFFFFFF, 0xFF7A5A18);
     ramp(f, TEXT_PAL, off, 0xFFFFFFFF, 0xFF2A3E78); dim(off);
-    char line[48];
-    snprintf(line, sizeof line, "GRAND PRIX   RACE %d OF %d", ui->gp_race + 1, SMK_CUP_COURSES);
-    text_c(f, fb, w, h, 10, line, hi);
-    text_c(f, fb, w, h, 24, smk_track_name(rom, ui->track), gold);
-    text_c(f, fb, w, h, 38, ui->ranked_out ? "RANKED OUT   TRY AGAIN"
-                          : ui->gp_race + 1 < SMK_CUP_COURSES ? "STANDINGS" : "FINAL STANDINGS",
-           ui->ranked_out ? off : hi);
-    /* by points, then by this race's place */
-    int order[SMK_CHARACTERS];
-    for (int i = 0; i < SMK_CHARACTERS; i++) order[i] = i;
-    for (int i = 1; i < SMK_CHARACTERS; i++) {
-        int v = order[i], j = i - 1;
-        for (; j >= 0; j--) {
-            int a = order[j];
-            bool worse = ui->gp_points[a] < ui->gp_points[v]
-                      || (ui->gp_points[a] == ui->gp_points[v] && ui->gp_place[a] > ui->gp_place[v]);
-            if (!worse) break;
-            order[j + 1] = order[j];
+    p2_pen(p2);
+    shimmer(f, glow, ui->tick);
+    bool final = !ui->ranked_out && ui->gp_race + 1 >= SMK_CUP_COURSES;
+    cup_header(ui, rom, f, final ? "FINAL STANDINGS" : "CHAMPIONSHIP", fb, w, h);
+
+    /* the order before the race and the order after it */
+    int before[SMK_CHARACTERS], after[SMK_CHARACTERS];
+    smk_ui_gp_order(ui, after);
+    bool had_order = false;              /* the first race has nothing to re-sort from */
+    for (int i = 0; i < SMK_CHARACTERS; i++) had_order |= ui->gp_prev_place[i] > 0;
+    if (had_order) order_by(ui->gp_prev_points, ui->gp_prev_place, before);
+    else memcpy(before, after, sizeof before);
+    int rank_before[SMK_CHARACTERS], rank_after[SMK_CHARACTERS];
+    for (int r = 0; r < SMK_CHARACTERS; r++) { rank_before[before[r]] = r; rank_after[after[r]] = r; }
+
+    /* the timeline */
+    int t = (int)ui->screen_t;
+    const int T_IN = 4, T_COUNT = 34, T_COUNT_LEN = 40, T_SORT = 80, T_SORT_LEN = 24;
+    int row_y0 = 50, row_h = 17;
+    int shown_pts[SMK_CHARACTERS];
+    for (int ch = 0; ch < SMK_CHARACTERS; ch++) {
+        /* a point every few frames, so the total is seen to climb */
+        int k = t - T_COUNT;
+        if (k < 0) k = 0;
+        if (k > T_COUNT_LEN) k = T_COUNT_LEN;
+        shown_pts[ch] = ui->gp_prev_points[ch] + ui->gp_award[ch] * k / T_COUNT_LEN;
+    }
+    float sort_k = ease(t - T_SORT, T_SORT_LEN);
+
+    /* the podium band, so the top three read as the top three */
+    int row_w = final ? 172 : 224;       /* the champion needs the right */
+    fill(fb, w, h, 16, row_y0 - 2, row_w, row_h * 3, 0x18FFFFFF);
+    fill(fb, w, h, 16, row_y0 - 2 + row_h * 3, row_w, 1, 0x50FFFFFF);
+
+    /* rows, drawn back to front so a row moving up passes over the others */
+    for (int pass = SMK_CHARACTERS - 1; pass >= 0; pass--) {
+        int ch = before[pass];
+        int t0 = T_IN + rank_before[ch] * 5;
+        if (t < t0) continue;
+        float e = ease(t - t0, 12);
+        float fy = (float)rank_before[ch] + sort_k * (float)(rank_after[ch] - rank_before[ch]);
+        int vy = row_y0 + (int)(fy * (float)row_h + 0.5f);
+        int vx = 16 - (int)((1.0f - e) * 90.0f);
+        int rank = t >= T_SORT ? rank_after[ch] : rank_before[ch];
+        bool me = is_p1(ui, ch), other = is_p2(ui, ch);
+        uint32_t medalpen[4]; medal(f, rank, medalpen);
+        const uint32_t *c = rank < 3 ? medalpen : lo;
+        /* the human's row is lit */
+        if (me)    fill(fb, w, h, vx, vy - 1, row_w, row_h - 1, 0x48FFC040);
+        if (other) fill(fb, w, h, vx, vy - 1, row_w, row_h - 1, 0x4070C0FF);
+        char line[32], nm[16];
+        snprintf(line, sizeof line, "%d", rank + 1);
+        text(f, fb, w, h, vx + 6, vy + 3, line, c);
+        portrait_mini(rom, palette, ch, vx + 30, vy + 16, fb, w, h);
+        snprintf(nm, sizeof nm, "%s", SMK_DRIVERS[ch].name); upper(nm);
+        text(f, fb, w, h, vx + 44, vy + 3, nm, me ? gold : other ? p2 : c);
+        if (me)    text(f, fb, w, h, vx + 44 + (int)strlen(nm) * 8 + 4, vy + 3, "P1", gold);
+        if (other) text(f, fb, w, h, vx + 44 + (int)strlen(nm) * 8 + 4, vy + 3, "P2", p2);
+        snprintf(line, sizeof line, "%2d PTS", shown_pts[ch]);
+        /* the total flashes while it counts */
+        bool counting = t >= T_COUNT && t < T_COUNT + T_COUNT_LEN && ui->gp_award[ch] > 0;
+        text(f, fb, w, h, vx + 132, vy + 3, line, counting && ((t / 3) & 1) ? glow : c);
+        if (ui->gp_place[ch] > 0 && !final)
+            text(f, fb, w, h, vx + 194, vy + 3, ordinal(ui->gp_place[ch]),
+                 ui->gp_place[ch] <= 4 ? c : off);
+    }
+
+    /* the closing line */
+    if (t >= STANDINGS_DONE) {
+        if (ui->ranked_out) {
+            text_c(f, fb, w, h, 190, "RANKED OUT   THE COURSE AGAIN", off);
+            if ((ui->tick / 20) & 1) text_c(f, fb, w, h, 208, "ENTER RETRY", glow);
+        } else if (!final) {
+            int lead = after[0];
+            char line[48], nm[16];
+            snprintf(nm, sizeof nm, "%s", SMK_DRIVERS[lead].name); upper(nm);
+            snprintf(line, sizeof line, "%s ON POLE FOR THE NEXT RACE", nm);
+            text_c(f, fb, w, h, 190, line, lo);
+            if ((ui->tick / 20) & 1) text_c(f, fb, w, h, 208, "ENTER NEXT COURSE", glow);
+        } else {
+            /* the cup is decided: the champion, and what the human took home */
+            int champ = after[0];
+            int my_rank = rank_after[ui->player_sel % SMK_CHARACTERS];
+            char line[48], nm[16];
+            snprintf(nm, sizeof nm, "%s", SMK_DRIVERS[champ].name); upper(nm);
+            if (is_p1(ui, champ))      snprintf(line, sizeof line, "YOU ARE THE CHAMPION!");
+            else if (is_p2(ui, champ)) snprintf(line, sizeof line, "PLAYER 2 IS THE CHAMPION!");
+            else                       snprintf(line, sizeof line, "%s TAKES THE CUP", nm);
+            text_c(f, fb, w, h, 190, line, glow);
+            const char *mine = my_rank == 0 ? "GOLD TROPHY" : my_rank == 1 ? "SILVER TROPHY"
+                             : my_rank == 2 ? "BRONZE TROPHY" : "NO TROPHY   TRY 100CC NEXT";
+            if ((ui->tick / 20) & 1) text_c(f, fb, w, h, 208, "ENTER CONTINUE", lo);
+            else text_c(f, fb, w, h, 208, mine, my_rank < 3 ? gold : off);
+            /* the champion, large, waving, with the cup */
+            int burst = t - STANDINGS_DONE;
+            float e = ease(burst, 20);
+            int cx = 218, cy = 60 + (int)(e * 100.0f);
+            bool arms = ((burst / SMK_WIN_TOGGLE) & 1) == 0;
+            fill(fb, w, h, cx - 30, cy - 66, 60, 74, 0x60000000);
+            portrait(rom, palette, champ, cx, cy, 2, true, arms, fb, w, h);
+            if (my_rank < 3) trophy(fb, w, h, cx - 16, cy - 108, my_rank, 2, ui->tick);
+            confetti(fb, w, h, ui->tick, 70);
         }
-        order[j + 1] = v;
     }
-    for (int i = 0; i < SMK_CHARACTERS; i++) {
-        int ch = order[i]; int y = 58 + i * 12;
-        bool me = ch == ui->player_sel;
-        const uint32_t *col = me ? gold : lo;
-        char nm[16];
-        snprintf(nm, sizeof nm, "%s", SMK_DRIVERS[ch].name);
-        for (char *q = nm; *q; q++) if (*q >= 'a' && *q <= 'z') *q -= 32;
-        snprintf(line, sizeof line, "%d", i + 1);           text(f, fb, w, h, 36, y, line, col);
-        text(f, fb, w, h, 56, y, nm, col);
-        snprintf(line, sizeof line, "%2d PTS", ui->gp_points[ch]); text(f, fb, w, h, 132, y, line, col);
-        if (ui->gp_place[ch] > 0) { snprintf(line, sizeof line, "%dTH", ui->gp_place[ch]);
-            if (ui->gp_place[ch] == 1) snprintf(line, sizeof line, "1ST"); else if (ui->gp_place[ch] == 2) snprintf(line, sizeof line, "2ND"); else if (ui->gp_place[ch] == 3) snprintf(line, sizeof line, "3RD");
-            text(f, fb, w, h, 196, y, line, i < 4 ? col : off); }
-    }
-    text_c(f, fb, w, h, 200, ui->ranked_out ? "ENTER RETRY" : ui->gp_race + 1 < SMK_CUP_COURSES ? "ENTER NEXT COURSE" : "ENTER CONTINUE", lo);
 }
 
 bool smk_tt_crossing(smk_ui_result *res, int *crossings, long *lap_start,

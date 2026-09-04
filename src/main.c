@@ -950,6 +950,7 @@ static const smk_rom *the_rom;
 static const smk_driver *drv;
 static smk_kart     kart;
 static int          grid[8];
+static int          grid_slot[8];   /* block -> grid slot (smk_ui_grid_slots) */
 
 static smk_font     menu_font;
 static smk_records  records;
@@ -1825,9 +1826,22 @@ static bool load_race(const smk_rom *rom, int track, int theme, int character,
      * the ROM's own two-player one (NOTES 161 / smk_grid_order). */
     smk_grid_order(rom, character, p2_character,
                    players_mode != SMK_PLAYERS_1, grid);
+    /* and WHERE: the ROM's rows for a single race and a cup's first
+     * course, the championship order once the cup has a result - the
+     * leader on pole (NOTES 274) */
+    smk_ui_grid_slots(&ui, grid, grid_slot);
     for (int i = 0; i < SMK_CHARACTERS; i++) {
-        smk_racer_start(&racers[i], &crs, SMK_GRID_SLOT(i));
+        smk_racer_start(&racers[i], &crs, grid_slot[i]);
         racers[i].character = grid[i];
+    }
+    if (ui.gp) {
+        printf("grid (pole first):");
+        for (int s = 0; s < SMK_CHARACTERS; s++)
+            for (int i = 0; i < SMK_CHARACTERS; i++)
+                if (grid_slot[i] == s)
+                    printf(" %s%s", SMK_DRIVERS[grid[i] % SMK_CHARACTERS].name,
+                           i == 0 ? "(P1)" : i == 1 && players_mode != SMK_PLAYERS_1 ? "(P2)" : "");
+        printf("\n");
     }
     /* A time trial is ALONE on the track and the game starts it off the
      * grid, at $818F7F's nudged front position; a race starts the player
@@ -1835,7 +1849,7 @@ static bool load_race(const smk_rom *rom, int track, int theme, int character,
     float gx, gy;
     uint16_t gh;
     if (mode == SMK_MODE_TT) smk_course_start_solo(&crs, &gx, &gy, &gh);
-    else smk_course_start(&crs, SMK_GRID_SLOT(0), &gx, &gy, &gh);
+    else smk_course_start(&crs, grid_slot[0], &gx, &gy, &gh);
     kart = (smk_kart){ .x = (int32_t)(gx * SMK_POS_ONE),
                        .y = (int32_t)(gy * SMK_POS_ONE), .angle = gh };
     smk_player_reset(&player, gh);
@@ -3855,7 +3869,8 @@ int main(int argc, char **argv)
     player.coins = 2;
     smk_grid_order(&rom, character, 0, false, grid);
     for (int i = 0; i < SMK_CHARACTERS; i++) {
-        smk_racer_start(&racers[i], &crs, SMK_GRID_SLOT(i));
+        grid_slot[i] = SMK_GRID_SLOT(i);
+        smk_racer_start(&racers[i], &crs, grid_slot[i]);
         racers[i].character = grid[i];
     }
     me = &racers[0];
@@ -3950,7 +3965,8 @@ int main(int argc, char **argv)
             char mkey[16];
             if (!shell || ui.screen == SMK_UI_RACE)
                 snprintf(mkey, sizeof mkey, "theme%d", trk.theme % SMK_THEME_COUNT);
-            else if (ui.screen == SMK_UI_RESULT || ui.screen == SMK_UI_STANDINGS)
+            else if (ui.screen == SMK_UI_RESULT || ui.screen == SMK_UI_POINTS
+                     || ui.screen == SMK_UI_STANDINGS)
                 snprintf(mkey, sizeof mkey, "results");
             else if (ui.screen == SMK_UI_TITLE)
                 snprintf(mkey, sizeof mkey, "title");
@@ -4075,6 +4091,13 @@ int main(int argc, char **argv)
                 if (ui.players == SMK_PLAYERS_2 && ui.pads < 1)
                     ui.players = SMK_PLAYERS_CPU;   /* unplugged mid-menu */
                 if (smk_ui_step(&ui, &rom, &nav)) {
+                    /* SMK_GP_RACE=N - a rig: the cup starts at its Nth
+                     * course, so the last race's screens can be shot
+                     * without driving the four before it */
+                    if (ui.gp && getenv("SMK_GP_RACE")) {
+                        ui.gp_race = atoi(getenv("SMK_GP_RACE")) % SMK_CUP_COURSES;
+                        ui.track = smk_cup_track(&rom, ui.cup_sel, ui.gp_race);
+                    }
                     /* a single race IS a Grand Prix course on its own */
                     int m = (ui.mode_sel == SMK_UI_MODE_TT)
                             ? SMK_MODE_TT : SMK_MODE_GP;
@@ -4124,13 +4147,13 @@ int main(int argc, char **argv)
                     smk_objgfx_load(&rom, trk.theme, &obj_art); obj_whole = (trk.theme == 3 || trk.theme == 5); build_track_map(&trk);
                     smk_horizon_load(&rom, trk.theme, &horizon);
                     track = nt; theme = nth;
-                    smk_course_start(&crs, SMK_GRID_SLOT(0), &sx, &sy, &sh);
+                    smk_course_start(&crs, grid_slot[0], &sx, &sy, &sh);
                     kart = (smk_kart){ .x = (int32_t)(sx * SMK_POS_ONE),
                                        .y = (int32_t)(sy * SMK_POS_ONE),
                                        .angle = sh };
                     smk_player_reset(&player, sh);
                     for (int i = 0; i < SMK_CHARACTERS; i++) {
-                        smk_racer_start(&racers[i], &crs, SMK_GRID_SLOT(i));
+                        smk_racer_start(&racers[i], &crs, grid_slot[i]);
                         racers[i].character = grid[i];
                     }
                     camera_from_kart(&cam, &kart);
@@ -5000,10 +5023,12 @@ int main(int argc, char **argv)
         if (tex && fb && (shell || getenv("SMK_RESULT_SHOT"))
             && ui.screen != SMK_UI_RACE) {
             if (ui.screen == SMK_UI_STANDINGS)
-                smk_ui_draw_standings(&ui, &rom, &menu_font, fb, rw, rh);
-            if (ui.screen == SMK_UI_RESULT) {
+                smk_ui_draw_standings(&ui, &rom, &menu_font, trk.palette, fb, rw, rh);
+            else if (ui.screen == SMK_UI_POINTS)
+                smk_ui_draw_points(&ui, &rom, &menu_font, trk.palette, fb, rw, rh);
+            else if (ui.screen == SMK_UI_RESULT) {
                 smk_ui_draw_result(&ui, &rom, &menu_font, &records, &result,
-                                   fb, rw, rh);
+                                   trk.palette, fb, rw, rh);
                 /* SMK_RESULT_SHOT=path - the finished results screen */
                 if (getenv("SMK_RESULT_SHOT")) {
                     save_ppm(getenv("SMK_RESULT_SHOT"), fb, rw, rh);

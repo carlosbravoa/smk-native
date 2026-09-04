@@ -743,18 +743,35 @@ int main(int argc, char **argv)
                     r.field[1].player = 1; u.player_sel = r.field[1].character;
                     smk_ui_gp_award(&u, &r);
                     int pts_me = u.gp_points[u.player_sel], pts_win = u.gp_points[r.field[0].character];
-                    u.screen = SMK_UI_RESULT; smk_ui_step(&u, &rom, &go);                         /* -> standings */
+                    u.screen = SMK_UI_RESULT; smk_ui_step(&u, &rom, &go);                         /* -> points */
+                    bool pt = u.screen == SMK_UI_POINTS;
+                    smk_ui_step(&u, &rom, &go);                                                   /* skips the animation */
+                    bool pt2 = u.screen == SMK_UI_POINTS;
+                    smk_ui_step(&u, &rom, &go);                                                   /* -> standings */
                     bool st = u.screen == SMK_UI_STANDINGS;
+                    smk_ui_step(&u, &rom, &go);                                                   /* skips the animation */
                     bool next = smk_ui_step(&u, &rom, &go);                                       /* -> race 1 */
                     int t1 = u.track;
+                    /* the grid for race 1 is the championship order, the
+                     * winner on pole and the player (2nd) beside him -
+                     * whatever block each of them drives (NOTES 274) */
+                    int g[8], sl[8];
+                    smk_grid_order(&rom, u.player_sel, 0, false, g);
+                    smk_ui_grid_slots(&u, g, sl);
+                    int win_slot = -1, me_slot = sl[0], last_slot = -1;
+                    for (int i = 0; i < 8; i++) { if (g[i] == r.field[0].character) win_slot = sl[i];
+                                                  if (g[i] == r.field[7].character) last_slot = sl[i]; }
+                    bool gridok = win_slot == 0 && me_slot == 1 && last_slot == 7;
                     r.position = 6; smk_ui_gp_award(&u, &r);                                      /* ranked out */
                     u.screen = SMK_UI_RESULT; smk_ui_step(&u, &rom, &go);
+                    smk_ui_step(&u, &rom, &go); smk_ui_step(&u, &rom, &go); smk_ui_step(&u, &rom, &go);
                     bool retry = smk_ui_step(&u, &rom, &go) && u.track == t1 && u.gp_race == 1;
-                    snprintf(det, sizeof det, "table %d %d %d %d; me %d pts winner %d; tracks %d -> %d; standings %d retry %d",
-                             u.gp_pts_table[0], u.gp_pts_table[1], u.gp_pts_table[2], u.gp_pts_table[3], pts_me, pts_win, t0, t1, st, retry);
-                    check("a cup: 9/6/3/1 from the ROM, standings, the next course, a retry when ranked out",
+                    bool kept = u.gp_points[u.player_sel] == pts_me;                             /* no points when ranked out */
+                    snprintf(det, sizeof det, "table %d %d %d %d; me %d pts winner %d; tracks %d -> %d; points %d/%d standings %d retry %d kept %d; slots win %d me %d last %d",
+                             u.gp_pts_table[0], u.gp_pts_table[1], u.gp_pts_table[2], u.gp_pts_table[3], pts_me, pts_win, t0, t1, pt, pt2, st, retry, kept, win_slot, me_slot, last_slot);
+                    check("a cup: 9/6/3/1 from the ROM, points then standings, the next course on the standings grid, a retry when ranked out",
                           started && u.gp_pts_table[0] == 9 && u.gp_pts_table[3] == 1 && pts_me == 6 && pts_win == 9
-                          && st && next && t1 != t0 && retry, det);
+                          && pt && pt2 && st && next && t1 != t0 && retry && kept && gridok, det);
                     (void)none;
                 }
                 smk_racer rb; memset(&rb, 0, sizeof rb); rb.k.speed = 835;
