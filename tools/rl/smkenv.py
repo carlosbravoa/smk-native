@@ -67,19 +67,38 @@ OBS_LAYOUT = [
     ("incoming", 3),                # nearest hostile projectile: ahead, right, closeness
 ]
 
-_TRACK_NAMES = [
-    "Mario Circuit 1", "Donut Plains 1", "Ghost Valley 1", "Bowser Castle 1",
-    "Mario Circuit 2", "Choco Island 1", "Ghost Valley 2", "Donut Plains 2",
-    "Bowser Castle 2", "Mario Circuit 3", "Koopa Beach 1", "Choco Island 2",
-    "Vanilla Lake 1", "Bowser Castle 3", "Mario Circuit 4", "Donut Plains 3",
-    "Koopa Beach 2", "Ghost Valley 3", "Vanilla Lake 2", "Rainbow Road",
-    "Battle Course 1", "Battle Course 2", "Battle Course 3", "Battle Course 4",
-]
+#: Filled from the ROM on first use.  It used to be a hand-written list
+#: here and it was wrong - Ghost Valley 1 is track 16, not track 2 - so
+#: every per-course number this harness printed carried the wrong name.
+#: The cartridge's own cup tables are the only source (src/cups.c).
+_TRACK_NAMES: list[str] = []
+
+
+def _load_track_names() -> list[str]:
+    global _TRACK_NAMES
+    if _TRACK_NAMES:
+        return _TRACK_NAMES
+    try:
+        lib = _load_lib()
+        rom = (os.environ.get("SMK_ROM")
+               or os.path.join(_ROOT, "rom", "smk_usa.sfc")).encode()
+        buf = ctypes.create_string_buffer(1024)
+        lib.smk_env_track_names.argtypes = [ctypes.c_char_p, ctypes.c_char_p,
+                                           ctypes.c_size_t]
+        lib.smk_env_track_names.restype = ctypes.c_int
+        if lib.smk_env_track_names(rom, buf, 1024) > 0:
+            _TRACK_NAMES = buf.value.decode().strip().split("\n")
+    except Exception:
+        pass
+    return _TRACK_NAMES
+
+
 GP_TRACKS = list(range(20))
 
 
 def track_name(t: int) -> str:
-    return _TRACK_NAMES[t] if 0 <= t < len(_TRACK_NAMES) else f"track {t}"
+    names = _load_track_names()
+    return names[t] if 0 <= t < len(names) else f"track {t}"
 
 
 class _Cfg(ctypes.Structure):

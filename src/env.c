@@ -875,6 +875,27 @@ void smk_env_cfg_default(smk_env_cfg *c)
     c->w_hit      = 1.0f;
 }
 
+/* The course names, from the ROM's own cup tables (src/cups.c), written
+ * out newline-separated.  It exists because the Python side had a
+ * hand-written list of them and it was WRONG - Ghost Valley 1 is track
+ * 16, not track 2 - so every per-course number this harness printed
+ * carried the wrong name.  There is one source for this and it is the
+ * cartridge. */
+int smk_env_track_names(const char *rom_path, char *out, size_t n)
+{
+    smk_rom rom;
+    char err[128];
+    if (!smk_rom_load(&rom, rom_path, err, sizeof err)) return 0;
+    size_t at = 0;
+    for (int t = 0; t < SMK_TRACK_COUNT && at + 1 < n; t++) {
+        int w = snprintf(out + at, n - at, "%s\n", smk_track_name(&rom, t));
+        if (w < 0) break;
+        at += (size_t)w;
+    }
+    smk_rom_free(&rom);
+    return (int)at;
+}
+
 int smk_env_obs_dim(void)     { return SMK_ENV_OBS; }
 int smk_env_action_count(void){ return SMK_ENV_ACTIONS_N; }
 

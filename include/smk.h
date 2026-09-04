@@ -2299,6 +2299,10 @@ void smk_obs_build(const smk_track *trk, const smk_course *crs,
  * OURS, and shared so the environment and the game draw from one */
 unsigned smk_item_roll(unsigned *state);
 
+/* the 24 course names from the ROM's own tables, newline-separated -
+ * so nothing has to keep a second copy of them */
+int  smk_env_track_names(const char *rom_path, char *out, size_t n);
+
 int  smk_env_obs_dim(void);
 int  smk_env_action_count(void);
 /* One ROM, shared read-only; one mutable world per env.  cfgs is an array
