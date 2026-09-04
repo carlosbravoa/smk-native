@@ -792,13 +792,17 @@ static void draw_class(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
         text(f, fb, w, h, 28, vy + 20, TAG[c], on ? lo : off);
         /* the road strip and its kart, at the class's pace: 2, 3 and 4
          * pixels a tick */
+        /* the kart stays INSIDE its card: it runs the strip's length,
+         * a sprite's width in from each end, and reappears at the left.
+         * The user's twist: a driver per class - Toad, Mario, Bowser -
+         * light, medium and heavy, in the ROM's own weight order. */
+        static const int WHO[3] = { 7, 0, 2 };
         const int RX = 118, RW = 112;
-        fill(fb, w, h, RX, vy + 26, RW, 2, 0xFFE0E0E0);
-        int span = RW + 36;
-        int x = RX - 18 + (int)((ui->tick * (unsigned)(c + 2) / 2u) % (unsigned)span);
-        int who = ui->player_sel % SMK_CHARACTERS;
+        fill(fb, w, h, RX, vy + 28, RW, 2, 0xFFE0E0E0);
+        int span = RW - 32;
+        int x = RX + 16 + (int)((ui->tick * (unsigned)(c + 2) / 2u) % (unsigned)span);
         int bounce = on && ((ui->tick / 4) & 1) ? 1 : 0;
-        kart_side(rom, palette, who, x, vy + 26 - bounce, 1, fb, w, h);
+        kart_side(rom, palette, WHO[c], x, vy + 28 - bounce, 1, fb, w, h);
         if (on && ((ui->tick / 12) & 1) == 0)
             fill(fb, w, h, 6, vy + 2, 6, 10, 0xFFFFC040);
     }
