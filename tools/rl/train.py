@@ -114,14 +114,7 @@ def evaluate(policy, norm, args, tracks, device, greedy=True, episodes=1):
     cfgs = [EnvCfg(track=t, character=args.character, engine_class=args.engine_class,
                    laps=args.laps, frame_skip=args.frame_skip,
                    max_frames=args.max_frames, stall_frames=0,
-                   # A policy that only ever raced has 26 of its 81 inputs
-            # pinned at zero in a time trial - the rank, the nearby karts,
-            # the item, the incoming shell - and after normalisation that
-            # is a large constant offset on a third of the vector that it
-            # never saw once.  It brakes.  So a slice of the batch runs
-            # time trials, and both modes are in distribution.
-            mode=(MODE_TT if (args.gp and (i % 100) < int(args.tt_fraction * 100))
-                  else (MODE_GP if args.gp else MODE_TT)),
+            mode=MODE_GP if args.gp else MODE_TT,
             items=int(args.items),
             mushroom=int(args.mushroom),
                    # a DIFFERENT seed per episode, or eight races are
@@ -171,14 +164,7 @@ def autopilot_baseline(args, tracks):
     cfgs = [EnvCfg(track=t, character=args.character, engine_class=args.engine_class,
                    laps=args.laps, frame_skip=args.frame_skip,
                    max_frames=args.max_frames, stall_frames=0,
-                   # A policy that only ever raced has 26 of its 81 inputs
-            # pinned at zero in a time trial - the rank, the nearby karts,
-            # the item, the incoming shell - and after normalisation that
-            # is a large constant offset on a third of the vector that it
-            # never saw once.  It brakes.  So a slice of the batch runs
-            # time trials, and both modes are in distribution.
-            mode=(MODE_TT if (args.gp and (i % 100) < int(args.tt_fraction * 100))
-                  else (MODE_GP if args.gp else MODE_TT)),
+            mode=MODE_GP if args.gp else MODE_TT,
             items=int(args.items),
             mushroom=int(args.mushroom), seed=args.seed + 9000 + t)
             for t in tracks]
@@ -425,6 +411,11 @@ def main():
     p.add_argument("--jitter", type=int, default=0, help="px of start jitter")
     p.add_argument("--gp", action="store_true",
                    help="a full eight-kart race with items, not a time trial")
+    p.add_argument("--noitem-fraction", type=float, default=0.2,
+                   dest="noitem_fraction",
+                   help="with --gp, the share racing with the boxes EMPTY - so "
+                        "the opponent features and the item features are not "
+                        "perfectly correlated and cannot be learned as one switch")
     p.add_argument("--tt-fraction", type=float, default=0.25, dest="tt_fraction",
                    help="with --gp, the share of environments running a solo "
                         "time trial so that mode stays in distribution")
