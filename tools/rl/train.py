@@ -55,6 +55,32 @@ def build_cfgs(args) -> list[EnvCfg]:
         raise SystemExit("every track was held out - nothing to train on")
     classes = [int(c) for c in args.classes.split(",")] if args.classes \
         else [args.engine_class]
+
+    # THREE situations, not two.
+    #
+    # A policy that only ever raced has 26 of its 81 inputs pinned at zero
+    # in a time trial - the rank, the nearby karts, the item, the incoming
+    # shell - and after normalisation that is a large constant offset over
+    # a third of the vector, a combination it never saw once.  It brakes:
+    # measured at 27% throttle in a time trial against 98% in a race.
+    #
+    # But two slices would not be enough either.  With only "race" and
+    # "alone" the opponent features and the item features appear and vanish
+    # TOGETHER, so the network can learn one switch instead of two
+    # independent facts.  A third slice - opponents, empty boxes - breaks
+    # the correlation and makes each group vary on its own.
+    #
+    #   nothing at all      a solo time trial
+    #   players, no items   seven opponents, no boxes
+    #   everything          the full race
+    n_tt = max(min(int(round(args.tt_fraction * 100)), 100), 0)
+    n_ni = max(min(int(round(args.noitem_fraction * 100)), 100 - n_tt), 0)
+    if args.gp:
+        modes = [MODE_TT] * n_tt + [MODE_GP] * (100 - n_tt)
+        item_on = [True] * n_tt + [False] * n_ni + [True] * (100 - n_tt - n_ni)
+    else:
+        modes, item_on = [MODE_TT], [True]
+
     cfgs = []
     for i in range(args.envs):
         cfgs.append(EnvCfg(
@@ -67,8 +93,8 @@ def build_cfgs(args) -> list[EnvCfg]:
             frame_skip=args.frame_skip,
             max_frames=args.max_frames,
             stall_frames=args.stall_frames,
-            mode=MODE_GP if args.gp else MODE_TT,
-            items=int(args.items),
+            mode=modes[i % len(modes)],
+            items=int(args.items) if item_on[i % len(item_on)] else 0,
             mushroom=int(args.mushroom),
             start_jitter=args.jitter,
             disrupt=args.disrupt,
@@ -88,7 +114,14 @@ def evaluate(policy, norm, args, tracks, device, greedy=True, episodes=1):
     cfgs = [EnvCfg(track=t, character=args.character, engine_class=args.engine_class,
                    laps=args.laps, frame_skip=args.frame_skip,
                    max_frames=args.max_frames, stall_frames=0,
-                   mode=MODE_GP if args.gp else MODE_TT,
+                   # A policy that only ever raced has 26 of its 81 inputs
+            # pinned at zero in a time trial - the rank, the nearby karts,
+            # the item, the incoming shell - and after normalisation that
+            # is a large constant offset on a third of the vector that it
+            # never saw once.  It brakes.  So a slice of the batch runs
+            # time trials, and both modes are in distribution.
+            mode=(MODE_TT if (args.gp and (i % 100) < int(args.tt_fraction * 100))
+                  else (MODE_GP if args.gp else MODE_TT)),
             items=int(args.items),
             mushroom=int(args.mushroom),
                    # a DIFFERENT seed per episode, or eight races are
@@ -138,7 +171,14 @@ def autopilot_baseline(args, tracks):
     cfgs = [EnvCfg(track=t, character=args.character, engine_class=args.engine_class,
                    laps=args.laps, frame_skip=args.frame_skip,
                    max_frames=args.max_frames, stall_frames=0,
-                   mode=MODE_GP if args.gp else MODE_TT,
+                   # A policy that only ever raced has 26 of its 81 inputs
+            # pinned at zero in a time trial - the rank, the nearby karts,
+            # the item, the incoming shell - and after normalisation that
+            # is a large constant offset on a third of the vector that it
+            # never saw once.  It brakes.  So a slice of the batch runs
+            # time trials, and both modes are in distribution.
+            mode=(MODE_TT if (args.gp and (i % 100) < int(args.tt_fraction * 100))
+                  else (MODE_GP if args.gp else MODE_TT)),
             items=int(args.items),
             mushroom=int(args.mushroom), seed=args.seed + 9000 + t)
             for t in tracks]
@@ -385,6 +425,9 @@ def main():
     p.add_argument("--jitter", type=int, default=0, help="px of start jitter")
     p.add_argument("--gp", action="store_true",
                    help="a full eight-kart race with items, not a time trial")
+    p.add_argument("--tt-fraction", type=float, default=0.25, dest="tt_fraction",
+                   help="with --gp, the share of environments running a solo "
+                        "time trial so that mode stays in distribution")
     p.add_argument("--no-items", dest="items", action="store_false")
     p.set_defaults(items=True)
     p.add_argument("--holdout", default="",
