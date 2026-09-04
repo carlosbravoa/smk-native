@@ -41,6 +41,9 @@ Files:
   19 in time trial, demo 3 Peach/Yoshi on track 18.
 * `demo_tt_track19.csv`, `demo_gp_track18.csv` - two of those, kept for
   the replay tool (`smk_demoreplay rom.sfc <csv> 1000`).
+* `ailog.lua` - every kart every race frame: character, rank, `$C8`
+  row, speed, progress, position, `$E0` - the AI audit's instrument
+  (NOTES 277).  `AILOG=path` names the CSV.
 * `gpgrid.lua` - a cup's grid from race to race: the order table
   `$010E`, every kart's `$E6` and `$C0` at each start and end, every
   change between races, and a low-WRAM dump per mode change.  `POKE_AT`

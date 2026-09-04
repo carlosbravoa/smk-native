@@ -11947,3 +11947,102 @@ Now (OURS, S20):
 The shell walk in `tools/laptest.c` and the selftest's cup walk gained
 the extra confirm.  Shot headlessly: the class screen, the driver
 screen, and the CPU pick with player 1's card marked.
+
+## 277. Why the field is too easy: an audit of the AI against the recordings
+
+The user: *"they more or less work, but are too easy. I remember that
+they were hard to beat in 100cc and tremendously hard to beat in 150cc
+... pinpoint what is the difference between original and ours."*  An
+audit, not a fix.  `tools/labs/mame/ailog.lua` logs every kart every
+race frame - character, rank, `$C8` row, `$EA` speed, `$C0` progress,
+position, `$E0` - on the user's own 50cc (`flag`) and 100cc (`cc100`)
+recordings, both Mario Circuit 1; the port ran the same course at each
+class with `SMK_ROW_TRACE` under the autopilot.
+
+### The AI's speed, row by row (the seven AI karts, all frames)
+
+                    original                port
+    50cc   $08 chase   median 807  p90 909     median 696  p90 888
+           $00         495        705         580        666
+           $10 hold    555        633         496        592
+    100cc  $08 chase   857       1019         728        904
+           $00         663        835         740        812
+           $10 hold    666        728         660        704
+
+The row chooser is not the gap (94.2%, NOTES 174).  Given the same row
+the port runs 100-130 slower at the median in the chase row, and the
+maxima are close (927 against 896 at 50cc; 1068 against 1040 at 100cc).
+So the port reaches the same speeds and does not HOLD them.
+
+### 1. The port throws speed away: the clamp to target
+
+`src/ai.c` after `smk_kart_accelerate`: `if (speed > target) speed =
+target`.  The ROM has no such line.  `$80B035` subtracts `$EA` from the
+target; below it, the accel curve (`$0690` by speed, `$80A7E1` - the
+same one the port uses); above it, `$80B04B` clamps the difference to
+`$1FF` and indexes `$80B064` by `diff >> 6`: **-4, -8, -16, -24 a
+frame**.  A kart entering a slow sector at 896 with a target of 512 takes
+sixteen frames to get there in the original and ONE in the port.
+
+Single-frame speed drops of the AI karts, per 1000 kart-frames:
+
+                        <= -16   <= -30   <= -60   <= -100   <= -200
+    original 50cc          9.2      0.1      0.0       0.0       0.0
+    original 100cc         3.5      0.6      0.0       0.0       0.0
+    port 50cc             19.0     16.5     11.9       9.8       4.2
+    port 100cc            19.6     17.5      9.6       6.1       1.3
+
+The original's AI never loses 60 in a frame.  The port's loses 100 or
+more about ten times per thousand kart-frames - once every 1.7 s per
+kart - and of those drops fewer than 1% land on 0 or 300 (the wall
+escape's resets); the rest land ON THE TARGET.  That is the clamp, and
+it is the largest single difference found.
+
+### 2. The handicap karts: `$B099` is a bonus, and it replaces the rank penalty
+
+`$80B086`: with `$DA` non-zero the correction is `$B099,y` by `$DA`,
+otherwise `$B0A1,y` by rank.  `$B099` reads **2, 4, 8, 16, 0** (y = 0,
+2, 4, 6, 8), so karts 4-7 (`$DA` = 2, 4, 6, 8) get +4, +8, +16, +0 - and
+never the rank penalty of 0..-24.  The recordings confirm it to the
+unit: the four `$DA` karts' maxima at 50cc are 915, 919, 927, 913
+against 900/898 for the others, and at 100cc 1056, 1060, 1068, 1052
+against 1040/1035 - Peach, `$DA` = 6, +16, the fastest in both.  Those
+four are the karts that finish 2nd-5th in both recordings and set the
+best AI laps (15.0-15.3 s at 50cc against the user's 14.0-14.6).  The
+port applies the rank penalty to all eight and the bonus to none: the
+four chasers are up to 40 slower at the back of the field than the
+game's.
+
+### 3. What is NOT the difference
+
+* The waypoint attribute that picks the speed entry: the port's
+  `wattr & 3` matches the game's live `$0800` table on all 24 sectors of
+  track 18 (the moles dump), and the waypoint positions match.
+* The target table itself: `$06B0` in the same dump is the port's
+  `w[16..31]` - row $00 448/512/608/672, $08 512/704/896/896, $10
+  256/480/576/608, $18 256/352/512/576 (50cc).
+* The accel curve: the AI's `$0690` is the player's, and the port's.
+* Items: the AI's `$E0` effect word is zero on every frame of both
+  recordings - the original's field wins on speed, not on weapons.
+* The class scaling: the AI maxima rise 927 -> 1068 from 50cc to 100cc
+  in the original and 896 -> 1040 in the port; both scale.
+
+### The lap times, for the record
+
+    50cc    user 14.0-14.6 s/lap   best AI (DK Jr, Peach, Toad) 15.0-15.3
+    100cc   user 14.1-14.3         best AI 14.5-15.9
+    port 50cc, autopilot 16.4-17.4  best AI total 1'28"88 vs 1'25"08
+    port 100cc                      best AI 1'21"53 (DK Jr, the one win)
+
+A fair lap-time comparison needs a human at the wheel of the port; the
+autopilot is 1.5-2 s a lap slower than the user and the band chases it
+less.  The row-conditioned speeds and the drop table above do not need
+one.
+
+### Still labelled after this
+
+The `$18` row (a kart in trouble, 8% of the original's frames) never
+fires in the port - that makes the port's field slightly FASTER, not
+slower; the distance cache; and 150cc has no recording (`$80B0A1` and
+`$B099` do not change with class, so 1 and 2 apply there unchanged, on
+top of the class's own table).
