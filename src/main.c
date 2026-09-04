@@ -864,6 +864,10 @@ static void hud_hex2(uint32_t *fb, int rw, int rh, int x, int y,
     hud_glyph(fb, rw, rh, x + 5 * sc, y, v & 15, col, sc);
 }
 
+/* ...and the answer, which lives where the state does.  NULL for a lone
+ * human: one person playing does not need telling who is driving. */
+static const char *driver_label(void);
+
 static void draw_speedo(uint32_t *fb, int rw, int rh,
                         const smk_kart *k, uint8_t surf, int top)
 {
@@ -965,6 +969,34 @@ static int          grid[8];
 static int          grid_slot[8];   /* block -> grid slot (smk_ui_grid_slots) */
 
 static smk_font     menu_font;
+/* --autodrive: a file static because the dashboard's driver label
+ * has to ask about it, and it is read-only after the arguments */
+static int          autodrive;
+
+/* WHO is driving this view, under the dial.
+ *
+ * Four answers and not three, because "a driver" and "a human" are
+ * different questions - the results table got that wrong for months by
+ * asking only whether a slot was driven.  A seat number for each person,
+ * and the machines say WHICH machine: the trained network and the
+ * scripted driver in src/autopilot.c are not the same opponent, and the
+ * scripted one still takes the battle arenas and any build with no
+ * weights compiled in.
+ *
+ * Nothing is drawn for a lone human, who does not need telling.
+ */
+static void draw_driver_label(uint32_t *fb, int rw, int rh, int cx, int y,
+                              const char *who)
+{
+    if (!who) return;
+    int sc = rw >= 640 ? 2 : 1;
+    uint32_t col[4] = { 0, 0xFFFFFFFFu, 0xFFC0C0C8u, 0xFF404048u };
+    if (menu_font.has_pal)
+        for (int i = 1; i < 4; i++) col[i] = menu_font.pal[1][i];
+    int w = smk_font_text_w(who, sc);
+    smk_font_draw(&menu_font, fb, rw, rh, cx - w / 2, y, who, sc, col);
+}
+
 static smk_records  records;
 static smk_ui       ui;
 static smk_ui_result result;
@@ -1760,6 +1792,16 @@ static void pv_load(const pview *v) { PV_LIST(PV_LOAD) }
  * autopilot?  Either way it is stepped by the player code, so the
  * shipped AI must leave it alone and the field's item pass must not hit
  * it twice. */
+static const char *driver_label(void)
+{
+    bool machine = views[cur_view].bot || (autodrive && cur_view == 0);
+    if (!machine) return nviews > 1 ? (cur_view == 0 ? "P1" : "P2") : NULL;
+    /* WHICH machine: the trained network and src/autopilot.c are not the
+     * same opponent, and the scripted one still takes the battle arenas
+     * and any build with no weights compiled in. */
+    return (cpu_net.ok && smk_net_drives_track(cur_track)) ? "NEURAL" : "AUTO";
+}
+
 static bool slot_is_driven(int q)
 {
     for (int i = 0; i < nviews; i++)
@@ -3139,7 +3181,11 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
                                            smk_kart_px(kart.y));
             draw_gauge(fb, rw, rh, gx, gy, gr, kart.speed, player.target,
                        smk_surface_cap_frac(su));
-
+            /* under the dial and clear of the screen edge: the pivot sits
+             * adv2/2 above the bottom, so a glyph hung off it ran two
+             * pixels past the frame */
+            draw_driver_label(fb, rw, rh, gx, rh - 8 * (rw >= 640 ? 2 : 1) - 2,
+                              driver_label());
         }
         draw_track_map(fb, rw, rh, &kart, racers, SMK_CHARACTERS);
         draw_clock(fb, rw, rh, trk->palette, hud_race_frames);
@@ -3548,7 +3594,7 @@ int main(int argc, char **argv)
      * player along the course's own direction field ($7F:4000, the same
      * field Lakitu's rescue and the AI use) so a whole five-lap run can be
      * played headlessly. */
-    int want_tt = 0, want_race = 0, autodrive = 0;
+    int want_tt = 0, want_race = 0;
     int sfx_audition = 0;
     /* --scaletest: a straight Mario Circuit road with a line of pipes down
      * the middle at known distances, so one screenshot shows how object
@@ -5376,6 +5422,24 @@ int main(int argc, char **argv)
                 if (fwant >= 0 && finish_t >= fwant) {
                     save_ppm(fpath, fb, rw, rh);
                     fwant = -1;
+                }
+            }
+            /* SMK_RACE_SHOT=frame:path - a frame of the RACE, by race
+             * frame, which is the only way to look at the dashboard
+             * headlessly: --shot renders one frame and exits before the
+             * lights, and the finish and start shots are their own
+             * moments. */
+            if (getenv("SMK_RACE_SHOT") && race_state == RACE_RUN) {
+                static int rwant = -2; static char rpath[512];
+                if (rwant == -2) {
+                    rwant = -1;
+                    const char *e = getenv("SMK_RACE_SHOT");
+                    const char *c = strchr(e, ':');
+                    if (c) { rwant = atoi(e); snprintf(rpath, sizeof rpath, "%s", c + 1); }
+                }
+                if (rwant >= 0 && hud_race_frames >= rwant) {
+                    save_ppm(rpath, fb, rw, rh);
+                    rwant = -1;
                 }
             }
             /* SMK_START_SHOT=frame:path - the same, counted from the
