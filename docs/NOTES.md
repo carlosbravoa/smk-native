@@ -12046,3 +12046,153 @@ fires in the port - that makes the port's field slightly FASTER, not
 slower; the distance cache; and 150cc has no recording (`$80B0A1` and
 `$B099` do not change with class, so 1 and 2 apply there unchanged, on
 top of the class's own table).
+
+## 278. The field's pace, fixed and gated on three classes; the 150cc recording; the shrink
+
+The user recorded `cc150` - Mario Circuit 1, 150cc, lost the race - and
+NOTES 277's two findings went in.
+
+### 150cc, measured
+
+Up to the player's finish (5,201 race frames):
+
+    row      frames  median   p90   max        kart      median  p90   max
+    $00      10051     753    896  1087        Mario (P1)   860   976  2017
+    $08       6528     983   1065  1095        Luigi  DA    834   935  1084
+    $10      18597     808    870  1059        Toad   DA    849  1015  1087
+    $18       1231     598    664   882        Peach  DA    862  1015  1095
+                                               DK Jr  DA    856  1021  1080
+                                               Bowser       779   859  1067
+
+The four handicap karts run at the human's median.  Their maxima step
+1084/1087/1095/1080 for `$DA` 2/4/6/8 - `$B099`'s +4/+8/+16/+0 on the
+class's 1076-ish top, the third recording to read the table to the unit.
+The player's plateau rule of NOTES 173 does not apply: a fought 150cc
+race holds no speed for eight frames (the longest runs above 600 are
+eight frames of 637-755), so 1152 stays a ROM prediction.
+
+### The decel rates, read in play
+
+Negative single-frame speed steps of the seven AI karts, most common:
+
+    flag  (50cc)   -4 x17884   -8 x2585   -16 x347   -24 x20
+    cc150 (150cc)  -4 x19689   -8 x968    -16 x81    -24 x1
+
+Exactly `$80B064`'s four reachable words, in speed units per frame, and
+nothing larger except hits.  So the port's `smk_ai_step` no longer snaps
+the speed to its target: above the target it takes `-4/-8/-16/-24` by
+the gap banded at 64 (`$80B04B`), below it the accel curve as before.
+And a kart with `$DA` takes `$B099`'s bonus by `$DA` instead of the rank
+penalty.  Both tables are read from the ROM in `smk_ai_catchup_load` and
+checked in the selftest.
+
+### Before and after, the port on Mario Circuit 1 under the autopilot
+
+    drops per 1000 kart-frames   <= -60   <= -100   <= -200
+      50cc   before                11.9      9.8       4.2
+             after                  1.0      0.9       0.5
+     100cc   before                 9.6      6.1       1.3
+             after                  0.8      0.8       0.4
+     150cc   after                  0.8      0.7       0.6
+      the original, any class       0.0      0.0       0.0
+
+    chase-row median    original   port before   port after
+      50cc                 807         696          732
+     100cc                 857         728          760
+     150cc                 983          -           960
+
+    the race             before                    after
+      50cc   Mario 1'25"08, DK Jr 1'28"88           Mario 1'26"30, DK Jr 1'29"01
+     100cc   DK Jr 1'21"53, Mario 1'22"20           Mario 1'20"88, DK Jr 1'21"31
+     150cc   DK Jr 1'16"51, Mario 1'17"95           PEACH 1'13"96, Toad 1'15"90, Luigi 1'17"40
+
+The residue of drops is the wall escape and the hits.  The chase medians
+at 50/100cc still trail the original's because the autopilot is 1.5-2 s
+a lap slower than the user and the band chases it less; at 150cc, where
+the table is fast enough for the band to matter less, the port is within
+23 of the original.  `tools/ailap`: 20/20 courses still lapped.
+`tools/rowcheck` on the new `rowlog_cc150.csv`: **96.55%** of 44,030
+kart-frames (94.2% on the 50cc log); the confusion is 902 frames of the
+ROM's `$08` read as `$00`, the distance cache.
+
+### The Peach episode, explained by the log
+
+The user: *"when I hit DK Jr, Peach caught up incredibly fast, then when
+DK was back, Peach relaxed and went back to her position."*  In the log
+Peach (rank 2) is at speed 0 for ~100 frames from f4720 - she is the one
+that stopped - drops to rank 5, 618 px behind, takes `$08` at f4816 and
+runs 1001-1077 for 9.7 s until she is 107 px off the player, then at
+f5400 with DK Jr back at rank 1 takes `$00` and settles.  That is the
+row chooser doing what NOTES 174 decoded: a kart far behind its partner
+chases, and the flat `$00` row at 150cc (753 median) is "relaxing".
+The port's chooser reproduces this recording at 96.6%, so the episode
+should play the same here.
+
+### The poison mushroom, on the player, for later
+
+`p1dump.lua` over f5250-5900.  At f5337 the player's speed falls from
+940 and then saws between ~614 and ~673 for 4.5 s (its climb of about
++13 per 20 frames reset by ~-55 every 60-80 frames) while `$D6`, the
+coin top speed, stays 1152 - so the shrink is not a cap on `$D6`.  The
+fields it changes, f5300 -> f5350: `$84` `0000 -> 0418`, counting down
+one a frame (03B4 at 5450, 030A at 5620) - the timer the row chooser's
+"in trouble" test reads, so `$84` IS the hit/shrink clock and `$418` =
+1048 frames its length; `$4E` `1A -> 0A`, the WEIGHT ($81:9277's class,
+NOTES 166) drops from Mario's medium to below light for the duration;
+`$88` `0000 -> C000`; `$E8` `4000 -> 0000` and `$EC` `6000 -> 0000`
+(the size, by the look of it); `$50`, `$54`, `$A8` change too.  At f5680
+the kart stops (speed 0 for ~200 frames) and `$84` reads 2 by f5700 -
+whatever stopped it ended the shrink early.  NOT PORTED yet: the port's
+`shrink_t` cap of `$200` is still ours.  What this gives the decode: the
+timer's address and length, the weight drop, and the speed law to fit
+(a sawtooth, not a cap).
+
+### The one course the pace exposed: Mario Circuit 2's crossing
+
+`tools/laptest` after the pace fix: 19 of 20 courses lap FASTER (track 9
+2471 -> 1926 frames, track 3 2742 -> 2333, track 17 2449 -> 2026) and
+track 15 - Mario Circuit 2, cup 0 course 4 - fails its six crossings.
+It was sick before: its "lap" took 4,299 frames, twice any other course,
+because the field loops the bottom section.  The geometry, from the
+surface map at y 672-744: dirt `$16` at x 512-536, the ramp `$10` at
+552-560, a WALL `$80` at 568, the lower road (sector 20's, the southbound
+one) 576-648, a wall at 656, grass `$54` at 664, road again from 672.
+The eastbound line (wp 29 -> 30) must fly from 552 to past 664 - 112 px
+- and sector 20 carries attr bit 7 for exactly this: an airborne kart
+does not capture it (NOTES 052).
+
+**The AI's ramp was a constant.**  `smk_kart_move_ex`'s auto-ramp
+launched every kart at `$103` from the ground - NOTES 088's battery
+reading at ONE speed - so a kart at 700 reached the wall at 568 before
+it was four pixels up and bounced, and one at 500 cleared the wall and
+landed on the lower road at 590.  The ROM's ramp is `$80B7AF-$80B7E8`,
+which the player's own path already had: speed raised to at least
+`$2E0`, the DSP-1 Triangle command ($04) with angle `$0E00` and the
+speed as radius - `$26` = speed*sin(19.7 deg), speed = speed*cos - and
+`$1F` = `$280`, two and a half pixels up on the launch frame.  That
+reproduces the battery's 247 from 608 (-> 736 -> 248 up).  Now
+`smk_kart_ramp`, shared.  MEASURED in the oracle on track 15 itself
+(`tools/labs/mc2ramp.py`, NOTES 118's cup/course hook): the player from
+~1000 launches with `$26` = 336, z 2.50 on the first frame, zvel down 26
+a frame, lands at x 658 after 27 frames; from ~1300, 727 after 34; an AI
+kart flies by the same law.  The port's rig now lands 700 at 609, 900 at
+636, 1100 at 674: to clear the grass at 664 a kart needs about 1050.
+
+**The landing IS the loop, in the original too.**  Placed grounded at
+(604, 700) with the progress word at sector 29, the oracle's AI kart and
+player both read `$C0` = `$7F14` - sector 20 - on the next frame; the
+player driven east from there hits the wall at 656 and stops.  So a kart
+that falls short is in sector 20 and the AI aims at waypoint 21: the
+southbound road again.  The port does the same (`lower.c`: sector 20 on
+frame 0, heading swinging to 180 by frame 40).
+
+**What that leaves open.**  By the law, no 50cc kart clears the crossing
+- Mario's 50cc top of 784 lands around 620 - so the original's field
+should land short there every lap unless something the recordings do
+not show intervenes: a different line, a mushroom, the rescue dropping
+the kart past the crossing at its watermark sector.  The recordings are
+all Mario Circuit 1.  Track 15 passes its six crossings again (3,698
+frames a lap against 4,299 before), and the answer wants ONE recording
+of Mario Circuit 2 at 50cc or 100cc.
+
+A rig knob, `SMK_AI_SNAP=1`, restores the one-frame snap for A/B runs.

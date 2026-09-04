@@ -41,6 +41,11 @@ Files:
   19 in time trial, demo 3 Peach/Yoshi on track 18.
 * `demo_tt_track19.csv`, `demo_gp_track18.csv` - two of those, kept for
   the replay tool (`smk_demoreplay rom.sfc <csv> 1000`).
+* `p1dump.lua` - the player's whole block every other frame over a
+  window (`F0`, `F1`), for finding the fields an event changes by
+  diffing; the poison mushroom's shrink was read off it (NOTES 278).
+* `rowlog_cc150.csv` - the row chooser's inputs through the 150cc race,
+  `tools/rowcheck`'s second gate (96.6%).
 * `ailog.lua` - every kart every race frame: character, rank, `$C8`
   row, speed, progress, position, `$E0` - the AI audit's instrument
   (NOTES 277).  `AILOG=path` names the CSV.

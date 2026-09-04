@@ -122,6 +122,26 @@ void smk_kart_launch(smk_kart *k, int16_t zvel)
     k->airborne = true;
 }
 
+/* A class-$10 ramp, the ROM's way ($80B7AF-$80B7E8, the player's own
+ * path in src/player.c): the speed is raised to at least $2E0, the DSP-1
+ * Triangle command turns it into speed*sin($0E00) up and speed*cos($0E00)
+ * forward, and $1F starts at $280 - two and a half pixels up on the
+ * launch frame.  The AI used to launch with a constant $103 and from the
+ * ground, which is the battery's reading at ONE speed (NOTES 088, 608
+ * -> 736 -> 247 up), so a fast kart reached Mario Circuit 2's crossing
+ * wall before it was four pixels high and every kart landed short, on
+ * the bridge road, into sector 20's loop (NOTES 278). */
+void smk_kart_ramp(smk_kart *k)
+{
+    int16_t s = k->speed < 0x2E0 ? 0x2E0 : k->speed;
+    int16_t up, fwd;
+    smk_dsp_sincos(0x0E00, s, &up, &fwd);
+    k->zvel = up;
+    k->speed = fwd;
+    k->z = (int32_t)0x0280 << 8;
+    k->airborne = true;
+}
+
 void smk_kart_move(smk_kart *k, const smk_track *t) { smk_kart_move_ex(k, t, true); }
 
 /* $80FC74: (v * f) >> 8, the SNES multiplier with the sign put back - an
@@ -232,7 +252,7 @@ void smk_kart_move_ex(smk_kart *k, const smk_track *t, bool auto_ramp)
     {
         uint8_t here = smk_track_surface(t, smk_kart_px(nx), smk_kart_px(ny));
         if (auto_ramp && (here & 0xFE) == 0x10 && !k->airborne) {
-            smk_kart_launch(k, SMK_RAMP_VEL);
+            smk_kart_ramp(k);
             k->x = nx;
             k->y = ny;
             return;

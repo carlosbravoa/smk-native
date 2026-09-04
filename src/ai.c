@@ -451,7 +451,14 @@ void smk_racer_step(smk_racer *r, const smk_track *trk,
     if (row < 0 || row > SMK_AI_ROW_SLOW) row = SMK_AI_ROW_HOLD;
     int target = (int16_t)phys->w[SMK_PHYS_TARGET + (crs->wattr[r->sector] & 3)
                                   + row];
-    target += SMK_AI_RANK_BONUS[r->rank & 7];
+    /* $80B086: a handicap kart ($DA non-zero) takes $B099's BONUS by its
+     * $DA and never the rank penalty; the others take $B0A1 by rank.  The
+     * port used to penalise all eight (NOTES 277). */
+    if (r->da > 0 && SMK_AI_DECEL[0] != 0) {
+        int di = r->da >> 1;
+        target += SMK_AI_DA_BONUS[di > 4 ? 4 : di];
+    } else
+        target += SMK_AI_RANK_BONUS[r->rank & 7];
     /* DECODED ($80A701 structure): off-road surfaces cap the speed and the
      * over-cap decel row applies.  Cap values are measured (NOTES 053). */
     {
@@ -489,15 +496,29 @@ void smk_racer_step(smk_racer *r, const smk_track *trk,
     }
     if (r->squash_t > 0) { r->squash_t--; target = 0; }   /* bug 13: flattened, going nowhere */
     if (r->shrink_t > 0) { r->shrink_t--; if (target > 0x200) target = 0x200; }   /* OURS: small is slow */
+    /* $80B035: below the target, the accel curve by speed ($0690, the
+     * player's own); above it, $80B04B's rate by the gap - clamped to
+     * $1FF, banded by 64 into $80B064: -4, -8, -16, -24 a frame - and
+     * NO clamp to the target.  The port used to snap the speed down to
+     * the target in one frame, which is where the field lost its pace:
+     * the original never loses 60 in a frame, ours lost 100 ten times
+     * per thousand kart-frames (NOTES 277). */
     int32_t accel;
     if (r->k.speed < target)
         accel = (int32_t)smk_physics_accel(phys, r->k.speed) << 8;
-    else
-        accel = -((int32_t)0x0400 << 8);
+    else {
+        int gap = r->k.speed - target;
+        if (gap > 0x1FF) gap = 0x1FF;
+        int16_t rate = SMK_AI_DECEL[0] ? SMK_AI_DECEL[(gap >> 7) & 3] : -4;
+        accel = (int32_t)rate << 16;
+    }
     r->k.accel = (int16_t)(accel >> 16);
     r->k.accel_frac = (uint16_t)(accel & 0xFFFF);
     smk_kart_accelerate(&r->k);
-    if (r->k.speed > target) r->k.speed = (int16_t)target;
+    if (target <= 0 && r->k.speed < 0) r->k.speed = 0;
+    /* SMK_AI_SNAP=1: the old one-frame snap to target, for A/B rigs only */
+    { static int snap = -1; if (snap < 0) snap = getenv("SMK_AI_SNAP") != NULL;
+      if (snap && r->k.speed > target) r->k.speed = (int16_t)target; }
     smk_kart_face(&r->k);
     smk_kart_gravity(&r->k);
     smk_kart_move(&r->k, trk);
@@ -512,6 +533,18 @@ void smk_racer_step(smk_racer *r, const smk_track *trk,
  * its eight rows are data and the rest are the bytes of $80AF5F. */
 uint16_t SMK_AI_CATCHUP[SMK_AI_SKILLS][8];
 
+/* $80B064: how fast an AI sheds speed it is above its target - by the
+ * gap, clamped to $1FF and banded by 64: -4, -8, -16, -24 a frame.  The
+ * table has eight words; the clamp reaches only the first four.  READ
+ * IN PLAY (NOTES 278): the original AI's negative speed steps are exactly
+ * 4, 8, 16 and 24 in all three recordings, and never more. */
+int16_t SMK_AI_DECEL[4];
+/* $80B099: the correction for a kart carrying a $DA handicap, by $DA -
+ * 2, 4, 8, 16, 0 - which REPLACES the rank penalty for karts 4-7
+ * ($80B086: `ldy $DA,x / beq rank-path / adc $B099,y`).  Confirmed to
+ * the unit by the four karts' maxima in the recordings (NOTES 277). */
+int16_t SMK_AI_DA_BONUS[5];
+
 bool smk_ai_catchup_load(const smk_rom *rom)
 {
     uint32_t a = smk_snes_to_pc(rom, 0x80AF0Fu);
@@ -522,6 +555,12 @@ bool smk_ai_catchup_load(const smk_rom *rom)
             SMK_AI_CATCHUP[c][i] =
                 (uint16_t)(rom->data[o] | rom->data[o + 1] << 8);
         }
+    uint32_t d = smk_snes_to_pc(rom, 0x80B064u), b = smk_snes_to_pc(rom, 0x80B099u);
+    if (d + 8 > rom->size || b + 10 > rom->size) return false;
+    for (int i = 0; i < 4; i++)
+        SMK_AI_DECEL[i] = (int16_t)(rom->data[d + i * 2] | rom->data[d + i * 2 + 1] << 8);
+    for (int i = 0; i < 5; i++)
+        SMK_AI_DA_BONUS[i] = (int16_t)(rom->data[b + i * 2] | rom->data[b + i * 2 + 1] << 8);
     return true;
 }
 

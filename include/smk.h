@@ -425,6 +425,7 @@ void smk_demolog_sync(const smk_demolog *d, int i, smk_player *p, smk_kart *k);
 void smk_demolog_pad(const smk_demo_frame *r, uint16_t *held, uint16_t *pressed);
 
 void smk_kart_launch(smk_kart *k, int16_t zvel);
+void smk_kart_ramp(smk_kart *k);       /* a class-$10 ramp by the ROM's law */
 void smk_kart_bounce_damp_for_test(smk_kart *k);   /* NOTES 125 gate */
 
 static inline int smk_kart_px(int32_t v) { return (int)(v >> SMK_POS_SHIFT); }
@@ -1283,6 +1284,8 @@ int smk_ai_row_for(const smk_racer *r, const smk_racer *ahead,
                    int *s04, int *s06);
 /* $80B0A1 by rank: the flat correction under the row */
 extern const int16_t SMK_AI_RANK_BONUS[8];
+extern int16_t SMK_AI_DECEL[4];        /* $80B064, loaded with the catch-up table */
+extern int16_t SMK_AI_DA_BONUS[5];     /* $80B099 */
 /* Fill every racer's rank and row, once a frame, before they step. */
 void smk_ai_rubber(smk_racer *racers, int n, const smk_course *crs, int cls);
 

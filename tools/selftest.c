@@ -493,6 +493,22 @@ int main(int argc, char **argv)
             }
         for (int rk = 0; rk < 8; rk++) {
             uint32_t a = smk_snes_to_pc(&rom, 0x80B0A1u + rk * 2u);
+            /* and the two tables NOTES 277/278 added: the decel rates the
+             * original's AI steps down by (read in play: -4/-8/-16/-24,
+             * never more) and the handicap bonus that replaces the rank
+             * penalty for karts 4-7 (2/4/8/16/0, confirmed by their
+             * maxima in three recordings) */
+            if (rk == 0) {
+                smk_ai_catchup_load(&rom);
+                static const int16_t DEC[4] = { -4, -8, -16, -24 }, BON[5] = { 2, 4, 8, 16, 0 };
+                bool ok = true;
+                for (int i = 0; i < 4; i++) ok = ok && SMK_AI_DECEL[i] == DEC[i];
+                for (int i = 0; i < 5; i++) ok = ok && SMK_AI_DA_BONUS[i] == BON[i];
+                snprintf(det, sizeof det, "decel %d %d %d %d  bonus %d %d %d %d %d",
+                         SMK_AI_DECEL[0], SMK_AI_DECEL[1], SMK_AI_DECEL[2], SMK_AI_DECEL[3],
+                         SMK_AI_DA_BONUS[0], SMK_AI_DA_BONUS[1], SMK_AI_DA_BONUS[2], SMK_AI_DA_BONUS[3], SMK_AI_DA_BONUS[4]);
+                check("$80B064 decel rates and $80B099 handicap bonus read as the recordings show", ok, det);
+            }
             int v = (int16_t)(rom.data[a] | rom.data[a + 1] << 8);
             if (v == SMK_AI_RANK_BONUS[rk]) tbl++;
         }
@@ -1304,8 +1320,9 @@ int main(int argc, char **argv)
         int rpeak = 0;
         {
             smk_kart k = {0};
-            k.airborne = true;
-            smk_kart_launch(&k, SMK_RAMP_VEL);
+            k.speed = 400;                 /* under the $2E0 floor: the slowest launch */
+            smk_kart_ramp(&k);
+            rpeak = (int)(k.z >> 16);      /* $1F = $280 from the first frame */
             for (int f = 0; f < 80 && k.airborne; f++) {
                 smk_kart_gravity(&k);
                 if ((int)(k.z >> 16) > rpeak) rpeak = (int)(k.z >> 16);
