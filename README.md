@@ -214,6 +214,7 @@ tools/             the reverse-engineering toolkit (Python)
   rl/              the RL binding, PPO, and the env-vs-game replay gate
 romhack/           the ROM-patching path: asar patches + symbol database
 docs/FINDINGS.md   what the ROM turned out to contain
+docs/AI.md         the opponents: every way the game's AI plays by other rules
 ```
 
 ## Verification
