@@ -131,13 +131,21 @@ void smk_kart_launch(smk_kart *k, int16_t zvel)
  * -> 736 -> 247 up), so a fast kart reached Mario Circuit 2's crossing
  * wall before it was four pixels high and every kart landed short, on
  * the bridge road, into sector 20's loop (NOTES 278). */
-void smk_kart_ramp(smk_kart *k)
+void smk_kart_ramp(smk_kart *k, int theme)
 {
-    int16_t s = k->speed < 0x2E0 ? 0x2E0 : k->speed;
+    /* $80B79E: on theme $0C (Bowser Castle, theme 6) the floor is $400 */
+    int16_t floor_ = theme == 6 ? 0x0400 : 0x02E0;
+    int16_t s = k->speed < floor_ ? floor_ : k->speed;
     int16_t up, fwd;
     smk_dsp_sincos(0x0E00, s, &up, &fwd);
     k->zvel = up;
-    k->speed = fwd;
+    /* An AI kart KEEPS its speed at the launch - MEASURED (NOTES 280): DK
+     * Jr 1330 on the ramp, 1380 the frame after, held through the flight;
+     * the player's own path (src/player.c) takes speed*cos, as the oracle
+     * showed for the player.  The floor is the player's, unverified for
+     * a slow AI kart. */
+    (void)fwd;
+    k->speed = s;
     k->z = (int32_t)0x0280 << 8;
     k->airborne = true;
 }
@@ -252,7 +260,7 @@ void smk_kart_move_ex(smk_kart *k, const smk_track *t, bool auto_ramp)
     {
         uint8_t here = smk_track_surface(t, smk_kart_px(nx), smk_kart_px(ny));
         if (auto_ramp && (here & 0xFE) == 0x10 && !k->airborne) {
-            smk_kart_ramp(k);
+            smk_kart_ramp(k, t->theme);
             k->x = nx;
             k->y = ny;
             return;

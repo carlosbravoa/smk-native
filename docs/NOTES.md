@@ -12186,7 +12186,8 @@ that falls short is in sector 20 and the AI aims at waypoint 21: the
 southbound road again.  The port does the same (`lower.c`: sector 20 on
 frame 0, heading swinging to 180 by frame 40).
 
-**What that leaves open.**  By the law, no 50cc kart clears the crossing
+**What that leaves open.**  (Closed in NOTES 280: the boost pad before
+the ramp, which the field never had.)  By the law, no 50cc kart clears the crossing
 - Mario's 50cc top of 784 lands around 620 - so the original's field
 should land short there every lap unless something the recordings do
 not show intervenes: a different line, a mushroom, the rescue dropping
@@ -12292,3 +12293,68 @@ Under the autopilot on Mario Circuit 1: 15 / 13 / 5 attacks a race at
 that were all drops; the recordings, with a human who pulls away, hold
 5 / 4 / 6 / 2 / 3.  The per-kart constants `SMK_AI_NEAR` and
 `SMK_AI_COOL` are gone.
+
+## 280. Mario Circuit 2 closed: the boost pad the field never had, and why the balance shifts by course
+
+The user's `mc2-real` (Mushroom Cup, 50cc, five wins) and two more cups
+(`mc2` = Flower, `mc3` = Star), with the question: *"in round 4, Bowser
+Castle, I easily overlapped everyone, but in Mario Circuit 2 I couldn't
+get away too much from DK Jr."*
+
+### The crossing, in the original
+
+`ailog.lua` on the MC2 race: **31 of 31** AI approaches to the ramp
+cleared the crossing, every kart landing at x 845-920 in sector 32-33.
+They arrive at the ramp at **1060-1323** in a race whose 50cc chase row
+tops at 896.  DK Jr's lap (`dkboost.lua`, the kart's own words):
+
+    f32676  x 507  spd  905  $FC 0    $EE  +6   $AE $40   road, at the chase target
+    f32678  x 514  spd  907  $FC 31   $EE +50   $AE $16   THE BOOST PAD: $FC = $20 re-armed each frame, +$32 a frame
+    f32686  x 548  spd 1307  $FC 30   $EE +50   $AE $40
+    f32688  x 558  spd 1330  $FC 30   $EE +50   $AE $10   the ramp: zvel 414 (= 1307*sin - one gravity), z 4.1
+    f32690  x 569  spd 1380  $ED/$EE 0          $E2 $8080 airborne: the speed HELD, no cosine, nothing acting
+    f32720  x 730  spd 1380  z 2.2              a straight line from the ramp to the landing
+    f32722  x 741  spd 1380  $FC 30   $EE -24   landed in sector 31: the normal decel, $FC frozen at 30
+    f32738  x 817  spd 1108  $FC 30   $EE  -8   sector 32 (attribute 3) and still no boost
+
+The AI's throttle is a jump table by its state `$AC` (`$80AD76`): 0 the
+normal `$B035`, `$10` the boost `$B015`.  `$B015` runs `$80A5E4` - `dec
+$FC; +$32 a frame to $7E0` - only in a sector whose waypoint attribute
+is 3 and only while `$FC` counts; the pad's handler puts the kart in
+state `$10`, and the launch takes it out, which is why `$FC` sits at 30
+for the rest of the lap.  The AI's launch keeps the speed (the player's
+takes speed*cos, oracle-measured in NOTES 278); in the air nothing
+throttles or steers.
+
+The port's AI had NONE of this: no class `$16` at all in `smk_racer_step`
+(the player had it, NOTES 149), so the field reached the ramp at 900 and
+landed on the lower road into sector 20's loop (NOTES 278).  Now:
+`boost_t` on the racer, re-armed to 32 on the pad, stepping +$32 to
+$7E0 in attribute-3 sectors, cleared by a launch; the heading and the
+speed held in the air; `smk_kart_ramp` keeps the speed; and `$80B79E`'s
+Bowser Castle ramp floor of `$400` by theme, for the player too.  The
+rig (`zip.c`): 892 -> 1294 on the strip -> 1344 held -> lands at 750 ->
+1272/1192/1128/1088 - the recording's shape.  Track 15 laps in **1,513**
+frames against 3,698 before and 4,299 before that; the field race there
+finishes DK Jr 1'49"50 to the autopilot's 1'48"73 where Yoshi used to
+take 3'32".  All gates green.
+
+### Why Bowser Castle is easy and Mario Circuit 2 is not
+
+Not the rubber band - DK Jr sat on the chase row 86% of both races.  The
+table the row indexes is per SECTOR, by the waypoint attribute the course
+designer set, and the courses differ:
+
+    track            sectors  attr 0/1/2/3      mean chase target   P1 median   best AI median
+    Bowser Castle 1     35    10 / 13 / 9 / 3        715               804          674
+    Mario Circuit 2     35     1 / 13 / 12 / 9       814               862          845
+    Mario Circuit 1     30     3 /  9 / 9 / 9        800               863          769
+    Donut Plains 1      37     4 / 24 / 8 / 1        730               862          719
+    Ghost Valley 1      33     6 / 11 / 11 / 5       762               833          728
+
+Ten of Bowser Castle's sectors hold the AI to 512 where the human drives
+860; Mario Circuit 2 has one such sector, nine at the top entry, and a
+boost pad that takes the field to 1380 once a lap.  The human's speed is
+the class's everywhere; the field's is what the course's attributes
+allow.  That is the balance, and the port carries the same table, the
+same attributes and now the same pad.

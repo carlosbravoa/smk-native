@@ -414,7 +414,12 @@ void smk_racer_step(smk_racer *r, const smk_track *trk,
     r->dbg_want = want;
     int16_t diff = (int16_t)(want - r->k.angle);
     if (r->escape > 0) diff = 0;             /* hold the escape heading */
-    if (diff > AI_SNAP || diff < -AI_SNAP) {
+    /* MEASURED (NOTES 280): a flying AI kart holds its heading - DK Jr's
+     * Mario Circuit 2 flight is a straight line from the ramp to the
+     * landing - so nothing steers it in the air */
+    if (r->k.airborne) {
+        /* keep the angle */
+    } else if (diff > AI_SNAP || diff < -AI_SNAP) {
         uint16_t err = (uint16_t)(diff > 0 ? diff : -diff);
         /* DECODED ($80AFF9): the turn amount is the physics blob's word at
          * $C8 + 7 - and $80AFBE only ever reaches it with a value the
@@ -461,9 +466,30 @@ void smk_racer_step(smk_racer *r, const smk_track *trk,
         target += SMK_AI_RANK_BONUS[r->rank & 7];
     /* DECODED ($80A701 structure): off-road surfaces cap the speed and the
      * over-cap decel row applies.  Cap values are measured (NOTES 053). */
+    bool boosting = false;
     {
         uint8_t sv = smk_track_surface(trk, smk_kart_px(r->k.x),
                                        smk_kart_px(r->k.y));
+        /* THE BOOST PAD, class $16 ($80B47B): $FC = $20, and $80A5E4 then
+         * adds $32 a frame up to $7E0 while it counts.  The player had it;
+         * the field did not, which is why the original's karts reach Mario
+         * Circuit 2's ramp at 1300 and ours at 900 (NOTES 280: DK Jr 901 ->
+         * 1007 -> 1330 -> 1380 across the strip, in the user's recording). */
+        if ((sv & 0xFE) == 0x16 && !r->k.airborne && r->hit_t == 0) r->boost_t = SMK_BOOST_PAD_T;
+        /* $80B015 -> $80A5E4: the AI's boost branch runs only in a sector
+         * whose waypoint attribute is 3 (the fast ones), and never in the
+         * air.  MEASURED on DK Jr (NOTES 280): $FC re-armed at 32 on the
+         * pad and stepping down, frozen at 30 through the flight and
+         * after the landing in an attribute-2 sector, where the normal
+         * decel took over. */
+        /* ...and the flight ends the boost STATE ($AC): after the landing
+         * DK Jr's $FC still read 30 in an attribute-3 sector and the normal
+         * decel ran, so the pad's state does not survive a launch */
+        if (r->k.airborne) r->boost_t = 0;
+        if (r->boost_t > 0 && (crs->wattr[r->sector] & 3) == 3) {
+            r->boost_t--;
+            boosting = true;
+        }
         /* the real AI ignores surfaces (rubber-band cheat, NOTES 057);
          * we apply a softened measured cap so the field stays honest but
          * competitive - labelled behaviour */
@@ -504,7 +530,14 @@ void smk_racer_step(smk_racer *r, const smk_track *trk,
      * the original never loses 60 in a frame, ours lost 100 ten times
      * per thousand kart-frames (NOTES 277). */
     int32_t accel;
-    if (r->k.speed < target)
+    if (r->k.airborne) {
+        accel = 0;                                  /* the air holds the speed */
+    } else if (boosting) {
+        /* $80A5E4: the boost's own throttle, +$32 a frame to $7E0 */
+        int s = r->k.speed + SMK_BOOST_STEP;
+        if (s > SMK_BOOST_CAP) s = SMK_BOOST_CAP;
+        accel = (int32_t)(s - r->k.speed) << 16;
+    } else if (r->k.speed < target)
         accel = (int32_t)smk_physics_accel(phys, r->k.speed) << 8;
     else {
         int gap = r->k.speed - target;

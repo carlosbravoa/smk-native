@@ -425,7 +425,10 @@ void smk_demolog_sync(const smk_demolog *d, int i, smk_player *p, smk_kart *k);
 void smk_demolog_pad(const smk_demo_frame *r, uint16_t *held, uint16_t *pressed);
 
 void smk_kart_launch(smk_kart *k, int16_t zvel);
-void smk_kart_ramp(smk_kart *k);       /* a class-$10 ramp by the ROM's law */
+void smk_kart_ramp(smk_kart *k, int theme);   /* a class-$10 ramp by the ROM's law; theme 6 floors at $400 */
+#define SMK_BOOST_PAD_T   0x20   /* $80B47B: $FC = $20                     */
+#define SMK_BOOST_STEP    0x32   /* $80A5F6: +$32 a frame while $FC counts  */
+#define SMK_BOOST_CAP     0x07E0 /* $80A5E8: the boost's ceiling            */
 void smk_kart_bounce_damp_for_test(smk_kart *k);   /* NOTES 125 gate */
 
 static inline int smk_kart_px(int32_t v) { return (int)(v >> SMK_POS_SHIFT); }
@@ -1186,6 +1189,7 @@ typedef struct {
     int      skill;         /* ($7F + lap) & 7: which $80AF0F row        */
     int      trouble;       /* $84 != 0 or $10 & $0020 -> the $18 row    */
     int      branch;        /* which $80ADA0 branch answered (diagnostic) */
+    int      boost_t;       /* $FC: a boost pad's 32 frames of +$32 a frame (NOTES 280) */
     uint16_t dbg_want;      /* $FA: the steering target this frame        */
     /* hit by an item (docs/ITEMS.md §6).  The AI has no $A6 machine here,
      * so the tumble is carried on the racer: pose spin, speed to zero. */

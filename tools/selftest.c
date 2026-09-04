@@ -1373,7 +1373,7 @@ int main(int argc, char **argv)
         {
             smk_kart k = {0};
             k.speed = 400;                 /* under the $2E0 floor: the slowest launch */
-            smk_kart_ramp(&k);
+            smk_kart_ramp(&k, 1);
             rpeak = (int)(k.z >> 16);      /* $1F = $280 from the first frame */
             for (int f = 0; f < 80 && k.airborne; f++) {
                 smk_kart_gravity(&k);

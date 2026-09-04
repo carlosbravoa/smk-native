@@ -720,7 +720,8 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
     if (!k->airborne && (surf & 0xFE) < 0x20 && p->jump_state == 0) {
         switch (surf & 0x1E) {
         case 0x10:                          /* $80B67C: ramp */
-            if (k->speed < 0x2E0) k->speed = 0x2E0;   /* $80B7AF */
+            /* $80B79E: Bowser Castle's ramps ($0126 = $0C) floor at $400 */
+            if (k->speed < (t->theme == 6 ? 0x0400 : 0x02E0)) k->speed = t->theme == 6 ? 0x0400 : 0x02E0;   /* $80B7AF */
             launch(p, k, 0x0E00);
             k->z = (int32_t)0x0280 << 8;               /* $1F = $280 */
             p->jump_state = 2; p->drive = 2;
