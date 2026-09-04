@@ -147,6 +147,9 @@ static void fill(uint32_t *fb, int w, int h, int vx, int vy, int vw, int vh,
  * counter - nothing here keeps state - and none of it is ROM art except
  * the font and the kart sprites. */
 static const smk_sprites *driver_art(const smk_rom *rom, int who);
+static void kart_side_clipped(const smk_rom *rom, const uint32_t *palette, int who,
+                              int vx, int vy, int cx0, int cx1,
+                              uint32_t *fb, int w, int h);
 
 static uint32_t hash32(uint32_t x)
 {
@@ -652,23 +655,18 @@ static void draw_title(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
     /* the field drives past along the bottom: the eight drivers' rear
      * views on a road strip, in a loop */
     {
-        int road_y = 150;
-        fill(fb, w, h, 0, road_y - 34, VW, 42, 0x50000000);
-        fill(fb, w, h, 0, road_y + 4, VW, 2, 0xFFE0E0E0);
+        /* the road is a box with ends, and the karts drive THROUGH it -
+         * clipped to it, in at the left edge and out at the right, the
+         * class screen's effect (the user asked for the same here) */
+        const int RX = 8, RW = VW - 16, road_y = 150;
+        fill(fb, w, h, RX, road_y - 34, RW, 42, 0x50000000);
+        fill(fb, w, h, RX, road_y + 4, RW, 2, 0xFFE0E0E0);
         for (int i = 0; i < SMK_CHARACTERS; i++) {
-            int span = VW + 8 * 40;
-            int x = (int)((ui->tick * 3u / 2u + (unsigned)i * 40u) % (unsigned)span) - 32;
+            int span = RW + SMK_SPR_PX + 7 * 40;
+            int x = RX - SMK_SPR_PX / 2
+                  + (int)((ui->tick * 3u / 2u + (unsigned)i * 40u) % (unsigned)span);
             int bounce = ((ui->tick / 4 + (unsigned)i) & 1) ? 1 : 0;
-            /* seen from the side, travelling right: the measured
-             * rotation rule at a quarter turn (NOTES 041) */
-            const smk_sprites *s = driver_art(rom, i);
-            if (s && palette) {
-                bool hf = false;
-                int fr = smk_sprite_for_heading(SMK_SPR_TIER0, 0x4000, &hf);
-                smk_draw_sprite(s, fr, palette, SMK_DRIVERS[i].pal,
-                                ui_ox + x * ui_sc, ui_oy + (road_y + bounce) * ui_sc,
-                                ui_sc, hf, fb, w, h, w);
-            }
+            kart_side_clipped(rom, palette, i, x, road_y + bounce, RX, RX + RW, fb, w, h);
         }
     }
     if ((ui->tick / 30) & 1)
