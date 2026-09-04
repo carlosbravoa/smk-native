@@ -463,7 +463,13 @@ static void env_reset_one(smk_env *e)
     e->kart.y = (int32_t)(gy * SMK_POS_ONE);
     e->kart.angle = gh;
     smk_player_reset(&e->player, gh);
-    e->player.coins = (e->cfg.mode == SMK_MODE_TT) ? 0 : 2;
+    /* $81E3DA by the grid slot: 2 2 3 3 4 4 5 5, so the back row - which
+     * is where the player starts - begins on FIVE, not two (NOTES 275).
+     * Coins set the top speed ($D6 = $B4 + 8*min(coins,10)), so this is
+     * not bookkeeping; the environment had the player three coins and a
+     * chunk of top speed short of the game. */
+    e->player.coins = (e->cfg.mode == SMK_MODE_TT)
+                    ? 0 : smk_start_coins(e->rom, SMK_GRID_SLOT(0));
     /* the shell hands a time trial its one mushroom (ledger S19) */
     e->player.item_held = (e->cfg.mode == SMK_MODE_TT) && e->cfg.mushroom;
 
