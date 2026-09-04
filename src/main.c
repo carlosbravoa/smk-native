@@ -4534,6 +4534,19 @@ int main(int argc, char **argv)
                  * frame would run the policy four times faster than the
                  * rate it learned at, which is a different driver.
                  */
+                /* SMK_POLICY_TRACE: say once, per view, that the trained
+                 * driver actually took the wheel - "it loaded" and "it is
+                 * driving" are different claims, and only the second one
+                 * answers "will it play against me if I just pick VS CPU". */
+                if (getenv("SMK_POLICY_TRACE")) {
+                    static int said[2];
+                    int v2 = cur_view & 1;
+                    if (!said[v2]) {
+                        said[v2] = 1;
+                        printf("policy drives view %d (track %d) from race frame %ld\n",
+                               cur_view, cur_track, hud_race_frames);
+                    }
+                }
                 if (--net_hold <= 0) {
                     float obs[SMK_ENV_OBS];
                     smk_obs_race race = {
