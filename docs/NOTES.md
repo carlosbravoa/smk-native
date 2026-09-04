@@ -11930,8 +11930,9 @@ Now (OURS, S20):
   beside each a road strip with a kart running along it at that
   class's pace (2, 3 and 4 px a tick - the proportion of the ROM's own
   class top speeds, not their values): Toad, Mario and Bowser, light,
-  medium and heavy, the user's twist.  The kart stays inside its card
-  and reappears at the left.  Up/down, Enter.
+  medium and heavy, the user's twist.  The kart drives THROUGH the
+  strip, clipped to it - in at the left edge, out at the right - rather
+  than appearing and vanishing whole.  Up/down, Enter.
 * **SELECT DRIVER** is a 4x2 grid of 54x60 cards, each holding its kart
   whole, seen from the side and facing right through the measured
   rotation rule at a quarter turn (NOTES 041).  The chosen card is gold

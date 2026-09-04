@@ -757,6 +757,31 @@ static void kart_side(const smk_rom *rom, const uint32_t *palette, int who,
                     fb, w, h, w);
 }
 
+/* the same kart, clipped to a card: only the pixels inside [cx0, cx1) in
+ * virtual x are drawn, so it can slide in through one edge and out the
+ * other instead of appearing and vanishing whole */
+static void kart_side_clipped(const smk_rom *rom, const uint32_t *palette, int who,
+                              int vx, int vy, int cx0, int cx1,
+                              uint32_t *fb, int w, int h)
+{
+    const smk_sprites *s = driver_art(rom, who);
+    if (!s || !palette) return;
+    bool hf = false;
+    int fr = smk_sprite_for_heading(SMK_SPR_TIER0, 0x4000, &hf);
+    if (fr < 0 || fr >= s->frames) return;
+    const uint8_t *src = s->px[fr];
+    int x0 = vx - SMK_SPR_PX / 2, y0 = vy - SMK_SPR_PX;   /* at the wheels */
+    for (int y = 0; y < SMK_SPR_PX; y++)
+        for (int x = 0; x < SMK_SPR_PX; x++) {
+            int px = x0 + x;
+            if (px < cx0 || px >= cx1) continue;
+            uint8_t v = src[y * SMK_SPR_PX + (hf ? SMK_SPR_PX - 1 - x : x)];
+            if (!v) continue;
+            fill(fb, w, h, px, y0 + y, 1, 1,
+                 0xFF000000u | palette[(SMK_DRIVERS[who].pal + v) & 0xFF]);   /* fill reads alpha */
+        }
+}
+
 /* a 2-px frame around a card */
 static void frame_box(uint32_t *fb, int w, int h, int vx, int vy, int vw, int vh,
                       uint32_t c)
@@ -799,10 +824,12 @@ static void draw_class(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
         static const int WHO[3] = { 7, 0, 2 };
         const int RX = 118, RW = 112;
         fill(fb, w, h, RX, vy + 28, RW, 2, 0xFFE0E0E0);
-        int span = RW - 32;
-        int x = RX + 16 + (int)((ui->tick * (unsigned)(c + 2) / 2u) % (unsigned)span);
+        /* it drives THROUGH the card: in at the left edge, out at the
+         * right, clipped to the card's own width */
+        int span = RW + SMK_SPR_PX;
+        int x = RX - SMK_SPR_PX / 2 + (int)((ui->tick * (unsigned)(c + 2) / 2u) % (unsigned)span);
         int bounce = on && ((ui->tick / 4) & 1) ? 1 : 0;
-        kart_side(rom, palette, WHO[c], x, vy + 28 - bounce, 1, fb, w, h);
+        kart_side_clipped(rom, palette, WHO[c], x, vy + 28 - bounce, RX, RX + RW, fb, w, h);
         if (on && ((ui->tick / 12) & 1) == 0)
             fill(fb, w, h, 6, vy + 2, 6, 10, 0xFFFFC040);
     }
