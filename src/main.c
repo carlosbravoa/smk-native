@@ -1767,6 +1767,20 @@ static bool slot_is_driven(int q)
     return false;
 }
 
+/* WHO drives a slot, which is not the same question as whether anyone
+ * does.  The results table used slot_is_driven and so printed "<- you"
+ * against the CPU's row as well as the human's - true in VS CPU, where
+ * both views drive, and visible the moment there was something on the
+ * other screen worth telling apart. */
+enum { DRIVER_AI = 0, DRIVER_HUMAN = 1, DRIVER_BOT = 2 };
+static int slot_driver(int q)
+{
+    for (int i = 0; i < nviews; i++)
+        if (views[i].drives && views[i].slot == q)
+            return views[i].bot ? DRIVER_BOT : DRIVER_HUMAN;
+    return DRIVER_AI;
+}
+
 /* Has everybody who is DRIVING finished?  In a two-view race the results
  * belong to both of them, so the screen waits - but not for ever: a
  * driver who is stuck in the scenery must not hold the other's results
@@ -2089,7 +2103,7 @@ static void build_result_table(smk_ui_result *res, smk_racer *rs,
         rs[i].place = p + 1;
         res->field[p].character = rs[i].character;
         res->field[p].total     = rs[i].finish_frame;
-        res->field[p].player    = slot_is_driven(i);
+        res->field[p].player    = slot_driver(i);
     }
     res->entries  = SMK_CHARACTERS;
     res->position = rs[who].place;
@@ -5243,7 +5257,8 @@ int main(int argc, char **argv)
                            SMK_DRIVERS[result.field[q].character
                                        % SMK_CHARACTERS].name,
                            result.field[q].total >= 0 ? tt : "DNF",
-                           result.field[q].player ? "   <- you" : "");
+                           result.field[q].player == 2 ? "   <- CPU"
+                           : result.field[q].player ? "   <- you" : "");
                 }
                 if (shell || getenv("SMK_RESULT_SHOT")) { smk_ui_gp_award(&ui, &result); ui.screen = SMK_UI_RESULT; }
             }

@@ -1977,7 +1977,10 @@ typedef struct {
     struct {
         int  character;   /* SMK_DRIVERS index                            */
         long total;       /* race frames at its last crossing, -1 if DNF  */
-        int  player;      /* the one the human drove                      */
+        /* 0 an AI kart, 1 the human's, 2 a CPU-driven VIEW (--autodrive
+         * or --cpu-policy).  It used to be a bool from slot_is_driven,
+         * which marked the CPU's row "<- you" as well. */
+        int  player;
     } field[SMK_CHARACTERS];
     int  entries;         /* how many of field[] are filled (0 = trial)   */
 } smk_ui_result;

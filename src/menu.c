@@ -922,7 +922,13 @@ void smk_ui_draw_result(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
 
         for (int i = 0; i < res->entries && i < SMK_CHARACTERS; i++) {
             int y = 58 + i * 12;
-            const uint32_t *col = res->field[i].player ? gold
+            /* gold is the DRIVER's own row, and only his: a CPU-driven
+             * view (--cpu-policy, --autodrive) is another racer as far as
+             * this table is concerned, however it is being steered.  It
+             * used to take the gold as well, because `player` was a bool
+             * meaning "someone drives this slot". */
+            const uint32_t *col = res->field[i].player == 1 ? gold
+                                : res->field[i].player == 2 ? hi
                                 : i < 4 ? lo : off;
             char nm[16], tm[16];
             snprintf(nm, sizeof nm, "%s",
