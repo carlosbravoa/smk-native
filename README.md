@@ -42,8 +42,14 @@ keeps the size it was asked for, so benchmarks and screenshots are
 unaffected.
 
 **Two players.**  The mode screen has a PLAYERS row: `1P`, `VS CPU` (the
-right half of the screen follows a CPU kart) and `VS 2P` (a second person
-on the second grid slot).  The split is **side by side**, left and right -
+right half of the screen is a CPU kart) and `VS 2P` (a second person on
+the second grid slot).  **The CPU is a neural network**: a policy trained
+by reinforcement learning in the port's own headless environment, built
+into the binary (`src/netpolicy.inc`) and pressing the same buttons a
+person would through the same player physics, with no privileged control
+over its kart.  The dashboard under the speed dial says who is driving
+each view: `P1`, `P2`, `NEURAL`, or `AUTO` for the scripted fallback,
+which still takes the battle arenas and any build without weights.  The split is **side by side**, left and right -
 a deliberate deviation from the original, which stacks its two views
 because it only has 224 lines to divide.  What the menu offers depends on
 what is plugged in: with no controller `VS 2P` is unavailable, with one it
@@ -59,8 +65,10 @@ simulation tick per frame, for headless runs), `--autodrive` (drive itself — a
 crude test aid, not the shipped AI: it follows the course direction field
 and recovers to the racing line when it leaves the road, which gets it round
 most courses but not all), `--shot FILE` (render one frame to a BMP and
-exit), `--pads FILE` (drive player 1 from a trained policy's own choices —
-see [`docs/RL.md`](docs/RL.md)).
+exit), `--pads FILE` (drive player 1 from a trained policy's own choices)
+and `--cpu-policy FILE` (a different network for the CPU than the built-in
+one) — both in [`docs/RL.md`](docs/RL.md).  `SMK_POLICY_TRACE=1` prints
+when the network actually takes the wheel.
 
 The renderer is single-threaded software and still does ~100 fps at 1920×1080,
 so resolution is not a constraint.
@@ -68,90 +76,100 @@ so resolution is not a constraint.
 ## What works
 
 - All **24 tracks** (20 GP courses + 4 battle arenas), each in **its own
-  theme** — tileset, palette and surface data from the ROM's own tables
-- Real Mode 7 tiles with the game's per-tile palette-base remapping
-- **Solid walls**: the surface-behaviour table is the ROM's, and the test for
-  "is this tile solid" is literally the one the game's collision path uses
+  theme** — tileset, palette and surface data from the ROM's own tables,
+  drawn as real Mode 7 tiles with the game's per-tile palette remapping on
+  a resolution-independent perspective plane, at a fixed **60.0988 Hz**
 - Kart **physics in the ROM's own arithmetic**: 16.16 position, 8.8
   velocity, 65536-unit angle, the exact integration from `$80879D`, the
-  32-bit speed/acceleration model from `$80A4E1`, and the ROM's own
-  **acceleration curve and target speeds** read at runtime (`--class`
-  selects 50/100/150cc)
-- The **player's kart drawn from the ROM's own sprite frames** — 32x32 4bpp,
-  read at runtime; `--character 0..7` selects any of the eight drivers, each
-  with its own sheet and palette
-- The **real starting grid**, read off the game's own demo race, with the
-  other seven karts drawn in world space and scaled by distance
-- A resolution-independent perspective ground plane
-- Fixed **60.0988 Hz** tick, the SNES NTSC vblank rate
-- A **time trial** that is the game's own: five laps because `$014C = $8500`
-  and the grid sits behind the line (so five laps are six crossings), no
-  coins and no item boxes, and the kart alone on the course — all measured,
-  not assumed.  Menus draw with the ROM's own font and palettes, and the
-  cup line-up and course names come from its own tables
+  32-bit speed/acceleration model from `$80A4E1`, the ROM's acceleration
+  curves and target speeds per class, the surface table, drift, hop, the
+  turbo start and the 336-frame countdown — gated by replaying two human
+  runs through the port frame-exact
+- **Three modes.**  Grand Prix: four cups of five, the ROM's 9/6/3/1 to
+  the top four, points and championship screens, the next grid from the
+  last race's order, coins by grid slot, a retry when ranked out, the
+  trophy.  Single Race.  Time Trial, with the top five laps per course
+  kept on disk.  Two players **side by side**, or one player against the
+  neural CPU
+- **Seven opponents** on the ROM's own racing lines: its direction field,
+  speed classes, rubber band (`$80ADA0`), kart-to-kart contact with the
+  weight table, ramp launches, wall escapes, Lakitu's rescue; all 20 GP
+  courses lapped
+- **The CPU opponent is a trained neural network** (below), pressing
+  buttons through the player physics like a person
+- **Items**: the roulette, the nine items, their projectiles, hits and
+  effects, the AI's own weapons — decoded from the ROM and measured on the
+  running game ([`docs/ITEMS.md`](docs/ITEMS.md))
+- **Sound effects** rendered from the game's own BRR samples, by its own
+  ids: four engines, six surfaces, the voices, the held sounds.  Music is
+  pre-recorded from your own ROM and mapped by you
+  ([`docs/SOUND.md`](docs/SOUND.md)); off by default
+- **The furniture**: the HUD on the game's own art, Lakitu and his light,
+  the flag, the lap sign, the Thwomps, moles, cheep-cheeps, pipes,
+  breakable blocks, water and the fall, the horizon per theme, the
+  winner's pose, the squash, a track map
+- Karts, objects and effects from the ROM's sprite sheets, with the
+  rotation frames and the size ladder measured off the running game
 
-Everything asset-side is verified byte-for-byte against the game's own
-65816 code, executed in an interpreter (see below).
+## What is still open
 
-## What works now (updated)
+The **menus are our own layout** in the ROM's font and palettes, not its
+tilemaps; the AI has no per-character personality; the ranked-out retry's
+exact rule is played rather than decoded; some sound ids are captured
+but not wired.  Every shortcut and every approximation is a labelled
+entry in the ledger in [`docs/ROADMAP.md`](docs/ROADMAP.md), with the
+measurement that would close it.
 
-- **Seven opponents** drive the ROM's own racing lines with its decoded
-  speed classes, turn-rate tables, >90° turnaround, tangential wall bounce
-  and Z-axis jumps.  In a lap harness the AI completes strict full laps on
-  14 of 20 GP tracks at plausible times.
-- **Laps and sectors** use the decoded rule (`$808994`): the crossing
-  counts only on the finish strip, guarded by monotonic progress; sector
-  capture follows `$808962` (off-course keeps the old sector; airborne
-  rejects jump-zone sectors).
-- **Sprites turn correctly**: the frame-selection rule was measured from
-  the running game (22.5° + 11.25°·n boundaries, mirrored far half).
-
-## What does not work yet
-
-- **No items, no race timing/rank, no sound.**
-- **The feel is only partly the game's.** Kinematics, the speed model and
-  the acceleration curve are exact. What is still invented is *policy*:
-  which target speed the player's input selects, the braking rate, and the
-  steering rate. Drift, hop and per-surface response are undecoded.
-- **No sound, no sprites, no HUD, no menus.**
-
-Every shortcut is listed in the ledger in [`docs/ROADMAP.md`](docs/ROADMAP.md).
-
-## Training a driver
+## The neural CPU, and training your own
 
 The port doubles as a headless deterministic RL environment - the same C
 the window races, stepped from an action instead of a gamepad, at about
 **36,000x realtime** on one core.  No emulator and no renderer are in the
-loop.
+loop.  **The shipped VS CPU driver came out of it**: a two-layer MLP, 81
+inputs, two 256-unit layers, 14 actions, trained with PPO (300 lines of
+PyTorch in `tools/rl/`, no framework) across all three engine classes and
+three situations - alone, against the field, against the field with
+items - on 16 of the 20 GP courses, with four held out to show it learned
+to drive rather than twenty routes.
+
+What it sees is **not pixels** and **not where it is**: velocity in its
+own frame, the slip angle, the next four waypoints as bearings, its
+offset from the racing line, twelve rangefinders, the ROM's own direction
+field, its rank, the nearest three karts, the item held and the nearest
+projectile.  No absolute position, no course identity, no clock - so it
+cannot memorise a route and cannot contain one.  The weights
+(`src/netpolicy.inc`, int8 with a float scale per row, 84 KB) are ours:
+parameters fitted by gradient descent, with no ROM bytes in them.
 
 ```bash
 make envtest          # the environment's gate, and its throughput
 make envcheck         # prove it is frame-for-frame the same game as the window
-make train TRACK=0    # PPO, in tools/rl/
+make train TRACK=0    # PPO on one course; --gp --tracks gp --classes 0,1,2
+                      # --holdout 3,11,16,19 is how the shipped one was made
 make watch RUN=runs/track0   # watch the CURRENT policy drive, in the real
                              # window - safe while the training is running
 
-# and race against it: the VS CPU driver becomes the trained policy
+# race against a policy of your own instead of the built-in one
 python3 tools/rl/export_net.py runs/track0/policy.pt -o cpu.net
-./build-native/smk --players cpu --cpu-policy cpu.net --class 1
+./build-native/smk --players cpu --cpu-policy cpu.net
+make embed-policy NET=cpu.net && make game     # or make it the default
 ```
 
 The CPU driver **presses buttons** - it is a full `smk_player` in its own
 grid slot, going through `smk_player_step` like a person's keyboard, with
-no privileged control over its kart. Inference is 30 lines of C
-(`src/net.c`); there is no runtime to link.
+no privileged control over its kart, and it decides once every four
+frames, the rate it learned at.  Inference is 30 lines of C (`src/net.c`);
+there is no runtime to link.  Off the 20 GP courses, or in a build with
+no weights, the scripted driver in `src/autopilot.c` takes over and the
+dashboard says `AUTO` instead of `NEURAL`.
 
-Three million agent steps - about half a minute on one GPU - is enough
-for a policy that finishes every lap of Mario Circuit 1 and beats
-`src/autopilot.c` by 26 seconds over three.  The environment is verified
-against the SDL game the hard way: a race is driven in the environment,
-its inputs are replayed through the actual game binary, and the kart's
-position and speed are compared on **every frame** - currently 8,966 out
-of 8,966 identical.
-
-What the ROM provides and what is ours - the observation, the actions,
-the reward, the episode rules - is set out with its own ledger in
-[`docs/RL.md`](docs/RL.md).
+The environment is verified against the SDL game the hard way: a race is
+driven in the environment, its inputs are replayed through the actual
+game binary, and the kart's position and speed are compared on **every
+frame**; then the same race is run on both sides and all 81 observation
+numbers are compared at matched frames.  What the ROM provides and what
+is ours - the observation, the actions, the reward, the episode rules -
+is set out with its own ledger in [`docs/RL.md`](docs/RL.md).
 
 ## The oracle
 
@@ -189,6 +207,7 @@ include/, src/     the native game (C11 + SDL2)
   assets.c         pointer tables, tilemap/tileset/palette, tile expander
   mode7.c          perspective ground-plane renderer
   env.c            the headless RL environment (docs/RL.md)
+  net.c            the trained CPU driver's forward pass; netpolicy.inc its weights
   main.c           SDL host: window, fixed timestep, input
 tools/             the reverse-engineering toolkit (Python)
   smktool/         rom, disassembler, symbols, codec, graphics, assets
@@ -200,7 +219,7 @@ docs/FINDINGS.md   what the ROM turned out to contain
 ## Verification
 
 ```bash
-make selftest   # 9 checks through the C code the game actually runs
+make selftest   # 97 checks through the C code the game actually runs
 make test       # 25 checks: ROM identity, disassembler, codec, build loop
 make roundtrip  # every disassembled instruction reassembles byte-identically
 make shots      # a still from all 24 tracks

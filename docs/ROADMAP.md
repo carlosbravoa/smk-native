@@ -54,6 +54,23 @@ re-investigating.
 
 ## Shortcut & assumption ledger (current)
 
+**S44 — The VS CPU driver is a trained neural network, and it is OURS.**
+`src/netpolicy.inc` (int8 weights, a float scale per row, 84 KB) is a
+two-layer MLP - 81 inputs, two 256-unit layers, 14 actions - fitted by
+PPO in the environment below, across the three classes and three
+situations (alone, the field, the field with items) on 16 GP courses
+with four held out.  It drives through `smk_player_step` by pressing
+buttons, one decision every four frames, with no privileged control; the
+dashboard names it `NEURAL`.  Its observation carries no absolute
+position, course identity or clock, so it cannot store a route, and no
+ROM bytes pass through it.  Off the 20 GP courses (the arenas have no
+racing line: pointed at one it sat still, measured) and in a build with
+no weights, `src/autopilot.c` drives and the dashboard says `AUTO`.
+`--cpu-policy FILE` substitutes another network.  What it is NOT: the
+ROM's own AI - that is the seven field karts, `$80ADA0` and all - and a
+claim about how Super Mario Kart plays.  It is a better racer than the
+scripted driver and the honest gap to a person is in docs/RL.md.
+
 **S43 — The RL environment's observation, actions, reward and episode
 rules are OURS.** `src/env.c` steps only the game's own code - the
 physics, the surfaces, the sector map and racing line, the `$7F:4000`
@@ -489,13 +506,13 @@ regression in them is noticed.
 | P0 oracle | **done** — 65816 interpreter, verified against the game's own decompressor |
 | P0.5 running machine | **mostly** — boots, uploads sound, runs races; no PPU picture, no SPC700, no HDMA |
 | P1 the track | **done** — themes, tilemaps, tilesets, palettes, surface table, all verified against VRAM |
-| P2 start / laps | **done for one race.**  The grid is the game's own per-track record with the player eighth (NOTES 161/164), the countdown is the measured 336 frames with Lakitu and his light over it (NOTES 162), the rev/wheelspin/turbo launch is the ROM's (NOTES 163), the lap rule is decoded (NOTES 052) and gated on 20/20 courses.  Residual: GP points and standings |
+| P2 start / laps | **done.**  The grid is the game's own per-track record with the player eighth (NOTES 161/164), then the previous race's finishing order through a cup (NOTES 275); the countdown is the measured 336 frames with Lakitu and his light over it (NOTES 162), the rev/wheelspin/turbo launch is the ROM's (NOTES 163), the lap rule is decoded (NOTES 052) and gated on 20/20 courses; the cup's 9/6/3/1 and the coins by slot are the ROM's (NOTES 198/275) |
 | P3 physics | **done for the player, and now gated by human runs** — the control is transcribed from the ROM and replays the attract race's human inputs frame-exact: 99.8% / 100% of frames within 1 px (NOTES 106-108), with tyre smoke and dust from the game's own effect object (NOTES 109).  The demo replay is exact end to end for both karts (NOTES 112).  Residual: the other six characters unverified (S13), water/snow effects, pipe-crash spin, kart contact (none observed in the demo - NOTES 112) |
 | P4 sprites | **done** — the projection is derived once from the ROM's own DSP-1 geometry (NOTES 083/084): depth(L)=4972/(L-20.36), scale=depth/256 (ratio = Les, the cross-check), camera trails the kart 61 px.  Pose ladder measured pixel-exact (NOTES 080/081).  Residual: kart-sheet rows 1-2 purpose, sprite size quantisation (ours is continuous, labelled) |
 | P5 race furniture | **part** - the live phase — ground objects stamped with the ROM's own tiles (NOTES 074), sprite-obstacle entity list decoded and colliding (NOTES 078), HUD set + clock + lap counter on the game's own art, start countdown (NOTES 085).  hazard classes decoded and ported - water ($22) wade/skim, the fall ($24/$26/$20/$28) and Lakitu's rescue as the ROM's own three states with a latched target (NOTES 113, 124).  Breakable blocks done and gated for both themes (NOTES 123/123a).  The sector map now matches the game's own $7F:5000 on all painted cells.  Lakitu's own art is now decoded and drawn for the start (NOTES 162).  Residual: the horizon/backdrop (S5), entity MOTION (S12), item behaviour, the splash/sink effects |
-| P6 opponents | **driving and competitiveness in, personality not.**  Flow-field steering (95% byte-exact), ramp launches, wall escapes and a Lakitu rescue get the field round **20/20** GP courses.  Kart-to-kart contact is the ROM's, weight classes and all (NOTES 166).  The rubber band is the ROM's own row chooser, `$80ADA0`, rebuilt in NOTES 174 and reproducing the game's choice on 94.2% of 39,074 recorded kart-frames - it turns on whether the neighbouring kart is the HUMAN, and its catch-up distances re-tune every lap.  Residual: the "in trouble" test (`$84`, `$10` bit 5) is approximated and never fires where the game is at 8%; the distance CACHE is not modelled; per-kart driving personality; items |
+| P6 opponents | **driving and competitiveness in, personality not.**  Flow-field steering (95% byte-exact), ramp launches, wall escapes and a Lakitu rescue get the field round **20/20** GP courses.  Kart-to-kart contact is the ROM's, weight classes and all (NOTES 166).  The rubber band is the ROM's own row chooser, `$80ADA0`, rebuilt in NOTES 174 and reproducing the game's choice on 94.2% of 39,074 recorded kart-frames - it turns on whether the neighbouring kart is the HUMAN, and its catch-up distances re-tune every lap.  **The VS CPU opponent is a trained neural network** (S44): it races through the player physics by pressing buttons, decides every four frames, and beats the scripted driver on courses it never trained on; the scripted `src/autopilot.c` remains as its fallback.  Residual: the "in trouble" test (`$84`, `$10` bit 5) is approximated and never fires where the game is at 8%; the distance CACHE is not modelled; per-kart driving personality |
 | P7 audio | **effects DONE and decoded** (NOTES 211-246) — the game's own ids, rendered from its own BRR samples off the chip; four engines by driver pair, six rough surfaces, the overtake voices, the held voices (engine/roulette/skid).  **Music PARKED** by the user and off by default.  Residual: nine PENDING items listed under "Where to pick up next" (1a-1i) — the bridge's rate, `$4F`/`$53`, coverage 35/71 |
-| P8 modes / menus | **part** — a working shell: title → mode → driver+class → course-by-cup → race → results, in two modes.  SINGLE RACE is a Grand Prix course on its own: eight karts, the ROM's per-character grid order (`$81EE97`, NOTES 111) on the ROM's own grid rows with the player at the back (NOTES 164), starting coins, and a finishing place.  TIME TRIAL is alone with one mushroom and keeps the top five lap times per course on disk.  Font, palettes, cup order, course names, lap count and the time-trial rules are all ROM-derived (NOTES 147/148).  Residual: the real menu art (S20), the mushroom grant rule (S19); the cup is in (NOTES 198) |
+| P8 modes / menus | **three modes, two players** — the shell: title → players → mode → driver+class → course-by-cup → race → results.  GRAND PRIX runs the cup: the ROM's 9/6/3/1 to the top four, a points screen and an animated championship, the next grid from the last race's order and the coins by slot (NOTES 198/274/275), a retry when ranked out, the trophy.  SINGLE RACE is one cup course: eight karts, the ROM's per-character grid order (`$81EE97`, NOTES 111) with the player at the back (NOTES 164).  TIME TRIAL is alone with one mushroom and keeps the top five lap times per course on disk.  1P / VS CPU (the neural driver, S44) / VS 2P side by side (S42).  Font, palettes, cup order, course names, lap count and the time-trial rules are all ROM-derived (NOTES 147/148).  Residual: the real menu art (S20), the mushroom grant rule (S19), the retry's exact rule |
 
 ## Known bugs (the user's list, 2026-08-30)
 
@@ -847,6 +864,17 @@ In rough order of value:
 14. **Art detail.** The near-object source (S15) and the kart size ladder
     (S10's other half). Both visible, neither affecting how it plays.
 
+15. **~~The VS CPU driver (user's ask)~~ - IN, and it is a neural network
+    (S44, docs/RL.md).** Trained by PPO in the port's own environment,
+    built into the binary, pressing buttons through the player physics.
+    What is left for it, in order: self-play (two policies on one grid);
+    the turbo start as a learned skill rather than `cfg.start_hold`; the
+    ninth GP parity check (Mario Circuit 1 from frame 357, one box giving
+    two items - `KNOWN_GAPS` in `tools/rl/check_obs.py`, printed and
+    measured, not hidden); and the ROM's own per-character AI data, which
+    would give the seven field karts a personality the network does not
+    need.
+
 Deliberately parked: the background's near plane and sky gradient (S5) —
 the user has said it matters less than feel.
 
@@ -996,13 +1024,21 @@ ROM's own (NOTES 083/084).  Residual: what the sheet's rows 1-2 are for.
 - Next: ITEMS - the biggest remaining gameplay gap - then entity MOTION
   (S12), then the real horizon/backdrop per track (kills S5).
 
-### P6 — Opponents  (driving ✅, competitiveness ✅, personality next)
+### P6 — Opponents  (driving ✅, competitiveness ✅, items ✅, the neural CPU ✅, personality next)
 - ✅ Steering from the game's own direction field, wall escape, ramp
   launches, Lakitu rescue: 20/20 GP courses lapped.
 - ✅ Kart-to-kart contact, weight classes and all (NOTES 166).
 - ✅ Rubber-banding: the target-speed row from rank and gap (NOTES 167).
-- Next: `$DA` and the fourth class row (S25), then per-kart personality —
-  the ROM has per-character AI data we have not looked for — and items.
+- ✅ The AI's own weapons and the items thrown at it (docs/ITEMS.md).
+- ✅ **The VS CPU driver is a neural network** (S44, docs/RL.md): PPO in
+  the port's own environment, across the three classes and three
+  situations, 16 courses trained and four held out; built into the
+  binary, pressing buttons through the player physics, `NEURAL` on the
+  dashboard, with `src/autopilot.c` as the fallback off the GP courses.
+- Next: `$DA` and the fourth class row (S25); per-kart personality — the
+  ROM has per-character AI data we have not looked for; for the neural
+  driver, self-play (two policies on one grid, which the two-player path
+  already has the machinery for) and the turbo start as a learned skill.
 
 ### P7 — Audio  — **DECIDED: pre-recorded, no SPC700 in the shipped game**
 
