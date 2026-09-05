@@ -328,6 +328,7 @@ static int  lap_sign_t = -1;             /* his lap sign, from the crossing */
 static bool item_used_once;              /* the slot shows the used look after it */
 static int  rescue_t;                    /* frames into the $0E drop      */
 static int  lak_mode, lak_row, sink_t;   /* Lakitu over the water (NOTES 283) */
+static int  spin_t;                      /* frames since a spin began (NOTES 293) */
 static bool lak_water;
 static bool player_sunk(void);
 static int  water_kart_lift(void);
@@ -1718,6 +1719,33 @@ static void step_kart(smk_kart *k, smk_track *trk,
         /* ...and the banana's spin ends the same way: $80:A9A5 plays $2A as
          * $A6 goes to $1C (NOTES 292). */
         if (was_spin && !spin) smk_sfx_play(SMK_SFX_SPIN_OUT);
+        /* THE SPIN'S OWN SOUND (NOTES 293): sample $00 keyed ten frames
+         * into the spin, its pitch register walked down this measured
+         * triangle for 48 frames - the user's "characteristic" whirr,
+         * "the same for whatever triggers the spin".  Measured on slide
+         * spin-outs ($0E/$10); played for every spin state, as the user
+         * hears it (LABELLED for $0A/$0C/$1A - in a GP the music can hold
+         * every voice and the game then drops it). */
+        {
+            static const int SPIN_PITCH[48] = {
+                5851, 6070, 6289, 6508, 6215, 5922, 5629, 5336, 5555, 5774, 5993, 6212,
+                5919, 5626, 5333, 5040, 5259, 5478, 5697, 5916, 6135, 5842, 5549, 5256,
+                4963, 4670, 4889, 5108, 5327, 5546, 5765, 5472, 5179, 4886, 4593, 4300,
+                4519, 4738, 4957, 5176, 5395, 5102, 4809, 4516, 4223, 3930, 3930, 3930 };
+            /* every spinning state - the slide's own spin-out ($0E/$10)
+             * included, which has NO end sound in the recording (its 48
+             * frames queue nothing), unlike the banana's and the tumble's */
+            bool spinning = st == 0x0A || st == 0x0C || st == 0x0E || st == 0x10 || st == 0x1A;
+            bool was_spinning = was_state == 0x0A || was_state == 0x0C || was_state == 0x0E || was_state == 0x10 || was_state == 0x1A;
+            if (spinning && !was_spinning) { spin_t = 0; if (getenv("SMK_SFX_TRACE")) printf("sfx: spin begins, state %02X\n", st); }
+            else if (spinning || spin_t > 0) spin_t++;
+            bool on = spin_t >= 10 && spin_t < 10 + 48;
+            if (!spinning && spin_t >= 10 + 48) spin_t = 0;
+            int idx = on ? spin_t - 10 : 0;
+            smk_spin_voice(cur_view, on, SPIN_PITCH[idx],
+                           smk_engine_base_volume() * (31.0f / 20.0f), sfx_side());
+            if (on && spin_t == 10 && getenv("SMK_SFX_TRACE")) printf("sfx: spin voice keyed pan %+.1f\n", sfx_side());
+        }
         if (player.hazard != was_hazard2 && player.hazard == 6)
             smk_sfx_play(SMK_SFX_FALL);              /* off the road   */
         if (player.mole_on && !was_mole) smk_sfx_play(SMK_SFX_MOLE);
@@ -2118,6 +2146,7 @@ static int show_kart = 1, show_grid = 1;
     X(int,             rescue_t)    \
     X(int,             rescue_draw_lift) \
     X(int,             lakitu_exit_t) \
+    X(int,             spin_t)       /* frames since a spin began (NOTES 293) */ \
     X(int,             lak_mode)     /* Lakitu over the water (NOTES 283) */ \
     X(int,             lak_row)      /* his sprite row, 256x224 space     */ \
     X(int,             sink_t)       /* frames since the kart went under  */ \
@@ -2348,6 +2377,7 @@ static bool load_race(const smk_rom *rom, int track, int theme, int character,
     forced_finish = false;
     finish_t = 0;
     lak_mode = 0; lak_row = 0; sink_t = 0; lak_water = false;
+    spin_t = 0;
     fourth_at = -1;
     cooldown_over = false;
     memset(&item, 0, sizeof item);

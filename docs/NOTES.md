@@ -12942,3 +12942,39 @@ BACKWARDS a quarter pixel a frame along its heading, 22 pixels in all,
 then stops.  Ported; `SMK_SQUASH_T` was 100 and OURS, it is 200 and the
 recording's.  OURS still: nothing draws the sideways wobble of the flat
 sprite the user remembers.
+
+## 293. The spin's sound, found on the chip: sample $00 on a stolen voice
+
+The user: *"spin sound is characteristic, is not the engine"* - and
+recorded five slide spin-outs in a time trial (`spin1`) so the field's
+engines and the queue's clutter were out of the way.  NOTES 292 had read
+the tumble in the cup recording and found nothing keyed, and said so;
+this recording shows why: the sound is real, and it does not go
+through the sound queue at all.
+
+Every DSP register, every frame, through four of the spins
+(`tools/labs/mame/voicesnoise.lua`): ten frames after `$A6` goes to
+`$0E`, voice 5 - a music voice until then, `$04` at volume 82 - is
+re-keyed with **sample `$00`** at volume 31, ADSR `$FF`, and its PITCH
+register is walked, every frame, on a triangle: up 219 a frame, down
+293, five up and five down once it is going, so each ten-frame cycle
+sags 370 - 5851 6070 6289 6508 | 6215 5922 5629 5336 | 5555 ... down to
+3930, held - for 48 frames, and then the voice goes back to the music.
+Identical in all four spins to the frame-end sampling (two frames of
+the four runs fall between samples; the table takes the complete run).
+No noise, no pitch modulation, no echo change.  The state ends at 48-50
+frames and nothing is queued at its end: a slide spin-out has no `$2A`,
+unlike the banana's spin and the tumble (NOTES 292).
+
+Sample `$00` is the driver's own, a 64-sample lead-in and a loop
+(`tools/labs/spinsample.py` writes it from a sound-CPU snapshot to
+`rom/sfx/spin00.wav`, RAW at 32000 like the engines).  The port gives it
+a voice of its own in the engine mixer (`smk_spin_voice`, one per view,
+on the view's side): keyed ten frames into any spinning state, the
+measured 48-entry pitch table, volume 31 against the engine's 20.
+
+The user says the sound is the same for every spin - banana, oil,
+fish, shell.  Measured here on the slide's; in the cup recording's
+tumble the music held every voice at the moment and the game played
+nothing, which is a voice-allocation loss the port does not reproduce.
+Played for all spinning states; LABELLED for the ones not recorded.

@@ -1436,6 +1436,8 @@ void smk_engine_set(int chr, int v);
 void smk_engine_voice(int voice, int chr, int v, float vol, float pan);
 void smk_engine_off(void);
 int  smk_engine_note_sent(int voice);   /* what that voice was last handed (NOTES 284) */
+/* the spin's own voice (NOTES 293): on/off per view, the DSP pitch register, volume, pan */
+void smk_spin_voice(int view, bool on, int pitch14, float vol, float pan);
 float smk_engine_base_volume(void);   /* the player's own engine level */
 const char *smk_sfx_name(int id);
 const char *smk_sfx_hint(int id);   /* when the game fires an unnamed one */

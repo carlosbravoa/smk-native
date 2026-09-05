@@ -581,6 +581,43 @@ static struct {
     int    kind;                    /* which pair's sample this voice plays */
 } eng[ENG_VOICES];
 
+/* THE SPIN (NOTES 293).  Through a spin the game keys the driver's sample
+ * $00 on a voice it takes from the music and walks its PITCH register on
+ * a triangle - up 219 a frame, down 293 - for 48 frames, from ten frames
+ * into the spin, at volume 31 against the engine's 20.  It never passes
+ * through the sound queue, which is why no capture of the queue ever
+ * held it.  MEASURED per frame off the DSP in the user's spin1
+ * recording (four slide spins, the same pattern each time).  The sample
+ * is the game's own BRR (tools/labs/spinsample.py), a 64-sample lead-in
+ * and a loop. */
+#define SPIN_LOOP_FROM 64
+static float *spin_pcm; static int spin_len; static bool spin_tried;
+static struct { double phase, step; float vol, pan; bool on, keyed; } spin[2];
+static void spin_load(void)
+{
+    spin_tried = true;
+    char path[900]; SDL_AudioSpec spec; Uint8 *buf = NULL; Uint32 blen = 0;
+    snprintf(path, sizeof path, "%ssfx/spin00.wav", map_dir);
+    if (!SDL_LoadWAV(path, &spec, &buf, &blen)) { if (getenv("SMK_SFX_TRACE")) printf("spin: %s missing\n", path); return; }
+    int n = (int)(blen / 2);
+    if (spec.format != AUDIO_S16LSB || spec.channels != 1 || n <= SPIN_LOOP_FROM + 2) { SDL_FreeWAV(buf); return; }
+    spin_pcm = malloc((size_t)n * sizeof *spin_pcm);
+    if (!spin_pcm) { SDL_FreeWAV(buf); return; }
+    const int16_t *src = (const int16_t *)buf;
+    for (int i = 0; i < n; i++) spin_pcm[i] = (float)src[i] / 32768.0f;
+    spin_len = n; SDL_FreeWAV(buf);
+}
+void smk_spin_voice(int view, bool on, int pitch14, float vol, float pan)
+{
+    if (view < 0 || view > 1) return;
+    if (!spin_tried) spin_load();
+    if (on && !spin[view].on) { spin[view].phase = 0.0; spin[view].keyed = true; }
+    spin[view].on = on;
+    spin[view].step = ((double)(pitch14 & 0x3FFF) / 4096.0 * 32000.0) / 44100.0;
+    spin[view].vol = on ? vol : 0.0f;
+    spin[view].pan = pan < -1.0f ? -1.0f : (pan > 1.0f ? 1.0f : pan);
+}
+
 static void engine_mix(void *ud, Uint8 *stream, int len)
 {
     (void)ud;
@@ -589,6 +626,18 @@ static void engine_mix(void *ud, Uint8 *stream, int len)
     memset(stream, 0, (size_t)len);
     for (int i = 0; i < frames; i++) {
         float l = 0.0f, r = 0.0f;
+        for (int v = 0; v < 2; v++) {           /* the spins, one per view */
+            if (!spin[v].on || !spin_pcm || spin[v].vol <= 0.0f) continue;
+            int j = (int)spin[v].phase;
+            if (j >= spin_len - 1) { spin[v].phase -= (double)(spin_len - SPIN_LOOP_FROM); j = (int)spin[v].phase; if (j < 0) j = 0; }
+            float f = (float)(spin[v].phase - j);
+            float a = spin_pcm[j], b = spin_pcm[j + 1 < spin_len ? j + 1 : SPIN_LOOP_FROM];
+            float smp = (a + (b - a) * f) * spin[v].vol;
+            float p = spin[v].pan;
+            l += smp * (p > 0.0f ? 1.0f - p : 1.0f);
+            r += smp * (p < 0.0f ? 1.0f + p : 1.0f);
+            spin[v].phase += spin[v].step;
+        }
         for (int v = 0; v < ENG_VOICES; v++) {
             /* the wanted volume is approached, never jumped to: a step
              * in gain is a click, and the rev moves every frame */
