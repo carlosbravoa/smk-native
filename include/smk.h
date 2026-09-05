@@ -1433,6 +1433,7 @@ void smk_engine_set(int chr, int v);
 /* one engine per kart: voice 0 is the player, 1.. are the nearest AI */
 void smk_engine_voice(int voice, int chr, int v, float vol, float pan);
 void smk_engine_off(void);
+int  smk_engine_note_sent(int voice);   /* what that voice was last handed (NOTES 284) */
 float smk_engine_base_volume(void);   /* the player's own engine level */
 const char *smk_sfx_name(int id);
 const char *smk_sfx_hint(int id);   /* when the game fires an unnamed one */

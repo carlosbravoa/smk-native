@@ -183,3 +183,7 @@ check: $(BASE)
 	@$(PY) tools/rl/check_replay.py | tail -1
 	@$(PY) tools/rl/check_obs.py | tail -1
 	@SDL_VIDEODRIVER=dummy ./build-native/smk --frames 60 >/dev/null && echo "smoke: game binary runs"
+	@SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy SMK_ENGINE_TRACE=1 SMK_START_HOLD=0 ./build-native/smk --track 0 --fast --no-pad --windowed --frames 300 2>/dev/null \
+	  | awk '/^engine f0 / { n++; note = $$NF; if (first == "") first = note; last = note; if (note < 1) bad++ } \
+	         END { if (n < 5 || bad > 0 || last <= first) { printf "engine gate: FAIL - %d countdown frames traced, %d silent, note %s -> %s\n", n, bad, first, last; exit 1 } \
+	               printf "engine gate: the rev sounds through the countdown and climbs, note %s -> %s over %d traced frames\n", first, last, n }'

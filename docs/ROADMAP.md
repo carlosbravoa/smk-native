@@ -386,6 +386,12 @@ used; C output is byte-identical to the game's loader on all 24 courses.
 
 ## The gate, and how work gets proved now
 
+**The engine gate (NOTES 284).**  `make check` also runs the game into
+a countdown with the throttle held and fails unless the engine voice was
+handed a note of 1 or more on every traced countdown frame, climbing -
+the third time the countdown's engine went silent (a `racing ? v : 0`
+in the voice call), so now it cannot go quietly.
+
 The strongest instrument this project has is not a rig - it is the user
 playing the real game while MAME records, and the port then replaying
 their inputs frame by frame.  Five replay gates run in `make check`,

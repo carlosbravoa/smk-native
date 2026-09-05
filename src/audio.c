@@ -641,8 +641,17 @@ static void engine_load(void)
 /* chr is an SMK_DRIVERS index - it picks the sample AND the law; v is
  * the game's own $42; vol and pan place the kart (voice 0 is the
  * player, dead centre and loudest) */
+/* the note each voice was last HANDED, before any of the reasons it might
+ * not sound - so a trace, and the gate in `make check`, read what the
+ * caller asked for and not what the caller computed (NOTES 284) */
+static int eng_note_sent[ENG_VOICES];
+int smk_engine_note_sent(int voice)
+{
+    return (voice >= 0 && voice < ENG_VOICES) ? eng_note_sent[voice] : 0;
+}
 void smk_engine_voice(int voice, int chr, int v, float vol, float pan)
 {
+    if (voice >= 0 && voice < ENG_VOICES) eng_note_sent[voice] = v;
     if (!ready || voice < 0 || voice >= ENG_VOICES) return;
     if (!eng_tried) engine_load();
     int kind = (chr >= 0 && chr < SMK_CHARACTERS) ? eng_kind_of[chr] : 0;

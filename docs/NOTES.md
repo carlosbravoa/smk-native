@@ -12566,3 +12566,24 @@ down.  Checked on Koopa Beach and Donut Plains with `--pads` scripts:
 the ripple on Donut Plains is the recording's pale ellipse.  LABELLED:
 his exit after an early escape; the void's Lakitu is still the earlier
 capture's path (NOTES 168a/169a), untouched.
+
+## 284. The countdown's engine, for the third time - and now a gate
+
+The user: *"we have fixed this 2 times and you keep changing it back.
+the engine sound of the player during count down should sound.  this
+is important for turbo boost"* - the rev you build before the lights is
+what the launch is judged on (NOTES 143/163), and hearing it climb is
+how you time it.
+
+The regression was one expression.  The note is floored at 1 for
+`RACE_RUN`, `RACE_FINISH` AND `RACE_COUNTDOWN`, then the call to
+`smk_engine_voice` passed `racing ? v : 0` - zero through the countdown,
+undoing the line above it.  fcabf68 (NOTES 259) put that ternary in
+while fixing five other sound regressions; NOTES 216 and 263 had each
+fixed the countdown before.  The call now passes `v` and nothing else.
+
+So it cannot come back quietly: `make check` runs the game headless
+into a countdown with the throttle held (`SMK_START_HOLD=0`) and the
+engine trace on, and fails unless the traced countdown frames all carry
+a note of 1 or more and the note CLIMBS from the first to the last -
+the rev building, audible.

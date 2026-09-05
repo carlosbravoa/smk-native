@@ -1849,11 +1849,19 @@ static void step_kart(smk_kart *k, smk_track *trk,
         bool racing = race_state == RACE_RUN || race_state == RACE_FINISH;
         if (racing) smk_player_rev_race(&player);
         int v = smk_player_engine_note(&player);
+        /* THE COUNTDOWN SOUNDS.  The rev you build before the lights is
+         * what the turbo launch is judged on (NOTES 143/163), and the
+         * player hears it climb - the user, for the third time: "the
+         * engine sound of the player during count down should sound.
+         * this is important for turbo boost".  Twice before this was
+         * fixed here and then lost to a `racing ? v : 0` in the call
+         * below (fcabf68), which zeroed the note the line above had just
+         * floored at 1.  `v` is the ONLY note passed now, and `make
+         * check` listens for it (the engine gate). */
         if (racing || race_state == RACE_COUNTDOWN) {
             if (v < 1) v = 1;
         } else v = 0;
-        smk_engine_voice(cur_view, me->character % SMK_CHARACTERS,
-                         racing ? (v < 1 ? 1 : v) : 0,
+        smk_engine_voice(cur_view, me->character % SMK_CHARACTERS, v,
                          smk_engine_base_volume(),
                          nviews > 1 ? (cur_view ? 0.5f : -0.5f) : 0.0f);
         /* AND THE OTHER KARTS (NOTES 229).  The user named $5C and $62
@@ -1927,11 +1935,14 @@ static void step_kart(smk_kart *k, smk_track *trk,
                            j, q, d, vq, vol, pan);
             }
         }
+        /* the note printed is the one the VOICE received, read back from
+         * audio.c - the gate in `make check` fails on a silent countdown
+         * only if this is what was actually sent (NOTES 284) */
         if (getenv("SMK_ENGINE_TRACE") && (fx_ticks % 15) == 0)
             printf("engine f%ld %-6s speed %4d rev $%04X -> note %d\n",
                    hud_race_frames,
                    SMK_DRIVERS[me->character % SMK_CHARACTERS].name,
-                   k->speed, (uint16_t)player.rev, v);
+                   k->speed, (uint16_t)player.rev, smk_engine_note_sent(cur_view));
     }
 
     /* the ground effect object ($80CF7B..$80D4A3): what the surface under
