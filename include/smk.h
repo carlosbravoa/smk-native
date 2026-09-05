@@ -354,6 +354,9 @@ typedef struct {
      * ROM takes it from the kart's waypoint ($80B373). */
     int      hazard;           /* 0 none, 8 in water, 6 fallen             */
     int      resc_t;           /* frames spent in the rescue               */
+    bool     resc_lift;        /* the fall is a SINK: Lakitu lifts the kart out
+                                * of the water (NOTES 283), not the void's drop */
+    bool     lakitu_called;    /* $80B25E: $CA under $78 - Lakitu is on his way */
     int      resc_x, resc_y;
     uint16_t resc_h;
     int32_t  accel32;          /* $EE:$EC                                   */
@@ -1858,6 +1861,10 @@ bool smk_effects_load(const smk_rom *rom, smk_effects *fx);
 /* $80D4A3 + class handlers: the kind to show, or -1 */
 int  smk_effects_pick(uint8_t surf, bool grounded, bool spinning, bool deep_drift, int speed);
 void smk_effects_step(smk_effect_state *st, int kind, int frame_idx);
+/* one 16x16 of the cloud sheet at a screen position (the sink, NOTES 283) */
+void smk_effects_draw_tile16(const smk_effects *fx, int tile, bool hf,
+                             int sx, int sy, int scale, const uint32_t *palette,
+                             int pal, uint32_t *fb, int w, int h);
 /* base = the kart sprite's top-left + (0, 16), in framebuffer pixels */
 void smk_effects_draw(const smk_effects *fx, const smk_effect_state *st, bool mirror,
                       unsigned frame_counter, int base_x, int base_y, int scale,

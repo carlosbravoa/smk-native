@@ -1,0 +1,5 @@
+wpset 0010a4,2,w,1,{printf "HDG <- %04X pc=%06X", wpdata, pc; g}
+wpset 7e10a4,2,w,1,{printf "HDG <- %04X pc=%06X", wpdata, pc; g}
+wpset 00101f,2,w,1,{printf "Z1F <- %04X pc=%06X", wpdata, pc; g}
+wpset 7e101f,2,w,1,{printf "Z1F <- %04X pc=%06X", wpdata, pc; g}
+go

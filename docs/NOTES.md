@@ -12481,3 +12481,88 @@ beyond) with the cell cut away: index 1 is both the cell and the face's
 own shading, so `smk_faces_load` floods only the 1s reachable from the
 edge (`smk_faces.cut`).  The one-player list is unchanged, all eight,
 all race; the map faces are drawn in both.
+
+## 283. Under water: the wade, the sink, and Lakitu's fishing, measured
+
+The user recorded two short runs (`underwater1`, `underwater2`: track
+$0124 = 7 in time trial, Donut Plains' deep water) - *"in both demos I go
+underwater, show that I still can move and turn and get out if I do it
+quick.  If not, Lakitu will rescue me"* - because the port did neither:
+*"if I fall underwater, I get stuck until Lakitu rescues me"*.  Logged
+with `tools/labs/mame/waterlog.lua` (the player's block every frame),
+`oamlog.lua` (every sprite through the rescue), a VRAM grab and the
+debugger's watchpoints (`watch_water.txt`, with `-debuglog`).
+
+**Why the kart was stuck.**  The port stepped the wade inside its
+hazard block and RETURNED, so the heading update never ran.  The
+debugger says `$80A8AD` - the ordinary heading routine - is the only
+writer of `$A4` through the wade; the game runs the frame as on land.
+The wade's speed never reaches `$80`, so the heading takes the
+low-speed path, whose state-8 row (`$80A9B8 + $10` = `$80`) turns the
+kart a fixed `$80` a frame while the pad is held - the same routine the
+port already had transcribed, just never reached.  Drive state 8's own
+code (`$80A5AD`) is only the throttle: B held under `$7C` accelerates
+by one a frame, anything else decelerates by one; 123/124 in both
+recordings.  The port now runs the whole step in the water, with the
+throttle as one more drive state, and leaves `$A0/$AC` at 8 (the
+landing code was zeroing the jump state every frame, which re-ran the
+fall-in and pinned the speed at zero).
+
+**The counter.**  `$80B5FC` loads `$CA` with `$0102`; both recordings
+show it.  The `$FF` a lab once read (and the port used) was wrong.
+`$80B254`: the first eighteen frames, `$CA` from `$102` to `$F0`, allow
+no exit - the plunge.  Under `$78` the splash flags go up (`$10` bit 8,
+`$D4` bit 10), and that is Lakitu's call.  A class change gets the
+kart out (`$80B286`): `$EA = $100`, then the `$3E00` launch through
+`$80B7BB` leaves `speed * cos($3E00)` = 12 - which the port's `launch`
+already did; the recordings show 12 at every exit.
+
+**The sink.**  `$CA` at zero (`$80B24E`) is `$A0 = 6`, and `$80B64B`
+tests `$10` bit 15: clear, `$1F = $3000` (the void, Ghost Valley: the
+user's `gv1` recording confirms the port's existing path - 60 frames of
+`$04` with `$CA` counting, then the carry at `$3000` and 96 frames down);
+set, `$1F` stays 0.  Then, MEASURED: z stays 0 for 34 frames (Lakitu
+coming down), then rises `$40` a frame - the writer is `$85DED9`, his
+object - and `$80B231` hands over to `$0C` the frame `$20` reaches 7:
+z `$700`, 61 frames in all.  The carry is as decoded (2 px a frame, x
+then y), the drop `$80` a frame from `$700`: 14 frames.  The port used
+to hold z at 1 for 60 frames and jump to `$3000` for every fall.
+
+**What is drawn.**  The kart is NOT drawn from the frame after the
+fall-in until Lakitu hooks it.  Its columns carry the cloud sheet's
+tiles instead (`$C0:0903`, sprite tiles `$000-$03F`, palette 7, mirrored
+16x16 pairs at x 112/128), frame by frame from the fall-in: `$08`
+over `$06` (the splash, full height, 3 frames), the ripple `$20` at
+row 91, `$0E` drops at rows 78/81 (5 frames), ripple, drops at 82/84
+(3), ripple, drops at 88/89 (2), ripple, then ripple frame `$22` for 5
+and `$20`/`$22` seventeen frames each, looping.  The picker at `$80D4D4`
+maps `$A0` through `$80D493` (state 4 -> class `$20`, 6 -> `$FFFF`, 8 ->
+`$24`) to the class handlers, and `$80D418` puts the effect object into
+a mode (`$7F6004 = 1`) whose script was not decoded - the frames above
+are transcribed from the OAM instead, MEASURED.  The port used to draw
+the kart 9 px lower (OURS) and nothing else.
+
+**Lakitu.**  Called when `$CA` drops under `$78` (142 frames after the
+fall-in), he enters from row -39 one a frame and hovers at 33, his
+block's left at x 97 as in every capture.  At the sink he comes down
+to 65 over the 34 still frames (33 on the entry frame and the next,
+then one a frame), hooks - the kart reappears at row 70 the frame z
+reaches `$80` - and rides 30 rows above it: rising the kart sits at
+72 - z/$40, carried at 43, lowered at 69 - z/$40 (the game's own
+roundings, kept).  Put down, he climbs one a frame from 41 and is gone
+at -48, 91 frames.  A kart that gets out while he is coming sends him
+back up from wherever he is - OURS, not in the recordings.
+
+**The release.**  The kart is free the frame `$A0` clears: both water
+recordings show `$A0 = $AC = 0` with the pad open, and `gv1` shows the
+speed at 12 four frames after the void's drop.  The port pinned the
+speed for 64 frames on the user's recollection ("you were not released
+until it was gone"); the recordings say otherwise, so the hold is gone.
+
+Ported in `src/player.c` (the physics) and `src/main.c` (the sink's
+frames, Lakitu's rows); the selftest walks the water: `$102`, the turn
+and the wade, the hop out at 12, and the lift - 34 still, `$700`, 14
+down.  Checked on Koopa Beach and Donut Plains with `--pads` scripts:
+the ripple on Donut Plains is the recording's pale ellipse.  LABELLED:
+his exit after an early escape; the void's Lakitu is still the earlier
+capture's path (NOTES 168a/169a), untouched.

@@ -327,6 +327,10 @@ static int  hud_countdown;               /* Lakitu's frame, from the arm */
 static int  lap_sign_t = -1;             /* his lap sign, from the crossing */
 static bool item_used_once;              /* the slot shows the used look after it */
 static int  rescue_t;                    /* frames into the $0E drop      */
+static int  lak_mode, lak_row, sink_t;   /* Lakitu over the water (NOTES 283) */
+static bool lak_water;
+static bool player_sunk(void);
+static int  water_kart_lift(void);
 static int  hud_input;                   /* L/R/accel bits, for the HUD */
 /* The start sequence.  SMK holds the karts for a countdown, then runs;
  * our timing is the ROM's own 3-2-1-GO cadence in frames (60/step) -
@@ -537,6 +541,8 @@ static int rescue_draw_lift;        /* the kart's drawn lift this frame */
  * it was gone").  OURS: the pacing. */
 #define SMK_LAKITU_EXIT 64
 static int lakitu_exit_t;
+static void draw_lakitu_row(uint32_t *fb, int rw, int rh,
+                            const uint32_t *palette, int y);
 static void draw_rescue_lakitu(uint32_t *fb, int rw, int rh,
                                const uint32_t *palette, int t, int rise)
 {
@@ -551,6 +557,15 @@ static void draw_rescue_lakitu(uint32_t *fb, int rw, int rh,
                  - (rescue_draw_lift + 32 * scale2) / sc;
     int y = kart_top - 27 - rise;
     (void)t;
+    draw_lakitu_row(fb, rw, rh, palette, y);
+}
+/* Lakitu's five sprites at a row of the 256x224 screen, his block's
+ * left at x 97 (measured in every capture, the water's included) */
+static void draw_lakitu_row(uint32_t *fb, int rw, int rh,
+                            const uint32_t *palette, int y)
+{
+    if (!hud_art.ok) return;
+    int sc = rw >= 640 ? 3 : 2;
     static const struct { int dx, dy, tile; } PART[5] = {
         {  0,  0, SMK_RESCUE_TL }, { 16,  0, SMK_RESCUE_TR },
         {  0, 16, SMK_RESCUE_BL }, { 16, 16, SMK_RESCUE_BR },
@@ -565,6 +580,61 @@ static void draw_rescue_lakitu(uint32_t *fb, int rw, int rh,
                      palette, sc);
         }
     }
+}
+
+/* ---- THE SINK, as the game draws it (NOTES 283) -------------------------
+ *
+ * MEASURED sprite by sprite in the user's underwater1 recording.  From
+ * the frame after the fall-in the KART IS NOT DRAWN; in its place the
+ * cloud sheet's tiles, palette 7, as mirrored 16x16 pairs at x 112/128
+ * (the kart's own columns):
+ *
+ *   t 1-3    $08 at row 70 + $06 at row 86     the splash, full height
+ *   t 4      $20 at row 91                     the ripple, frame A
+ *   t 5-9    $0E at rows 78 and 81 (flipped)   drops, first bounce
+ *   t 10     A
+ *   t 11-13  $0E at rows 82 and 84             second bounce
+ *   t 14     A
+ *   t 15-16  $0E at rows 88 and 89             third
+ *   t 17     A;  t 18-22  $22 (frame B) x5;  then A 17, B 17, looping
+ *
+ * t counts frames since the fall-in ($102 - $CA through the wade, then
+ * on through the fall until Lakitu hooks the kart).  Rows are the
+ * 256x224 screen's; the kart's own top is 70. */
+static void draw_sink_fx(uint32_t *fb, int rw, int rh, const uint32_t *palette,
+                         int t, int prow, int scale)
+{
+    if (!fx.ok || t < 1) return;
+    int lx = rw / 2 - 16 * scale, rx = rw / 2;
+#define ROW(r) (prow - (102 - (r)) * scale)
+    if (t <= 3) {
+        smk_effects_draw_tile16(&fx, 0x08, false, lx, ROW(70), scale, palette, 7, fb, rw, rh);
+        smk_effects_draw_tile16(&fx, 0x08, true,  rx, ROW(70), scale, palette, 7, fb, rw, rh);
+        smk_effects_draw_tile16(&fx, 0x06, false, lx, ROW(86), scale, palette, 7, fb, rw, rh);
+        smk_effects_draw_tile16(&fx, 0x06, true,  rx, ROW(86), scale, palette, 7, fb, rw, rh);
+        return;
+    }
+    int drops_a = 0, drops_b = 0;            /* the two rows of $0E, or none */
+    bool frame_b = false;
+    if (t >= 5 && t <= 9)        { drops_a = 78; drops_b = 81; }
+    else if (t >= 11 && t <= 13) { drops_a = 82; drops_b = 84; }
+    else if (t >= 15 && t <= 16) { drops_a = 88; drops_b = 89; }
+    else if (t >= 18 && t <= 22) frame_b = true;
+    else if (t >= 23)            frame_b = (((t - 23) / 17) & 1) != 0;
+    if (drops_a) {
+        /* the first row has its LEFT half unflipped on the first bounce and
+         * flipped on the later two; the second row the other way round */
+        bool lf = t >= 11;
+        smk_effects_draw_tile16(&fx, 0x0E, lf,  lx, ROW(drops_a), scale, palette, 7, fb, rw, rh);
+        smk_effects_draw_tile16(&fx, 0x0E, !lf, rx, ROW(drops_a), scale, palette, 7, fb, rw, rh);
+        smk_effects_draw_tile16(&fx, 0x0E, !lf, lx, ROW(drops_b), scale, palette, 7, fb, rw, rh);
+        smk_effects_draw_tile16(&fx, 0x0E, lf,  rx, ROW(drops_b), scale, palette, 7, fb, rw, rh);
+        return;
+    }
+    int tile = frame_b ? 0x22 : 0x20;
+    smk_effects_draw_tile16(&fx, tile, false, lx, ROW(91), scale, palette, 7, fb, rw, rh);
+    smk_effects_draw_tile16(&fx, tile, true,  rx, ROW(91), scale, palette, 7, fb, rw, rh);
+#undef ROW
 }
 
 /* The race clock, in the game's own art: M ' SS " HH.
@@ -934,6 +1004,7 @@ static void draw_speedo(uint32_t *fb, int rw, int rh,
  * the decoded control in src/player.c (NOTES 103). */
 
 static smk_player player;
+
 /* SMK_PLAYERS_* from the shell, and who player 2 (or the watched CPU) is */
 static int players_mode;
 static int p2_character = 1;
@@ -966,6 +1037,27 @@ static smk_racer    racers[SMK_CHARACTERS];
 static const smk_rom *the_rom;
 static const smk_driver *drv;
 static smk_kart     kart;
+
+/* The hooked kart's rows, MEASURED per frame (NOTES 283) against its
+ * ground row of 70: rising it sits at 72 - z/$40, carried at 43, and
+ * lowered at 69 - z/$40 - the game's own pipeline's roundings, kept as
+ * they are.  Returned as a lift in 256x224 pixels. */
+static int water_kart_lift(void)
+{
+    int zpx = (int)((kart.z >> 8) / 64);
+    if (player.hazard == 6)    return zpx - 2;
+    if (player.hazard == 0x0C) return 27;
+    return 1 + zpx;                                   /* $0E */
+}
+/* under water, or under it still while Lakitu comes down for it */
+static bool player_sunk(void)
+{
+    return player.hazard == 8
+        || (player.hazard == 6 && player.resc_lift && kart.z < ((int32_t)0x80 << 8));
+}
+
+
+
 static int          grid[8];
 static int          grid_slot[8];   /* block -> grid slot (smk_ui_grid_slots) */
 
@@ -1448,7 +1540,12 @@ static void step_kart(smk_kart *k, smk_track *trk,
         was_hazard = player.hazard;
         sfx_prev.hazard_exit = was_hazard;
     }
-    if (lakitu_exit_t > 0) { lakitu_exit_t--; k->speed = 0; k->speed_frac = 0; }
+    /* No hold while he leaves: the kart is free the frame $A0 clears -
+     * in the user's Ghost Valley recording the speed is 12 four frames
+     * after the drop, and both water recordings show $A0 = $AC = 0 with
+     * the pad open (NOTES 283).  The port used to pin the speed at zero
+     * for SMK_LAKITU_EXIT frames on the user's recollection. */
+    if (lakitu_exit_t > 0) lakitu_exit_t--;
     /* the collector ($81B73B) serves ONE player per frame, alternating:
      * every P1 pickup in the demo lands on an odd frame, every P2 pickup
      * on an even one, with the cell the kart is on after that frame's
@@ -1936,6 +2033,10 @@ static int show_kart = 1, show_grid = 1;
     X(int,             rescue_t)    \
     X(int,             rescue_draw_lift) \
     X(int,             lakitu_exit_t) \
+    X(int,             lak_mode)     /* Lakitu over the water (NOTES 283) */ \
+    X(int,             lak_row)      /* his sprite row, 256x224 space     */ \
+    X(int,             sink_t)       /* frames since the kart went under  */ \
+    X(bool,            lak_water)    /* this rescue is the water's, not the void's */ \
     X(long,            lap_start_frames) \
     X(int,             crossings)   \
     X(int,             finish_wait) /* frames waited for the other driver */ \
@@ -2161,6 +2262,7 @@ static bool load_race(const smk_rom *rom, int track, int theme, int character,
     race_over = false;
     forced_finish = false;
     finish_t = 0;
+    lak_mode = 0; lak_row = 0; sink_t = 0; lak_water = false;
     fourth_at = -1;
     cooldown_over = false;
     memset(&item, 0, sizeof item);
@@ -3193,7 +3295,7 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
             continue;
         }
     }
-    if (show_kart && !celebrating && karts->frames
+    if (show_kart && !celebrating && karts->frames && !player_sunk()
         && !(player.boo_t > 0 && (fx_ticks & 1))) {   /* Boo: OURS, a flicker */
         int scale = smk_render_proj_width(rw, rh) / 256;   /* the SNES 32px proportion */
         if (scale < 1) scale = 1;
@@ -3218,12 +3320,13 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
          * simply drawn lower each frame.  It is NOT clipped against the
          * plane - that only ever applied because our physics used to put
          * the kart underneath it. */
-        if (player.hazard == 6) lift -= player.resc_t * 2 * scale;
-        /* IN THE WATER (hazard 8): the kart rides low - the sink has to be
-         * SEEN, not only felt (round 2, bug 4: the crawl worked and read
-         * as "not working" because the sprite sat at full height).
-         * OURS: 9 px down; the game's own submerged drawing is unread. */
-        if (player.hazard == 8) lift -= 9 * scale;
+        if (player.hazard == 6 && !player.resc_lift) lift -= player.resc_t * 2 * scale;
+        /* THE WATER'S RESCUE (NOTES 283, MEASURED): while under, the kart
+         * is not drawn at all - draw_sink_fx has its place; once hooked
+         * it hangs at 1 px per $40 of z, up 28, along, and down 2 a
+         * frame, Lakitu 30 rows above it the whole way. */
+        if (player.resc_lift && (player.hazard == 6 || player.hazard == 0x0C || player.hazard == 0x0E))
+            lift = water_kart_lift() * scale;
         /* THE RESCUE (the user: "it should come down with you with his
          * fishing rod... Normally you appear from the top, attached to
          * lakitu's fishing rod cable").  Lakitu's descent is the captured
@@ -3239,7 +3342,7 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
          * TOP at row 0 and lands on row 70 at frame 98, 2 px a frame.  The
          * physics z is not the picture ($1E reads 0 / -32768 the whole
          * way); the picture is this. */
-        if (player.hazard == 0x0E) {
+        if (player.hazard == 0x0E && !player.resc_lift) {
             int row = (128 + 2 * rescue_t) & 0xFF;          /* the sprite's top */
             if (rescue_t < 64) lift = 100000;                /* off-screen: not drawn */
             else lift = (70 - row) * scale;
@@ -3325,6 +3428,11 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
                          rw / 2 + 2 * scale, prow - lift - 16 * scale, scale,
                          trk->palette, fb, rw, rh);
         smk_draw_set_clip_mask(NULL, 0);
+    }
+    if (show_kart && !celebrating && player_sunk()) {
+        int scale = smk_render_proj_width(rw, rh) / 256; if (scale < 1) scale = 1;
+        int prow = (int)(SMK_PLAYER_LINE * (float)rh / 112.0f);
+        draw_sink_fx(fb, rw, rh, trk->palette, sink_t, prow, scale);
     }
     if (!celebrating) {
         draw_hud(fb, rw, rh, trk->palette, player.coins, hud_rank, kart.speed, hud_lap);
@@ -3472,7 +3580,16 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
         if (lap_sign_t >= 0)              /* and again with the lap sign */
             draw_lap_sign(fb, rw, rh, trk->palette, lap_sign_t,
                           hud_lap, SMK_RACE_LAPS);
-        if (player.hazard == 0x0E)        /* and once more, on a rescue */
+        if (lak_mode) {                   /* over the water (NOTES 283) */
+            /* his rows are measured against the game's kart top of 70 in
+             * its 112-row view; here the kart's top sits where the
+             * projection puts it, so place him relative to that */
+            int sc = rw >= 640 ? 3 : 2;
+            int scale2 = smk_render_proj_width(rw, rh) / 256; if (scale2 < 1) scale2 = 1;
+            int ktop = (int)(SMK_PLAYER_LINE * (float)rh / 112.0f) / sc - 32 * scale2 / sc;
+            draw_lakitu_row(fb, rw, rh, trk->palette, lak_row - 70 + ktop);
+        }
+        else if (player.hazard == 0x0E)   /* and once more, on a rescue */
             draw_rescue_lakitu(fb, rw, rh, trk->palette, rescue_t, 0);
         else if (lakitu_exit_t > 0)       /* ...and he leaves, fee in hand */
             draw_rescue_lakitu(fb, rw, rh, trk->palette, 0,
@@ -4658,7 +4775,52 @@ int main(int argc, char **argv)
              * rescue waypoint.  $27 is the fall; $28 is Lakitu taking
              * hold, and the port had never played it. */
             if (player.hazard == 0x0E && rescue_t == 0) smk_sfx_play(SMK_SFX_RESCUE);
+            if (getenv("SMK_RESCUE_TRACE")) {
+                static int was_hz = -1;
+                if (player.hazard != was_hz) {
+                    printf("hazard %02X -> %02X f%ld ca %d at %d,%d z %d lak %d/%d\n", was_hz, player.hazard,
+                           hud_race_frames, player.ca, smk_kart_px(kart.x), smk_kart_px(kart.y),
+                           (int)(kart.z >> 8), lak_mode, lak_row);
+                    was_hz = player.hazard;
+                }
+            }
             rescue_t = (player.hazard == 0x0E) ? rescue_t + 1 : 0;
+            /* LAKITU OVER THE WATER (NOTES 283, his rows MEASURED in the
+             * user's recording).  Called when $CA drops under $78, he
+             * comes in from row -39 at one a frame and hovers at 33.
+             * When the kart sinks he comes down to 65 over the fall's
+             * 33 frames, hooks it, and rides 30 above it up, along and
+             * down; released, he climbs one a frame and is gone at -48.
+             * A kart that gets out while he is coming sends him back up
+             * from wherever he is - OURS, not in the recordings. */
+            {
+                bool water_now = player.resc_lift;
+                if (player.hazard == 8) {
+                    sink_t = 0x102 - player.ca;
+                    if (player.lakitu_called && lak_mode == 0) { lak_mode = 1; lak_row = -39; }
+                } else if (player_sunk()) {
+                    sink_t++;
+                } else sink_t = 0;
+                if (player.hazard != 0) lak_water = water_now;
+                if (water_now && player.hazard == 6) {
+                    /* down to the kart: 33 on the entry frame and the next,
+                     * then one a frame to 65; then he has it */
+                    if (kart.z == 0) { lak_mode = 3; lak_row = 33 + (player.resc_t > 2 ? player.resc_t - 2 : 0); }
+                    else lak_mode = 4;
+                } else if (water_now && (player.hazard == 0x0C || player.hazard == 0x0E)) {
+                    lak_mode = 4;
+                } else if (player.hazard == 0 && lak_mode >= 1 && lak_mode <= 4) {
+                    lak_mode = 5;                     /* out, or put down: he leaves */
+                    if (lak_row < -48) lak_mode = 0;
+                }
+                switch (lak_mode) {
+                case 1: if (++lak_row >= 33) { lak_row = 33; lak_mode = 2; } break;
+                case 4: lak_row = 70 - water_kart_lift() - 30; break;
+                case 5: if (--lak_row <= -48) lak_mode = 0; break;
+                default: break;
+                }
+                if (lak_mode == 4) lak_water = true;
+            }
             if (pads_path && race_state == RACE_RUN && !countdown_now) {
                 /* one action a game frame, decoded through the SAME table
                  * the environment presses (src/env.c), so what is watched

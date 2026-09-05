@@ -258,3 +258,21 @@ void smk_effects_draw(const smk_effects *fx, const smk_effect_state *st, bool mi
         draw_subtile(hf ? tc : td, hf, sx + 8 * scale, sy + 8 * scale, scale, pl, fb, w, h);
     }
 }
+
+/* One 16x16 of the cloud sheet (sprite tiles $000-$03F) at a screen
+ * position, for the sink's own frames (NOTES 283): the game draws them
+ * as OAM pairs straight from this sheet, palette 7, not through a
+ * kind's script. */
+void smk_effects_draw_tile16(const smk_effects *fx, int tile, bool hf,
+                             int sx, int sy, int scale, const uint32_t *palette,
+                             int pal, uint32_t *fb, int w, int h)
+{
+    if (!fx->ok) return;
+    const uint32_t *pl = palette + 128 + pal * 16;
+    const uint8_t *ta = fx->lo[tile & 0x3F], *tb = fx->lo[(tile + 1) & 0x3F];
+    const uint8_t *tc = fx->lo[(tile + 16) & 0x3F], *td = fx->lo[(tile + 17) & 0x3F];
+    draw_subtile(hf ? tb : ta, hf, sx, sy, scale, pl, fb, w, h);
+    draw_subtile(hf ? ta : tb, hf, sx + 8 * scale, sy, scale, pl, fb, w, h);
+    draw_subtile(hf ? td : tc, hf, sx, sy + 8 * scale, scale, pl, fb, w, h);
+    draw_subtile(hf ? tc : td, hf, sx + 8 * scale, sy + 8 * scale, scale, pl, fb, w, h);
+}

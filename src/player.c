@@ -525,37 +525,40 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
     }
     /* ---- the hazard states ($A0 = 6/8), before anything else ---------- */
     if (p->hazard == 8) {                  /* $80B24D: in the water */
-        if (p->ca == 0) { p->hazard = 6; p->resc_t = 0; k->speed = 0; }
+        /* $80B24E: $CA at zero is the sink - Lakitu's rescue, and he
+         * LIFTS the kart out (NOTES 283) */
+        if (p->ca == 0) { p->hazard = 6; p->resc_t = 0; k->speed = 0; p->resc_lift = true; }
         else {
             p->ca--;
-            /* below $78 the ROM raises the splash flags ($10 bit 8, $D4
-             * bit 10); the effect object is not wired to them yet */
-            uint8_t here = smk_track_surface(t, smk_kart_px(k->x), smk_kart_px(k->y));
-            if (here == 0x24) { p->hazard = 6; p->resc_t = 0; k->speed = 0; }
-            else if (here != 0x22 && here < 0x80) {      /* $80B286: out */
-                p->hazard = 0;
-                p->flags |= 0x0010;
-                k->speed = 0x0100;
-                launch(p, k, 0x3E00);
-                p->jump_state = 2; p->drive = 2;
+            /* $80B254: the first eighteen frames ($CA from $102 down to
+             * $F0) are the plunge - no way out yet.  MEASURED in the
+             * user's two recordings: the kart bobs three times before
+             * it settles. */
+            if (p->ca < 0xF0) {
+                /* $80B259: under $78 the splash flags go up ($10 bit 8,
+                 * $D4 bit 10) - and that is Lakitu's call: he enters from
+                 * the top 142 frames after the fall-in, in both
+                 * recordings (NOTES 283) */
+                if (p->ca < 0x78) p->lakitu_called = true;
+                uint8_t here = smk_track_surface(t, smk_kart_px(k->x), smk_kart_px(k->y));
+                if (here == 0x24) { p->hazard = 6; p->resc_t = 0; k->speed = 0; p->resc_lift = true; }
+                else if (here != 0x22 && here < 0x80) {      /* $80B286: out */
+                    p->hazard = 0;
+                    p->flags |= 0x0010;
+                    k->speed = 0x0100;
+                    launch(p, k, 0x3E00);        /* ...which leaves 12 of the $100: cos($3E00) */
+                    p->jump_state = 2; p->drive = 2;
+                }
             }
         }
-        if (p->hazard == 8) {
-            /* $80A5AD (drive state 8): B held under $7C accelerates by 1,
-             * anything else decelerates by 1 - the measured wade, speed
-             * settling at 123/124 (tools/labs/mame sink captures) */
-            int ee = ((p->pad & 0x8000) && k->speed < 0x7C) ? 1 : -1;
-            p->accel32 = ((int32_t)ee << 16) | (p->accel32 & 0xFFFF);
-            k->accel = (int16_t)(p->accel32 >> 16);
-            k->accel_frac = (uint16_t)(p->accel32 & 0xFFFF);
-            smk_kart_accelerate(k);
-            int16_t sx2, cy2;
-            smk_dsp_sincos(p->vel_angle, k->speed, &sx2, &cy2);
-            k->vx = sx2; k->vy = (int16_t)-cy2;
-            smk_kart_move_ex(k, t, false);
-            k->angle = p->heading;
-            return;
-        }
+        /* NO early return.  The port used to step the wade here and
+         * return, so the heading never ran: "if I fall underwater, I get
+         * stuck until Lakitu rescues me" (the user).  The game runs the
+         * frame as on land - the debugger shows $80A8AD as the ONLY
+         * writer of $A4 through the wade - and the wade's speed keeps it
+         * under $80, so the heading takes the low-speed table's state-8
+         * row and the kart turns at a fixed rate (NOTES 283).  Drive
+         * state 8's throttle is with the other drive states below. */
     }
     /* $80B3DD/$80A0C7 - the rest of a wall's cost - is DECODED but NOT
      * ported (NOTES 131).  It re-derives the velocity angle from the
@@ -601,6 +604,20 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
             k->angle = p->heading;
         }
 
+        if (p->hazard == 6 && p->resc_lift) {             /* sunk: fished out */
+            /* MEASURED frame by frame in the user's two water recordings
+             * (NOTES 283).  Lakitu takes 33 frames to come down to the
+             * kart (34 frames with z at 0, the entry counted); then his
+             * object - $85DED9 in the debugger - raises $1F by $40 a
+             * frame, and $80B231 hands over to $0C the frame $20 (z's
+             * high byte) reaches 7: 28 frames to $700, 61 in all.  The port used to hold z at 1 for 60 frames and then
+             * jump it to $3000, the VOID's value ($80B655, taken only
+             * when $10 bit 15 is clear). */
+            if (p->resc_t < 34) { p->resc_t++; k->z = 0; return; }
+            k->z += (int32_t)0x0040 << 8;
+            if (k->z >= (int32_t)0x0700 << 8) { k->z = (int32_t)0x0700 << 8; p->hazard = 0x0C; }
+            return;
+        }
         if (p->hazard == 6) {                             /* still falling */
             /* $80B5CD sets `$1F` = 1 and the game LEAVES IT THERE for all
              * 60 countdown frames - the physics stops and waits, and the
@@ -635,7 +652,7 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
         k->z -= (int32_t)0x0080 << 8;
         if (k->z <= 0) {
             k->z = 0; p->hazard = 0; p->drive = 0; p->jump_state = 0;
-            p->resc_t = 0;
+            p->resc_t = 0; p->resc_lift = false; p->lakitu_called = false;
         }
         return;
     }
@@ -658,8 +675,11 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
                 /* $FF on the FIRST fall-in, measured live (waterlab2:
                  * $CA counts $FF..0 at 1 a frame); the $0102 the port
                  * used everywhere is the RE-drop value after a rescue */
-                p->ca = 0x00FF;
+                /* $80B5FC: $0102 - both of the user's recordings and the
+                 * ROM agree; the $FF a lab once read was wrong */
+                p->ca = 0x0102;
                 p->hazard = 8; p->drive = 8; p->jump_state = 8;
+                p->lakitu_called = false; p->resc_lift = false;
             }
             break;
         case 0x00:                          /* $20: the void - Ghost Valley,
@@ -762,7 +782,9 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
         default: break;                     /* $14 box, $1A coin: the collector */
         }
     }
-    if (!k->airborne) p->jump_state = 0;
+    /* ...but not in the water: $A0/$AC stay 8 through the wade, and the
+     * fall-in above keys on this being 0 (NOTES 283) */
+    if (!k->airborne && p->hazard != 8) p->jump_state = 0;
     /* The knockback window, counted down here: the old step did it inside
      * smk_kart_face, which this path no longer calls, and a window that
      * never closed kept the reflected velocity for ever.
@@ -1023,6 +1045,13 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
     }
     else if (p->drive == 2) {              /* $80A647: airborne off a ramp - no thrust */
         p->accel32 = p->accel32 & 0xFFFF;
+    }
+    else if (p->drive == 8) {              /* $80A5AD: the wade - B held under $7C
+                                            * accelerates by ONE a frame, anything
+                                            * else decelerates by one; 123/124 in
+                                            * both recordings (NOTES 283) */
+        int ee = ((c4 & 0x8000) && spd < 0x7C) ? 1 : -1;
+        p->accel32 = ((int32_t)ee << 16) | (p->accel32 & 0xFFFF);
     }
     /* $80A553 -> $80A69D ($AC == 0) - drive */
     else if (p->drive == 0) {

@@ -890,6 +890,60 @@ int main(int argc, char **argv)
                     check("a cup: 9/6/3/1 from the ROM, points then standings, the next grid from the last race's order, coins by slot, no retry when ranked out",
                           started && u.gp_pts_table[0] == 9 && u.gp_pts_table[3] == 1 && pts_me == 6 && pts_win == 9
                           && pt && pt2 && st && next && t1 != t0 && goes_on && kept && gridok, det);
+                    /* THE WATER (NOTES 283, from the user's two underwater
+                     * recordings): the fall-in loads $CA with $102 and holds
+                     * the first eighteen frames; the kart steers and wades
+                     * at up to 124; onto another class it hops out with 12
+                     * of speed; if $CA runs out it sinks - z still for 33
+                     * frames, then up $40 a frame to $700 and into Lakitu's
+                     * carry, and down $80 a frame at the end. */
+                    {
+                        static smk_track wt;
+                        memset(&wt, 0, sizeof wt);
+                        wt.surface[0] = 0x22; wt.surface[1] = 0x40;
+                        for (int y = 0; y < 62; y++)                /* road north of y 496 */
+                            for (int x = 0; x < 128; x++) wt.map[y * 128 + x] = 1;
+                        smk_player pw; smk_kart kw;
+                        smk_player_setup(&rom, 0, 0, &pw);
+                        smk_player_reset(&pw, 0);
+                        memset(&kw, 0, sizeof kw);
+                        kw.x = 512 << SMK_POS_SHIFT; kw.y = 512 << SMK_POS_SHIFT;
+                        kw.speed = 100;
+                        smk_player_step(&pw, &kw, &wt, 0x8000, 0);
+                        int ca0 = pw.ca, hz0 = pw.hazard;
+                        /* B and left for forty frames: it turns and it moves */
+                        for (int i = 0; i < 40; i++) smk_player_step(&pw, &kw, &wt, 0x8200, 0);
+                        uint16_t hdg40 = pw.heading; int spd40 = kw.speed, hz40 = pw.hazard;
+                        /* straight on north with B: onto the road, and out */
+                        smk_player_reset(&pw, 0); pw.hazard = 8; pw.drive = 8; pw.jump_state = 8; pw.ca = 0x100;
+                        kw.speed = 0; kw.x = 512 << SMK_POS_SHIFT; kw.y = 500 << SMK_POS_SHIFT;
+                        int out_at = -1, spd_out = 0;
+                        for (int i = 0; i < 400 && out_at < 0; i++) {
+                            smk_player_step(&pw, &kw, &wt, 0x8000, 0);
+                            if (pw.hazard == 0) { out_at = i; spd_out = kw.speed; }
+                        }
+                        bool hopped = out_at >= 0 && kw.airborne && pw.drive == 2;
+                        /* the sink: no throttle, the counter runs out */
+                        smk_player_reset(&pw, 0); pw.hazard = 8; pw.drive = 8; pw.jump_state = 8; pw.ca = 2;
+                        kw.speed = 0; kw.airborne = false; kw.x = 512 << SMK_POS_SHIFT; kw.y = 600 << SMK_POS_SHIFT; kw.z = 0;
+                        pw.resc_x = 512; pw.resc_y = 600; pw.resc_h = 0;
+                        int steps6 = 0, still = 0, carry_at = -1, down_at = -1, free_at = -1;
+                        int32_t zcarry = -1;
+                        for (int i = 0; i < 400; i++) {
+                            smk_player_step(&pw, &kw, &wt, 0, 0);
+                            if (pw.hazard == 6) { steps6++; if (kw.z == 0) still++; }
+                            if (pw.hazard == 0x0C && carry_at < 0) { carry_at = i; zcarry = kw.z; }
+                            if (pw.hazard == 0x0E && down_at < 0) down_at = i;
+                            if (pw.hazard == 0 && carry_at >= 0 && free_at < 0) { free_at = i; break; }
+                        }
+                        snprintf(det, sizeof det, "fall-in: CA $%03X hazard %d; 40 frames B+left: heading %04X speed %d hazard %d; out after %d frames at speed %d hopped %d; sink: %d frames in 6 (%d still), carry at z $%04X, lowering %d frames",
+                                 ca0, hz0, hdg40, spd40, hz40, out_at, spd_out, hopped, steps6, still, (unsigned)(zcarry >> 8), free_at - down_at);
+                        check("the water: $102 to sink, steering and a wade, a hop out at 12, and Lakitu's lift of $700 over 61 frames",
+                              ca0 == 0x102 && hz0 == 8 && hdg40 != 0 && spd40 >= 30 && hz40 == 8
+                              && out_at > 0 && out_at < 200 && spd_out == 12 && hopped
+                              && steps6 == 61 && still == 34 && zcarry == ((int32_t)0x700 << 8)
+                              && free_at - down_at == 14, det);
+                    }
                     /* the finishing list's art (NOTES 282): $C3:0000 holds
                      * three rows of eight faces and the digits; Yoshi is
                      * our fifth driver and the sheet's last column */

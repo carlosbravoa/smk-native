@@ -90,7 +90,8 @@ so resolution is not a constraint.
   32-bit speed/acceleration model from `$80A4E1`, the ROM's acceleration
   curves and target speeds per class, the surface table, drift, hop, the
   turbo start and the 336-frame countdown — gated by replaying two human
-  runs through the port frame-exact
+  runs through the port frame-exact; the water's wade, sink and
+  Lakitu's fishing measured from two more (NOTES 283)
 - **Three modes.**  Grand Prix: four cups of five, the ROM's 9/6/3/1 to
   the top four, points and championship screens, the next grid from the
   last race's order, coins by grid slot, no retry (fifth or worse
@@ -227,7 +228,7 @@ docs/AI.md         the opponents: every way the game's AI plays by other rules
 ## Verification
 
 ```bash
-make selftest   # 102 checks through the C code the game actually runs
+make selftest   # 103 checks through the C code the game actually runs
 make test       # 25 checks: ROM identity, disassembler, codec, build loop
 make roundtrip  # every disassembled instruction reassembles byte-identically
 make shots      # a still from all 24 tracks
