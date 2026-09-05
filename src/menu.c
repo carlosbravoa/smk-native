@@ -342,16 +342,6 @@ static void portrait(const smk_rom *rom, const uint32_t *palette, int who,
                         cx, cy, ui_sc * mult, false, fb, w, h, w);
 }
 
-/* the half-size portrait for a list row (the far-tier sampler, sprite.c) */
-static void portrait_mini(const smk_rom *rom, const uint32_t *palette, int who,
-                          int vx, int vy, uint32_t *fb, int w, int h)
-{
-    const smk_sprites *s = driver_art(rom, who);
-    if (!s || !palette) return;
-    smk_draw_sprite_mirror2(s, SMK_SPR_FRONT, palette, SMK_DRIVERS[who].pal,
-                            ui_ox + vx * ui_sc, ui_oy + vy * ui_sc, ui_sc, true,
-                            fb, w, h, w);
-}
 
 static void upper(char *s)
 {
@@ -1234,6 +1224,38 @@ void smk_ui_draw_points(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
     }
 }
 
+/* the count-up's clock, shared with smk_ui_standings_shown */
+#define ST_T_COUNT     34
+#define ST_T_COUNT_LEN 40
+/* the sum of the totals on screen right now - main.c rings a coin each
+ * time it grows (NOTES 288) */
+int smk_ui_standings_shown(const smk_ui *ui)
+{
+    int t = (int)ui->screen_t, sum = 0;
+    int k = t - ST_T_COUNT; if (k < 0) k = 0; if (k > ST_T_COUNT_LEN) k = ST_T_COUNT_LEN;
+    for (int ch = 0; ch < SMK_CHARACTERS; ch++)
+        sum += ui->gp_prev_points[ch] + ui->gp_award[ch] * k / ST_T_COUNT_LEN;
+    return sum;
+}
+
+/* the finishing list's face for a row (NOTES 288): the user found the
+ * far-tier kart samplers "so small and pixelated that they don't look
+ * good", and the list's 16x16 faces are the game's own row art */
+static smk_faces menu_faces;
+static void face_row(const smk_rom *rom, const uint32_t *palette, int who,
+                     int vx, int vy, uint32_t *fb, int w, int h)
+{
+    if (!menu_faces.ok && !smk_faces_load(rom, &menu_faces)) return;
+    if (!palette) return;
+    const uint8_t *px = menu_faces.cut[SMK_FACE_LIST][smk_face_of(who)];
+    for (int y = 0; y < SMK_FACE_PX; y++)
+        for (int x = 0; x < SMK_FACE_PX; x++) {
+            uint8_t v = px[y * SMK_FACE_PX + x];
+            if (!v) continue;
+            fill(fb, w, h, vx + x, vy + y, 1, 1, 0xFF000000u | palette[(SMK_DRIVERS[who].pal + v) & 0xFF]);
+        }
+}
+
 void smk_ui_draw_standings(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
                            const uint32_t *palette, uint32_t *fb, int w, int h)
 {
@@ -1262,7 +1284,7 @@ void smk_ui_draw_standings(const smk_ui *ui, const smk_rom *rom, const smk_font 
 
     /* the timeline */
     int t = (int)ui->screen_t;
-    const int T_IN = 4, T_COUNT = 34, T_COUNT_LEN = 40, T_SORT = 80, T_SORT_LEN = 24;
+    const int T_IN = 4, T_COUNT = ST_T_COUNT, T_COUNT_LEN = ST_T_COUNT_LEN, T_SORT = 80, T_SORT_LEN = 24;
     int row_y0 = 50, row_h = 17;
     int shown_pts[SMK_CHARACTERS];
     for (int ch = 0; ch < SMK_CHARACTERS; ch++) {
@@ -1298,7 +1320,7 @@ void smk_ui_draw_standings(const smk_ui *ui, const smk_rom *rom, const smk_font 
         char line[32], nm[16];
         snprintf(line, sizeof line, "%d", rank + 1);
         text(f, fb, w, h, vx + 6, vy + 3, line, c);
-        portrait_mini(rom, palette, ch, vx + 30, vy + 16, fb, w, h);
+        face_row(rom, palette, ch, vx + 24, vy, fb, w, h);
         snprintf(nm, sizeof nm, "%s", SMK_DRIVERS[ch].name); upper(nm);
         text(f, fb, w, h, vx + 44, vy + 3, nm, me ? gold : other ? p2 : c);
         if (me)    text(f, fb, w, h, vx + 44 + (int)strlen(nm) * 8 + 4, vy + 3, "P1", gold);

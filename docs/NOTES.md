@@ -12700,3 +12700,44 @@ raised `bounce_hit`, so a pipe or Thwomp cost speed in silence and left
 the engine where it was.  It raises it now, and everything a wall gets
 follows: the rev halving (NOTES 285) and the two sounds.  The mover
 test in the selftest now also expects every hit to carry the mark.
+
+## 288. Six from a playtest: heights from other cameras, the list, the cup screens
+
+The user's list after playing the cup and the split screen.
+
+**Other karts' heights were four times too high.**  Their hops and ramp
+jumps - *"the AI jump with ramps seems too exaggerated"*, and the L/R hop
+*"looks a meter high from any other camera - from the 2P POV and also
+after winning, when looked from the front"*.  The physics was not the
+problem: the AI's launch is the recording's (NOTES 280) and the hop is
+the ROM's.  The DRAWING was.  A racer's sprite is lifted by
+`height_px * sc`, where `sc` is `smk_project`'s host pixels per world
+pixel at that depth - `LES / d` times the window scale - and at the
+player's own depth `LES / TRAIL` is 256/61 = 4.2.  The player's own
+kart is lifted by `height_px` times the WINDOW scale, which is what the
+12-pixel hop was calibrated to (NOTES 142).  So every kart but your own
+was lifted 4.2 times too far, at every depth: from the front camera
+your own kart is a racer too, and the AI's ramp jumps read as sky-high
+while their z was right.  The lift now scales with the sprite, `sc *
+TRAIL / LES`, the same factor `ks` the sprite itself is drawn at.
+
+**The list, one view.**  *"Too distractive and differs so much from the
+original that we should have it only for showing karts that have
+finished the race (as it is in 2P)."*  So it is: nothing until the
+first kart is home, then the finishers, in both layouts (NOTES 282's
+constant column is gone).
+
+**Everybody home, race over.**  *"The 15 secs count-down should trigger
+when the fourth player arrives, but if everybody finishes, the race
+should finish immediately."*  The cooldown already started at the
+fourth; what waited was the celebration's own 290 frames.  Now the
+moment all eight are home the times come, celebration or not.
+
+**The cup screens.**  *"When counting points, we should hear coin
+sound"*: `smk_ui_standings_shown` sums the totals as drawn and main.c
+rings the coin (`$20`) each frame the sum grows - about a dozen over the
+forty-frame count.  *"The karts there are so small and pixelated"*: the
+championship rows carry the finishing list's 16x16 faces (`$C3:0000`,
+NOTES 282) in the drivers' own palettes instead of the far-tier kart
+sampler.  `SMK_STANDINGS_SHOT=path` renders the settled screen without
+the shell.

@@ -2049,6 +2049,7 @@ typedef struct {
     int  entries;         /* how many of field[] are filled (0 = trial)   */
 } smk_ui_result;
 void smk_ui_gp_award(smk_ui *ui, const smk_ui_result *res);
+int  smk_ui_standings_shown(const smk_ui *ui);   /* the totals on screen, summed (NOTES 288) */
 /* The championship order: points, then the last race's place, then the
  * driver index.  order[0] is the leader. */
 void smk_ui_gp_order(const smk_ui *ui, int order[SMK_CHARACTERS]);

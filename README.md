@@ -23,10 +23,10 @@ order: after each race the times, then the points the ROM's table pays
 the top four (9, 6, 3, 1), then the championship.  The next race lines
 up in the order this one finished, its winner on pole, as the game does
 (NOTES 275); finish fifth or worse and you score nothing, and the cup
-goes on.  The finishing list - the game's own faces - is on screen all
-race in one view and, in a split screen, once karts start to finish;
-the minimap shows every kart as its face; fifteen seconds after the
-fourth kart is home the race is over at the positions held (NOTES 282).  **Single Race** is one cup course on its own.
+goes on.  The finishing list - the game's own faces - comes up as karts
+finish; the minimap shows every kart as its face; fifteen seconds after
+the fourth kart is home the race is over at the positions held, or the
+moment everybody is (NOTES 282/288).  **Single Race** is one cup course on its own.
 **Time Trial** is five laps alone, a lap clock and splits, one mushroom,
 and the five fastest laps per course kept between sessions (under
 `$XDG_DATA_HOME/smk-port/laptimes.txt`).
@@ -95,8 +95,8 @@ so resolution is not a constraint.
 - **Three modes.**  Grand Prix: four cups of five, the ROM's 9/6/3/1 to
   the top four, points and championship screens, the next grid from the
   last race's order, coins by grid slot, no retry (fifth or worse
-  scores nothing), the finishing list on screen all race, a fifteen
-  second cooldown after the fourth kart, the trophy.  Single Race.  Time Trial, with the top five laps per course
+  scores nothing), the finishing list as karts finish, a fifteen second
+  cooldown after the fourth kart, the trophy.  Single Race.  Time Trial, with the top five laps per course
   kept on disk.  Two players **side by side** - each half's whole sound on
   its own speaker - or one player against the neural CPU
 - **Seven opponents** on the ROM's own racing lines: its direction field,

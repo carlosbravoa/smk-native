@@ -3000,7 +3000,14 @@ static void draw_ai_kart(const smk_rom *rom, const smk_track *trk,
             f = smk_sprite_for_heading(SMK_SPR_TIER0, r16, &hf);
         }
         /* height lifts the sprite on screen, scaled like everything else */
-        py -= (float)smk_kart_height_px(&racers[k].k) * sc;
+        /* The lift is in SPRITE pixels, so it scales like the sprite: sc
+         * is host px per world px at that depth (LES / d), which at the
+         * player's own depth is LES/TRAIL = 4.2 times the window scale
+         * the player's kart is lifted by.  Lifting by sc drew every other
+         * kart's hop and ramp four times too high - the user: "looks a
+         * meter high from any other camera", and "the AI jump with ramps
+         * seems too exaggerated" (NOTES 288). */
+        py -= (float)smk_kart_height_px(&racers[k].k) * (sc * SMK_CAM_TRAIL / SMK_PROJ_LES);
         /* the surface's shake, as the player's (NOTES 197; LABELLED: the
          * sweep measured P1's sprite, the AI's is assumed the same) */
         if (!racers[k].k.airborne && racers[k].k.speed != 0)
@@ -3601,11 +3608,20 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
         draw_finish_flag(fb, rw, rh, trk->palette, finish_t);
     /* the finishing list stays up through the celebration - that is
      * when the game itself shows it (NOTES 282) */
+    /* ...and, since NOTES 288, only once karts finish and only those -
+     * the user: "too distractive and differs so much from the original
+     * that we should have it only for showing karts that have finished
+     * the race (as it is in 2P)" */
     if (nviews < 2 && race_mode != SMK_MODE_TT && race_state != RACE_COUNTDOWN) {
-        int lx, ly, lsc;
-        rank_column_place(rw, rh, false, &lx, &ly, &lsc);
-        draw_rank_column(fb, rw, rh, trk->palette, lx, ly, lsc, hud_race_frames, false);
-        draw_cooldown(fb, rw, rh, trk->palette, lx, ly + 8 * SMK_LIST_PITCH * lsc, lsc);
+        int home = 0;
+        for (int i = 0; i < SMK_CHARACTERS; i++)
+            if (racers[i].finish_frame >= 0) home++;
+        if (home > 0) {
+            int lx, ly, lsc;
+            rank_column_place(rw, rh, false, &lx, &ly, &lsc);
+            draw_rank_column(fb, rw, rh, trk->palette, lx, ly, lsc, hud_race_frames, true);
+            draw_cooldown(fb, rw, rh, trk->palette, lx, ly + home * SMK_LIST_PITCH * lsc, lsc);
+        }
     }
     if (!celebrating) {
         if (hud_countdown >= 0)           /* Lakitu, and his light */
@@ -5703,15 +5719,19 @@ int main(int argc, char **argv)
             /* the celebration is over: the times are due.  The camera
              * holds on the driver until they come - the field is still
              * arriving, and the list down the side shows it. */
+            bool field_home = true;
+            for (int i = 0; i < SMK_CHARACTERS; i++)
+                if (racers[i].finish_frame < 0) field_home = false;
+            /* ...or the moment everybody is home, celebration or not -
+             * the user (NOTES 288): "if everybody finishes, the race
+             * should finish immediately" */
             if (race_state == RACE_FINISH
-                && finish_t == SMK_FINISH_TURN + SMK_FINISH_HOLD)
+                && (finish_t >= SMK_FINISH_TURN + SMK_FINISH_HOLD
+                    || (field_home && race_mode != SMK_MODE_TT)))
                 results_ready = true;
             /* ...and they come when the field is home, or fifteen seconds
              * after the fourth kart was (NOTES 282); a time trial waits
              * for its own drivers only, and a minute is the backstop */
-            bool field_home = true;
-            for (int i = 0; i < SMK_CHARACTERS; i++)
-                if (racers[i].finish_frame < 0) field_home = false;
             bool due = race_mode == SMK_MODE_TT ? every_view_finished()
                                                 : (field_home || cooldown_over);
             if (results_ready && (due || finish_wait >= SMK_FINISH_WAIT)) {
@@ -5730,6 +5750,15 @@ int main(int argc, char **argv)
                            : result.field[q].player ? "   <- you" : "");
                 }
                 if (shell || getenv("SMK_RESULT_SHOT")) { smk_ui_gp_award(&ui, &result); ui.screen = SMK_UI_RESULT; }
+                /* SMK_STANDINGS_SHOT=path - the championship screen, settled,
+                 * without the shell: a cup of one race, its points from
+                 * this result (NOTES 288) */
+                if (getenv("SMK_STANDINGS_SHOT") && !shell) {
+                    ui.gp = true; ui.gp_race = 0; ui.player_sel = character;
+                    for (int i = 0; i < 4; i++) ui.gp_pts_table[i] = (int[]){ 9, 6, 3, 1 }[i];
+                    smk_ui_gp_award(&ui, &result);
+                    ui.screen = SMK_UI_STANDINGS; ui.screen_t = 0;
+                }
             }
             }
             pv_switch(0);
@@ -5740,10 +5769,26 @@ int main(int argc, char **argv)
         /* SMK_RESULT_SHOT draws the results screen without the shell, which
          * --race bypasses - otherwise the layout can only be seen by
          * playing through the menus. */
-        if (tex && fb && (shell || getenv("SMK_RESULT_SHOT"))
+        if (tex && fb && (shell || getenv("SMK_RESULT_SHOT") || getenv("SMK_STANDINGS_SHOT"))
             && ui.screen != SMK_UI_RACE) {
-            if (ui.screen == SMK_UI_STANDINGS)
+            if (ui.screen == SMK_UI_STANDINGS) {
+                if (getenv("SMK_STANDINGS_SHOT") && !shell) {   /* the rig runs the clock the shell would */
+                    smk_ui_input none = { 0 };
+                    smk_ui_step(&ui, &rom, &none);
+                }
+                if (getenv("SMK_STANDINGS_SHOT") && ui.screen_t >= 130) {
+                    smk_ui_draw_standings(&ui, &rom, &menu_font, trk.palette, fb, rw, rh);
+                    save_ppm(getenv("SMK_STANDINGS_SHOT"), fb, rw, rh);
+                    in.quit = true;
+                }
+                /* a coin for every point as the totals count up (the
+                 * user, NOTES 288) */
+                static int shown_prev = -1;
+                int shown = smk_ui_standings_shown(&ui);
+                if (shown_prev >= 0 && shown > shown_prev) smk_sfx_play(SMK_SFX_COIN);
+                shown_prev = ui.screen_t == 0 ? -1 : shown;
                 smk_ui_draw_standings(&ui, &rom, &menu_font, trk.palette, fb, rw, rh);
+            }
             else if (ui.screen == SMK_UI_POINTS)
                 smk_ui_draw_points(&ui, &rom, &menu_font, trk.palette, fb, rw, rh);
             else if (ui.screen == SMK_UI_RESULT) {
