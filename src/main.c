@@ -2285,6 +2285,21 @@ static void apply_surf_fill(void)
         if (trk.surface[i] >= 0x40) trk.surface[i] = (uint8_t)fcls;
 }
 
+/* SMK_COURSE_DUMP=path - the loaded course's direction field, sector map
+ * and waypoints, raw, to diff against the game's own $7F:4000 / $7F:5000
+ * dumps (NOTES 294) */
+static void course_dump_if_asked(void)
+{
+    if (!getenv("SMK_COURSE_DUMP")) return;
+    FILE *cf = fopen(getenv("SMK_COURSE_DUMP"), "wb");
+    if (!cf) return;
+    fwrite(crs.flow, 1, sizeof crs.flow, cf);
+    fwrite(crs.map, 1, sizeof crs.map, cf);
+    for (int i = 0; i < crs.sectors; i++) { uint16_t wx = (uint16_t)crs.wx[i], wy = (uint16_t)crs.wy[i]; fwrite(&wx, 2, 1, cf); fwrite(&wy, 2, 1, cf); }
+    fclose(cf);
+    printf("course dump: %d sectors, flow %zu map %zu\n", crs.sectors, sizeof crs.flow, sizeof crs.map);
+}
+
 static bool load_race(const smk_rom *rom, int track, int theme, int character,
                       int engine_class, int mode)
 {
@@ -2384,6 +2399,7 @@ static bool load_race(const smk_rom *rom, int track, int theme, int character,
     memset(projs, 0, sizeof projs);
     smk_ai_attack_init(&ai_attack, item_rng);
     cur_track = track;
+    course_dump_if_asked();
     /* the results screen names the track from the UI's own field, which
      * only the shell sets - so a --race or --timetrial run showed a blank */
     ui.track = track;
@@ -4206,6 +4222,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "error: cannot load course data for track %d\n", track);
         return 1;
     }
+    course_dump_if_asked();
     if (getenv("SMK_ENT_DUMP")) {      /* the decoded entity list (bug 14) */
         printf("ents track %d: n %d live %d\n", track, crs.nent, crs.nlive);
         for (int i = 0; i < crs.nent; i++)
@@ -5578,8 +5595,10 @@ int main(int argc, char **argv)
                 if (getenv("SMK_FIELD_TRACE")) {
                     printf("fp %ld", hud_race_frames);
                     for (int q = 0; q < SMK_CHARACTERS; q++)
-                        printf(",%d,%d,%u,%u", racers[q].k.x, racers[q].k.y,
-                               racers[q].k.angle, racers[q].dbg_want);
+                        printf(",%d,%d,%u,%u,%02X,%d,%d,%d", racers[q].k.x, racers[q].k.y,
+                               racers[q].k.angle, racers[q].dbg_want,
+                               smk_track_surface(&trk, smk_kart_px(racers[q].k.x), smk_kart_px(racers[q].k.y)),
+                               racers[q].sector, racers[q].k.speed, racers[q].no_prog);
                     printf("\n");
                 }
                 if (getenv("SMK_ROW_TRACE")) {

@@ -12978,3 +12978,55 @@ fish, shell.  Measured here on the slide's; in the cup recording's
 tumble the music held every voice at the moment and the game played
 nothing, which is a voice-allocation loss the port does not reproduce.
 Played for all spinning states; LABELLED for the ones not recorded.
+
+## 294. Ghost Valley 3: the field cut the start corner across the void
+
+The user: *"AI gets overlapped on 150cc in certain tracks like Ghost
+Valley 3 ... they tend to all fall down the track in certain curves.  It
+is either that the path/waypoints they follow are not precise as in
+game, or the way we process boundaries."*
+
+**The game's own field on the same course.**  The oracle can be pointed
+at a cup and course by hooking `$0150`/`$0152` (NOTES 118), so it ran the
+Special Cup's third course at 150cc (`$0030` hooked to 4) with the demo
+karts parked and logged every kart for 5000 race frames
+(`tools/labs/gv3ai.py`): the game's AI laps in 1270-1340 frames and is
+NEVER on a class under `$40` - not one frame on the void.  The forced
+course's tilemap matches the port's track 8 on 16296 of 16384 cells
+(the rest the stamped coins and boxes); the port's track 16, which the
+first pass of this note ran, is the other Ghost Valley - a lesson in
+checking the course before the behaviour.
+
+**The port's field on track 8**, player parked: laps 1234-1870, with
+2483 frames on the void, at the START AREA (sector 0's cells) and at
+sector 31.  The course data is not the difference: the direction field
+differs from the game's `$7F:4000` on 121 painted cells by one step of
+1/256 turn and on none by more (NOTES 124's rounding), the sector map on
+none, and the game's own tilemap gives `$20` under the cells the port's
+karts crossed - the void is where both say it is.
+
+**The cause was one test.**  The AI's steering took the flow byte only
+where `crs->map[fcell] != 0` and fell back to a straight line at the
+next waypoint elsewhere.  Sector 0's map byte IS 0, so through the
+whole start area the field steered at the waypoint and cut the corner
+across the void every lap; the game's AI, which reads the flow byte of
+every painted cell (`$80B0E8`), hugs the outside.  NOTES 124 had found
+sector 0 valid and fixed the flow field's holes; this was the last
+place still treating it as unpainted.  With the test gone: **0 frames on
+the void** in five laps, and laps of 1234-1307 - within 3% of the game's
+own 1270-1340 - where before the fastest kart took 1250 and the slowest
+1870.  Sector 31's excursions went with it; they were karts arriving
+off-line from the start corner.  The bend's speeds agree too (game 706,
+port 674 mean through it).
+
+**AI hops over items: not in the ROM.**  The user: *"they are able to
+jump items in the floor as bananas or shells ... there is a probability
+map for them."*  The AI's whole per-frame routine - `$80AD48`'s calls
+(`$A4D0`, `$B1BE`, `$B0B1`, `$AF8F`, `$B7EB`, the `$AD76` throttle table)
+and `$80AD8E`'s row chooser - contains no store to `$26` or `$1F`, no
+call to the hop (`$80B77B`, reached only through the water's skim), and
+no read of the projectile blocks.  `$B1BE` is the airborne handler for
+every kart; the only AI reaction to an item is the hit.  The
+probability tables the AI does have are the ATTACK masks (NOTES 279).
+Not ported, because there is nothing to port; LABELLED here so it is
+not looked for again.

@@ -298,7 +298,15 @@ void smk_racer_step(smk_racer *r, const smk_track *trk,
               + ((smk_kart_px(r->k.x) >> 4) & 63);
     int fsec = crs->map[fcell] & SMK_SECT_OFF;
     uint16_t want;
-    if (fsec != SMK_SECT_OFF && crs->map[fcell] != 0) {
+    /* Every PAINTED cell has a flow byte - sector 0's included.  The
+     * `map != 0` test here treated sector 0 (whose byte is literally 0)
+     * as unpainted and sent the kart straight at the next waypoint
+     * instead: on Ghost Valley 3 that is the start area, and the field
+     * cut the corner across the void every lap while the game's own AI,
+     * run on the same course in the oracle, never touched it (NOTES
+     * 294).  NOTES 124 had already found sector 0 valid; this was the
+     * last place still dodging it. */
+    if (fsec != SMK_SECT_OFF) {
         /* $80B0E8 reads a WORD at $7F:3FFF + cell: the cell's own byte
          * is the high half and its LEFT neighbour's the low half, so the
          * target angle carries a sub-step from the cell beside it rather
