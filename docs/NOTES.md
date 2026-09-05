@@ -12800,3 +12800,41 @@ fall-in from an off-road class (grass, sand, snow) holds the wade's rev
 down, and only through `$B0`'s persistence (above).  So on this one the
 port is the game, and the difference the user remembers is between two
 shorelines, not two implementations.  Nothing changed.
+
+## 290. Under water the engine is muffled, and its volume follows the note
+
+The user, with a new recording (`vanila-lake-underwater`): *"engine goes
+slightly high and bumps back so you have a sine wave in low revs.  Also,
+the engine sound is muffled or its sound is reduced because it is
+underwater.  When you come out, yes the engine is a little over-revved
+compared to speed, but nothing bad."*  NOTES 289a had the law right and
+the picture wrong: the rev DOES climb through a Vanilla Lake wade
+exactly as the lab said - `$0200` a step from the fall-in's zero to
+`$2000` at the exit, 130 frames later, note 0 to 32 - but the recording
+holds what the lab was not reading: DSP voice 7's VOLUME.
+
+Logged per frame off the chip (`tools/labs/mame/vlpitch.lua`):
+
+    on land    VOL 9 at note 1 (idle); 17 from note 2; +1 every nine
+               notes from zero - 18 at 9, 19 at 18, 20 at 27, 21 at 36,
+               22 at 45, 23 at 54, 24 at 63, 25 at 72 (the 150cc race
+               covers it to 74)
+    in water   the same, HALVED: 8, 9, 9, 10 through the wade's climb
+               ($A0 = 8); back to 20 the frame the kart hops out
+    rev zero   note 0, VOL 0 - the engine is silent through a fall and
+               its rescue
+
+The port played every note at one fixed level, so a wade was as loud as
+the road and a note climbing from zero read as "accelerating as if it
+had no issue".  The volume law is ported (`engine_vol_law`, against the
+port's base level at notes 27-35, where it was set by ear); the note is
+the rev's high byte with no floor in the race, so the rescue is silent;
+the countdown alone keeps a floor of 1 for the frame before its rev
+routine has run.  The rev law itself is unchanged - NOTES 289a stands
+for the rev, and the "sine wave in low revs" is that climb, heard at
+half volume.
+
+LABELLED: the halving is measured at notes 0-35; whether the same table
+or a different one applies to notes above that under water was not
+reached in the recording.  The echo enable byte also changes in the
+water (`$BA -> $9A`, voice 5's bit), which is another voice's business.

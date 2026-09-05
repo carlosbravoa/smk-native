@@ -1361,6 +1361,21 @@ static uint16_t net_pad_prev;
 static void obs_trace(const float *obs, int act);
 static int  crossings;              /* finish-line crossings this race */
 static bool engine_throttle;        /* B held: the rev, countdown included */
+/* THE ENGINE'S VOLUME BY NOTE, and the water's muffle - MEASURED off DSP
+ * voice 7 in the user's Vanilla Lake recording (NOTES 290): the voice's
+ * VOL is 9 at note 1 (idle), 17 from note 2, and one more every nine
+ * notes counted from zero (18 at 9, 19 at 18, 20 at 27, 21 at 36 ... 25
+ * at 72, the 150cc race's whole range); UNDER WATER ($A0 = 8)
+ * the same table halved (8, 9, 9, 10) - "the engine sound is muffled"
+ * (the user).  Note 0 - the rev zeroed by a fall - is volume 0.
+ * Returned against the level at note 28-35, where the port's base volume
+ * was set by ear. */
+static float engine_vol_law(int note, bool water)
+{
+    int v = note <= 0 ? 0 : note == 1 ? 9 : 17 + note / 9;
+    if (water) v /= 2;
+    return (float)v / 20.0f;
+}
 static int  fx_kind_now = -1;       /* the ground effect this frame ($80:D37A) */
 /* sounds queued a few frames ahead: the game spaces some pairs out */
 static float sfx_side(void);            /* which speaker this half of the frame owns (NOTES 286) */
@@ -1878,11 +1893,14 @@ static void step_kart(smk_kart *k, smk_track *trk,
          * below (fcabf68), which zeroed the note the line above had just
          * floored at 1.  `v` is the ONLY note passed now, and `make
          * check` listens for it (the engine gate). */
-        if (racing || race_state == RACE_COUNTDOWN) {
-            if (v < 1) v = 1;
-        } else v = 0;
+        /* The note is the rev's high byte and NOTHING ELSE now (NOTES 290):
+         * a rev of zero - a fall, the rescue - is note 0, which the game
+         * plays at volume 0.  The countdown alone keeps a floor of 1, for
+         * the frame before its rev routine has run. */
+        if (race_state == RACE_COUNTDOWN && v < 1) v = 1;
+        if (!racing && race_state != RACE_COUNTDOWN) v = 0;
         smk_engine_voice(cur_view, me->character % SMK_CHARACTERS, v,
-                         smk_engine_base_volume(),
+                         smk_engine_base_volume() * engine_vol_law(v, player.hazard == 8),
                          nviews > 1 ? (cur_view ? 1.0f : -1.0f) : 0.0f);
         /* AND THE OTHER KARTS (NOTES 229).  The user named $5C and $62
          * as "the engine of another player": the game gives a nearby
