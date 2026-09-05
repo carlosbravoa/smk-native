@@ -373,6 +373,32 @@ bool smk_faces_load(const smk_rom *rom, smk_faces *out)
                         out->face[row][c][((q >> 1) * 8 + y) * SMK_FACE_PX + (q & 1) * 8 + x]
                             = t[y * 8 + x];
             }
+    /* the cutouts: flood the index-1 cell in from the edges */
+    for (int row = 0; row < SMK_FACE_ROWS; row++)
+        for (int c = 0; c < SMK_CHARACTERS; c++) {
+            uint8_t *f = out->face[row][c], *k = out->cut[row][c];
+            memcpy(k, f, SMK_FACE_PX * SMK_FACE_PX);
+            uint8_t seen[SMK_FACE_PX * SMK_FACE_PX];
+            memset(seen, 0, sizeof seen);
+            int stack[SMK_FACE_PX * SMK_FACE_PX], sp = 0;
+            for (int i = 0; i < SMK_FACE_PX; i++) {
+                int e[4] = { i, (SMK_FACE_PX - 1) * SMK_FACE_PX + i, i * SMK_FACE_PX, i * SMK_FACE_PX + SMK_FACE_PX - 1 };
+                for (int q = 0; q < 4; q++)
+                    if (!seen[e[q]] && (f[e[q]] == 1 || f[e[q]] == 0)) { seen[e[q]] = 1; stack[sp++] = e[q]; }
+            }
+            while (sp > 0) {
+                int i = stack[--sp];
+                k[i] = 0;
+                int x = i % SMK_FACE_PX, y = i / SMK_FACE_PX;
+                int nb[4] = { x > 0 ? i - 1 : -1, x < SMK_FACE_PX - 1 ? i + 1 : -1,
+                              y > 0 ? i - SMK_FACE_PX : -1, y < SMK_FACE_PX - 1 ? i + SMK_FACE_PX : -1 };
+                for (int q = 0; q < 4; q++) {
+                    int j = nb[q];
+                    if (j < 0 || seen[j] || (f[j] != 1 && f[j] != 0)) continue;
+                    seen[j] = 1; stack[sp++] = j;
+                }
+            }
+        }
     for (int d = 0; d < SMK_CHARACTERS; d++)
         for (int half = 0; half < 2; half++) {
             int tile = (6 + half) * 16 + d;

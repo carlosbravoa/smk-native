@@ -561,6 +561,10 @@ bool smk_sprites_load(const smk_rom *rom, uint32_t base, smk_sprites *out);
 typedef struct {
     bool    ok;
     uint8_t face[SMK_FACE_ROWS][8][SMK_FACE_PX * SMK_FACE_PX];   /* by the sheet's column */
+    /* the same with the cell cut away: index 1 is both the dark cell
+     * and the face's own shading, so only the 1s reachable from the
+     * edge go - for drawing a face over something (the map) */
+    uint8_t cut[SMK_FACE_ROWS][8][SMK_FACE_PX * SMK_FACE_PX];
     uint8_t digit[8][8 * 16];                   /* "1".."8", 8 wide 16 tall */
 } smk_faces;
 bool smk_faces_load(const smk_rom *rom, smk_faces *out);

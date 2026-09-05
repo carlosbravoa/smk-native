@@ -1075,25 +1075,32 @@ static void draw_track_map(uint32_t *fb, int rw, int rh, const smk_kart *me,
                     }
                 continue;
             }
-            const uint8_t *face = face_art.face[SMK_FACE_LIST][smk_face_of(rs[i].character % SMK_CHARACTERS)];
+            /* the face at its own size - the port has the pixels, so no
+             * resampling (the user) - its cell cut away so the map shows
+             * through, at 1:1 up to a 1024-wide view and 2:1 beyond */
+            const uint8_t *face = face_art.cut[SMK_FACE_LIST][smk_face_of(rs[i].character % SMK_CHARACTERS)];
             int pbase = SMK_DRIVERS[rs[i].character % SMK_CHARACTERS].pal;
-            int half = 4 * sc;                         /* an 8x8 head at the map's scale */
-            for (int dy = -half - (player ? sc : 0); dy < half + (player ? sc : 0); dy++)
-                for (int dx = -half - (player ? sc : 0); dx < half + (player ? sc : 0); dx++) {
+            int ms = sc / 2; if (ms < 1) ms = 1;
+            int half = 8 * ms, ring = player ? ms : 0;
+            for (int dy = -half - ring; dy < half + ring; dy++)
+                for (int dx = -half - ring; dx < half + ring; dx++) {
                     int sx = mx + dx, sy = my + dy;
                     if (sx < 0 || sx >= rw || sy < 0 || sy >= rh) continue;
-                    int fx = (dx + half) / sc, fy = (dy + half) / sc;      /* 0..7 inside */
-                    bool inside = fx >= 0 && fx < 8 && fy >= 0 && fy < 8;
-                    uint8_t v = 0;
-                    if (inside) {
-                        /* the fuller of the 2x2 block, so the outline holds */
-                        v = face[(fy * 2) * SMK_FACE_PX + fx * 2];
-                        if (!v) v = face[(fy * 2 + 1) * SMK_FACE_PX + fx * 2];
-                        if (!v) v = face[(fy * 2) * SMK_FACE_PX + fx * 2 + 1];
-                        if (!v) v = face[(fy * 2 + 1) * SMK_FACE_PX + fx * 2 + 1];
-                    }
+                    int fx = (dx + half) / ms, fy = (dy + half) / ms;
+                    bool inside = dx >= -half && dx < half && dy >= -half && dy < half;
+                    uint8_t v = inside ? face[fy * SMK_FACE_PX + fx] : 0;
                     if (v) fb[(size_t)sy * rw + sx] = trk_palette[(pbase + v) & 0xFF];
-                    else if (player) fb[(size_t)sy * rw + sx] = 0xFFFFD040u;
+                    else if (player) {
+                        /* the ring: around the face's own outline only */
+                        bool near = false;
+                        for (int oy = -ms; oy <= ms && !near; oy++)
+                            for (int ox = -ms; ox <= ms && !near; ox++) {
+                                int qx = (dx + ox + half), qy = (dy + oy + half);
+                                if (qx < 0 || qy < 0 || qx >= 2 * half || qy >= 2 * half) continue;
+                                if (face[(qy / ms) * SMK_FACE_PX + qx / ms]) near = true;
+                            }
+                        if (near) fb[(size_t)sy * rw + sx] = 0xFFFFD040u;
+                    }
                 }
         }
 }

@@ -65,7 +65,7 @@ down the middle, once the first is home - and the minimaps draw the
 karts as faces instead.  Faces, digits, expression toggle and number
 flash are the ROM's (`$C3:0000`, measured), the placement ours.
 LABELLED: whether rows five to eight flash; the map heads are the list
-faces halved, not the game's own 8x8 heads.
+faces with their cell cut away, not the game's own 8x8 heads.
 
 **S45 — CPU RULES: FAIR is OURS, ORIGINAL is the game.**  A row on the
 class screen (NOTES 281).  FAIR takes three advantages from the field -

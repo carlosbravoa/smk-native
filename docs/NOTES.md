@@ -12471,7 +12471,13 @@ kart crosses, then shows the finished karts only, a row appearing as each
 one arrives - the game's own way - and the minimaps carry the order
 instead, each kart drawn as its face rather than a dot, the view's own
 driver last and in a gold ring.  The map heads are the list's 16x16
-faces halved: the game's own 8x8 map heads live in the bottom half's
-OAM, which a frame-end grab does not hold (the halves rewrite OAM
-mid-frame), so this is ROM art resampled - LABELLED.  The one-player
-list is unchanged, all eight, all race; the map faces are drawn in both.
+faces: the game's own 8x8 map heads live in the bottom half's OAM,
+which a frame-end grab does not hold (the halves rewrite OAM
+mid-frame), so the list's art stands in - LABELLED.  A first cut halved
+them; the user: *"scaling with bad quality is not necessary in this
+port"* - and the cell behind each face showed as a square, so the faces
+go on the map at their own size (1:1 up to a 1024-wide view, 2:1
+beyond) with the cell cut away: index 1 is both the cell and the face's
+own shading, so `smk_faces_load` floods only the 1s reachable from the
+edge (`smk_faces.cut`).  The one-player list is unchanged, all eight,
+all race; the map faces are drawn in both.
