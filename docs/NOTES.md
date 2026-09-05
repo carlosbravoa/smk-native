@@ -12642,3 +12642,27 @@ fall-in.
 Left as it was: the AI karts' engines are pitched by their speed
 through the same pitch law (NOTES 229) - they have no `$C2` of their
 own in the port.
+
+## 286. Two players, two speakers
+
+The user: *"In 2P mode with two karts, the whole sound for the P1's
+game should sound on the left speaker, while the P2 player should sound
+on the right speaker."*  OURS - the game has one mix for its stacked
+halves - and it falls out of how the frame is already built: the
+per-driver work runs once per view under `pv_switch`, so the frame
+knows whose half it is on.
+
+`sfx_take_side(v)` marks each per-driver section and `sfx_take_side(-1)`
+the world's code between them; `smk_sfx_set_pan` carries that into
+audio.c, where every one-shot is panned on its channel as it is fired
+(`Mix_SetPanning`, hard: -1 is the left speaker only), a queued sound
+keeps the side it was queued on, and a held loop that only one driver
+wants sits on that driver's side while one both want stays in the
+middle (`smk_sfx_loop_pan`, from the wishes of NOTES 250).  The
+engines: the player's own voice goes to its side outright (it was half
+way), the nearest karts' voices go with their view instead of their
+lateral place, and the engine mixer's 20% bleed at full pan is gone so
+the ends mean one speaker.  The world's sounds - the countdown's beeps
+and go - stay in the middle; a one-player race is untouched, every
+sound at 0.  Traced headless: in a split race every kart sound lands
+at exactly -1.0 or +1.0 and the countdown at 0.0; in one view, all 0.0.

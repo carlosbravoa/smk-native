@@ -63,6 +63,11 @@ Lakitu's retreat when the kart escapes early.  The void (Ghost Valley)
 keeps NOTES 168a/169a's path.  The hold after the drop is gone - the
 recordings show the kart free at once.
 
+**S48 — Two players, two speakers (NOTES 286).**  OURS: in a split
+race every sound of player 1's half is panned to the left speaker and
+player 2's to the right, the world's (the countdown) in the middle; the
+game's stacked halves share one mix.
+
 **S46 — The cup's finish is the user's, not the game's (NOTES 282).**
 No retry when ranked out: the top four are paid, the player outside them
 scores nothing and the cup goes on.  Fifteen seconds after the fourth

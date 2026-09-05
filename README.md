@@ -97,8 +97,8 @@ so resolution is not a constraint.
   last race's order, coins by grid slot, no retry (fifth or worse
   scores nothing), the finishing list on screen all race, a fifteen
   second cooldown after the fourth kart, the trophy.  Single Race.  Time Trial, with the top five laps per course
-  kept on disk.  Two players **side by side**, or one player against the
-  neural CPU
+  kept on disk.  Two players **side by side** - each half's whole sound on
+  its own speaker - or one player against the neural CPU
 - **Seven opponents** on the ROM's own racing lines: its direction field,
   speed classes, rubber band (`$80ADA0`), kart-to-kart contact with the
   weight table, ramp launches, wall escapes, Lakitu's rescue; all 20 GP

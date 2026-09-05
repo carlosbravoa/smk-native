@@ -155,6 +155,20 @@ void smk_audio_pause(bool on)
  */
 #define SFX_SLOTS 128
 static Mix_Chunk *sfx[SFX_SLOTS];
+/* WHOSE SIDE a sound is on (NOTES 286).  In a split-screen race the user
+ * wants "the whole sound for P1's game on the left speaker, P2's on the
+ * right": main.c sets this to -1 while it runs player 1's half of the
+ * frame, +1 for player 2's, 0 for the world's own sounds and every
+ * one-player race, and every one-shot fired meanwhile is panned there. */
+static float sfx_pan;
+void smk_sfx_set_pan(float pan) { sfx_pan = pan < -1.0f ? -1.0f : (pan > 1.0f ? 1.0f : pan); }
+static void pan_channel(int ch, float pan)
+{
+    if (ch < 0) return;
+    float l = 1.0f - pan, r = 1.0f + pan;
+    if (l > 1.0f) l = 1.0f; if (r > 1.0f) r = 1.0f;
+    Mix_SetPanning(ch, (Uint8)(l * 255.0f), (Uint8)(r * 255.0f));
+}
 static int8_t     sfx_tried[SFX_SLOTS];
 static bool       sfx_on = true;
 static bool       sfx_checked;
@@ -193,8 +207,8 @@ void smk_sfx_play_name(const char *name)
             printf("sfx: %s %s\n", path, chunks[slot] ? "loaded" : "MISSING");
         if (!chunks[slot]) return;
     }
-    if (getenv("SMK_SFX_TRACE")) printf("sfx: play %s\n", name);
-    Mix_PlayChannel(-1, chunks[slot], 0);
+    if (getenv("SMK_SFX_TRACE")) printf("sfx: play %s pan %+.1f\n", name, sfx_pan);
+    pan_channel(Mix_PlayChannel(-1, chunks[slot], 0), sfx_pan);
 }
 
 /* A sound the game HOLDS rather than fires: the item roulette is one
@@ -203,7 +217,10 @@ void smk_sfx_play_name(const char *name)
  * its own so it can be started and stopped by the state that owns it. */
 static struct { char name[24]; Mix_Chunk *chunk; bool on; } loops[SFX_LOOPS];
 
-void smk_sfx_loop(const char *name, bool on)
+void smk_sfx_loop(const char *name, bool on) { smk_sfx_loop_pan(name, on, 0.0f); }
+/* the same, placed: a held sound both drivers want sits in the middle,
+ * one only one of them wants sits on that one's side (NOTES 286) */
+void smk_sfx_loop_pan(const char *name, bool on, float pan)
 {
     if (!ready || !sfx_enabled() || !name) return;
     int slot = -1, free_slot = -1;
@@ -217,7 +234,7 @@ void smk_sfx_loop(const char *name, bool on)
         snprintf(loops[slot].name, sizeof loops[slot].name, "%s", name);
     }
     if (on) {
-        if (loops[slot].on) return;
+        if (loops[slot].on) { pan_channel(slot, pan); return; }   /* follow the side */
         if (!loops[slot].chunk) {
             char path[900];
             snprintf(path, sizeof path, "%ssfx/%s.wav", map_dir, name);
@@ -227,6 +244,7 @@ void smk_sfx_loop(const char *name, bool on)
             if (!loops[slot].chunk) return;
         }
         Mix_PlayChannel(slot, loops[slot].chunk, -1);
+        pan_channel(slot, pan);
         loops[slot].on = true;
         if (getenv("SMK_SFX_TRACE")) printf("sfx: loop %s ON\n", name);
     } else if (loops[slot].on) {
@@ -249,8 +267,8 @@ void smk_sfx_play(int id)
             printf("sfx: %s %s\n", path, sfx[id] ? "loaded" : "MISSING");
         if (!sfx[id]) return;
     }
-    if (getenv("SMK_SFX_TRACE")) printf("sfx: play $%02X\n", id);
-    Mix_PlayChannel(-1, sfx[id], 0);   /* -1 skips reserved channels */
+    if (getenv("SMK_SFX_TRACE")) printf("sfx: play $%02X pan %+.1f\n", id, sfx_pan);
+    pan_channel(Mix_PlayChannel(-1, sfx[id], 0), sfx_pan);   /* -1 skips reserved channels */
 }
 
 /* Play every captured effect in id order, announcing each - so a person
@@ -584,9 +602,9 @@ static void engine_mix(void *ud, Uint8 *stream, int len)
             float f = (float)(eng[v].phase - j);
             float a = pcm[j % elen], b = pcm[(j + 1) % elen];
             float s = (a + (b - a) * f) * eng[v].vol;
-            float p = eng[v].pan;               /* -1 left .. +1 right */
-            l += s * (p > 0.0f ? 1.0f - p * 0.8f : 1.0f);
-            r += s * (p < 0.0f ? 1.0f + p * 0.8f : 1.0f);
+            float p = eng[v].pan;               /* -1 left .. +1 right: at the ends, that side ONLY (NOTES 286) */
+            l += s * (p > 0.0f ? 1.0f - p : 1.0f);
+            r += s * (p < 0.0f ? 1.0f + p : 1.0f);
             eng[v].phase += eng[v].step;
             while (eng[v].phase >= elen) eng[v].phase -= elen;
         }

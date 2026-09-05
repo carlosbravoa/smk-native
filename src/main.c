@@ -1363,11 +1363,12 @@ static int  crossings;              /* finish-line crossings this race */
 static bool engine_throttle;        /* B held: the rev, countdown included */
 static int  fx_kind_now = -1;       /* the ground effect this frame ($80:D37A) */
 /* sounds queued a few frames ahead: the game spaces some pairs out */
-static struct { int id, t; } sfx_later[4];
+static float sfx_side(void);            /* which speaker this half of the frame owns (NOTES 286) */
+static struct { int id, t; float pan; } sfx_later[4];
 static void smk_sfx_after(int id, int frames)
 {
     for (int i = 0; i < (int)(sizeof sfx_later / sizeof sfx_later[0]); i++)
-        if (sfx_later[i].t <= 0) { sfx_later[i].id = id; sfx_later[i].t = frames; return; }
+        if (sfx_later[i].t <= 0) { sfx_later[i].id = id; sfx_later[i].t = frames; sfx_later[i].pan = sfx_side(); return; }
 }
 
 /* One frame of the player's kart: the DECODED control (src/player.c, NOTES
@@ -1396,6 +1397,16 @@ static uint16_t pad_held_prev;  /* last frame's pad, for the d-pad edges */
 static bool slot_is_driven(int q);
 #define SFX_WISHES 12
 static struct { char name[24]; bool want[2]; } sfx_wish[SFX_WISHES];
+/* THE SPLIT (NOTES 286): in a two-view race player 1's whole game sounds
+ * on the left and player 2's on the right (the user).  Which side the
+ * frame is on right now; 0 in one view and for the world's own sounds. */
+static float sfx_cur_side;
+static float sfx_side(void) { return sfx_cur_side; }
+static void sfx_take_side(int view)     /* -1: nobody's - the world's */
+{
+    sfx_cur_side = (nviews > 1 && view >= 0) ? (view ? 1.0f : -1.0f) : 0.0f;
+    smk_sfx_set_pan(sfx_cur_side);
+}
 static void sfx_loop_want(const char *name, bool on)
 {
     int free_slot = -1;
@@ -1413,7 +1424,12 @@ static void sfx_loop_flush(void)
 {
     for (int i = 0; i < SFX_WISHES; i++) {
         if (!sfx_wish[i].name[0]) continue;
-        smk_sfx_loop(sfx_wish[i].name, sfx_wish[i].want[0] || sfx_wish[i].want[1]);
+        {   /* both want it: the middle; one of them: that one's side */
+            float pan = 0.0f;
+            if (nviews > 1 && sfx_wish[i].want[0] != sfx_wish[i].want[1])
+                pan = sfx_wish[i].want[1] ? 1.0f : -1.0f;
+            smk_sfx_loop_pan(sfx_wish[i].name, sfx_wish[i].want[0] || sfx_wish[i].want[1], pan);
+        }
         sfx_wish[i].want[0] = sfx_wish[i].want[1] = false;
     }
 }
@@ -1625,8 +1641,12 @@ static void step_kart(smk_kart *k, smk_track *trk,
     {   /* sounds the game spaces out - the coin item is TWO coins, and
          * the recording puts its two $20s seven frames apart */
         for (int i = 0; i < (int)(sizeof sfx_later / sizeof sfx_later[0]); i++)
-            if (sfx_later[i].t > 0 && --sfx_later[i].t == 0)
+            if (sfx_later[i].t > 0 && --sfx_later[i].t == 0) {
+                float keep = sfx_side();
+                smk_sfx_set_pan(sfx_later[i].pan);      /* the side it was queued on */
                 smk_sfx_play(sfx_later[i].id);
+                smk_sfx_set_pan(keep);
+            }
     }
     if (!replay_path) {
         /* THE EDGE DETECTOR IS PER DRIVER.  These were function statics -
@@ -1863,7 +1883,7 @@ static void step_kart(smk_kart *k, smk_track *trk,
         } else v = 0;
         smk_engine_voice(cur_view, me->character % SMK_CHARACTERS, v,
                          smk_engine_base_volume(),
-                         nviews > 1 ? (cur_view ? 0.5f : -0.5f) : 0.0f);
+                         nviews > 1 ? (cur_view ? 1.0f : -1.0f) : 0.0f);
         /* AND THE OTHER KARTS (NOTES 229).  The user named $5C and $62
          * as "the engine of another player": the game gives a nearby
          * kart its own engine, so the port now does too - the three
@@ -1915,6 +1935,8 @@ static void step_kart(smk_kart *k, smk_track *trk,
                 float dy = (float)(smk_kart_px(racers[q].k.y) - smk_kart_px(k->y));
                 float lat = -dx * sinf(ang) + dy * cosf(ang);
                 float pan = lat / 120.0f;
+                /* in a split the whole view is on one side (NOTES 286) */
+                if (nviews > 1) pan = cur_view ? 1.0f : -1.0f;
                 /* MEASURED (NOTES 237): in the ROM another kart's engine
                  * sits at a MEDIAN 0.89 of the player's OWN voice - 395
                  * samples over the 137 frames of a race where two engines
@@ -4431,6 +4453,7 @@ int main(int argc, char **argv)
          * live globals always hold view 0 at the top of a frame, so its
          * copy is the one in `in`. */
         pv_switch(0);
+        sfx_take_side(-1);
         {
             int nhuman = (nviews > 1 && views[1].drives && !views[1].bot) ? 2 : 1;
             /* the user's rule: with one controller it is "controller and
@@ -4715,6 +4738,7 @@ int main(int argc, char **argv)
              * there was only ever one of them. */
             for (int v = 0; v < nviews; v++) {
             pv_switch(v);
+            sfx_take_side(v);
             if (countdown_now) {
                 /* The lights.  The kart is held, but the throttle is NOT
                  * ignored - it builds the rev, and where the rev sits when
@@ -5340,6 +5364,7 @@ int main(int argc, char **argv)
             }
             }
             pv_switch(0);
+            sfx_take_side(-1);
             sfx_loop_flush();     /* one channel per held sound, both views' wishes */
             /* ---- the world again: the field, and everything the karts
              * do to each other.  Once a frame, whoever is watching. */
@@ -5381,6 +5406,7 @@ int main(int argc, char **argv)
                     /* each driver's own hit, on his own slot */
                     for (int v = 0; v < nviews; v++) {
                     pv_switch(v);
+                    sfx_take_side(v);
                     int hk = smk_proj_hit(projs, SMK_PROJ_MAX, &kart, (int)(me - racers));
                     if (hk == SMK_PROJ_BANANA) {
                         if (smk_player_hit_banana(&player, &kart)) {
@@ -5414,6 +5440,7 @@ int main(int argc, char **argv)
                     }
                     }
                     pv_switch(0);
+                    sfx_take_side(-1);
                     for (int q = 1; q < SMK_CHARACTERS; q++) {
                         if (slot_is_driven(q)) continue;   /* it took its hit above */
                         int hq = smk_proj_hit(projs, SMK_PROJ_MAX, &racers[q].k, q);
@@ -5512,6 +5539,7 @@ int main(int argc, char **argv)
             }
             for (int v = 0; v < nviews; v++) {
             pv_switch(v);
+            sfx_take_side(v);
             if ((race_state == RACE_RUN || race_state == RACE_FINISH)
                 && !replay_path && race_mode != SMK_MODE_TT) {
                 kart = me->k;
@@ -5705,6 +5733,7 @@ int main(int argc, char **argv)
             }
             }
             pv_switch(0);
+            sfx_take_side(-1);
         }
         (void)stepped;   /* edges deliberately survive a tickless iteration */
 
@@ -5756,6 +5785,7 @@ int main(int argc, char **argv)
                 int vw = rw / 2;
                 for (int v = 0; v < 2; v++) {
                     pv_switch(v);
+                    sfx_take_side(v);
                     if (views[v].rw != vw || views[v].rh != rh) {
                         free(views[v].fb);
                         views[v].fb = malloc((size_t)vw * (size_t)rh * sizeof *fb);
@@ -5769,6 +5799,7 @@ int main(int argc, char **argv)
                                (size_t)vw * sizeof *fb);
                 }
                 pv_switch(0);
+                sfx_take_side(-1);
                 /* a two-pixel rule down the middle, so the halves read as
                  * two screens rather than one wide one */
                 for (int y = 0; y < rh; y++) {

@@ -1424,6 +1424,8 @@ void smk_audio_pause(bool on);
 void smk_sfx_play(int id);
 void smk_sfx_play_name(const char *name);   /* rom/sfx/<name>.wav */
 void smk_sfx_loop(const char *name, bool on); /* a HELD sound: the roulette */
+void smk_sfx_loop_pan(const char *name, bool on, float pan);   /* ...on a side (NOTES 286) */
+void smk_sfx_set_pan(float pan);   /* -1 left .. +1 right: where the next one-shots go */
 void smk_sfx_toggle(void);
 int  smk_sfx_audition(void);      /* `smk --sfx`: play them all, named */
 /* The engine note: v is the game's own $42 (NOTES 212), 0 = silent, and
