@@ -446,6 +446,8 @@ bool smk_ui_step(smk_ui *ui, const smk_rom *rom, const smk_ui_input *in)
          * "selecting kart and difficulty is super counter intuitive". */
         if (in->up)   ui->engine_class = (ui->engine_class + 2) % 3;
         if (in->down) ui->engine_class = (ui->engine_class + 1) % 3;
+        /* left/right: CPU RULES, the user's own switch (NOTES 281) */
+        if (in->left || in->right) ui->cpu_rules = ui->cpu_rules == SMK_CPU_FAIR ? SMK_CPU_ORIGINAL : SMK_CPU_FAIR;
         if (in->back) ui->screen = SMK_UI_MODE;
         if (in->confirm) { ui->picking_p2 = false; ui->screen = SMK_UI_PLAYER; }
         break;
@@ -805,10 +807,10 @@ static void draw_class(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
     text_c(f, fb, w, h, 16, "SELECT CLASS", glow);
     static const char *const TAG[3] = { "EASY", "NORMAL", "HARD" };
     for (int c = 0; c < 3; c++) {
-        int vy = 44 + c * 50;
+        int vy = 40 + c * 46;
         bool on = ui->engine_class == c;
-        fill(fb, w, h, 16, vy - 6, 224, 44, on ? 0x50FFC040 : 0x20FFFFFF);
-        if (on) frame_box(fb, w, h, 16, vy - 6, 224, 44, 0xFFFFD040);
+        fill(fb, w, h, 16, vy - 6, 224, 40, on ? 0x50FFC040 : 0x20FFFFFF);
+        if (on) frame_box(fb, w, h, 16, vy - 6, 224, 40, 0xFFFFD040);
         char nm[8];
         snprintf(nm, sizeof nm, "%s", class_name(c)); upper(nm);
         text_big(f, fb, w, h, 28, vy, nm, on ? hi : lo, 2);
@@ -831,7 +833,18 @@ static void draw_class(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
         if (on && ((ui->tick / 12) & 1) == 0)
             fill(fb, w, h, 6, vy + 2, 6, 10, 0xFFFFC040);
     }
-    text_c(f, fb, w, h, 202, "ENTER SELECT   ESC BACK", lo);
+    /* CPU RULES, left/right: the game's field as decoded, or the user's
+     * fair set (NOTES 281).  Written out so the choice can be read. */
+    {
+        bool fair = ui->cpu_rules == SMK_CPU_FAIR;
+        fill(fb, w, h, 16, 176, 224, 14, 0x20FFFFFF);
+        text(f, fb, w, h, 22, 179, "CPU RULES", lo);
+        fill(fb, w, h, fair ? 192 : 114, 177, fair ? 40 : 72, 12, 0x60FFC040);
+        text(f, fb, w, h, 118, 179, "ORIGINAL", fair ? off : hi);
+        text(f, fb, w, h, 196, 179, "FAIR", fair ? hi : off);
+        text_c(f, fb, w, h, 193, fair ? "THEY PAY FOR GRASS AND RAMPS" : "THE GAME'S OWN FIELD", off);
+    }
+    text_c(f, fb, w, h, 206, "ENTER SELECT   ESC BACK", lo);
 }
 
 /* THE DRIVER.  A 4x2 grid of cards, each big enough to hold its kart

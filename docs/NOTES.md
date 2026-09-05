@@ -12358,3 +12358,36 @@ boost pad that takes the field to 1380 once a lap.  The human's speed is
 the class's everywhere; the field's is what the course's attributes
 allow.  That is the balance, and the port carries the same table, the
 same attributes and now the same pad.
+
+## 281. CPU RULES: ORIGINAL or FAIR, the user's own switch
+
+Asked what to cap to make 150cc competitive - *"frustrating because how
+they cheat more than how fast it is"* - five things were put to the
+user, from docs/AI.md.  Their answers: coins for the AI, no - *"the AI
+won't go for catching coins if they are not in their ideal route, so it
+will be not fair"*; the surface immunity, yes; the ramp cosine, yes; the
+attack rate, *"don't touch it yet - they don't have other items so it
+could make it too easy"*; the handicap bonus, *"halve it"*.  And a
+selector, agreed.
+
+So the class screen carries a CPU RULES row, left/right, ORIGINAL by
+default - the field exactly as decoded - and FAIR (OURS, S45), which
+takes three of the game's advantages away and nothing else:
+
+* **the surface cap the player has**, unsoftened: `smk_racer_step`'s
+  off-road cap drops its +200 thousandths;
+* **the cosine at a ramp launch**: `smk_kart_ramp` hands the AI
+  speed*cos($0E00) as the player's path does, instead of the speed it
+  arrived with (NOTES 280);
+* **half of `$80B099`'s handicap bonus**: +2/+4/+8/+0 for the four karts
+  instead of +4/+8/+16/+0 (`smk_ai_da_bonus`).
+
+The rubber band, the sector table and the attack machine are the same
+under both.  `--cpu-rules fair|original` sets it without the shell; the
+selftest pins both effects (1000 -> 941 at a ramp, Peach's 16 -> 8).
+
+Measured under the autopilot at 150cc on Mario Circuit 1 - a course with
+no ramps and little grass in the AI's way - the fair set costs DK Jr a
+second over five laps (1'11"71 -> 1'12"78) and Peach 0.8 s; the
+difference belongs to courses with ramps and off-road, and to the hits
+the player lands, and wants the user's own judgement at the pad.

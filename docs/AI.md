@@ -82,6 +82,13 @@ carries all of it except the two items marked at the end.
 * **A kart in trouble takes the slowest row** - 8% of the original's
   frames.  NOTES 174.
 
+## CPU RULES
+
+The class screen offers ORIGINAL (all of the above, as decoded) or FAIR
+(NOTES 281): the player's full off-road cap, the cosine at a ramp launch,
+and half the handicap bonus.  The band, the sector table and the attack
+machine are the same under both.  OURS, chosen item by item by the user.
+
 ## Where the port still differs
 
 * The surface immunity is softened by choice (a cap on off-road), and

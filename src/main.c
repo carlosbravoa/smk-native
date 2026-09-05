@@ -3647,6 +3647,8 @@ int main(int argc, char **argv)
         if (!strcmp(a, "--replay") && i + 1 < argc) { replay_path = argv[++i]; explicit_start = 1; continue; }
         if (!strcmp(a, "--pads") && i + 1 < argc) { pads_path = argv[++i]; explicit_start = 1; continue; }
         if (!strcmp(a, "--cpu-policy") && i + 1 < argc) { cpu_policy_path = argv[++i]; continue; }
+        if (!strcmp(a, "--cpu-rules") && i + 1 < argc) {   /* original | fair (NOTES 281) */
+            smk_cpu_rules = !strcmp(argv[++i], "fair") ? SMK_CPU_FAIR : SMK_CPU_ORIGINAL; continue; }
         ARG("--replay-kart", replay_kart)
         if (!strcmp(a, "--dump") && i + 1 < argc) { dump = argv[++i]; explicit_start = 1; continue; }
         #define FARG(name, var) if (!strcmp(a, name) && i + 1 < argc) { var = (float)atof(argv[++i]); continue; }
@@ -4290,6 +4292,7 @@ int main(int argc, char **argv)
                             ? SMK_MODE_TT : SMK_MODE_GP;
                     players_mode = ui.players;
                     p2_character = ui.player2_sel;
+                    smk_cpu_rules = ui.cpu_rules;
                     if (load_race(&rom, ui.track, -1, ui.player_sel,
                                   ui.engine_class, m)) {
                         track = ui.track; theme = -1;

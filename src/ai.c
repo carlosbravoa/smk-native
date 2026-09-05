@@ -459,10 +459,9 @@ void smk_racer_step(smk_racer *r, const smk_track *trk,
     /* $80B086: a handicap kart ($DA non-zero) takes $B099's BONUS by its
      * $DA and never the rank penalty; the others take $B0A1 by rank.  The
      * port used to penalise all eight (NOTES 277). */
-    if (r->da > 0 && SMK_AI_DECEL[0] != 0) {
-        int di = r->da >> 1;
-        target += SMK_AI_DA_BONUS[di > 4 ? 4 : di];
-    } else
+    if (r->da > 0 && SMK_AI_DECEL[0] != 0)
+        target += smk_ai_da_bonus(r->da);
+    else
         target += SMK_AI_RANK_BONUS[r->rank & 7];
     /* DECODED ($80A701 structure): off-road surfaces cap the speed and the
      * over-cap decel row applies.  Cap values are measured (NOTES 053). */
@@ -495,7 +494,9 @@ void smk_racer_step(smk_racer *r, const smk_track *trk,
          * competitive - labelled behaviour */
         int frac = smk_surface_cap_frac(sv);
         if (frac < 800) {
-            int cap = (int)phys->w[SMK_PHYS_TARGET + 3] * (frac + 200) / 1000;
+            /* FAIR: the player's own cap, unsoftened (NOTES 281) */
+            int soft = smk_cpu_rules == SMK_CPU_FAIR ? 0 : 200;
+            int cap = (int)phys->w[SMK_PHYS_TARGET + 3] * (frac + soft) / 1000;
             if (target > cap) target = cap;
         }
     }
@@ -716,6 +717,14 @@ long smk_race_frame = 0;
  * decoded answer instead - the LAP.  Only useful for sweeping the
  * alternatives with tools/rowcheck. */
 int smk_ai_skill = -1;
+int smk_cpu_rules = SMK_CPU_ORIGINAL;
+
+int smk_ai_da_bonus(int da)
+{
+    int di = da >> 1;
+    int b = SMK_AI_DA_BONUS[di > 4 ? 4 : di];
+    return smk_cpu_rules == SMK_CPU_FAIR ? b / 2 : b;
+}
 
 
 void smk_ai_rubber(smk_racer *racers, int n, const smk_course *crs, int cls)

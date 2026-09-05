@@ -54,6 +54,14 @@ re-investigating.
 
 ## Shortcut & assumption ledger (current)
 
+**S45 — CPU RULES: FAIR is OURS, ORIGINAL is the game.**  A row on the
+class screen (NOTES 281).  FAIR takes three advantages from the field -
+the player's full off-road cap, the cosine at a ramp launch, half the
+`$80B099` handicap bonus - and leaves the rubber band, the sector table
+and the attack machine as decoded.  Chosen item by item by the user; the
+AI's coins were rejected because the field does not hunt coins, the
+attack rate kept because the field has no other items.  Default ORIGINAL.
+
 **S44 — The VS CPU driver is a trained neural network, and it is OURS.**
 `src/netpolicy.inc` (int8 weights, a float scale per row, 84 KB) is a
 two-layer MLP - 81 inputs, two 256-unit layers, 14 actions - fitted by

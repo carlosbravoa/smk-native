@@ -1281,6 +1281,14 @@ extern long smk_race_frame;
 #define SMK_RACE_CROSSINGS (SMK_RACE_LAPS + 1)
 extern int smk_ai_branch;        /* which $80ADA0 branch last answered */
 extern int smk_ai_skill;          /* $C1 & 7 stand-in; -1 = engine class */
+/* CPU RULES (NOTES 281, OURS by the user's choice): ORIGINAL is the
+ * game's field as decoded; FAIR takes three of its advantages away - the
+ * full surface cap the player has, the cosine at a ramp launch, and half
+ * of $80B099's handicap bonus.  The rubber band, the sector table and
+ * the attack machine are untouched in both. */
+enum { SMK_CPU_ORIGINAL = 0, SMK_CPU_FAIR = 1 };
+extern int smk_cpu_rules;
+int smk_ai_da_bonus(int da);      /* $80B099 by $DA, halved under FAIR */
 /* $80AD96 -> $80ADA0 on one kart, exposed so tools/rowcheck.c can replay
  * it against the real game's logged inputs rather than judge it by feel. */
 int smk_ai_row_for(const smk_racer *r, const smk_racer *ahead,
@@ -1936,6 +1944,7 @@ typedef struct {
     bool picking_p2;      /* the driver screen is on the second one */
     int  cup_sel, course_sel;
     int  engine_class;
+    int  cpu_rules;       /* SMK_CPU_ORIGINAL / SMK_CPU_FAIR (NOTES 281) */
     int  track;           /* resolved on confirm                   */
     unsigned tick;        /* blink phase                           */
     bool denied;          /* flash (unused now that the cup is built) */

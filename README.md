@@ -67,7 +67,9 @@ and recovers to the racing line when it leaves the road, which gets it round
 most courses but not all), `--shot FILE` (render one frame to a BMP and
 exit), `--pads FILE` (drive player 1 from a trained policy's own choices)
 and `--cpu-policy FILE` (a different network for the CPU than the built-in
-one) — both in [`docs/RL.md`](docs/RL.md).  `SMK_POLICY_TRACE=1` prints
+one) — both in [`docs/RL.md`](docs/RL.md) — and `--cpu-rules original|fair`,
+the class screen's CPU RULES row: FAIR makes the field pay for grass and
+ramps and halves its handicap bonus ([`docs/AI.md`](docs/AI.md)).  `SMK_POLICY_TRACE=1` prints
 when the network actually takes the wheel.
 
 The renderer is single-threaded software and still does ~100 fps at 1920×1080,

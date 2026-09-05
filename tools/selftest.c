@@ -525,6 +525,16 @@ int main(int argc, char **argv)
                          SMK_AI_ATTACK_WIN[0][1], SMK_AI_ATTACK_WIN[0][0], SMK_AI_ATTACK_WIN[1][1], SMK_AI_ATTACK_WIN[1][0],
                          SMK_AI_ATTACK_WIN[2][1], SMK_AI_ATTACK_WIN[2][0]);
                 check("the attack tables: masks by character and victim rank, the types, the windows ($80EF95/$80F007)", ta, det);
+                /* CPU RULES (NOTES 281): FAIR halves the handicap bonus and
+                 * takes the cosine at the ramp; ORIGINAL keeps both */
+                {
+                    smk_kart ko = { .speed = 1000 }, kf = { .speed = 1000 };
+                    smk_cpu_rules = SMK_CPU_ORIGINAL; smk_kart_ramp(&ko, 1); int bo = smk_ai_da_bonus(6);
+                    smk_cpu_rules = SMK_CPU_FAIR;     smk_kart_ramp(&kf, 1); int bf = smk_ai_da_bonus(6);
+                    smk_cpu_rules = SMK_CPU_ORIGINAL;
+                    snprintf(det, sizeof det, "ramp speed original %d fair %d; Peach's bonus original %d fair %d", ko.speed, kf.speed, bo, bf);
+                    check("CPU RULES: FAIR takes the cosine at a ramp and halves the handicap bonus", ko.speed == 1000 && kf.speed > 930 && kf.speed < 950 && bo == 16 && bf == 8, det);
+                }
                 /* and the machine: DK Jr leading a player 100 px behind
                  * on lap 2 arms on the 61st frame and drops at once; the
                  * next attack waits the 180-frame cooldown; a leading

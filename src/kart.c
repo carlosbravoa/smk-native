@@ -144,8 +144,8 @@ void smk_kart_ramp(smk_kart *k, int theme)
      * the player's own path (src/player.c) takes speed*cos, as the oracle
      * showed for the player.  The floor is the player's, unverified for
      * a slow AI kart. */
-    (void)fwd;
-    k->speed = s;
+    /* FAIR (NOTES 281): the player's cosine, the game's speed kept */
+    k->speed = smk_cpu_rules == SMK_CPU_FAIR ? fwd : s;
     k->z = (int32_t)0x0280 << 8;
     k->airborne = true;
 }
