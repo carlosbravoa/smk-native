@@ -12463,3 +12463,15 @@ until the eight clear the dial (one view) or the maps (two); the
 humans' rows carry a frame, gold for P1 and P2's blue.  The list stays
 up through the celebration - that is when the game itself shows it -
 and comes down with the countdown.
+
+**The split screen, revised.**  A column through both views all race was
+*"super disruptive"* (the user); asked how it should go, they chose two
+of the three offered: in two views the list is hidden until the first
+kart crosses, then shows the finished karts only, a row appearing as each
+one arrives - the game's own way - and the minimaps carry the order
+instead, each kart drawn as its face rather than a dot, the view's own
+driver last and in a gold ring.  The map heads are the list's 16x16
+faces halved: the game's own 8x8 map heads live in the bottom half's
+OAM, which a frame-end grab does not hold (the halves rewrite OAM
+mid-frame), so this is ROM art resampled - LABELLED.  The one-player
+list is unchanged, all eight, all race; the map faces are drawn in both.

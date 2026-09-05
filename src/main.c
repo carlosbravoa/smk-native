@@ -357,7 +357,6 @@ static int race_count;                   /* frames spent counting down  */
  * $0146 runs -333 at frame 4 to 0 at frame 337 and the race clock $0100
  * starts ticking immediately after. */
 static smk_hud hud_art;
-static smk_faces face_art;          /* the finishing list's faces and digits (NOTES 282) */
 static smk_objgfx obj_art;          /* pipes and other entities */
 static smk_shadow shadow_art;       /* the one oval every object shares */                  /* the game's own HUD sprites */
 
@@ -1028,8 +1027,10 @@ static void build_track_map(const smk_track *t)
         }
     track_map_ok = true;
 }
+static smk_faces face_art;          /* the finishing list's faces and digits (NOTES 282) */
 static void draw_track_map(uint32_t *fb, int rw, int rh, const smk_kart *me,
-                           const smk_racer *rs, int nrs)
+                           const smk_racer *me_racer, const smk_racer *rs, int nrs,
+                           const uint32_t *trk_palette)
 {
     if (!track_map_ok || !show_map) return;
     int sc = rw / 512; if (sc < 1) sc = 1;                /* 96 px at 512 wide */
@@ -1047,22 +1048,52 @@ static void draw_track_map(uint32_t *fb, int rw, int rh, const smk_kart *me,
                 | ((((m) & 255) * 3 + ((d) & 255)) / 4);
         }
     }
-    /* the karts: a dot each, the player's larger and gold, drawn last */
+    /* the karts: each as its driver's FACE (the user, NOTES 282: "the
+     * minimap draws the karts as their face icons instead of dots, so
+     * the order reads off the map").  The game's own map heads are 8x8
+     * sprites in the bottom half's OAM, which the grab cannot see; these
+     * are the finishing list's 16x16 faces halved - ROM art, resampled,
+     * LABELLED.  The one THIS view drives is drawn last, with a gold
+     * ring, so it is never under another. */
+    int mine = (int)(me_racer - rs);
     for (int pass = 0; pass < 2; pass++)
         for (int i = 0; i < nrs; i++) {
-            bool player = (i == 0);
+            bool player = (i == mine);
             if (player != (pass == 1)) continue;
             const smk_kart *k = player ? me : &rs[i].k;
             int mx = x0 + smk_kart_px(k->x) * size / SMK_WORLD_PX;
             int my = y0 + smk_kart_px(k->y) * size / SMK_WORLD_PX;
-            int rad = (player ? 2 : 1) * sc;
-            uint32_t col = player ? 0xFFFFD040u : 0xFFF0F0F0u;
-            for (int dy = -rad; dy <= rad; dy++)
-                for (int dx = -rad; dx <= rad; dx++) {
+            if (!face_art.ok) {
+                int rad = (player ? 2 : 1) * sc;
+                uint32_t col = player ? 0xFFFFD040u : 0xFFF0F0F0u;
+                for (int dy = -rad; dy <= rad; dy++)
+                    for (int dx = -rad; dx <= rad; dx++) {
+                        int sx = mx + dx, sy = my + dy;
+                        if (sx < 0 || sx >= rw || sy < 0 || sy >= rh) continue;
+                        if (dx * dx + dy * dy > rad * rad + rad) continue;
+                        fb[(size_t)sy * rw + sx] = col;
+                    }
+                continue;
+            }
+            const uint8_t *face = face_art.face[SMK_FACE_LIST][smk_face_of(rs[i].character % SMK_CHARACTERS)];
+            int pbase = SMK_DRIVERS[rs[i].character % SMK_CHARACTERS].pal;
+            int half = 4 * sc;                         /* an 8x8 head at the map's scale */
+            for (int dy = -half - (player ? sc : 0); dy < half + (player ? sc : 0); dy++)
+                for (int dx = -half - (player ? sc : 0); dx < half + (player ? sc : 0); dx++) {
                     int sx = mx + dx, sy = my + dy;
                     if (sx < 0 || sx >= rw || sy < 0 || sy >= rh) continue;
-                    if (dx * dx + dy * dy > rad * rad + rad) continue;
-                    fb[(size_t)sy * rw + sx] = col;
+                    int fx = (dx + half) / sc, fy = (dy + half) / sc;      /* 0..7 inside */
+                    bool inside = fx >= 0 && fx < 8 && fy >= 0 && fy < 8;
+                    uint8_t v = 0;
+                    if (inside) {
+                        /* the fuller of the 2x2 block, so the outline holds */
+                        v = face[(fy * 2) * SMK_FACE_PX + fx * 2];
+                        if (!v) v = face[(fy * 2 + 1) * SMK_FACE_PX + fx * 2];
+                        if (!v) v = face[(fy * 2) * SMK_FACE_PX + fx * 2 + 1];
+                        if (!v) v = face[(fy * 2 + 1) * SMK_FACE_PX + fx * 2 + 1];
+                    }
+                    if (v) fb[(size_t)sy * rw + sx] = trk_palette[(pbase + v) & 0xFF];
+                    else if (player) fb[(size_t)sy * rw + sx] = 0xFFFFD040u;
                 }
         }
 }
@@ -1135,8 +1166,12 @@ static void rank_column_place(int rw, int rh, bool mid, int *x0, int *y0, int *c
     *x0 = mid ? rw / 2 - 13 * c : 8;
 }
 
+/* `home_only`: rows for the karts that have finished, and nothing until
+ * one has - the game's own way, kept for the split screen where a column
+ * through both views all race was "super disruptive" (the user); the
+ * maps carry the order there instead. */
 static void draw_rank_column(uint32_t *fb, int rw, int rh, const uint32_t *palette,
-                             int x0, int y0, int csc, long tick)
+                             int x0, int y0, int csc, long tick, bool home_only)
 {
     if (!face_art.ok || !palette) return;
     int order[SMK_CHARACTERS];
@@ -1145,6 +1180,7 @@ static void draw_rank_column(uint32_t *fb, int rw, int rh, const uint32_t *palet
         int i = order[p];
         int ch = racers[i].character % SMK_CHARACTERS;
         bool home = racers[i].finish_frame >= 0;
+        if (home_only && !home) break;
         int y = y0 + p * SMK_LIST_PITCH * csc;
         /* the cell: the game's is the digit's own index 1 and a black BG
          * behind the face; one dark box for the row, over the scene at
@@ -3303,7 +3339,7 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
             draw_driver_label(fb, rw, rh, gx, rh - 8 * (rw >= 640 ? 2 : 1) - 2,
                               driver_label());
         }
-        draw_track_map(fb, rw, rh, &kart, racers, SMK_CHARACTERS);
+        draw_track_map(fb, rw, rh, &kart, me, racers, SMK_CHARACTERS, trk->palette);
         draw_clock(fb, rw, rh, trk->palette, hud_race_frames);
         /* THE ITEM SLOT: the game's own BG3 icon, 2x2 tiles at the top left
          * where the HUD tilemap puts it ($0C26 = row 0, column 19 of a
@@ -3420,7 +3456,7 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
     if (nviews < 2 && race_mode != SMK_MODE_TT && race_state != RACE_COUNTDOWN) {
         int lx, ly, lsc;
         rank_column_place(rw, rh, false, &lx, &ly, &lsc);
-        draw_rank_column(fb, rw, rh, trk->palette, lx, ly, lsc, hud_race_frames);
+        draw_rank_column(fb, rw, rh, trk->palette, lx, ly, lsc, hud_race_frames, false);
         draw_cooldown(fb, rw, rh, trk->palette, lx, ly + 8 * SMK_LIST_PITCH * lsc, lsc);
     }
     if (!celebrating) {
@@ -5559,12 +5595,18 @@ int main(int argc, char **argv)
                     fb[(size_t)y * rw + vw - 1] = 0xFF101018u;
                     fb[(size_t)y * rw + vw]     = 0xFF101018u;
                 }
-                /* the finishing list down the middle, over both (NOTES 282) */
+                /* the finishing list down the middle, over both - only
+                 * once karts finish, and only those (NOTES 282) */
                 if (race_mode != SMK_MODE_TT && race_state != RACE_COUNTDOWN) {
-                    int lx, ly, lsc;
-                    rank_column_place(rw, rh, true, &lx, &ly, &lsc);
-                    draw_rank_column(fb, rw, rh, trk.palette, lx, ly, lsc, hud_race_frames);
-                    draw_cooldown(fb, rw, rh, trk.palette, lx, ly + 8 * SMK_LIST_PITCH * lsc, lsc);
+                    int home = 0;
+                    for (int i = 0; i < SMK_CHARACTERS; i++)
+                        if (racers[i].finish_frame >= 0) home++;
+                    if (home > 0) {
+                        int lx, ly, lsc;
+                        rank_column_place(rw, rh, true, &lx, &ly, &lsc);
+                        draw_rank_column(fb, rw, rh, trk.palette, lx, ly, lsc, hud_race_frames, true);
+                        draw_cooldown(fb, rw, rh, trk.palette, lx, ly + home * SMK_LIST_PITCH * lsc, lsc);
+                    }
                 }
             }
             if (paused) draw_paused(fb, rw, rh);

@@ -24,8 +24,9 @@ the top four (9, 6, 3, 1), then the championship.  The next race lines
 up in the order this one finished, its winner on pole, as the game does
 (NOTES 275); finish fifth or worse and you score nothing, and the cup
 goes on.  The finishing list - the game's own faces - is on screen all
-race, and fifteen seconds after the fourth kart is home the race is over
-at the positions held (NOTES 282).  **Single Race** is one cup course on its own.
+race in one view and, in a split screen, once karts start to finish;
+the minimap shows every kart as its face; fifteen seconds after the
+fourth kart is home the race is over at the positions held (NOTES 282).  **Single Race** is one cup course on its own.
 **Time Trial** is five laps alone, a lap clock and splits, one mushroom,
 and the five fastest laps per course kept between sessions (under
 `$XDG_DATA_HOME/smk-port/laptimes.txt`).

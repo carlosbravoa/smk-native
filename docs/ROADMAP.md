@@ -59,10 +59,13 @@ No retry when ranked out: the top four are paid, the player outside them
 scores nothing and the cup goes on.  Fifteen seconds after the fourth
 kart is home the race is over at the positions held, with NO TIME for
 whoever is still out - the game waits for everybody.  The finishing list
-is up the whole race (the game shows it only as karts finish), down the
-left or down the middle of a split screen; its faces, digits, expression
-toggle and number flash are the ROM's (`$C3:0000`, measured), its
-placement ours.  LABELLED: whether rows five to eight flash.
+is up the whole race in one view (the game shows it only as karts
+finish); in a split screen it keeps the game's way - finishers only,
+down the middle, once the first is home - and the minimaps draw the
+karts as faces instead.  Faces, digits, expression toggle and number
+flash are the ROM's (`$C3:0000`, measured), the placement ours.
+LABELLED: whether rows five to eight flash; the map heads are the list
+faces halved, not the game's own 8x8 heads.
 
 **S45 — CPU RULES: FAIR is OURS, ORIGINAL is the game.**  A row on the
 class screen (NOTES 281).  FAIR takes three advantages from the field -
