@@ -550,6 +550,12 @@ bool smk_kart_bump(smk_kart *a, int wa, smk_kart *b, int wb)
      * has moved anybody. */
     a->bump_cool = SMK_BUMP_COOL;
     b->bump_cool = SMK_BUMP_COOL;
+    /* ...and $10 bit 12 goes up on both, so $80A0C7 charges the exchange
+     * as it charges a wall - the debugger shows that routine halving the
+     * player's rev at the 150cc start's contact, $2F40 -> $17A0 (NOTES
+     * 285).  A re-contact inside the window, above, costs nothing. */
+    a->bounce_hit = 1;
+    b->bounce_hit = 1;
     return true;
 }
 

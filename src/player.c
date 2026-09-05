@@ -569,7 +569,21 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
      * left the kart dead, and a bounce taken while sliding turned into a
      * ball ricocheting at 1500+.  The measured part - the window holding
      * the SPEED - is in smk_player_step and gives the cost on its own. */
-    if (k->bounce_hit) k->bounce_hit = 0;
+    if (k->bounce_hit) {
+        k->bounce_hit = 0;
+        /* ...except its last line, which IS ported now (NOTES 285):
+         * $80A10F halves the rev, floored at $100, on every wall bounce
+         * and kart contact - MEASURED in the user's recordings, $2540 ->
+         * $12A0 on a Ghost Valley wall, $2F40 -> $17A0 at the 150cc
+         * start's contact.  The port left the rev alone, so a kart
+         * knocked to a crawl kept screaming ("hitting something, speed
+         * goes to almost zero but engine sound does not"), and the note
+         * only ever climbed - reaching the ceiling in one clean run
+         * where the game's, knocked down at every hit, takes laps. */
+        int r = (int)(uint16_t)p->rev >> 1;
+        if (r < 0x0100) r = 0x0100;
+        p->rev = (int16_t)r;
+    }
 
     if (p->hazard == 6 || p->hazard == 0x0C || p->hazard == 0x0E) {
         /* Lakitu's rescue, transcribed from the ROM's own three states
@@ -680,6 +694,7 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
                 p->ca = 0x0102;
                 p->hazard = 8; p->drive = 8; p->jump_state = 8;
                 p->lakitu_called = false; p->resc_lift = false;
+                p->rev = 0;                 /* $80B5F9 -> $80B768: STZ $C2 - the engine goes quiet under water (NOTES 285) */
             }
             break;
         case 0x00:                          /* $20: the void - Ghost Valley,
@@ -695,6 +710,7 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
             goto hard_hazard;               /* lava and everywhere else */
         case 0x06: hard_hazard:                          /* $26: the deep drop ($80B626) */
             k->speed = 0; k->speed_frac = 0; p->accel32 = 0;
+            p->rev = 0;                     /* $80B64B -> $80B768: STZ $C2 (NOTES 285) */
             p->hazard = 6; p->resc_t = 0;
             p->drive = (surf & 0x0E) == 0x04 ? 6 : 0x0A;   /* $20 measured as $04 */
             p->jump_state = p->drive;

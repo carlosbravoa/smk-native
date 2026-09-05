@@ -944,6 +944,36 @@ int main(int argc, char **argv)
                               && steps6 == 61 && still == 34 && zcarry == ((int32_t)0x700 << 8)
                               && free_at - down_at == 14, det);
                     }
+                    /* THE REV AND THE HITS (NOTES 285): a wall bounce or a
+                     * kart contact halves the rev ($80A10F, floor $100), a
+                     * fall or a fall-in zeroes it ($80B768) */
+                    {
+                        static smk_track rd; memset(&rd, 0, sizeof rd); rd.surface[0] = 0x40;
+                        smk_player pr; smk_kart kr;
+                        smk_player_setup(&rom, 0, 1, &pr); smk_player_reset(&pr, 0);
+                        memset(&kr, 0, sizeof kr); kr.x = 512 << SMK_POS_SHIFT; kr.y = 512 << SMK_POS_SHIFT;
+                        kr.speed = 838; pr.rev = 0x2540; kr.bounce_hit = 1;
+                        smk_player_step(&pr, &kr, &rd, 0x8000, 0);
+                        int after_wall = (uint16_t)pr.rev;
+                        pr.rev = 0x0180; kr.bounce_hit = 1;
+                        smk_player_step(&pr, &kr, &rd, 0x8000, 0);
+                        int floored = (uint16_t)pr.rev;
+                        /* two karts touching mark both for the cost */
+                        smk_kart ka, kb; memset(&ka, 0, sizeof ka); memset(&kb, 0, sizeof kb);
+                        ka.x = 512 << SMK_POS_SHIFT; ka.y = 512 << SMK_POS_SHIFT; ka.speed = 600; ka.vy = -600;
+                        kb.x = 512 << SMK_POS_SHIFT; kb.y = 510 << SMK_POS_SHIFT; kb.speed = 300; kb.vy = -300;
+                        smk_kart *pair[2] = { &ka, &kb }; uint8_t wts[2] = { 2, 2 };
+                        smk_karts_collide(pair, wts, 2);
+                        bool marked = ka.bounce_hit && kb.bounce_hit;
+                        /* and the water zeroes it */
+                        static smk_track wt2; memset(&wt2, 0, sizeof wt2); wt2.surface[0] = 0x22;
+                        smk_player_reset(&pr, 0); pr.rev = 0x2000; kr.speed = 100; kr.bounce_hit = 0; kr.airborne = false;
+                        smk_player_step(&pr, &kr, &wt2, 0x8000, 0);
+                        snprintf(det, sizeof det, "wall: $2540 -> $%04X; $0180 -> $%04X; contact marks both %d; fall-in rev $%04X hazard %d",
+                                 after_wall, floored, marked, (uint16_t)pr.rev, pr.hazard);
+                        check("a hit halves the rev ($2540 -> $12A0, floor $100), contact marks both karts, the water zeroes it",
+                              after_wall == 0x12A0 && floored == 0x0100 && marked && pr.rev == 0 && pr.hazard == 8, det);
+                    }
                     /* the finishing list's art (NOTES 282): $C3:0000 holds
                      * three rows of eight faces and the digits; Yoshi is
                      * our fifth driver and the sheet's last column */

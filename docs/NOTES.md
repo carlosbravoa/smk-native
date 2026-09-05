@@ -12587,3 +12587,58 @@ into a countdown with the throttle held (`SMK_START_HOLD=0`) and the
 engine trace on, and fails unless the traced countdown frames all carry
 a note of 1 or more and the note CLIMBS from the first to the last -
 the rev building, audible.
+
+## 285. Engine note against speed: the law was right, the knocks were missing
+
+The user's audit: *"you get super fast to the top speed engine sound,
+while in original it took entire laps of very good driving"*; *"going
+out in start with mildly higher engine revolutions (not enough for a
+turbo boost) the speed started from 0, but sound didn't"*; *"hitting
+something, speed goes to almost zero but engine sound does not"*.
+Measured on their own recordings (`cc150`, `gv1`, `starts`) with the
+rev `$C2`, the speed `$EA` and the DSP's own voice-7 pitch logged per
+frame, and the debugger on every write to `$C2`.
+
+**The law and the pitch stand.**  `$80:B121` moves `$C2` once every
+eight frames by the class row (NOTES 265) - unchanged.  The DSP is
+handed `$4700 + 34 * note` for Mario, linear from note 0 to 74 in the
+150cc race with no clamp; the hardware keeps 14 bits of that, which is
+the port's `& $3FFF`, so the effective pitch runs `$0700 + 34 * note`
+with no wrap anywhere in the note's range (NOTES 234's "clamps near
+$31" was the lab's pinning, not the driver).  At 100/150cc the rev
+crawls `$2000 -> $5FFF` at `$40` per eight frames: 34 seconds, a lap
+and a half.  The port runs the same law - traced on Ghost Valley at
+100cc it sits at `$4970` after 36 seconds - so a CLEAN run climbs
+identically in both.
+
+**The start is the game's.**  The `starts` recording: a normal start
+with the rev at `$2BC0` (under the turbo window) leaves the line at
+speed 2 with the rev at `$2BC0` and climbing - the engine at three
+quarters while the speed builds from nothing, exactly the user's
+observation, and exactly what the game does.  The over-revved start
+bleeds `$70` a frame (`$2F20 -> $1FD0` in 28 frames); the turbo start
+keeps `$2EC0` and climbs.  Nothing to change.
+
+**The knocks were missing, and they are what makes it take laps.**
+`$80A0C7` - the wall's cost, whose steering half is decoded and
+deliberately not ported (NOTES 131) - ends at `$80A10F`:
+
+    LDA $C2,x / LSR / CMP #$0100 / BCS + / LDA #$0100 / STA $C2,x
+
+the rev HALVED, floored at `$100`, on every wall bounce (`gv1`: `$2540
+-> $12A0` as the speed goes 838 -> 417) and on every kart contact,
+which raises the same `$10` bit 12 (`cc150`'s start: `$2F40 -> $17A0`
+as 1050 -> 551; the debugger names `$80A11A` for both).  And `$80B768`,
+which every fall and the water's fall-in call, zeroes `$C2` with the
+rest of the block - the engine goes quiet under water and in the void.
+The port did none of it: its rev only ever climbed, so a race full of
+contact reached the ceiling as fast as a clean lap, and a kart knocked
+to a crawl kept its note.  Ported: `smk_kart_bump` marks both karts
+with `bounce_hit` as the ROM raises bit 12, `smk_player_step` halves
+the rev on it, and the two fall paths zero it.  The selftest pins
+`$2540 -> $12A0`, the `$100` floor, both karts marked, and zero on the
+fall-in.
+
+Left as it was: the AI karts' engines are pitched by their speed
+through the same pitch law (NOTES 229) - they have no `$C2` of their
+own in the port.

@@ -1,0 +1,3 @@
+wpset 0010c2,2,w,1,{printf "C2 <- %04X pc=%06X", wpdata, pc; g}
+wpset 7e10c2,2,w,1,{printf "C2 <- %04X pc=%06X", wpdata, pc; g}
+go

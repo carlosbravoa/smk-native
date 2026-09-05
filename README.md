@@ -228,7 +228,7 @@ docs/AI.md         the opponents: every way the game's AI plays by other rules
 ## Verification
 
 ```bash
-make selftest   # 103 checks through the C code the game actually runs
+make selftest   # 104 checks through the C code the game actually runs
 make test       # 25 checks: ROM identity, disassembler, codec, build loop
 make roundtrip  # every disassembled instruction reassembles byte-identically
 make shots      # a still from all 24 tracks
