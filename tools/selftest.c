@@ -660,7 +660,9 @@ int main(int argc, char **argv)
                     int hit = 0;
                     for (int f = 0; f < 12 && !hit; f++) {
                         smk_collide_objects(&kt, &cm);
-                        if (kt.bounce_cool) hit = 1;
+                        /* a hit marks the kart as a wall does ($10 bit 12):
+                         * the rev halves and the wall pair sounds (NOTES 287) */
+                        if (kt.bounce_cool) hit = kt.bounce_hit ? 1 : 2;
                         kt.x += (int32_t)kt.vx << (SMK_POS_SHIFT - 8);
                         kt.y += (int32_t)kt.vy << (SMK_POS_SHIFT - 8);
                     }
@@ -668,7 +670,7 @@ int main(int argc, char **argv)
                     if (hit != want_hit) bad++;
                 }
             }
-            snprintf(det, sizeof det, "clear at %d; %d/%d recorded samples agree",
+            snprintf(det, sizeof det, "clear at %d; %d/%d recorded samples agree, every hit marked as a wall's",
                      SMK_MOVER_CLEAR, tested - bad, tested);
             check("a mover clears a kart at SMK_MOVER_CLEAR, and the user's "
                   "recorded run agrees", tested == 10 && bad == 0, det);
@@ -973,6 +975,23 @@ int main(int argc, char **argv)
                                  after_wall, floored, marked, (uint16_t)pr.rev, pr.hazard);
                         check("a hit halves the rev ($2540 -> $12A0, floor $100), contact marks both karts, the water zeroes it",
                               after_wall == 0x12A0 && floored == 0x0100 && marked && pr.rev == 0 && pr.hazard == 8, det);
+                    }
+                    /* OFF-ROAD REV (NOTES 287): on a class $14 and up the rev
+                     * falls at the row's off-road rate with B held, towards
+                     * $1000 - $380 every eight frames at 100cc */
+                    {
+                        static smk_track gr; memset(&gr, 0, sizeof gr); gr.surface[0] = 0x5A;
+                        smk_player pg; smk_kart kg;
+                        smk_player_setup(&rom, 0, 1, &pg); smk_player_reset(&pg, 0);
+                        memset(&kg, 0, sizeof kg); kg.x = 512 << SMK_POS_SHIFT; kg.y = 512 << SMK_POS_SHIFT;
+                        kg.speed = 500; pg.rev = 0x2000;
+                        for (int i = 0; i < 8; i++) { smk_player_step(&pg, &kg, &gr, 0x8000, 0); smk_player_rev_race(&pg); }
+                        int after8 = (uint16_t)pg.rev;
+                        for (int i = 0; i < 120; i++) { smk_player_step(&pg, &kg, &gr, 0x8000, 0); smk_player_rev_race(&pg); }
+                        int after128 = (uint16_t)pg.rev;
+                        snprintf(det, sizeof det, "grass, B held: $2000 -> $%04X after 8 frames, $%04X after 128", after8, after128);
+                        check("off-road the rev falls $380 a step towards $1000 (Donut Plains' dirt does not sing like asphalt)",
+                              after8 == 0x2000 - 0x380 && after128 >= 0x0C00 && after128 < 0x1400, det);
                     }
                     /* the finishing list's art (NOTES 282): $C3:0000 holds
                      * three rows of eight faces and the digits; Yoshi is

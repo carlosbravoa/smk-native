@@ -191,6 +191,12 @@ void smk_collide_objects(smk_kart *k, const smk_course *crs)
             }
             k->bounce_cool = 10;
             k->bounce_obj = 1;      /* this window expires in the air too */
+            /* ...and $10 bit 12, as a wall raises it: in the user's crash
+             * recording every pipe hit goes to drive state $16, halves the
+             * rev with the speed and fires $3C then $3F - the wall's own
+             * pair - 13 of 13 (NOTES 287).  The port's pipes and Thwomps
+             * cost speed but were silent and left the engine screaming. */
+            k->bounce_hit = 1;
         }
         /* And say so in the kart's own state, which is what was missing.
          *

@@ -171,7 +171,15 @@ void smk_player_rev_race(smk_player *p)
     int ramp = rev < 0x2000 ? row[1] : row[2];
     if (p->pad & 0x4000)            d = row[3];          /* $80B124: Y */
     else if (!(p->pad & 0x8000))    d = row[3];          /* no throttle */
-    else if (p->type >= 0x14)       d = rev < 0x1000 ? ramp : row[4];
+    /* $80B14C compares $B0, the class DOUBLED ($B0 = class & $1E), with
+     * $14: types 10 and up - sand, grass, dirt, the off-road classes the
+     * hop cap uses the same line for.  The port kept $14 against its
+     * undoubled type, which is never above 15, so the off-road rate never
+     * ran and a kart ploughing through Donut Plains' dirt sang like one
+     * on Mario Circuit's asphalt (the user; NOTES 287).  MEASURED in
+     * their recording: on class $5A with B held the rev falls $380 every
+     * eight frames, $1A80 -> $1700 -> ..., towards $1000. */
+    else if (p->type >= 0x0A)       d = rev < 0x1000 ? ramp : row[4];
     else if (p->flags & 0x0004)     d = (ceil - 0x1800) >= rev ? ramp : row[5];
     else                            d = ramp;
     rev += d;

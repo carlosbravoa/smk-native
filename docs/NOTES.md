@@ -12666,3 +12666,37 @@ the ends mean one speaker.  The world's sounds - the countdown's beeps
 and go - stay in the middle; a one-player race is untouched, every
 sound at 0.  Traced headless: in a split race every kart sound lands
 at exactly -1.0 or +1.0 and the countdown at 0.0; in one view, all 0.0.
+
+## 287. The engine off-road, and the pipes and Thwomps that cost nothing
+
+The user, after NOTES 285: *"It goes too high on roads where that was
+super hard to achieve.  Donut Plains, the terrain is dirt, low grip and
+here I was with engine sound like it was Mario Circuit on my best
+times.  Also, hitting a pipe or a Thwomp doesn't affect engine sound and
+is super weird (also hitting them is missing a hit sound)."*
+
+**Off-road.**  `$80B14C` compares `$B0` with `$14` - and `$B0` is the
+class DOUBLED (`$B0 = class & $1E`, NOTES 113), so `$14` means type 10
+and up: sand, grass, dirt, the same line the hop cap draws.  The port
+transcribed the constant against its own undoubled type, which never
+exceeds 15, so the off-road rate never ran.  NOTES 265's frame-exact
+re-simulation ran on the game's own logged `$B0` and could not see it;
+Ghost Valley has no such class anyway.  The user's Donut Plains
+recording has it plainly: on class `$5A` with B held the rev falls `$380`
+every eight frames, `$1A80 -> $1700`, towards `$1000` (the row's
+off-road term, under the `$1000` gate where the ramp takes over again,
+so it hovers around `$1000`).  Fixed to type 10; the selftest drives
+grass and expects `$2000 -> $1C80` in eight frames and a hover near
+`$1000` after 128.
+
+**Pipes and Thwomps.**  In the user's `crash` recording every pipe hit
+- 13 of 13 - goes to drive state `$16`, halves the speed and the rev
+together (`$2AC0 -> $1560`, `$2840 -> $1420`) and fires `$3C` then `$3F`,
+the wall's pair (NOTES 245); the `thwomp` recording shows the same at a
+Thwomp's side (`$1D88 -> $EC4`, `$12B0 -> $958`).  So an object hit
+raises `$10` bit 12 like a wall and goes down the same `$80A0C7`.  The
+port's `smk_collide_objects` reflected and scaled the velocity but never
+raised `bounce_hit`, so a pipe or Thwomp cost speed in silence and left
+the engine where it was.  It raises it now, and everything a wall gets
+follows: the rev halving (NOTES 285) and the two sounds.  The mover
+test in the selftest now also expects every hit to carry the mark.
