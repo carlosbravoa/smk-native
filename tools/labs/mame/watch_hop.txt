@@ -1,0 +1,8 @@
+# NOTES 295: who sets $E0 bit 14 (the feather request) on karts 4 and 2 in aihop.
+# mame ... -playback aihop -seconds_to_run 50 -debug -debugscript tools/labs/mame/watch_hop.txt -debuglog
+# -> $819A94, called from $8198B5 / $819883: the object-hits-kart handler
+wpset 7e14e0,2,w,1,{printf "K4E0 <- %04X pc=%06X f38=%04X ret=%04X ret2=%04X", wpdata, pc, w@7e0038, w@(s+1), w@(s+3); g}
+wpset 0014e0,2,w,1,{printf "K4E0 <- %04X pc=%06X f38=%04X ret=%04X ret2=%04X", wpdata, pc, w@7e0038, w@(s+1), w@(s+3); g}
+wpset 7e12e0,2,w,1,{printf "K2E0 <- %04X pc=%06X f38=%04X ret=%04X ret2=%04X", wpdata, pc, w@7e0038, w@(s+1), w@(s+3); g}
+wpset 0012e0,2,w,1,{printf "K2E0 <- %04X pc=%06X f38=%04X ret=%04X ret2=%04X", wpdata, pc, w@7e0038, w@(s+1), w@(s+3); g}
+go
