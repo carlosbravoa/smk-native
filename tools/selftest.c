@@ -7,6 +7,7 @@
 #include "smk.h"
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 static int pass = 0, fail = 0;
 
@@ -998,6 +999,61 @@ int main(int argc, char **argv)
                         snprintf(det, sizeof det, "grass, B held: $2000 -> $%04X after 8 frames, $%04X after 128", after8, after128);
                         check("off-road the rev falls $380 a step towards $1000 (Donut Plains' dirt does not sing like asphalt)",
                               after8 == 0x2000 - 0x380 && after128 >= 0x0C00 && after128 < 0x1400, det);
+                    }
+                    /* THE REV LAW AGAINST THE GAME'S OWN RUN (NOTES 291): the
+                     * user's Ghost Valley log carries $C4, $B0, $E2 and $C2
+                     * per frame; the port's law is driven by the first three
+                     * and compared with the fourth at every step */
+                    {
+                        FILE *lf = fopen("tools/labs/mame/gv1_run.csv", "r");
+                        int steps = 0, miss = 0, first_miss = -1, worst = 0; long frames = 0;
+                        if (lf) {
+                            char line[4096];
+                            int col_kart = -1, col_c2 = -1, col_c4 = -1, col_b0 = -1, col_e2 = -1, col_frame = -1, col_ea = -1;
+                            if (fgets(line, sizeof line, lf)) {
+                                int c = 0; char *tok = strtok(line, ",\n");
+                                while (tok) {
+                                    if (!strcmp(tok, "kart")) col_kart = c; if (!strcmp(tok, "fC2")) col_c2 = c;
+                                    if (!strcmp(tok, "fC4")) col_c4 = c; if (!strcmp(tok, "fB0")) col_b0 = c;
+                                    if (!strcmp(tok, "fE2")) col_e2 = c; if (!strcmp(tok, "frame")) col_frame = c;
+                                    if (!strcmp(tok, "fEA")) col_ea = c;
+                                    tok = strtok(NULL, ",\n"); c++;
+                                }
+                            }
+                            smk_player pl2; smk_player_setup(&rom, 0, 1, &pl2);   /* Mario, 100cc */
+                            int prev_c2 = -1, phase = -1, launched = 0; long fno = 0;
+                            while (fgets(line, sizeof line, lf)) {
+                                char *f[64]; int n = 0; char *tok = strtok(line, ",\n");
+                                while (tok && n < 64) { f[n++] = tok; tok = strtok(NULL, ",\n"); }
+                                if (n <= col_c2 || strcmp(f[col_kart], "1000") != 0) continue;
+                                int c2 = atoi(f[col_c2]), c4 = atoi(f[col_c4]), b0 = atoi(f[col_b0]), e2 = atoi(f[col_e2]);
+                                long fr = atol(f[col_frame]);
+                                /* the countdown has its own rev routine ($80959F); the race law
+                                 * starts with the launch, so wait for the first moving frame */
+                                if (!launched) { if (atoi(f[col_ea]) > 0) launched = 1; else continue; }
+                                if (prev_c2 < 0) { prev_c2 = c2; pl2.rev = (int16_t)c2; fno = fr; continue; }
+                                /* the game moves $C2 on ONE phase of eight; lock onto it */
+                                if (phase < 0) { if (c2 != prev_c2 && c2 != 0) phase = (int)(fr & 7); else { pl2.rev = (int16_t)c2; prev_c2 = c2; continue; } }
+                                pl2.pad = (uint16_t)c4; pl2.type = b0 >> 1; pl2.flags = (uint16_t)e2;
+                                if ((fr & 7) == phase) {
+                                    pl2.rev_tick = 7;                     /* this is the frame */
+                                    smk_player_rev_race(&pl2);
+                                    steps++;
+                                    int got = (uint16_t)pl2.rev;
+                                    if (got != c2) {
+                                        /* a knock or a fall is not the law's: resync and count */
+                                        miss++; if (first_miss < 0) first_miss = (int)fr;
+                                        int d = got > c2 ? got - c2 : c2 - got; if (d > worst) worst = d;
+                                        pl2.rev = (int16_t)c2;
+                                    }
+                                } else pl2.rev = (int16_t)c2;
+                                prev_c2 = c2; frames++;
+                            }
+                            fclose(lf);
+                        }
+                        snprintf(det, sizeof det, "%ld frames, %d steps of the law, %d misses (first at frame %d, worst %d)", frames, steps, miss, first_miss, worst);
+                        check("the port's rev law reproduces the game's own $C2 through the Ghost Valley run",
+                              steps > 300 && miss * 100 <= steps, det);   /* one in a hundred: the knocks */
                     }
                     /* the finishing list's art (NOTES 282): $C3:0000 holds
                      * three rows of eight faces and the digits; Yoshi is

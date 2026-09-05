@@ -12838,3 +12838,56 @@ LABELLED: the halving is measured at notes 0-35; whether the same table
 or a different one applies to notes above that under water was not
 reached in the recording.  The echo enable byte also changes in the
 water (`$BA -> $9A`, voice 5's bit), which is another voice's business.
+
+## 291. Does the port's engine climb faster than the game's?  Measured: no
+
+The user, after NOTES 290: *"I still believe that the acceleration of the
+engine sound (how fast its pitch goes higher) is faster in our port than
+in the original game."*  Every link between the throttle and the speaker
+was checked in turn.
+
+**The rev law, driven by the game's own inputs.**  The selftest now
+feeds `tools/labs/mame/gv1_run.csv` - the user's Ghost Valley run, with
+`$C4`, `$B0`, `$E2` and `$C2` per frame - through `smk_player_rev_race`
+on the game's own eight-frame phase and compares every step with the
+game's `$C2`: **707 steps, 2 misses**, both the wall hits of NOTES 285
+(the harness resyncs after them).  The port's law IS the game's, in C,
+on the user's own driving.  (An autopilot-versus-recording comparison
+on the same course was tried first and is worthless: the autopilot
+brakes and hits walls where a human does not, and the rev follows the
+pad.)
+
+**Note to pitch register.**  `$4700 + 34 * note` for Mario, linear to
+note 74 across the 150cc race (NOTES 290); the DSP keeps 14 bits of it,
+so the effective register is `$0700 + 34 * note` - the port's `& $3FFF`.
+
+**Register to frequency.**  Hardware definition: `$1000` plays the BRR
+sample at 32000 Hz, so the port's step `P / 4096 * 32000 / 44100` is the
+DSP's own rate law; the loop is the game's BRR decoded raw (NOTES 234).
+Measured on the port's own mix (`SMK_ENGINE_WAV=path` dumps the engine
+mixer's output with the voice's step per callback; `pitchtrack.c` in
+the lab finds the spectral peak): the strongest partial sits at 899.6
+Hz per 4096 of register, constant to 0.1% across the run - linear in P,
+as the chip is.  A direct waveform comparison against MAME was not
+possible: this rig's MAME writes silence to `-wavwrite` and to SDL's
+disk driver alike (its sound module does not run headless), which is
+why the effects were always taken from the chip's registers instead
+(NOTES 211).
+
+**The tick.**  `smk_player_rev_race` runs inside the simulation tick,
+not the render loop - a real-time run advanced 2400 rendered frames and
+eleven race frames on this headless rig, and the note followed the race
+frames.  Display refresh cannot speed it up.
+
+So the port's engine pitch follows the game's, step for step, on the
+user's own inputs; what is measured cannot be made to differ.  What
+DOES differ in the mix, and is noted here for the next step: the game
+plays the OTHER karts' engines through the race (voices 0-6 carry `$17`,
+`$18`, `$02` and `$03` at volumes up to 91 in the 150cc recording,
+`tools/labs/mame/voices.lua`) at a nearly FIXED pitch per pair - `$17`
+2716-2915, `$18` 3754-3920, `$02` 4768-4949, `$03` 2029, a few percent
+of wobble - while the AI karts' own `$C2` is 0 all race
+(`allrev.lua`): their note is not a rev at all.  The port silences them
+during the race (NOTES 235 doubted them) and, on the grid, pitches them
+from speed.  In the game the player's climbing note sits inside a steady
+drone of the field; in the port it climbs alone.  Not changed here.

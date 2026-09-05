@@ -612,6 +612,23 @@ static void engine_mix(void *ud, Uint8 *stream, int len)
         if (r > 1.0f) r = 1.0f; if (r < -1.0f) r = -1.0f;
         out[i * 2]     = (int16_t)(l * 32767.0f);
         out[i * 2 + 1] = (int16_t)(r * 32767.0f);
+        /* SMK_ENGINE_WAV=path - the engine mix alone, raw s16le stereo at
+         * 44100, with a side log of the player's voice step per callback,
+         * so its pitch can be measured against the game's (NOTES 291) */
+        {
+            static FILE *dump = NULL, *dlog = NULL; static long written = 0; static int tried = 0;
+            if (!tried) {
+                tried = 1;
+                const char *e = getenv("SMK_ENGINE_WAV");
+                if (e) { char lp[600]; dump = fopen(e, "wb"); snprintf(lp, sizeof lp, "%s.log", e); dlog = fopen(lp, "w"); }
+            }
+            if (dump) {
+                fwrite(&out[i * 2], sizeof(int16_t), 2, dump);
+                if (i == 0 && dlog) { fprintf(dlog, "%ld %.6f %.4f\n", written, eng[0].step, eng[0].vol); }
+                written++;
+                if (i == frames - 1) { fflush(dump); fflush(dlog); }
+            }
+        }
     }
 }
 
