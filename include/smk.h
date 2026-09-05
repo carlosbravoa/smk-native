@@ -670,7 +670,7 @@ extern const smk_driver SMK_DRIVERS[SMK_CHARACTERS];
  * arrives.  The fall covers this band in a frame or two, which is
  * enough: the check runs every frame. */
 #define SMK_SQUASH_Z       400
-#define SMK_SQUASH_T       100     /* frames flattened (OURS, ~1.7 s)     */
+#define SMK_SQUASH_T       200     /* frames flattened: $70 = 2 for 200 in the user's 150cc recording (NOTES 292) */
 enum { SMK_MV_PARK, SMK_MV_FALL, SMK_MV_HOLD, SMK_MV_RISE };
 typedef struct { int32_t z; int16_t zv; uint8_t phase; int16_t t; } smk_mover;
 
@@ -1517,6 +1517,7 @@ const char *smk_sfx_hint(int id);   /* when the game fires an unnamed one */
 /* $80:D818 picks between these two by the impact ($50,x vs $1200): a
  * KART-to-kart contact, hard or soft.  Forced in the oracle by dropping
  * another kart on the player (NOTES 228). */
+#define SMK_SFX_SQUASH_HIT 0x42   /* MEASURED: the frame the kart is flattened (NOTES 292) */
 #define SMK_SFX_BUMP_HARD  0x42   /* $80:D81F - the user's "barrier", and
                                    * the bump that costs you a coin        */
 #define SMK_SFX_BUMP_SOFT  0x54   /* $80:D825                              */

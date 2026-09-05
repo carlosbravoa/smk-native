@@ -12891,3 +12891,54 @@ of wobble - while the AI karts' own `$C2` is 0 all race
 during the race (NOTES 235 doubted them) and, on the grid, pitches them
 from speed.  In the game the player's climbing note sits inside a steady
 drone of the field; in the port it climbs alone.  Not changed here.
+
+## 292. Spins, shells and the squash, from the recordings
+
+The user's next four, and what the recordings and the ROM say about each.
+
+**The spin's sound.**  There is no separate spinning sound.  Every DSP
+voice was logged through the user's own tumble in the cup recording
+(`tools/labs/mame/voiceswin.lua`): no voice is keyed for it.  What
+changes is the ENGINE: its note is slashed at the hit - `$80A11A` halves
+the rev exactly as at a wall, `$31A0 -> $18D0`, the debugger on `$C2` -
+and is ZERO the frame the tumble ends (`$21B0` one tick, `$0120` the
+next; the writer hides from the watchpoint, the effect does not), so
+the engine restarts from idle; the four coins ring as they scatter
+(`$20` at +13, +17, +19, +27); and `$2A` comes at +71, the END.  `$80B745`
+- the tumble's settle - is what plays `$2A` (`LDA #$002A / JSL $81F57A`),
+and `$80A9A5` plays it the same way as the banana's spin goes to `$1C`.
+NOTES 233 poked the state and heard `$2A`, and the port played it at
+the START; it is the end sound - "some part of another sound that was
+played after you stopped spinning" (the user).  Ported: the rev halves
+at a shell hit and zeroes at the tumble's end; `$2A` plays as a spin
+ends.  The camera's full turn through the tumble was already NOTES 196's
+(`$DC = $AA` while `$A6` is set, `$80B789`); the banana's spin leaves
+the camera alone in that measurement and is left alone here.
+LABELLED: whether a banana hit halves the rev too (no recording has
+one), and a hit's rev zeroing at the end of a banana spin.
+
+**A shell on an AI.**  Three hits in the 150cc recording
+(`tools/labs/mame/aihit.lua`): `$E4` at `$2000` coming down `$40` a
+frame, so 128 frames of tumble; the speed NOT clamped, falling 56 a
+frame from what it was (748, 636, 524 ... 0 in 14 frames) along the
+velocity the kart had - it rolls on some twenty pixels.  The port
+clamped it to `$180` and stopped it in 74 frames: "they spin exactly
+where they got hit".  Ported.  The two sounds the user hears at a hit
+of theirs - "a TSH from the hit and their own banana-spin sound" - are
+NOT settled: none of the recordings has the player's own shell landing
+on an AI in a way the logs can tell from an AI-on-AI hit, and the three
+AI tumbles above queued nothing but the music tick.  A recording of the
+user hitting a COM with a shell is the next measurement.
+
+**Time trial.**  Alone: no other engines on the grid, and only the
+driven karts on the map.
+
+**The squash.**  The 150cc recording's own: 200 frames flat (`$70 = 2`),
+speed and rev at zero (NOTES 289).  Sounds: `$42` at the hit, `$50`
+(with `$47`, whose sample the port does not have) 41 frames in, `$26`
+three frames running at 163 - the user's "3 pitch-gain sound" - and
+`$2A` at the release.  From frame 49 to 145 the flat kart slides
+BACKWARDS a quarter pixel a frame along its heading, 22 pixels in all,
+then stops.  Ported; `SMK_SQUASH_T` was 100 and OURS, it is 200 and the
+recording's.  OURS still: nothing draws the sideways wobble of the flat
+sprite the user remembers.

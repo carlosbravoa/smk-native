@@ -1120,6 +1120,8 @@ static void build_track_map(const smk_track *t)
     track_map_ok = true;
 }
 static smk_faces face_art;          /* the finishing list's faces and digits (NOTES 282) */
+static int  race_mode;              /* defined below with the race globals */
+static bool slot_is_driven(int q);
 static void draw_track_map(uint32_t *fb, int rw, int rh, const smk_kart *me,
                            const smk_racer *me_racer, const smk_racer *rs, int nrs,
                            const uint32_t *trk_palette)
@@ -1152,6 +1154,9 @@ static void draw_track_map(uint32_t *fb, int rw, int rh, const smk_kart *me,
         for (int i = 0; i < nrs; i++) {
             bool player = (i == mine);
             if (player != (pass == 1)) continue;
+            /* a time trial is alone on the track, and on the map (the
+             * user, NOTES 292): only the driven karts are drawn */
+            if (race_mode == SMK_MODE_TT && !slot_is_driven(i)) continue;
             const smk_kart *k = player ? me : &rs[i].k;
             int mx = x0 + smk_kart_px(k->x) * size / SMK_WORLD_PX;
             int my = y0 + smk_kart_px(k->y) * size / SMK_WORLD_PX;
@@ -1552,7 +1557,27 @@ static void step_kart(smk_kart *k, smk_track *trk,
      * shaken (the recording's rides sit at crawl speeds; the cap and the
      * three-hop shake-off are OURS) */
     if (player.mole_on && k->speed > 0x100) k->speed = 0x100;
-    if (player.squash_t > 0) { player.squash_t--; k->speed = 0; k->speed_frac = 0; }
+    if (player.squash_t > 0) {
+        /* THE SQUASH, MEASURED in the user's 150cc recording (NOTES 292):
+         * 200 frames flat ($70 = 2), the speed and the rev at zero.  $42
+         * at the hit; $50 (with $47) 41 frames in; $26 three frames
+         * running at 163 - "3 pitch-gain sound" (the user) - and $2A at
+         * the release.  From frame 49 to 145 the flattened kart slides
+         * BACKWARDS a quarter pixel a frame, some 22 pixels in all, and
+         * stops again.  The sideways wobble of the flat sprite while it
+         * slides is OURS. */
+        int t = SMK_SQUASH_T - player.squash_t;
+        if (t == 0)   smk_sfx_play(SMK_SFX_SQUASH_HIT);
+        if (t == 41)  { smk_sfx_play(0x50); smk_sfx_play(0x47); }
+        if (t >= 163 && t <= 165) smk_sfx_play(0x26);
+        if (t >= 49 && t < 145) {
+            float h = (float)player.heading * (2.0f * (float)M_PI / 65536.0f);
+            k->x -= (int32_t)(sinf(h) * 0.25f * (float)SMK_POS_ONE);
+            k->y += (int32_t)(cosf(h) * 0.25f * (float)SMK_POS_ONE);
+        }
+        player.squash_t--; k->speed = 0; k->speed_frac = 0;
+        if (player.squash_t == 0) smk_sfx_play(SMK_SFX_SPIN_OUT);   /* $2A at the release */
+    }
     /* the rescue's EXIT (round 2, bugs 1/15): the moment the drop ends,
      * Lakitu takes his two-coin fee and rises; the kart is held (speed 0)
      * until he is gone */
@@ -1682,10 +1707,17 @@ static void step_kart(smk_kart *k, smk_track *trk,
         uint8_t surf_now = smk_track_surface(trk, smk_kart_px(k->x), smk_kart_px(k->y));
         bool spin = (st == 0x0A || st == 0x0C || st == 0x1A);
         bool was_spin = (was_state == 0x0A || was_state == 0x0C || was_state == 0x1A);
-        /* MEASURED (NOTES 233): poking the tumble state ($A6 = $1A)
-         * makes the game play $2A from $80:B75A - so that is being spun
-         * out, whatever hit you.  The port had $29 here by ear. */
-        if (spin && !was_spin) smk_sfx_play(SMK_SFX_SPIN_OUT);
+        /* $2A is a spin's END, not its start: $80:B745 - the settle
+         * that clears $AC/$AA/$A8/$A6 - is what plays it (NOTES 233 poked
+         * the state and heard it; NOTES 292 read the routine and the
+         * user's own tumble, where it comes 71 frames after the hit, once
+         * the kart has stopped turning).  "We have some part of another
+         * sound that was played after you stopped spinning" - this one.
+         * What the game plays THROUGH a tumble is the engine itself, its
+         * rev slashed at the hit (NOTES 292). */
+        /* ...and the banana's spin ends the same way: $80:A9A5 plays $2A as
+         * $A6 goes to $1C (NOTES 292). */
+        if (was_spin && !spin) smk_sfx_play(SMK_SFX_SPIN_OUT);
         if (player.hazard != was_hazard2 && player.hazard == 6)
             smk_sfx_play(SMK_SFX_FALL);              /* off the road   */
         if (player.mole_on && !was_mole) smk_sfx_play(SMK_SFX_MOLE);
@@ -1935,7 +1967,9 @@ static void step_kart(smk_kart *k, smk_track *trk,
              * them - and only the first view places them, or the second
              * would overwrite what the first just set */
             int base = nviews > 1 ? 2 : 1;
-            bool grid = race_state == RACE_COUNTDOWN && cur_view == 0;
+            /* ...and not in a time trial: there is nobody else on the grid
+             * to hear (the user, NOTES 292) */
+            bool grid = race_state == RACE_COUNTDOWN && cur_view == 0 && race_mode != SMK_MODE_TT;
             for (int j = 0; j + base < 4; j++) {
                 int q = near[j].idx;
                 if (!grid || q < 0 || near[j].d2 > 220.0f * 220.0f

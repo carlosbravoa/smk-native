@@ -1005,6 +1005,12 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
         if (done) {                    /* $80B745 */
             p->drive = 0; p->plag = 0; p->vlag = 0; p->state = 0;
             p->flags = (uint16_t)((p->flags & 0x40FF) | 0x0400);
+            /* ...and the rev is at ZERO the frame the tumble ends, the law
+             * climbing back from the floor after it: MEASURED in the
+             * user's cup recording ($21B0 one tick, $0120 the next -
+             * NOTES 292).  The writer hides from the watchpoint; the
+             * effect does not.  The engine restarts from idle. */
+            p->rev = 0;
         }
         break;
     }
@@ -1207,6 +1213,13 @@ bool smk_player_hit_shell(smk_player *p, smk_kart *k, int dir)
     if (p->state == 0x1A) return false;
     /* round 2, bug 20: a SHRUNK kart is squashed, not spun */
     if (p->shrink_t > 0) { p->squash_t = SMK_SQUASH_T; return true; }
+    /* the hit charges the rev as a wall does: $80A11A halves it at the
+     * frame of the hit ($31A0 -> $18D0 in the user's cup recording, NOTES
+     * 292) - the engine's own drop is what you hear go with the spin */
+    {
+        int r = (int)(uint16_t)p->rev >> 1;
+        p->rev = (int16_t)(r < 0x0100 ? 0x0100 : r);
+    }
     /* $81:9ACE, then $80:B4D1 */
     p->flags  = (uint16_t)((p->flags & ~0x0300u) | 0x0200 | (dir ? 0x0100 : 0));
     p->tumble = 0x1000;                           /* $E4 for the player */
@@ -1262,9 +1275,16 @@ void smk_racer_hit(smk_racer *r, int kind, int dir)
         r->hit_t  = (r->k.speed * 2) / 31 + 4;
         return;
     }
-    r->hit_t   = kind == 1 ? 60 + 12 : 64 + 10;   /* the spin, then the settle */
+    /* A SHELL on an AI, MEASURED in the user's 150cc recording (NOTES 292,
+     * three hits): $E4 starts at $2000 and comes down $40 a frame, so
+     * the tumble runs 128 frames; the speed is NOT clamped - it falls 56
+     * a frame from whatever it was (748 -> 636 -> 524 -> ... -> 0 in 14
+     * frames) along the velocity the kart had, so a hit kart rolls on
+     * some twenty pixels before it stops.  The port clamped it to $180
+     * and stopped it in 74 frames: "in our port they spin exactly where
+     * they got hit" (the user).  The banana's numbers are unchanged. */
+    r->hit_t   = kind == 1 ? 60 + 12 : 0x2000 / 0x40;
     r->tumble  = kind == 1 ? 0x0A00 : 0x2000;     /* $E4 = $2000 for an AI */
     if (kind == 1) { if (r->k.speed > 0x300) r->k.speed = 0x300; }
-    else           { if (r->k.speed > 0x180) r->k.speed = 0x180; }
     if (kind == 3) r->shrink_t = 0x440;
 }

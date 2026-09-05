@@ -1055,6 +1055,26 @@ int main(int argc, char **argv)
                         check("the port's rev law reproduces the game's own $C2 through the Ghost Valley run",
                               steps > 300 && miss * 100 <= steps, det);   /* one in a hundred: the knocks */
                     }
+                    /* A SHELL ON THE PLAYER (NOTES 292): the rev halves at the hit
+                     * and is zero the frame the tumble ends */
+                    {
+                        static smk_track rd2; memset(&rd2, 0, sizeof rd2); rd2.surface[0] = 0x40;
+                        smk_player ps; smk_kart ks2;
+                        smk_player_setup(&rom, 0, 1, &ps); smk_player_reset(&ps, 0);
+                        memset(&ks2, 0, sizeof ks2); ks2.x = 512 << SMK_POS_SHIFT; ks2.y = 512 << SMK_POS_SHIFT;
+                        ks2.speed = 700; ps.rev = 0x31A0;
+                        bool hit = smk_player_hit_shell(&ps, &ks2, 0);
+                        int rev_hit = (uint16_t)ps.rev;
+                        int frames = 0, rev_end = -1;
+                        for (int i = 0; i < 400; i++) {
+                            smk_player_step(&ps, &ks2, &rd2, 0x8000, 0);
+                            frames++;
+                            if (ps.state != 0x1A) { rev_end = (uint16_t)ps.rev; break; }
+                        }
+                        snprintf(det, sizeof det, "hit %d: rev $31A0 -> $%04X; tumble %d frames; rev at its end $%04X", hit, rev_hit, frames, rev_end);
+                        check("a shell halves the player's rev at the hit and zeroes it as the tumble ends",
+                              hit && rev_hit == 0x18D0 && frames > 60 && frames < 130 && rev_end == 0, det);
+                    }
                     /* the finishing list's art (NOTES 282): $C3:0000 holds
                      * three rows of eight faces and the digits; Yoshi is
                      * our fifth driver and the sheet's last column */
