@@ -163,6 +163,12 @@ bool smk_player_setup(const smk_rom *rom, int character, int engine_class,
  * are exactly 8 apart). */
 void smk_player_rev_race(smk_player *p)
 {
+    /* $80B112, the law's front door: a kart with $70 set gets its rev
+     * ZEROED instead of the law.  The one case in the user's recordings
+     * is the squash - flattened for 200 frames at 150cc, $70 = 2, speed
+     * 0, rev 0 the whole while (NOTES 289).  LABELLED: whether $70 has
+     * other values. */
+    if (p->squash_t > 0) { p->rev = 0; p->rev_tick = 0; return; }
     if (++p->rev_tick < 8) return;
     p->rev_tick = 0;
     const int16_t *row = p->rev_race;
@@ -613,6 +619,16 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
         k->vx = k->vy = 0; p->turn = 0;
         p->vlag = p->plag = 0; p->state = 0;
         k->airborne = false;
+        /* ...and the REV, every frame: drive states 4, 6, $A, $C and $E
+         * all dispatch to $80A5A8, which is `JSR $B768` - the block
+         * zeroed - so the engine idles for the whole of a fall and its
+         * rescue.  The debugger shows $80B77A writing $C2 on every frame
+         * of states 6, $0C and $0E in the user's water recording; the
+         * rev law still runs and still loses (NOTES 289).  The port
+         * zeroed it once at the fall and let the throttle build it back
+         * while the kart hung from Lakitu - "engine accelerates but you
+         * are not moving.  it should be idle" (the user). */
+        p->rev = 0;
 
         /* $80B346: turn toward $D0, carry set once it has arrived */
         bool faced = false;

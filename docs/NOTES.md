@@ -12741,3 +12741,48 @@ championship rows carry the finishing list's 16x16 faces (`$C3:0000`,
 NOTES 282) in the drivers' own palettes instead of the far-tier kart
 sampler.  `SMK_STANDINGS_SHOT=path` renders the settled screen without
 the shell.
+
+## 289. Where the game does couple the engine to the kart - and where it does not
+
+The user, after playing NOTES 285-288: *"most of the engine sounds
+issues are because it is not connected to speed ... there must be some
+sort of rubber band ... When being rescued by Lakitu, same thing, engine
+accelerates but you are not moving.  It should be idle.  But instead of
+applying patches to particular situations, we need to find the original
+game logic."*  So the original logic, read whole this time.
+
+**The law has no speed term.**  `$80B121` reads the pad, `$B0`, `$E2`
+and `$C2` and nothing else; there is no rubber band.  What couples the
+note to the kart is everything AROUND the law, and the debugger on every
+read and write of `$C2` through the water recording shows all of it:
+
+* **`$80B112` is the law's front door**: `LDA $70,x / BEQ law / STZ
+  $C2,x`.  `$70` is the SQUASH - in the 150cc recording the player,
+  shrunk, is run over and lies flat for 200 frames with `$70 = 2`, `$10`
+  bit 14 set, speed 0 and the rev held at 0.  Nothing else in the
+  recordings sets it; LABELLED.
+* **Drive states 4, 6, $A, $C and $E all dispatch to `$80A5A8`**
+  (`$80A53B`'s table), which is `JSR $B768`: the velocity block zeroed -
+  `$E8 $EA $EC $EE $B2 $A6 $A8 $AA $C2` - EVERY FRAME.  Through a fall
+  and its rescue the law still runs (the debugger shows it reading `$C2`
+  in states 6, $0C and $0E) and still loses: `$80B77A` writes zero after
+  it, 254 times through the carry alone.  The port zeroed the rev once
+  at the fall and let the throttle rebuild it while the kart hung from
+  Lakitu; it zeroes it every frame of the rescue now, as it already did
+  the speed.
+* **`$80A0C7` halves it** on every wall, pipe, Thwomp and contact (NOTES
+  285/287), and `$80A5AD` (drive state 8) is only the wade's throttle.
+* **`$B0` persists into the water.**  A class under `$40` never writes
+  `$B0`, so a kart that fell in from grass wades with `$B0 = $1A` and the
+  law's off-road rate holds its rev in a sawtooth around `$1000` - which
+  is exactly what the recording shows (`$1000 -> $C80 -> ...`).  The
+  port's `type` persists the same way and, since NOTES 287, takes the
+  same rate; a kart entering deep water straight from asphalt would
+  climb unbounded in both.
+
+Two of the user's four observations were therefore right about the
+port and wrong about the mechanism, one was already ported, and one is
+the game's own: at a mild-rev start the engine sings while the speed
+builds from nothing in the recording too (NOTES 285).  The selftest
+holds the throttle through the whole water rescue and expects the rev
+never above `$200`, and zero while squashed.

@@ -931,20 +931,26 @@ int main(int argc, char **argv)
                         pw.resc_x = 512; pw.resc_y = 600; pw.resc_h = 0;
                         int steps6 = 0, still = 0, carry_at = -1, down_at = -1, free_at = -1;
                         int32_t zcarry = -1;
+                        int rev_max = 0;
                         for (int i = 0; i < 400; i++) {
-                            smk_player_step(&pw, &kw, &wt, 0, 0);
+                            smk_player_step(&pw, &kw, &wt, 0x8000, 0);   /* B held the whole way */
+                            smk_player_rev_race(&pw);
+                            if (pw.hazard != 0 && (uint16_t)pw.rev > rev_max) rev_max = (uint16_t)pw.rev;
                             if (pw.hazard == 6) { steps6++; if (kw.z == 0) still++; }
                             if (pw.hazard == 0x0C && carry_at < 0) { carry_at = i; zcarry = kw.z; }
                             if (pw.hazard == 0x0E && down_at < 0) down_at = i;
                             if (pw.hazard == 0 && carry_at >= 0 && free_at < 0) { free_at = i; break; }
                         }
-                        snprintf(det, sizeof det, "fall-in: CA $%03X hazard %d; 40 frames B+left: heading %04X speed %d hazard %d; out after %d frames at speed %d hopped %d; sink: %d frames in 6 (%d still), carry at z $%04X, lowering %d frames",
-                                 ca0, hz0, hdg40, spd40, hz40, out_at, spd_out, hopped, steps6, still, (unsigned)(zcarry >> 8), free_at - down_at);
-                        check("the water: $102 to sink, steering and a wade, a hop out at 12, and Lakitu's lift of $700 over 61 frames",
+                        /* flattened: the law's front door zeroes the rev ($80B112, $70) */
+                        pw.squash_t = 10; pw.rev = 0x2000; smk_player_rev_race(&pw);
+                        int rev_flat = (uint16_t)pw.rev;
+                        snprintf(det, sizeof det, "fall-in: CA $%03X hazard %d; 40 frames B+left: heading %04X speed %d hazard %d; out after %d frames at speed %d hopped %d; sink: %d frames in 6 (%d still), carry at z $%04X, lowering %d frames; rev through the rescue with B held max $%04X, squashed $%04X",
+                                 ca0, hz0, hdg40, spd40, hz40, out_at, spd_out, hopped, steps6, still, (unsigned)(zcarry >> 8), free_at - down_at, rev_max, rev_flat);
+                        check("the water: $102 to sink, steering and a wade, a hop out at 12, Lakitu's lift of $700 over 61 frames, and the engine idle throughout",
                               ca0 == 0x102 && hz0 == 8 && hdg40 != 0 && spd40 >= 30 && hz40 == 8
                               && out_at > 0 && out_at < 200 && spd_out == 12 && hopped
                               && steps6 == 61 && still == 34 && zcarry == ((int32_t)0x700 << 8)
-                              && free_at - down_at == 14, det);
+                              && free_at - down_at == 14 && rev_max <= 0x0200 && rev_flat == 0, det);
                     }
                     /* THE REV AND THE HITS (NOTES 285): a wall bounce or a
                      * kart contact halves the rev ($80A10F, floor $100), a
