@@ -341,3 +341,47 @@ int smk_sprite_for_heading(int tier, uint16_t rel, bool *hflip)
     if (f >= SMK_SPR_FRAMES) f = SMK_SPR_FRAMES - 1;
     return f;
 }
+
+/* ---- the finishing list's faces (NOTES 282) --------------------------- */
+
+/* SMK_DRIVERS runs Mario Luigi Bowser Peach DK Yoshi Koopa Toad; the sheet
+ * runs the game's own Mario Luigi Bowser Peach DK Koopa Toad Yoshi. */
+int smk_face_of(int driver)
+{
+    static const int COL[SMK_CHARACTERS] = { 0, 1, 2, 3, 4, 7, 5, 6 };
+    return COL[((driver % SMK_CHARACTERS) + SMK_CHARACTERS) % SMK_CHARACTERS];
+}
+
+bool smk_faces_load(const smk_rom *rom, smk_faces *out)
+{
+    memset(out, 0, sizeof *out);
+    uint8_t buf[120 * 32];
+    uint32_t pc = smk_snes_to_pc(rom, SMK_FACES_SRC);
+    if (pc >= rom->size) return false;
+    long n = smk_decompress(rom->data, rom->size, pc, buf, sizeof buf, NULL);
+    if (n < (long)sizeof buf) return false;
+    uint8_t t[64];
+    /* tile (r, c) of the 16-wide sheet -> a 16x16 face's quarter */
+    for (int row = 0; row < SMK_FACE_ROWS; row++)
+        for (int c = 0; c < SMK_CHARACTERS; c++)
+            for (int q = 0; q < 4; q++) {
+                int tile = (row * 2 + (q >> 1)) * 16 + c * 2 + (q & 1);
+                memset(t, 0, sizeof t);
+                tile_px(buf + tile * 32, t);
+                for (int y = 0; y < 8; y++)
+                    for (int x = 0; x < 8; x++)
+                        out->face[row][c][((q >> 1) * 8 + y) * SMK_FACE_PX + (q & 1) * 8 + x]
+                            = t[y * 8 + x];
+            }
+    for (int d = 0; d < SMK_CHARACTERS; d++)
+        for (int half = 0; half < 2; half++) {
+            int tile = (6 + half) * 16 + d;
+            memset(t, 0, sizeof t);
+            tile_px(buf + tile * 32, t);
+            for (int y = 0; y < 8; y++)
+                for (int x = 0; x < 8; x++)
+                    out->digit[d][(half * 8 + y) * 8 + x] = t[y * 8 + x];
+        }
+    out->ok = true;
+    return true;
+}

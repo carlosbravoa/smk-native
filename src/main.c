@@ -357,6 +357,7 @@ static int race_count;                   /* frames spent counting down  */
  * $0146 runs -333 at frame 4 to 0 at frame 337 and the race clock $0100
  * starts ticking immediately after. */
 static smk_hud hud_art;
+static smk_faces face_art;          /* the finishing list's faces and digits (NOTES 282) */
 static smk_objgfx obj_art;          /* pipes and other entities */
 static smk_shadow shadow_art;       /* the one oval every object shares */                  /* the game's own HUD sprites */
 
@@ -1065,12 +1066,153 @@ static void draw_track_map(uint32_t *fb, int rw, int rh, const smk_kart *me,
                 }
         }
 }
+/* ---- THE FINISHING LIST, all race long (NOTES 282) --------------------
+ *
+ * The game draws a list down the left as karts finish: an 8x16 number and
+ * a 16x16 face on a dark cell, rows 17 apart from y 40 (OAM of the cc150
+ * recording: number at x 8, face at x 16).  It only appears once somebody
+ * has finished; the user wants it up the whole race, showing the live
+ * order - "we can add it constantly" - down the left in a one-player
+ * race and down the middle of a split screen, "to save space".
+ *
+ * MEASURED from the same recording: a finished kart's face alternates
+ * with its cheering expression eight frames each, and its number's cell
+ * cycles dark, dark, red, orange over eight frames (palettes 1 1 5 6).
+ * The cycle is drawn for the scoring four; whether the rows below flash
+ * too is not in the grab (its OAM is the top half's) - LABELLED. */
+#define SMK_LIST_PITCH 17          /* rows, MEASURED */
+static int view_of_slot(int slot);   /* which driver's row this is, or -1 */
+
+/* Finished karts by their time, then the rest by the live order. */
+static void finishing_order(int order[SMK_CHARACTERS])
+{
+    long key[SMK_CHARACTERS];
+    for (int i = 0; i < SMK_CHARACTERS; i++) {
+        long ff = racers[i].finish_frame;
+        key[i] = ff >= 0 ? ff : 1000000L + smk_race_rank(racers, i, &crs);
+        order[i] = i;
+    }
+    for (int i = 1; i < SMK_CHARACTERS; i++) {
+        int v = order[i], j = i - 1;
+        for (; j >= 0 && key[order[j]] > key[v]; j--) order[j + 1] = order[j];
+        order[j + 1] = v;
+    }
+}
+
+static void blit_indexed(uint32_t *fb, int rw, int rh, const uint8_t *px,
+                         int pw, int ph, int x, int y, int sc,
+                         const uint32_t *palette, int pal_base)
+{
+    for (int yy = 0; yy < ph * sc; yy++) {
+        int sy = y + yy; if (sy < 0 || sy >= rh) continue;
+        for (int xx = 0; xx < pw * sc; xx++) {
+            int sx = x + xx; if (sx < 0 || sx >= rw) continue;
+            uint8_t v = px[(yy / sc) * pw + xx / sc];
+            if (v) fb[(size_t)sy * rw + sx] = palette[(pal_base + v) & 0xFF];
+        }
+    }
+}
+
+/* Where the list goes: down the left under the clock in one view, down
+ * the middle under both HUD blocks in two.  The row scale drops until
+ * the eight rows clear the dial (one view) or the maps (two). */
+static void rank_column_place(int rw, int rh, bool mid, int *x0, int *y0, int *csc)
+{
+    int vw = mid ? rw / 2 : rw;
+    int sc = vw >= 640 ? 3 : 2;                       /* the view's HUD scale */
+    int top, floor;
+    if (mid) {
+        int scm = vw / 512; if (scm < 1) scm = 1;
+        top = 8 + 8 * sc * 3 + 4;                     /* under the coins, lap and big digit */
+        floor = rh - SMK_MAP_PX * scm - 12;           /* above the maps' top */
+    } else {
+        top = 8 + 8 * sc + 4 * sc;                    /* under the clock */
+        floor = rh - 20 * sc - 12;                    /* above the dial */
+    }
+    int c = sc;
+    while (c > 1 && top + 8 * SMK_LIST_PITCH * c > floor) c--;
+    *csc = c; *y0 = top;
+    *x0 = mid ? rw / 2 - 13 * c : 8;
+}
+
+static void draw_rank_column(uint32_t *fb, int rw, int rh, const uint32_t *palette,
+                             int x0, int y0, int csc, long tick)
+{
+    if (!face_art.ok || !palette) return;
+    int order[SMK_CHARACTERS];
+    finishing_order(order);
+    for (int p = 0; p < SMK_CHARACTERS; p++) {
+        int i = order[p];
+        int ch = racers[i].character % SMK_CHARACTERS;
+        bool home = racers[i].finish_frame >= 0;
+        int y = y0 + p * SMK_LIST_PITCH * csc;
+        /* the cell: the game's is the digit's own index 1 and a black BG
+         * behind the face; one dark box for the row, over the scene at
+         * 3/4 like the map, so the road shows through */
+        for (int yy = 0; yy < 16 * csc; yy++) {
+            int sy = y + yy; if (sy < 0 || sy >= rh) continue;
+            for (int xx = 0; xx < 26 * csc; xx++) {
+                int sx = x0 + xx; if (sx < 0 || sx >= rw) continue;
+                uint32_t d = fb[(size_t)sy * rw + sx];
+                fb[(size_t)sy * rw + sx] = 0xFF000000u
+                    | ((((d >> 16) & 255) / 4) << 16)
+                    | (((40 * 3 + ((d >> 8) & 255)) / 4) << 8)
+                    | ((40 * 3 + (d & 255)) / 4);
+            }
+        }
+        /* the humans' rows carry a frame: gold for P1, P2's blue */
+        for (int v = view_of_slot(i); v >= 0; v = -1) {
+            uint32_t col = v == 0 ? 0xFFFFD040u : 0xFF80A0FFu;
+            for (int yy = -csc; yy < 17 * csc; yy++)
+                for (int xx = -csc; xx < 27 * csc; xx++) {
+                    bool edge = yy < 0 || yy >= 16 * csc || xx < 0 || xx >= 26 * csc;
+                    if (!edge) continue;
+                    int sx = x0 + xx, sy = y + yy;
+                    if (sx >= 0 && sx < rw && sy >= 0 && sy < rh)
+                        fb[(size_t)sy * rw + sx] = col;
+                }
+        }
+        int pal = SMK_FACE_DIGIT_PAL;
+        if (home && p < 4) {                          /* the scoring four flash */
+            int ph = (int)(tick & 7);
+            pal = ph < 4 ? SMK_FACE_DIGIT_PAL
+                : ph < 6 ? SMK_FACE_FLASH_PAL_A : SMK_FACE_FLASH_PAL_B;
+        }
+        blit_indexed(fb, rw, rh, face_art.digit[p], 8, 16, x0 + 2 * csc, y, csc, palette, pal);
+        int expr = (home && ((tick >> 3) & 1)) ? SMK_FACE_CHEER : SMK_FACE_LIST;
+        blit_indexed(fb, rw, rh, face_art.face[expr][smk_face_of(ch)],
+                     SMK_FACE_PX, SMK_FACE_PX, x0 + 10 * csc, y, csc,
+                     palette, SMK_DRIVERS[ch].pal);
+    }
+}
 static bool shell;                  /* the menu drives the game        */
 static int  race_mode = SMK_MODE_GP;   /* the game's own $2C           */
 static long lap_start_frames;       /* clock at the last line crossing */
 static bool tt_mushroom;            /* the one time-trial mushroom     */
 static bool race_over;
 static int  finish_t;                    /* frames into the celebration */
+/* THE COOLDOWN (NOTES 282, the user's rule): once the fourth kart is
+ * home the rest have fifteen seconds to arrive; then the race is over
+ * at the positions they hold.  OURS - the game waits for everybody. */
+#define SMK_FINISH_COOLDOWN (15 * 60)
+static long fourth_at = -1;              /* clock when the 4th finished */
+static bool cooldown_over;               /* ...and its fifteen seconds ran out */
+static bool forced_finish;               /* this driver's race ended by the clock */
+
+/* The seconds the field has left, under the list, once the fourth kart
+ * is home - OURS, so the cut-off reads as a rule rather than a bug. */
+static void draw_cooldown(uint32_t *fb, int rw, int rh, const uint32_t *palette,
+                          int x, int y, int sc)
+{
+    if (fourth_at < 0 || race_mode == SMK_MODE_TT) return;
+    long left = SMK_FINISH_COOLDOWN - (hud_race_frames - fourth_at);
+    if (left < 0) left = 0;
+    int secs = (int)((left + 59) / 60);
+    if (secs > 99) secs = 99;
+    int adv = 8 * sc;
+    hud_tile(fb, rw, rh, x + 2 * sc, y + 2 * sc, smk_hud_digit(secs / 10), palette, sc);
+    hud_tile(fb, rw, rh, x + 2 * sc + adv, y + 2 * sc, smk_hud_digit(secs % 10), palette, sc);
+}
 static bool race_reported;
 static bool obj_marks;   /* --obj-marks: show each object's ground point */
 static smk_autopilot autopilot;
@@ -1731,6 +1873,7 @@ static int show_kart = 1, show_grid = 1;
     X(int,             celebrating_pose) \
     X(int,             finish_t)    \
     X(bool,            race_over)   \
+    X(bool,            forced_finish) \
     X(bool,            race_reported) \
     X(int,             player_sector) \
     X(int,             player_slip_deg) \
@@ -1784,6 +1927,12 @@ typedef struct {
 } pview;
 
 static pview views[2];
+static int view_of_slot(int slot)
+{
+    for (int v = 0; v < nviews; v++)
+        if (views[v].drives && views[v].slot == slot) return v;
+    return -1;
+}
 /* SMK_PLAYERS_* from the shell, kept here so a race can be rebuilt */
 
 static void pv_save(pview *v) { PV_LIST(PV_SAVE) }
@@ -1967,7 +2116,10 @@ static bool load_race(const smk_rom *rom, int track, int theme, int character,
     lap_start_frames = 0;
     crossings = 0;
     race_over = false;
+    forced_finish = false;
     finish_t = 0;
+    fourth_at = -1;
+    cooldown_over = false;
     memset(&item, 0, sizeof item);
     memset(projs, 0, sizeof projs);
     smk_ai_attack_init(&ai_attack, item_rng);
@@ -2076,48 +2228,6 @@ static void save_ppm(const char *path, const uint32_t *fb, int w, int h)
     fclose(pf);
 }
 
-/* Let the unfinished karts finish, so the table has real times.
- *
- * When the player crosses, most of the field has not.  The original waits
- * for them; we run them on without drawing, which costs a few milliseconds
- * and means every row of the results is a time that kart actually drove
- * rather than an estimate.  Capped, because a kart that is genuinely stuck
- * must not hang the results screen - those are shown as DNF.
- */
-static bool slot_is_driven(int q);
-/* Bring the field home after the player has finished, so the results have
- * everybody's time.  A slot a PERSON drives is left alone - they are
- * still racing, and their time is their own. */
-static void settle_field(smk_racer *rs, const smk_track *t,
-                         const smk_course *c, const smk_physics *ph, long now)
-{
-    const long CAP = 60 * 90;            /* 90 s of race time, then give up */
-    for (long f = 0; f < CAP; f++) {
-        int left = 0;
-        for (int i = 1; i < SMK_CHARACTERS; i++)
-            if (rs[i].finish_frame < 0 && !slot_is_driven(i)) left++;
-        if (!left) break;
-        smk_race_frame = now + f;
-        smk_ai_rubber(rs, SMK_CHARACTERS, c, ph->engine_class);
-        for (int i = 1; i < SMK_CHARACTERS; i++)
-            if (rs[i].finish_frame < 0 && !slot_is_driven(i))
-                smk_racer_step(&rs[i], t, c, ph);
-    }
-    /* whoever is STILL out there (stuck on an obstacle, off in the weeds)
-     * gets a time anyway - "the simulation needs them to arrive, with
-     * times" (bug 4).  Ordered by their progress; OURS, labelled. */
-    {
-        int left[SMK_CHARACTERS], nl = 0;
-        for (int i = 1; i < SMK_CHARACTERS; i++)
-            if (rs[i].finish_frame < 0 && !slot_is_driven(i)) left[nl++] = i;
-        for (int a = 0; a < nl; a++)
-            for (int b = a + 1; b < nl; b++)
-                if (rs[left[b]].lap > rs[left[a]].lap) { int q = left[a]; left[a] = left[b]; left[b] = q; }
-        for (int a = 0; a < nl; a++)
-            rs[left[a]].finish_frame = now + CAP + (long)(a + 1) * 300;
-    }
-}
-
 /* The finishing order and everyone's total, for the results screen. */
 /* `who` is the racers[] slot the result belongs to - slot 0 for player 1,
  * slot 1 when player 2's own screen builds his (S36). */
@@ -2127,17 +2237,21 @@ static void build_result_table(smk_ui_result *res, smk_racer *rs,
     rs[who].finish_frame = player_total;       /* the clock the HUD showed */
     int order[SMK_CHARACTERS];
     for (int i = 0; i < SMK_CHARACTERS; i++) order[i] = i;
-    /* finished karts by time, then the DNFs; a plain insertion sort, which
-     * for eight entries is the clearest thing that can be written */
-    for (int i = 1; i < SMK_CHARACTERS; i++) {
-        int v = order[i], j = i - 1;
-        for (; j >= 0; j--) {
-            long a = rs[order[j]].finish_frame, b = rs[v].finish_frame;
-            int worse = (a < 0 && b >= 0) || (a >= 0 && b >= 0 && a > b);
-            if (!worse) break;
-            order[j + 1] = order[j];
+    /* finished karts by time, then whoever is still out there by the
+     * order they hold when the clock runs out (NOTES 282) - the same
+     * sort the list on screen shows, so the table cannot disagree with
+     * it; a plain insertion sort, which for eight entries is the
+     * clearest thing that can be written */
+    {
+        long key[SMK_CHARACTERS];
+        for (int i = 0; i < SMK_CHARACTERS; i++)
+            key[i] = rs[i].finish_frame >= 0 ? rs[i].finish_frame
+                   : 1000000L + smk_race_rank(rs, i, &crs);
+        for (int i = 1; i < SMK_CHARACTERS; i++) {
+            int v = order[i], j = i - 1;
+            for (; j >= 0 && key[order[j]] > key[v]; j--) order[j + 1] = order[j];
+            order[j + 1] = v;
         }
-        order[j + 1] = v;
     }
     if (getenv("SMK_RESULT_TRACE"))
         for (int p = 0; p < SMK_CHARACTERS; p++)
@@ -3301,6 +3415,14 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
     /* he waves you home; the rest of the furniture stands down */
     if (celebrating)
         draw_finish_flag(fb, rw, rh, trk->palette, finish_t);
+    /* the finishing list stays up through the celebration - that is
+     * when the game itself shows it (NOTES 282) */
+    if (nviews < 2 && race_mode != SMK_MODE_TT && race_state != RACE_COUNTDOWN) {
+        int lx, ly, lsc;
+        rank_column_place(rw, rh, false, &lx, &ly, &lsc);
+        draw_rank_column(fb, rw, rh, trk->palette, lx, ly, lsc, hud_race_frames);
+        draw_cooldown(fb, rw, rh, trk->palette, lx, ly + 8 * SMK_LIST_PITCH * lsc, lsc);
+    }
     if (!celebrating) {
         if (hud_countdown >= 0)           /* Lakitu, and his light */
             draw_start_light(fb, rw, rh, trk->palette, hud_countdown);
@@ -3805,6 +3927,7 @@ int main(int argc, char **argv)
         printf("\n");
     }
     smk_hud_load(&rom, &hud_art);
+    smk_faces_load(&rom, &face_art);
     if (!smk_coin_load(&rom, &coin_art))
         fprintf(stderr, "warning: coin sprite not loaded\n");
     if (smk_items_load(&rom, &itemtab)) smk_item_tables = &itemtab;
@@ -4388,6 +4511,15 @@ int main(int argc, char **argv)
             if (race_state == RACE_RUN || race_state == RACE_FINISH) {
                 hud_race_frames++;
                 smk_race_frame = hud_race_frames;   /* so a kart can stamp its own finish */
+                /* the fourth kart home starts the cooldown (NOTES 282) */
+                if (race_mode != SMK_MODE_TT && fourth_at < 0) {
+                    int home = 0;
+                    for (int i = 0; i < SMK_CHARACTERS; i++)
+                        if (racers[i].finish_frame >= 0) home++;
+                    if (home >= 4) fourth_at = hud_race_frames;
+                }
+                cooldown_over = fourth_at >= 0
+                    && hud_race_frames - fourth_at >= SMK_FINISH_COOLDOWN;
             }
             for (int v = 0; v < nviews; v++)
                 smk_coinfx_step(coins_fx_all[v], SMK_COINFX_MAX);
@@ -5259,6 +5391,14 @@ int main(int argc, char **argv)
                  * the splits it indexes. */
             }
 
+            /* the clock ran out on this driver: the race is over at the
+             * position they hold, with no time (NOTES 282) */
+            if (!race_over && race_state == RACE_RUN && race_mode != SMK_MODE_TT
+                && cooldown_over) {
+                race_over = true;
+                forced_finish = true;
+                result.total = -1;
+            }
             /* the race is over: report it, bank the best lap, show it */
             if (race_over && !race_reported) {
                 race_reported = true;
@@ -5273,7 +5413,8 @@ int main(int argc, char **argv)
                        smk_track_name(&rom, track), drv->name,
                        engine_class == 0 ? "50cc" : engine_class == 1 ? "100cc" : "150cc");
                 if (result.position)
-                    printf("  finished %d of %d\n", result.position, SMK_CHARACTERS);
+                    printf("  %s %d of %d\n", forced_finish ? "out of time, running" : "finished",
+                           result.position, SMK_CHARACTERS);
                 for (int i = 0; i < SMK_RACE_LAPS; i++) {
                     smk_time_text(result.lap[i], tm, sizeof tm);
                     printf("  lap %d  %s%s\n", i + 1, tm,
@@ -5298,11 +5439,12 @@ int main(int argc, char **argv)
                  * user: "the race doesn't stop abruptly."  The field is
                  * still racing and their times are what the results are
                  * for, so hand over to the celebration and let it run. */
-                me->finish_frame = hud_race_frames;
-                smk_sfx_play(SMK_SFX_FINISH);    /* the user: "getting to the goal" */
+                me->finish_frame = forced_finish ? -1 : hud_race_frames;
+                if (!forced_finish)
+                    smk_sfx_play(SMK_SFX_FINISH);    /* the user: "getting to the goal" */
                 finish_wait = 0;
-                if (race_mode == SMK_MODE_TT) {
-                    results_ready = true;
+                if (race_mode == SMK_MODE_TT || forced_finish) {
+                    results_ready = true;            /* nothing to celebrate */
                 } else {
                     race_state = RACE_FINISH;
                     finish_t = 0;
@@ -5314,16 +5456,23 @@ int main(int argc, char **argv)
              * holding the other's screen. */
             if (race_over) finish_wait++;
 
-            /* the celebration is over: settle the field and show the times */
+            /* the celebration is over: the times are due.  The camera
+             * holds on the driver until they come - the field is still
+             * arriving, and the list down the side shows it. */
             if (race_state == RACE_FINISH
-                && finish_t >= SMK_FINISH_TURN + SMK_FINISH_HOLD) {
-                race_state = RACE_RUN;          /* nothing more to celebrate */
+                && finish_t == SMK_FINISH_TURN + SMK_FINISH_HOLD)
                 results_ready = true;
-            }
-            if (results_ready
-                && (every_view_finished() || finish_wait >= SMK_FINISH_WAIT)) {
+            /* ...and they come when the field is home, or fifteen seconds
+             * after the fourth kart was (NOTES 282); a time trial waits
+             * for its own drivers only, and a minute is the backstop */
+            bool field_home = true;
+            for (int i = 0; i < SMK_CHARACTERS; i++)
+                if (racers[i].finish_frame < 0) field_home = false;
+            bool due = race_mode == SMK_MODE_TT ? every_view_finished()
+                                                : (field_home || cooldown_over);
+            if (results_ready && (due || finish_wait >= SMK_FINISH_WAIT)) {
                 results_ready = false;
-                settle_field(racers, &trk, &crs, &phys, hud_race_frames);
+                race_state = RACE_RUN;          /* nothing more to celebrate */
                 build_result_table(&result, racers, result.total, (int)(me - racers));
                 printf("  final order:\n");
                 for (int q = 0; q < result.entries; q++) {
@@ -5332,7 +5481,7 @@ int main(int argc, char **argv)
                     printf("   %d  %-8s %s%s\n", q + 1,
                            SMK_DRIVERS[result.field[q].character
                                        % SMK_CHARACTERS].name,
-                           result.field[q].total >= 0 ? tt : "DNF",
+                           result.field[q].total >= 0 ? tt : "no time",
                            result.field[q].player == 2 ? "   <- CPU"
                            : result.field[q].player ? "   <- you" : "");
                 }
@@ -5409,6 +5558,13 @@ int main(int argc, char **argv)
                 for (int y = 0; y < rh; y++) {
                     fb[(size_t)y * rw + vw - 1] = 0xFF101018u;
                     fb[(size_t)y * rw + vw]     = 0xFF101018u;
+                }
+                /* the finishing list down the middle, over both (NOTES 282) */
+                if (race_mode != SMK_MODE_TT && race_state != RACE_COUNTDOWN) {
+                    int lx, ly, lsc;
+                    rank_column_place(rw, rh, true, &lx, &ly, &lsc);
+                    draw_rank_column(fb, rw, rh, trk.palette, lx, ly, lsc, hud_race_frames);
+                    draw_cooldown(fb, rw, rh, trk.palette, lx, ly + 8 * SMK_LIST_PITCH * lsc, lsc);
                 }
             }
             if (paused) draw_paused(fb, rw, rh);

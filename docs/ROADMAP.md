@@ -54,6 +54,16 @@ re-investigating.
 
 ## Shortcut & assumption ledger (current)
 
+**S46 — The cup's finish is the user's, not the game's (NOTES 282).**
+No retry when ranked out: the top four are paid, the player outside them
+scores nothing and the cup goes on.  Fifteen seconds after the fourth
+kart is home the race is over at the positions held, with NO TIME for
+whoever is still out - the game waits for everybody.  The finishing list
+is up the whole race (the game shows it only as karts finish), down the
+left or down the middle of a split screen; its faces, digits, expression
+toggle and number flash are the ROM's (`$C3:0000`, measured), its
+placement ours.  LABELLED: whether rows five to eight flash.
+
 **S45 — CPU RULES: FAIR is OURS, ORIGINAL is the game.**  A row on the
 class screen (NOTES 281).  FAIR takes three advantages from the field -
 the player's full off-road cap, the cosine at a ramp launch, half the
@@ -525,7 +535,7 @@ regression in them is noticed.
 | P5 race furniture | **part** - the live phase — ground objects stamped with the ROM's own tiles (NOTES 074), sprite-obstacle entity list decoded and colliding (NOTES 078), HUD set + clock + lap counter on the game's own art, start countdown (NOTES 085).  hazard classes decoded and ported - water ($22) wade/skim, the fall ($24/$26/$20/$28) and Lakitu's rescue as the ROM's own three states with a latched target (NOTES 113, 124).  Breakable blocks done and gated for both themes (NOTES 123/123a).  The sector map now matches the game's own $7F:5000 on all painted cells.  Lakitu's own art is now decoded and drawn for the start (NOTES 162).  Residual: the horizon/backdrop (S5), entity MOTION (S12), item behaviour, the splash/sink effects |
 | P6 opponents | **driving and competitiveness in, personality not.**  Flow-field steering (95% byte-exact), ramp launches, wall escapes and a Lakitu rescue get the field round **20/20** GP courses.  Kart-to-kart contact is the ROM's, weight classes and all (NOTES 166).  The rubber band is the ROM's own row chooser, `$80ADA0`, rebuilt in NOTES 174 and reproducing the game's choice on 94.2% of 39,074 recorded kart-frames - it turns on whether the neighbouring kart is the HUMAN, and its catch-up distances re-tune every lap.  The field takes the boost pads and flies the ramps as the game's karts do (NOTES 280: Mario Circuit 2's crossing, 31 of 31 in the recording).  **The VS CPU opponent is a trained neural network** (S44): it races through the player physics by pressing buttons, decides every four frames, and beats the scripted driver on courses it never trained on; the scripted `src/autopilot.c` remains as its fallback.  The field's pace is the ROM's now: the AI sheds speed through `$80B064`'s rates instead of snapping to its target, and the four handicap karts take `$80B099`'s bonus in place of the rank penalty (NOTES 277/278, gated on the user's 50/100/150cc recordings).  Residual: the "in trouble" test (`$84`, `$10` bit 5) is approximated - `$84` is now known to be the shrink/hit timer; the distance CACHE is not modelled; per-kart driving personality |
 | P7 audio | **effects DONE and decoded** (NOTES 211-246) — the game's own ids, rendered from its own BRR samples off the chip; four engines by driver pair, six rough surfaces, the overtake voices, the held voices (engine/roulette/skid).  **Music PARKED** by the user and off by default.  Residual: nine PENDING items listed under "Where to pick up next" (1a-1i) — the bridge's rate, `$4F`/`$53`, coverage 35/71 |
-| P8 modes / menus | **three modes, two players** — the shell: title → players → mode → class → driver → course-by-cup → race → results.  GRAND PRIX runs the cup: the ROM's 9/6/3/1 to the top four, a points screen and an animated championship, the next grid from the last race's order and the coins by slot (NOTES 198/274/275), a retry when ranked out, the trophy.  SINGLE RACE is one cup course: eight karts, the ROM's per-character grid order (`$81EE97`, NOTES 111) with the player at the back (NOTES 164).  TIME TRIAL is alone with one mushroom and keeps the top five lap times per course on disk.  1P / VS CPU (the neural driver, S44) / VS 2P side by side (S42).  Font, palettes, cup order, course names, lap count and the time-trial rules are all ROM-derived (NOTES 147/148).  Residual: the real menu art (S20), the mushroom grant rule (S19), the retry's exact rule |
+| P8 modes / menus | **three modes, two players** — the shell: title → players → mode → class → driver → course-by-cup → race → results.  GRAND PRIX runs the cup: the ROM's 9/6/3/1 to the top four, a points screen and an animated championship, the next grid from the last race's order and the coins by slot (NOTES 198/274/275), no retry - fifth or worse scores nothing and the cup goes on - the trophy.  The finishing list is on screen all race, the ROM's own faces and digits (NOTES 282), and fifteen seconds after the fourth kart is home the race is over at the positions held (S46).  SINGLE RACE is one cup course: eight karts, the ROM's per-character grid order (`$81EE97`, NOTES 111) with the player at the back (NOTES 164).  TIME TRIAL is alone with one mushroom and keeps the top five lap times per course on disk.  1P / VS CPU (the neural driver, S44) / VS 2P side by side (S42).  Font, palettes, cup order, course names, lap count and the time-trial rules are all ROM-derived (NOTES 147/148).  Residual: the real menu art (S20), the mushroom grant rule (S19) |
 
 ## Known bugs (the user's list, 2026-08-30)
 
@@ -780,10 +790,11 @@ In rough order of value:
    the ROM's order, 9/6/3/1 from `$85:BEB4` to the top four, a points
    screen and an animated championship between races, the grid of the
    next race from this one's finishing order (measured, NOTES 275) and
-   the starting coins by grid slot with it, a retry when ranked out,
-   final standings with the trophy after the fifth.  LABELLED: the
-   retry's exact rule and text, and whether the AI scores on a retried
-   race.
+   the starting coins by grid slot with it, final standings with the
+   trophy after the fifth.  The retry when ranked out is gone by the
+   user's rule (NOTES 282, S46): fifth or worse scores nothing and the
+   cup goes on; the race ends fifteen seconds after the fourth kart is
+   home; the finishing list is up all race on the ROM's own faces.
 
 5. **~~Finish the rubber band's two loose ends (S25)~~ — CLOSED by
    NOTES 174.** Both were measured from the user's recorded race. `$DA`

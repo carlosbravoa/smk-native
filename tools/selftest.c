@@ -868,16 +868,42 @@ int main(int argc, char **argv)
                     /* starting coins by slot: 2 from pole, 5 from the back (NOTES 275) */
                     gridok = gridok && smk_start_coins(&rom, 0) == 2 && smk_start_coins(&rom, 7) == 5
                                     && smk_start_coins(&rom, 3) == 3;
-                    r.position = 6; smk_ui_gp_award(&u, &r);                                      /* ranked out */
+                    /* ranked out - the player sixth - is no retry any more
+                     * (NOTES 282): the top four are paid, the player is
+                     * not, and the cup goes on to the third course */
+                    {
+                        smk_ui_result r3 = r;
+                        int mine = r.field[1].character;
+                        r3.field[1].character = r.field[5].character; r3.field[1].player = 0;
+                        r3.field[5].character = mine;                 r3.field[5].player = 1;
+                        r3.position = 6;
+                        smk_ui_gp_award(&u, &r3);
+                    }
                     u.screen = SMK_UI_RESULT; smk_ui_step(&u, &rom, &go);
                     smk_ui_step(&u, &rom, &go); smk_ui_step(&u, &rom, &go); smk_ui_step(&u, &rom, &go);
-                    bool retry = smk_ui_step(&u, &rom, &go) && u.track == t1 && u.gp_race == 1;
-                    bool kept = u.gp_points[u.player_sel] == pts_me;                             /* no points when ranked out */
-                    snprintf(det, sizeof det, "table %d %d %d %d; me %d pts winner %d; tracks %d -> %d; points %d/%d standings %d retry %d kept %d; slots win %d me %d last %d",
-                             u.gp_pts_table[0], u.gp_pts_table[1], u.gp_pts_table[2], u.gp_pts_table[3], pts_me, pts_win, t0, t1, pt, pt2, st, retry, kept, win_slot, me_slot, last_slot);
-                    check("a cup: 9/6/3/1 from the ROM, points then standings, the next grid from the last race's order, coins by slot, a retry when ranked out",
+                    bool goes_on = smk_ui_step(&u, &rom, &go) && u.gp_race == 2
+                                && u.track == smk_cup_track(&rom, 0, 2) && u.track != t1;
+                    bool kept = u.gp_points[u.player_sel] == pts_me                              /* nothing for sixth */
+                             && u.gp_points[r.field[0].character] == pts_win + 9;              /* the winner is still paid */
+                    snprintf(det, sizeof det, "table %d %d %d %d; me %d pts winner %d; tracks %d -> %d; points %d/%d standings %d goes on %d kept %d; slots win %d me %d last %d",
+                             u.gp_pts_table[0], u.gp_pts_table[1], u.gp_pts_table[2], u.gp_pts_table[3], pts_me, pts_win, t0, t1, pt, pt2, st, goes_on, kept, win_slot, me_slot, last_slot);
+                    check("a cup: 9/6/3/1 from the ROM, points then standings, the next grid from the last race's order, coins by slot, no retry when ranked out",
                           started && u.gp_pts_table[0] == 9 && u.gp_pts_table[3] == 1 && pts_me == 6 && pts_win == 9
-                          && pt && pt2 && st && next && t1 != t0 && retry && kept && gridok, det);
+                          && pt && pt2 && st && next && t1 != t0 && goes_on && kept && gridok, det);
+                    /* the finishing list's art (NOTES 282): $C3:0000 holds
+                     * three rows of eight faces and the digits; Yoshi is
+                     * our fifth driver and the sheet's last column */
+                    {
+                        smk_faces fa;
+                        bool ok = smk_faces_load(&rom, &fa);
+                        int lit = 0, dlit = 0;
+                        for (int i = 0; i < SMK_FACE_PX * SMK_FACE_PX; i++)
+                            if (fa.face[SMK_FACE_LIST][smk_face_of(5)][i]) lit++;
+                        for (int i = 0; i < 8 * 16; i++) if (fa.digit[7][i] == 15) dlit++;
+                        snprintf(det, sizeof det, "loaded %d; Yoshi -> column %d, %d lit px of 256; digit 8 has %d white px", ok, smk_face_of(5), lit, dlit);
+                        check("the finishing list's faces and digits decode from $C3:0000",
+                              ok && smk_face_of(5) == 7 && smk_face_of(7) == 6 && lit > 150 && dlit > 20 && dlit < 80, det);
+                    }
                     (void)none;
                 }
                 smk_racer rb; memset(&rb, 0, sizeof rb); rb.k.speed = 835;

@@ -535,6 +535,38 @@ typedef struct {
 /* `base` is a SNES address; 0 selects the default kart sheet. */
 bool smk_sprites_load(const smk_rom *rom, uint32_t base, smk_sprites *out);
 
+/* ---- the finishing list's faces (NOTES 282) ----------------------------
+ *
+ * The list the game shows down the left as karts finish - a number and a
+ * face per row - takes its art from ONE stream, $C3:0000 (found by
+ * tools/labs/spritesrc.py from a VRAM grab of the cc150 recording): 120
+ * tiles, three rows of eight 16x16 faces in the GAME'S character order
+ * (Mario Luigi Bowser Peach DK Koopa Toad Yoshi), then the eight 8x16
+ * digits.  Row 2 is the face the list shows; row 0 is the expression a
+ * finished kart's row alternates with, eight frames each (MEASURED from
+ * the same recording: $28 <-> $44 in OAM, 8 on, 8 off); row 1 is not
+ * seen in that race.  A face is drawn with its driver's own kart palette
+ * (OAM: DK and Peach on 3, Yoshi on 0, Luigi on 2 - SMK_DRIVERS' .pal),
+ * a digit with sprite palette 1, whose index 1 is the dark cell behind
+ * it; a finished row's digit cycles palettes 1 1 5 6 over eight frames
+ * (red and orange cells - MEASURED, the same log). */
+#define SMK_FACE_PX     16
+#define SMK_FACE_ROWS   3
+#define SMK_FACE_CHEER  0          /* the alternate expression            */
+#define SMK_FACE_LIST   2          /* what the list shows                 */
+#define SMK_FACES_SRC   0xC30000u
+#define SMK_FACE_DIGIT_PAL   0x90  /* sprite palette 1                    */
+#define SMK_FACE_FLASH_PAL_A 0xD0  /* palette 5: red cell                 */
+#define SMK_FACE_FLASH_PAL_B 0xE0  /* palette 6: orange cell              */
+typedef struct {
+    bool    ok;
+    uint8_t face[SMK_FACE_ROWS][8][SMK_FACE_PX * SMK_FACE_PX];   /* by the sheet's column */
+    uint8_t digit[8][8 * 16];                   /* "1".."8", 8 wide 16 tall */
+} smk_faces;
+bool smk_faces_load(const smk_rom *rom, smk_faces *out);
+/* the sheet's column for one of OUR drivers (SMK_DRIVERS order) */
+int  smk_face_of(int driver);
+
 /* The eight drivers.  Seven sprite sheets at $C0-$C6:$2000 cover them,
  * because Mario and Luigi share one and differ only by palette - which is
  * also how the game does it.  Sprite palettes are CGRAM $80 + n*16. */
@@ -1952,13 +1984,14 @@ typedef struct {
     /* THE CUP (NOTES 198): five courses in the cup's order, points to the
      * top four from the ROM's own table at $85:BEB4 (9 6 3 1 - the results
      * code at $85:C0C6 reads it for rank indices under 4 only), standings
-     * between races, a retry of the same course when the player ranks out
-     * of the top four. */
+     * between races.  The game makes a player outside the top four run
+     * the course again; here the cup goes on and they score nothing
+     * (NOTES 282, the user's call). */
     bool gp;              /* a Grand Prix is running                 */
     int  gp_race;         /* 0..4 within the cup                     */
     int  gp_points[SMK_CHARACTERS];   /* by SMK_DRIVERS index        */
     int  gp_place[SMK_CHARACTERS];    /* last race's place, by driver */
-    bool ranked_out;      /* the player finished 5th or worse        */
+    bool ranked_out;      /* the player finished 5th or worse: no points */
     int  gp_pts_table[4]; /* $85:BEB4                                */
     /* The three screens after a cup race - times, the points this race
      * paid, the championship - and what they animate FROM (NOTES 274):

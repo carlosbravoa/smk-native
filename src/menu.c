@@ -526,11 +526,9 @@ bool smk_ui_step(smk_ui *ui, const smk_rom *rom, const smk_ui_input *in)
         if (in->back) { ui->gp = false; ui->screen = SMK_UI_COURSE; break; }
         if (in->confirm && ui->screen_t < STANDINGS_DONE) { ui->screen_t = STANDINGS_DONE; break; }
         if (in->confirm) {
-            if (ui->ranked_out) {                       /* the same course again */
-                ui->ranked_out = false;
-                ui->screen = SMK_UI_RACE;
-                return true;
-            }
+            /* Ranked out is no longer a retry (NOTES 282, the user: "we
+             * are beyond that.  Let the cup continue, only that you get
+             * 0 points"): the cup goes on to the next course. */
             if (ui->gp_race + 1 < SMK_CUP_COURSES) {    /* the next course */
                 ui->gp_race++;
                 ui->track = smk_cup_track(rom, ui->cup_sel, ui->gp_race);
@@ -545,8 +543,9 @@ bool smk_ui_step(smk_ui *ui, const smk_rom *rom, const smk_ui_input *in)
     return false;
 }
 
-/* After a race in a cup: the ROM's points to the top four, by driver, and
- * whether the player must run the course again. */
+/* After a race in a cup: the ROM's points to the top four, by driver.
+ * The top four are paid whoever they are; a player outside them scores
+ * nothing and the cup goes on (NOTES 282). */
 void smk_ui_gp_award(smk_ui *ui, const smk_ui_result *res)
 {
     if (!ui->gp) return;
@@ -559,7 +558,7 @@ void smk_ui_gp_award(smk_ui *ui, const smk_ui_result *res)
     for (int p = 0; p < res->entries && p < SMK_CHARACTERS; p++) {
         int ch = res->field[p].character % SMK_CHARACTERS;
         ui->gp_place[ch] = p + 1;
-        if (!ui->ranked_out && p < 4) {
+        if (p < 4) {
             ui->gp_award[ch] = ui->gp_pts_table[p];
             ui->gp_points[ch] += ui->gp_pts_table[p];
         }
@@ -1065,7 +1064,7 @@ void smk_ui_draw_result(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
                 smk_time_text(res->field[i].total, tm, sizeof tm);
                 text(f, fb, w, h, 152, y, tm, col);
             } else {
-                text(f, fb, w, h, 152, y, "DNF", off);
+                text(f, fb, w, h, 152, y, "NO TIME", off);
             }
         }
 
@@ -1161,7 +1160,7 @@ void smk_ui_draw_points(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
     ramp(f, TEXT_PAL, lo, 0xFFFFFFFF, 0xFF2A3E78);
     ramp(f, TEXT_PAL, off, 0xFFFFFFFF, 0xFF2A3E78); dim(off);
     p2_pen(p2);
-    cup_header(ui, rom, f, ui->ranked_out ? "RANKED OUT" : "RACE POINTS", fb, w, h);
+    cup_header(ui, rom, f, "RACE POINTS", fb, w, h);
 
     /* the finishing order: by the place each driver took */
     int order[SMK_CHARACTERS], n = 0;
@@ -1203,21 +1202,19 @@ void smk_ui_draw_points(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
         text(f, fb, w, h, vx + 38, vy + 16, nm, me ? medalpen : other ? p2 : rank < 4 ? lo : off);
         if (me)    text(f, fb, w, h, vx + 66, vy + 4, "P1", medalpen);
         if (other) text(f, fb, w, h, vx + 66, vy + 4, "P2", p2);
-        /* the points: pop in big, settle to double size.  Ranked out,
-         * nothing is paid: the table's values show dimmed, what was at
-         * stake, and the footer says so. */
-        int pts = ui->ranked_out ? (rank < 4 ? ui->gp_pts_table[rank] : 0) : ui->gp_award[ch];
+        /* the points: pop in big, settle to double size */
+        int pts = ui->gp_award[ch];
         int pop_at = t0 + 8;
         if (t >= pop_at) {
             char num[8];
             snprintf(num, sizeof num, "%d", pts);
             int mult = t < pop_at + 5 ? 3 : 2;
             int px = vx + 118 - 8 * mult - 4, py = vy + 17 - 4 * mult;
-            memcpy(pen, pts > 0 && !ui->ranked_out ? c : off, sizeof pen);
-            if (pts > 0 && !ui->ranked_out) plus(fb, w, h, px - 7, py + 4 * mult - 2, pen[1], 1);
+            memcpy(pen, pts > 0 ? c : off, sizeof pen);
+            if (pts > 0) plus(fb, w, h, px - 7, py + 4 * mult - 2, pen[1], 1);
             text_big(f, fb, w, h, px, py, num, pen, mult);
             /* the winner's cell throws sparks for a while */
-            if (rank == 0 && pts > 0 && !ui->ranked_out && t < pop_at + 40) {
+            if (rank == 0 && pts > 0 && t < pop_at + 40) {
                 for (int k = 0; k < 6; k++) {
                     unsigned a = (unsigned)(t - pop_at) * 7u + (unsigned)k * 43u;
                     int r = 6 + (t - pop_at) / 2;
@@ -1230,12 +1227,10 @@ void smk_ui_draw_points(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
     }
     if (t >= POINTS_DONE) {
         uint32_t glow[4]; shimmer(f, glow, ui->tick);
-        if (ui->ranked_out) {
+        /* outside the top four nothing is paid, and the cup goes on */
+        if (ui->ranked_out)
             text_c(f, fb, w, h, 194, "NO POINTS   TOP FOUR ONLY", off);
-            if ((ui->tick / 20) & 1) text_c(f, fb, w, h, 208, "ENTER RUN IT AGAIN", glow);
-        } else if ((ui->tick / 20) & 1) {
-            text_c(f, fb, w, h, 208, "ENTER STANDINGS", glow);
-        }
+        if ((ui->tick / 20) & 1) text_c(f, fb, w, h, 208, "ENTER STANDINGS", glow);
     }
 }
 
@@ -1252,7 +1247,7 @@ void smk_ui_draw_standings(const smk_ui *ui, const smk_rom *rom, const smk_font 
     ramp(f, TEXT_PAL, off, 0xFFFFFFFF, 0xFF2A3E78); dim(off);
     p2_pen(p2);
     shimmer(f, glow, ui->tick);
-    bool final = !ui->ranked_out && ui->gp_race + 1 >= SMK_CUP_COURSES;
+    bool final = ui->gp_race + 1 >= SMK_CUP_COURSES;
     cup_header(ui, rom, f, final ? "FINAL STANDINGS" : "CHAMPIONSHIP", fb, w, h);
 
     /* the order before the race and the order after it */
@@ -1319,10 +1314,7 @@ void smk_ui_draw_standings(const smk_ui *ui, const smk_rom *rom, const smk_font 
 
     /* the closing line */
     if (t >= STANDINGS_DONE) {
-        if (ui->ranked_out) {
-            text_c(f, fb, w, h, 190, "RANKED OUT   THE COURSE AGAIN", off);
-            if ((ui->tick / 20) & 1) text_c(f, fb, w, h, 208, "ENTER RETRY", glow);
-        } else if (!final) {
+        if (!final) {
             /* the next grid is this race's order (NOTES 275), so the
              * winner of THIS race takes pole, not the points leader */
             int lead = after[0];

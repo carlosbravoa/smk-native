@@ -22,7 +22,10 @@ course → race**.  **Grand Prix** runs a cup's five courses in the ROM's
 order: after each race the times, then the points the ROM's table pays
 the top four (9, 6, 3, 1), then the championship.  The next race lines
 up in the order this one finished, its winner on pole, as the game does
-(NOTES 275); finish fifth or worse and you run the course again.  **Single Race** is one cup course on its own.
+(NOTES 275); finish fifth or worse and you score nothing, and the cup
+goes on.  The finishing list - the game's own faces - is on screen all
+race, and fifteen seconds after the fourth kart is home the race is over
+at the positions held (NOTES 282).  **Single Race** is one cup course on its own.
 **Time Trial** is five laps alone, a lap clock and splits, one mushroom,
 and the five fastest laps per course kept between sessions (under
 `$XDG_DATA_HOME/smk-port/laptimes.txt`).
@@ -89,8 +92,9 @@ so resolution is not a constraint.
   runs through the port frame-exact
 - **Three modes.**  Grand Prix: four cups of five, the ROM's 9/6/3/1 to
   the top four, points and championship screens, the next grid from the
-  last race's order, coins by grid slot, a retry when ranked out, the
-  trophy.  Single Race.  Time Trial, with the top five laps per course
+  last race's order, coins by grid slot, no retry (fifth or worse
+  scores nothing), the finishing list on screen all race, a fifteen
+  second cooldown after the fourth kart, the trophy.  Single Race.  Time Trial, with the top five laps per course
   kept on disk.  Two players **side by side**, or one player against the
   neural CPU
 - **Seven opponents** on the ROM's own racing lines: its direction field,
@@ -116,9 +120,9 @@ so resolution is not a constraint.
 ## What is still open
 
 The **menus are our own layout** in the ROM's font and palettes, not its
-tilemaps; the AI has no per-character personality; the ranked-out retry's
-exact rule is played rather than decoded; some sound ids are captured
-but not wired.  Every shortcut and every approximation is a labelled
+tilemaps; the AI has no per-character personality; the cup's finish
+(no retry, a fifteen second cooldown) is the user's rule, not the
+game's; some sound ids are captured but not wired.  Every shortcut and every approximation is a labelled
 entry in the ledger in [`docs/ROADMAP.md`](docs/ROADMAP.md), with the
 measurement that would close it.
 
@@ -222,7 +226,7 @@ docs/AI.md         the opponents: every way the game's AI plays by other rules
 ## Verification
 
 ```bash
-make selftest   # 97 checks through the C code the game actually runs
+make selftest   # 102 checks through the C code the game actually runs
 make test       # 25 checks: ROM identity, disassembler, codec, build loop
 make roundtrip  # every disassembled instruction reassembles byte-identically
 make shots      # a still from all 24 tracks

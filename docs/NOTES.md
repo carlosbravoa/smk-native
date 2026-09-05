@@ -12391,3 +12391,75 @@ no ramps and little grass in the AI's way - the fair set costs DK Jr a
 second over five laps (1'11"71 -> 1'12"78) and Peach 0.8 s; the
 difference belongs to courses with ramps and off-road, and to the hits
 the player lands, and wants the user's own judgement at the pad.
+
+## 282. The finishing list all race long, the cooldown, and no retry
+
+Three of the user's rules for the cup, in one go.
+
+**No retry.**  The game sends a player who finishes fifth or worse round
+the same course again.  *"We are beyond that.  Let the cup continue,
+only that you get 0 points."*  So `smk_ui_gp_award` pays the top four
+whoever they are and the standings' confirm always goes to the next
+course; `ranked_out` survives only to put NO POINTS on the points
+screen.  What was LABELLED about the retry (NOTES 198/275 - its exact
+rule and text, whether the AI scored on a retried race) is moot: the
+port no longer plays it.
+
+**The cooldown.**  *"After the fourth finishes the race, leave 15 secs
+of cooldown to let the rest arrive, otherwise the race is over at the
+positions the rest is."*  OURS - the game waits for everybody.  The
+world clock notes the frame the fourth `finish_frame` lands
+(`fourth_at`); 900 frames later `cooldown_over` is set.  A driver who
+has not crossed by then has their race ended where they are: `race_over`
+with `forced_finish`, no celebration, no finish sound, no time
+(`total = -1`, `finish_frame` left at -1), and the results come at once.
+The results table orders the finished by time and the rest by the live
+`smk_race_rank`, the same sort the list on screen uses, so the two
+cannot disagree; a row without a time reads NO TIME.  With that the
+field no longer needs fast-forwarding: `settle_field` - which ran the
+unfinished karts headless to completion after the celebration and
+invented times for the stuck - is gone.  After the celebration the
+camera holds on the driver until the field is home or the clock cuts
+it, and the seconds left are drawn under the list once the fourth kart
+is in.  A minute after the first crossing remains the backstop; a time
+trial still waits for its own drivers only.
+
+Measured under the port: 150cc Mario Circuit 3, the autopilot eighth at
+1'52"63 with the fourth home at 1'44"61 - everybody inside the window,
+the times all real.  50cc with the kart parked: the fourth at 2'30"18,
+Bowser home at 2'40"11, Yoshi and the parked player cut at 2'45"18 with
+NO TIME, seventh and eighth.
+
+**The list.**  The game draws a list down the left as karts finish - a
+number and a face per row - and the user wants it up the whole race,
+*"the game only showed it when the players were finishing the race, we
+can add it constantly"*, down the left in one view and down the middle
+of a split screen, *"to save space"*.
+
+The art was found the routine way (NOTES 271's chain): a VRAM and OAM
+grab at frame 7200 of the cc150 recording, where the player had just
+ranked out, then `tools/labs/spritesrc.py`.  The rows are OAM sprites -
+a 16x16 face at x 16 and an 8x16 digit at x 8, 17 rows apart from y 40
+- on the BG's dark cells, and every tile of them maps to ONE stream,
+**`$C3:0000`**: 120 tiles, three rows of eight 16x16 faces in the game's
+own character order (Mario Luigi Bowser Peach DK Koopa Toad Yoshi -
+`smk_face_of` maps our SMK_DRIVERS order onto it) and the eight 8x16
+digits.  The list shows the third row of faces; the first row is the
+cheering expression a finished kart's row alternates with, eight frames
+each (OAM `$28` <-> `$44`, 8 on 8 off, MEASURED per frame); the second
+row is not seen in this race.  Faces take their driver's kart palette
+(OAM: DK and Peach on 3, Yoshi on 0, Luigi on 2, exactly SMK_DRIVERS'
+`.pal`); the digits are palette 1, whose index 1 is the dark cell behind
+the glyph, and a finished row's digit cycles palettes 1 1 5 6 over eight
+frames - dark, dark, red, orange (MEASURED).  Whether rows five to eight
+flash too is not in the grab: its OAM is the top half's (the bottom
+half is written mid-frame), so the port flashes the scoring four and
+leaves the rest still - LABELLED.  `smk_faces_load` decompresses the
+stream into `smk_faces`; the selftest checks Yoshi lands on the last
+column and the digits decode.
+
+Placement is OURS: rows of 26x16 at the HUD's scale, dropping a scale
+until the eight clear the dial (one view) or the maps (two); the
+humans' rows carry a frame, gold for P1 and P2's blue.  The list stays
+up through the celebration - that is when the game itself shows it -
+and comes down with the countdown.
