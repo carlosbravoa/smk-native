@@ -12786,3 +12786,17 @@ the game's own: at a mild-rev start the engine sings while the speed
 builds from nothing in the recording too (NOTES 285).  The selftest
 holds the throttle through the whole water rescue and expects the rev
 never above `$200`, and zero while squashed.
+
+**289a — Vanilla Lake's water, checked on the game itself.**  The user:
+*"Vanilla lake, underwater, engine sound accelerates as it had no issue,
+but speed is low."*  No recording covers it, so the game was made to do
+it: `tools/labs/waterrev.py` runs the attract kart on asphalt (`$B0 =
+0`), fills the surface under it with `$22` and holds B.  The game's own
+`$C2`, every eight frames: `$0200 $0400 ... $1000 ... $2000` at the wade's
+speed of 123, then `$2040 $2080 ...` to `$2400` at the sink - the note
+climbs to 36 while the kart crawls.  That is the law with `$B0` under
+`$14`, and Vanilla Lake's ice is class `$4E`, type 7, under it.  Only a
+fall-in from an off-road class (grass, sand, snow) holds the wade's rev
+down, and only through `$B0`'s persistence (above).  So on this one the
+port is the game, and the difference the user remembers is between two
+shorelines, not two implementations.  Nothing changed.
