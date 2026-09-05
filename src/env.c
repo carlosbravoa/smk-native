@@ -759,6 +759,17 @@ static void frame(smk_env *e, uint16_t held, uint16_t pressed)
             e->hit_by_item++;
         }
         for (int q = 1; q < SMK_CHARACTERS; q++) {
+            /* the dodge roll ($819A53, NOTES 295), as main.c */
+            int pi = smk_proj_touch(e->projs, SMK_PROJ_MAX, &e->racers[q].k, q);
+            if (pi >= 0 && !e->racers[q].k.airborne) {
+                int ow = e->projs[pi].owner;
+                int orank = smk_race_rank(e->racers, 0, &e->crs) - 1;
+                if (smk_ai_dodges(e->racers[q].character, ow == 0, orank, ow, (unsigned)e->ticks)) {
+                    smk_kart_launch(&e->racers[q].k, SMK_AI_DODGE_ZVEL);
+                    e->racers[q].k.z = 0x100;
+                    continue;
+                }
+            }
             int hq = smk_proj_hit(e->projs, SMK_PROJ_MAX, &e->racers[q].k, q);
             if (hq == SMK_PROJ_BANANA || hq == SMK_PROJ_BANANA_AIR)
                 smk_racer_hit(&e->racers[q], 1, (int)(e->ticks & 1u));

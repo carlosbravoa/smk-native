@@ -225,6 +225,48 @@ void smk_collide_objects(smk_kart *k, const smk_course *crs)
     }
 }
 
+/* The AI's hop over a floor item - the "abusive" one at 150cc (the user,
+ * NOTES 295).  It is not in the AI driver at all (NOTES 294 looked there
+ * and said so, wrongly): it is in the object-hits-kart handler.
+ * $819867 pairs the two bodies and, for an ITEM ($4E bit 14), $8198B1
+ * calls $819A53 before the hit:
+ *
+ *   $819A53  lda $0012,y / bmi          ; victim's $12 negative: no
+ *   $819A58  lda $0010,y / and #$2000   ; victim must be an AI
+ *   $819A60  lda $6A,x / tax            ; the item's OWNER kart
+ *   $819A63  lda $10,x / and #$2000     ; an AI's item?
+ *   $819A6A    lda $DA,x -> $819ACC ($1E) if set, $819ACD ($10) if not
+ *   $819A77  else lda $E6,x / lsr       ; the human owner's rank (0 = 1st)
+ *            ldx $12,y / adc $9AAC,x    ; + the victim character's table
+ *   $819A82  lda $38 / and #$1F / cmp ($0000,x) / bcs no
+ *   $819A8D  lda #$4000 / sta $E0,x ; stz $5E,x ; pla ; rts   <- the hit is popped
+ *
+ * so the roll is frame & 31 < threshold, once per contact.  $DA is the
+ * static 0,0,0,0,2,4,6,8 by kart slot (NOTES 174), so an item dropped by
+ * slots 4-7 is hopped 30 times in 32 and one from slots 1-3 16 in 32.
+ * The human's items use the tables at $819ABC/$819AC4 by the OWNER's
+ * rank: Mario Luigi Peach Koopa Toad Yoshi 4 4 2 2 2 2 0 0, Bowser and
+ * DK 2 2 2 2 2 2 0 0 - a leader's banana is hopped one time in eight,
+ * a back-marker's never.  $E0 bit 14 is the feather request: $80B578
+ * launches $26 = $1E0 with $1E = $100, state $18, no speed change; the
+ * kart is airborne 36 frames and 4195 high, and $81F57A plays nothing
+ * for a kart past $1100.  MEASURED in the user's aihop recording: three
+ * karts over the same poison mushroom at (276,108) with exactly that
+ * arc, the item still there afterwards, $AA never moving (no roll). */
+bool smk_ai_dodges(int victim_character, bool owner_human, int owner_rank, int owner_slot, unsigned frame)
+{
+    static const uint8_t MOST[8]  = { 4, 4, 2, 2, 2, 2, 0, 0 };   /* $819ABC */
+    static const uint8_t HEAVY[8] = { 2, 2, 2, 2, 2, 2, 0, 0 };   /* $819AC4 */
+    int thr;
+    if (!owner_human) thr = owner_slot >= 4 ? 0x1E : 0x10;          /* $DA */
+    else {
+        int g = smk_face_of(victim_character);                        /* the game's order */
+        const uint8_t *t = (g == 2 || g == 4) ? HEAVY : MOST;         /* Bowser, DK */
+        thr = t[owner_rank < 0 ? 0 : owner_rank > 7 ? 7 : owner_rank];
+    }
+    return (int)(frame & 31u) < thr;
+}
+
 /* $81EE07..$81EE58: rows of 8 characters at $81:EE97, 16 bytes per
  * character; 1P mode uses P1's row, 2P mode P2's ($81EE72 by $2E).  In
  * 1P mode kart $1100 gets the row's 7th entry (the rival, $81EE78); then

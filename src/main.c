@@ -5558,6 +5558,25 @@ int main(int argc, char **argv)
                     sfx_take_side(-1);
                     for (int q = 1; q < SMK_CHARACTERS; q++) {
                         if (slot_is_driven(q)) continue;   /* it took its hit above */
+                        /* the dodge roll first ($819A53, NOTES 295): an AI on
+                         * an item may hop it - the feather's launch, the
+                         * item left where it is, nothing played */
+                        {
+                            int pi = smk_proj_touch(projs, SMK_PROJ_MAX, &racers[q].k, q);
+                            if (pi >= 0 && !racers[q].k.airborne) {
+                                int ow = projs[pi].owner;
+                                bool oh = ow >= 0 && ow < SMK_CHARACTERS && slot_is_driven(ow);
+                                if (smk_ai_dodges(racers[q].character, oh, oh ? racers[ow].rank : 0, ow, (unsigned)fx_ticks)) {
+                                    smk_kart_launch(&racers[q].k, SMK_AI_DODGE_ZVEL);
+                                    racers[q].k.z = 0x100;                    /* $1E = $0100 */
+                                    if (getenv("SMK_ITEM_TRACE"))
+                                        printf("item DODGE kart %d (%s) over kind %d of %d, frame %u\n", q,
+                                               SMK_DRIVERS[racers[q].character % SMK_CHARACTERS].name,
+                                               projs[pi].kind, ow, (unsigned)fx_ticks);
+                                    continue;
+                                }
+                            }
+                        }
                         int hq = smk_proj_hit(projs, SMK_PROJ_MAX, &racers[q].k, q);
                         if (hq && getenv("SMK_ITEM_TRACE"))
                             printf("item HIT kart %d (%s) at (%d,%d) rank %d by kind %d; player at (%d,%d) rank %d\n",

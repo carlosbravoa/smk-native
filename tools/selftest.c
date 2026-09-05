@@ -2089,6 +2089,49 @@ int main(int argc, char **argv)
         }
     }
 
+    /* NOTES 295: the AI's hop over a floor item - $819A53's roll and
+     * $80B578's launch, against the user's aihop recording */
+    {
+        int cpu_hi = 0, cpu_lo = 0, hum_toad = 0, hum_bowser = 0, hum_back = 0;
+        for (unsigned f = 0; f < 32; f++) {
+            cpu_hi     += smk_ai_dodges(7, false, 0, 7, f);   /* slot 7's item: $DA = 8 */
+            cpu_lo     += smk_ai_dodges(7, false, 0, 1, f);   /* slot 1's: $DA = 0 */
+            hum_toad   += smk_ai_dodges(7, true, 0, 0, f);    /* the leader's, Toad hops */
+            hum_bowser += smk_ai_dodges(2, true, 0, 0, f);    /* ... Bowser hops */
+            hum_back   += smk_ai_dodges(7, true, 6, 0, f);    /* a 7th-placed human's */
+        }
+        char d[96];
+        snprintf(d, sizeof d, "%d/32 vs %d/32 of 32 frames", cpu_hi, cpu_lo);
+        check("AI dodge: an AI's item is hopped 30/32 (slots 4-7) or 16/32 (1-3)", cpu_hi == 30 && cpu_lo == 16, d);
+        snprintf(d, sizeof d, "Toad %d/32, Bowser %d/32, from 7th %d/32", hum_toad, hum_bowser, hum_back);
+        check("AI dodge: the leading human's item is hopped 4/32 (2/32 by Bowser/DK), a 7th's never",
+              hum_toad == 4 && hum_bowser == 2 && hum_back == 0, d);
+        /* the flight: z 1 -> 455 -> 883 ... peak 4195 at +18, down at +36 */
+        smk_kart k; memset(&k, 0, sizeof k);
+        smk_kart_launch(&k, SMK_AI_DODGE_ZVEL); k.z = 0x100;
+        int z1 = -1, peak = 0, peak_at = 0, land = 0;
+        for (int f = 1; f <= 60 && k.airborne; f++) {
+            smk_kart_gravity(&k);
+            int z = (int)(k.z >> 8);
+            if (f == 1) z1 = z;
+            if (z > peak) { peak = z; peak_at = f; }
+            if (!k.airborne) land = f;
+        }
+        snprintf(d, sizeof d, "+1: %d, peak %d at +%d, down at +%d", z1, peak, peak_at, land);
+        check("AI dodge: the launch flies the recording's arc (455, 4195 at +18, down at +36)",
+              z1 == 455 && peak == 4195 && peak_at == 18 && land == 36, d);
+        /* the probe sees the item and leaves it; the hit takes it */
+        smk_proj pj[2]; memset(pj, 0, sizeof pj);
+        pj[0].kind = SMK_PROJ_BANANA; pj[0].owner = 5; pj[0].x = k.x; pj[0].y = k.y;
+        k.z = 0; k.airborne = false;
+        int ti = smk_proj_touch(pj, 2, &k, 3);
+        int still = pj[0].kind;
+        int hk = smk_proj_hit(pj, 2, &k, 3);
+        snprintf(d, sizeof d, "touch %d (kind after %d), hit %d (kind after %d)", ti, still, hk, pj[0].kind);
+        check("AI dodge: smk_proj_touch finds the item without consuming it; smk_proj_hit does",
+              ti == 0 && still == SMK_PROJ_BANANA && hk == SMK_PROJ_BANANA && pj[0].kind == SMK_PROJ_NONE, d);
+    }
+
     printf("\n%d passed, %d failed\n", pass, fail);
     smk_rom_free(&rom);
     return fail ? 1 : 0;

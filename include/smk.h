@@ -1342,6 +1342,11 @@ void smk_ai_rubber(smk_racer *racers, int n, const smk_course *crs, int cls);
 
 /* Sprite-obstacle collision, shared by the player and the AI. */
 void smk_collide_objects(smk_kart *k, const smk_course *crs);
+/* $819A53: does this AI kart hop over the item it just touched?  The roll
+ * is the game's own - frame & 31 against a byte table - so it takes the
+ * frame counter, not a random number (NOTES 295). */
+bool smk_ai_dodges(int victim_character, bool owner_human, int owner_rank, int owner_slot, unsigned frame);
+#define SMK_AI_DODGE_ZVEL 0x01E0   /* $80B586: the feather's launch, reused */
 /* $84DBD5: which lap segment a waypoint is in, and which obstacles that
  * spawns.  Call once a frame with the player's waypoint. */
 int  smk_course_segment(const smk_course *c, int waypoint);
@@ -2346,6 +2351,10 @@ void smk_proj_step(smk_proj *list, int n, const smk_track *trk,
 /* does any live projectile touch this kart?  Returns its kind (and
  * starts it dying) or SMK_PROJ_NONE.  The owner is immune for a while. */
 int  smk_proj_hit(smk_proj *list, int n, const smk_kart *k, int kart_index);
+/* the same contact test WITHOUT the hit: index of the item this kart is on,
+ * or -1.  For the AI's dodge roll ($819A53, NOTES 295), which has to see the
+ * item before the hit consumes it. */
+int  smk_proj_touch(const smk_proj *list, int n, const smk_kart *k, int kart_index);
 
 /* ---- The reinforcement-learning environment (src/env.c, docs/RL.md) -----
  *

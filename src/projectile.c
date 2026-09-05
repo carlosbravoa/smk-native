@@ -303,10 +303,10 @@ void smk_proj_step(smk_proj *list, int n, const smk_track *trk,
     }
 }
 
-int smk_proj_hit(smk_proj *list, int n, const smk_kart *k, int kart_index)
+static int proj_find(const smk_proj *list, int n, const smk_kart *k, int kart_index)
 {
     for (int i = 0; i < n; i++) {
-        smk_proj *p = &list[i];
+        const smk_proj *p = &list[i];
         if (p->kind == SMK_PROJ_NONE || p->dying) continue;
         if (p->kind == SMK_PROJ_BANANA_AIR) continue;      /* in the air */
         if (p->owner == kart_index && (p->carry > 0 || p->t < p->safe)) continue;
@@ -316,15 +316,28 @@ int smk_proj_hit(smk_proj *list, int n, const smk_kart *k, int kart_index)
         if (dy < 0) dy = -dy;
         if (dx >= SMK_PROJ_HIT_R || dy >= SMK_PROJ_HIT_R) continue;
         if (k->z > SMK_BUMP_Z_MAX * 25029) continue;       /* over it */
-        int kind = p->kind;
-        if (getenv("SMK_ITEM_TRACE"))
-            printf("  proj HIT: kind %d owner %d victim %d t %d carry %d safe %d frame %ld\n",
-                   kind, p->owner, kart_index, p->t, p->carry, p->safe, smk_race_frame);
-        if (kind == SMK_PROJ_BANANA || kind == SMK_PROJ_MUSHROOM || kind == SMK_PROJ_EGG) p->kind = SMK_PROJ_NONE;
-        else { p->dying = true; p->zv = SMK_PROJ_DIE_HOP; p->vx = p->vy = 0; }
-        return kind;
+        return i;
     }
-    return SMK_PROJ_NONE;
+    return -1;
+}
+
+int smk_proj_touch(const smk_proj *list, int n, const smk_kart *k, int kart_index)
+{
+    return proj_find(list, n, k, kart_index);
+}
+
+int smk_proj_hit(smk_proj *list, int n, const smk_kart *k, int kart_index)
+{
+    int i = proj_find(list, n, k, kart_index);
+    if (i < 0) return SMK_PROJ_NONE;
+    smk_proj *p = &list[i];
+    int kind = p->kind;
+    if (getenv("SMK_ITEM_TRACE"))
+        printf("  proj HIT: kind %d owner %d victim %d t %d carry %d safe %d frame %ld\n",
+               kind, p->owner, kart_index, p->t, p->carry, p->safe, smk_race_frame);
+    if (kind == SMK_PROJ_BANANA || kind == SMK_PROJ_MUSHROOM || kind == SMK_PROJ_EGG) p->kind = SMK_PROJ_NONE;
+    else { p->dying = true; p->zv = SMK_PROJ_DIE_HOP; p->vx = p->vy = 0; }
+    return kind;
 }
 
 

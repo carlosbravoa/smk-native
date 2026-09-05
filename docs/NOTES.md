@@ -13019,7 +13019,7 @@ own 1270-1340 - where before the fastest kart took 1250 and the slowest
 off-line from the start corner.  The bend's speeds agree too (game 706,
 port 674 mean through it).
 
-**AI hops over items: not in the ROM.**  The user: *"they are able to
+**AI hops over items: not in the ROM** - WRONG, and corrected in NOTES 295: it is in the object-hits-kart handler (`$819A53`), not in the AI driver, which is the only place this paragraph looked.  Kept as written so the mistake stays visible.  The user: *"they are able to
 jump items in the floor as bananas or shells ... there is a probability
 map for them."*  The AI's whole per-frame routine - `$80AD48`'s calls
 (`$A4D0`, `$B1BE`, `$B0B1`, `$AF8F`, `$B7EB`, the `$AD76` throttle table)
@@ -13030,3 +13030,82 @@ every kart; the only AI reaction to an item is the hit.  The
 probability tables the AI does have are the ATTACK masks (NOTES 279).
 Not ported, because there is nothing to port; LABELLED here so it is
 not looked for again.
+
+## 295. The AI's hop over an item, found where NOTES 294 did not look
+
+NOTES 294 read the AI's per-frame routine end to end, found no store to
+`$26`, and told the user the item hop was not in the ROM.  The user:
+*"lol no. and this was one of the abusive things in the game.  Also,
+don't assume that this is memory failing, because we have the emulator
+hand in hand."*  They recorded it (`aihop`, 150cc): *"second 27 and 40
+(aprox) peach jumps over a poison mushroom."*
+
+**Measured.**  Logging every AI kart's `$1F/$A0/$AC/$EA` with the two
+projectile blocks: karts 4, 2 and 7 each cross (276,111) with a poison
+mushroom (`$00 = $00B0`) at (276,108), and each one flies the same arc -
+`$1F` 1, 455, 883, 1285 ... 4195 at +18, 0 at +36; `$26` 480 then -26 a
+frame; `$A0 = $AC = 2`; speed untouched (968, 699, 960 before and after);
+`$AA` never moves (no roll).  The mushroom is still there for the next
+kart.  Nothing reaches the sound queue.
+
+**Decoded, with the debugger on the writers.**  `$26` is written at
+`$80B589` and `$A0` at `$80B639`: that is `$80B578`, the FEATHER's launch
+(`$26 = $1E0`, `$1E = $100`, `$A6 = $18`, `$E2 |= $8000`, state 2),
+reached from `$80B4FE` when `$E0` has bit 14.  Bit 14 is set at
+`$819A92`, inside the object-hits-kart handler, which the AI driver never
+calls - the collision system does:
+
+```
+$819867  pair the two bodies; $4E & $C000 != 0 -> $8198B1 (an ITEM)
+$8198B1  bmi $8198CB ; jsr $9A53          ; bit 14 alone: the dodge roll
+$819A53  lda $0012,y / bmi no             ; y = the kart
+$819A58  lda $0010,y / and #$2000 / beq no; an AI only
+$819A60  lda $6A,x / tax                  ; x = the item's owner kart
+$819A63  lda $10,x / and #$2000 / beq human
+$819A6A  lda $DA,x ; ldx #$9ACC ; tay ; bne roll ; ldx #$9ACD ; bra roll
+human:   lda $E6,x / lsr                  ; the owner's rank*2 -> rank
+         ldx $12,y / adc $9AAC,x / tax    ; + the victim character's table
+roll:    sep #$20 ; lda $38 ; and #$1F ; cmp $0000,x ; rep #$20 ; bcs no
+         ldx $0A ; lda #$4000 ; sta $E0,x ; stz $5E,x ; pla ; rts   ; skips the hit
+no:      ldx $08 ; lda #$8000 ; sta $42,x ; lda #$0100 ; sta $26,x  ; the item bumps
+```
+
+The tables (`tools/smktool/rom`, bank $81):
+
+| owner | threshold | chance |
+|---|---|---|
+| an AI with `$DA` set (slots 4-7: `$DA` = 2,4,6,8, NOTES 174) | `$819ACC` = $1E | 30/32 |
+| an AI with `$DA` = 0 (slots 1-3) | `$819ACD` = $10 | 16/32 |
+| the human, by the HUMAN's rank 1st..8th, victim Mario Luigi Peach Koopa Toad Yoshi | `$819ABC` = 4 4 2 2 2 2 0 0 | 1/8 .. 0 |
+| the human, victim Bowser or DK | `$819AC4` = 2 2 2 2 2 2 0 0 | 1/16 .. 0 |
+
+`$819AAC` is eight pointers by character (Mario Luigi Peach Koopa Toad
+Yoshi -> `$9ABC`, Bowser DK -> `$9AC4`).  `$E6` is rank*2 - logged over
+the race it is always a permutation of 0..14 and reshuffles with the
+positions, 0 on the leader.  `$DA` is set once at race setup (`$81EF95`:
+8, 6, 4, 2 down the `$010E` list to the first four AIs, 0 after) and
+never written again.  The roll is `$38 & $1F`, the frame counter, once
+per contact - a failed roll is the hit, a passed one puts the kart in the
+air where `$81985A`'s height test keeps it off the item.  So at 150cc a
+poison mushroom from Toad or Peach (slots 4-7 in a cup) is hopped by
+almost every AI behind them, which is the "abusive" thing the user
+remembers; the HUMAN's banana is hopped one time in eight while they
+lead and never once they are seventh.
+
+**Ported** (`smk_ai_dodges` in `src/ai.c`, `smk_proj_touch` in
+`src/projectile.c`, the AI hit loops in `src/main.c` and `src/env.c`):
+the probe sees the item before the hit consumes it, the roll is the
+port's frame counter & 31 against the same bytes, and a pass is
+`smk_kart_launch($1E0)` with z = $100, speed kept, no sound, the item
+left in place.  The existing `SMK_GRAVITY` = 26 flies the recording's
+arc to the unit (selftest: 455, 4195 at +18, down at +36).  A headless
+150cc autodrive race on Ghost Valley 3 with `SMK_ITEM_TRACE`: 41 hops,
+3 hits, all from AI-owned items.
+
+LABELLED: the roll applies to every item the collision system pairs
+with bit 14 of `$4E`; every object in the recording carried `$4E =
+$4000`, moving or lying, so the port rolls for thrown shells too, but
+only the lying poison mushroom was seen hopped.  `$12` bit 15 on the
+victim (the first test) was never set in the recording and is not
+modelled.  The AI's `$A6 = $18` (the feather's pose state) is not
+ported: the game's `$AA` did not move through the flight.
