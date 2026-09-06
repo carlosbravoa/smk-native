@@ -3934,7 +3934,7 @@ static void usage(const char *argv0)
            "  --sfx           play every captured sound effect and ask what it is\n"
            "                  (c right, w wrong, ENTER skip, r again, q stop, or\n"
            "                  type the real name); answers -> rom/sfx/names.txt\n"
-           "  --track N       0..23: skip the shell and drive this course\n"
+           "  --track N       0..19: skip the shell and drive this course\n"
            "  --timetrial     with --track: a solo 5-lap time trial\n"
            "  --autodrive     drive itself (a test aid, not the AI: it gets\n"
            "                  round most courses, not all)\n"
@@ -4752,8 +4752,8 @@ int main(int argc, char **argv)
             if (shell) in.next_track = in.prev_track = false;
             if (in.next_track || in.prev_track || in.next_pal || in.prev_pal) {
                 int nt = track, nth = theme;
-                if (in.next_track) { nt = (track + 1) % SMK_TRACK_COUNT; nth = -1; }
-                if (in.prev_track) { nt = (track + SMK_TRACK_COUNT - 1) % SMK_TRACK_COUNT; nth = -1; }
+                if (in.next_track) { nt = (track + 1) % SMK_GP_TRACKS; nth = -1; }
+                if (in.prev_track) { nt = (track + SMK_GP_TRACKS - 1) % SMK_GP_TRACKS; nth = -1; }
                 if (in.next_pal)   nth = (trk.theme + 1) % SMK_THEME_COUNT;
                 if (in.prev_pal)   nth = (trk.theme + SMK_THEME_COUNT - 1) % SMK_THEME_COUNT;
                 if (smk_track_load(&rom, nt, nth, &trk, err, sizeof err)

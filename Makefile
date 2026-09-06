@@ -34,7 +34,7 @@ bench: game $(BASE)
 ## render a still from every track to assets/extracted/
 shots: game $(BASE)
 	@mkdir -p assets/extracted
-	@for t in $$(seq 0 23); do \
+	@for t in $$(seq 0 19); do \
 	   SDL_VIDEODRIVER=dummy $(GAME) --track $$t --width 512 --height 448 \
 	     --pixel 2 --shot assets/extracted/shot_$$t.bmp >/dev/null; done
 	@echo "wrote assets/extracted/shot_0..23.bmp"
