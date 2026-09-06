@@ -10,7 +10,7 @@ NATIVE  := build-native
 GAME    := $(NATIVE)/smk
 ASAR    := vendor/asar-build/asar/bin/asar
 
-.PHONY: all game run bench shots selftest test verify info trace dis trackcheck \
+.PHONY: all game run bench shots selftest test verify info trace dis trackcheck studio \
         jumptables health extract roundtrip romhack tools clean distclean help \
         envtest envcheck train watch watch-time embed-policy
 
@@ -162,6 +162,11 @@ distclean: clean
 help:
 	@awk '/^## /{d=substr($$0,4); next} \
 	      /^[a-z][a-z-]*:/{if(d!=""){split($$0,a,":"); printf "  %-12s %s\n", a[1], d; d=""}}' Makefile
+
+## the course editor: draw a course, place its objects, pick a theme, build,
+## validate, race the AI on it, play it.  DIR is optional (a package to open)
+studio: game $(BASE)
+	@$(PY) tools/trackstudio.py $(DIR)
 
 ## a course package against what the game needs: the lint, then the ROM's
 ## AI round it at every class (docs/TRACKS.md section 7).  TRACK=dir

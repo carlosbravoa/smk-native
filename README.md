@@ -134,8 +134,20 @@ The renderer is single-threaded software and holds 1920×1080 at the game's
 
 The port takes course packages: a directory holding the author's
 arrangement of a theme's tiles and the course data the game's own AI,
-lap rule and rescue read.  The ROM stays the only source of art.  The
-creator is `tools/trackgen.py` ([`docs/TRACKS.md`](docs/TRACKS.md)):
+lap rule and rescue read.  The ROM stays the only source of art.
+
+**The editor** is `make studio` (`tools/trackstudio.py`, tkinter, no
+extra packages): paint the road, grass, walls, water and void with a
+brush, click the start line onto the road, click boxes, coins, oil,
+pads, ramps and obstacles into place, pick the theme, press *Build and
+validate*.  The tiles, the sector map, the racing line, the finish strip
+and the grid are generated and checked, the problems are listed, *Race
+the AI* has the game's own field lap it at three classes, *Play* starts
+the game on it.  A waypoint can be dragged and its AI speed row set
+with the keys 0 to 3.
+
+The same pipeline from the command line is `tools/trackgen.py`
+([`docs/TRACKS.md`](docs/TRACKS.md)):
 
     python3 tools/trackgen.py new tracks/mine --theme 1 --name "MY COURSE"
     # draw tracks/mine/roles.txt in any text editor: = road, . grass, # wall,

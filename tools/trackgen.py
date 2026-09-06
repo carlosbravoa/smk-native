@@ -26,80 +26,20 @@ package holds the author's arrangement of the theme's tiles and nothing
 else, and the tool never writes ROM data into it.
 """
 from __future__ import annotations
-import argparse, os, struct, sys, zlib
+import argparse, os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from smktool.rom import Rom
 from smktool import course as C, mode7 as M, surface as S, tilecat as T, coursegen as G, pkg as P
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ROM_PATH = os.environ.get("SMK_ROM", os.path.join(ROOT, "rom", "smk_usa.sfc"))
+from smktool.project import (ROLE_OF, MARKERS, parse_roles, template_roles, read_manifest_keys,
+                             stamped, build_map, gen_course, make_package, png_write, load_rom)
 
-ROLE_OF = {"=": "ROAD", ".": "OFF", "#": "WALL", "B": "BLOCK", "~": "WATER", " ": "HAZARD",
-           "S": "LINE"}
-MARKERS = {"b": "box", "c": "coin", "C": "coins", "o": "oil", "p": "pad", "r": "ramp", "R": "rampv", "e": "entity"}
-
-
-def load_rom() -> Rom:
-    if not os.path.exists(ROM_PATH):
-        sys.exit("ROM missing: %s (set SMK_ROM)" % ROM_PATH)
-    return Rom.load(ROM_PATH)
-
-
-# ---- roles.txt -------------------------------------------------------------
 
 def read_roles(path: str):
-    # a row may begin with a wall, so comments are ';' lines, not '#'
-    rows = [ln.rstrip("\n") for ln in open(path) if not ln.startswith(";")][:128]
-    while len(rows) < 128:
-        rows.append("")
-    roles = ["HAZARD"] * (128 * 128)
-    markers = []
-    for y in range(128):
-        row = rows[y].ljust(128)[:128]
-        for x, ch in enumerate(row):
-            if ch in ROLE_OF:
-                roles[y * 128 + x] = ROLE_OF[ch]
-            elif ch in MARKERS:
-                roles[y * 128 + x] = "ROAD"
-                markers.append((MARKERS[ch], x, y))
-            else:
-                raise SystemExit("%s:%d:%d: unknown character %r" % (path, y + 1, x + 1, ch))
-    return roles, markers
-
-
-def template_roles() -> list[str]:
-    """An oval on a 128x128 canvas: a two-tile wall round the map, off-road
-    inside, a road 12 tiles wide, the line on the left straight."""
-    g = [[" "] * 128 for _ in range(128)]
-    for y in range(128):
-        for x in range(128):
-            g[y][x] = "#" if x < 2 or y < 2 or x > 125 or y > 125 else "."
-    # the road: a rounded rectangle 12 tiles wide, its straights 16 and 8
-    # tiles out from the centre, corners of radius 22..34
-    cx, cy = 64, 64
-    for y in range(128):
-        for x in range(128):
-            dx = max(abs(x - cx) - 16, 0)
-            dy = max(abs(y - cy) - 8, 0)
-            d = (dx * dx + dy * dy) ** 0.5
-            if 22 <= d <= 34:
-                g[y][x] = "="
-    # the start line across the left straight (x 14..26), karts driving up
-    for x in range(14, 27):
-        if g[70][x] == "=":
-            g[70][x] = "S"
-    # item boxes on the bottom straight, coins on the top, a pad before
-    # the top-left bend, a coin scatter in the bottom-right, obstacles on
-    # the right straight
-    for x in range(52, 76, 4):
-        g[100][x] = "b"
-    for x in range(54, 76, 4):
-        g[26][x] = "c"
-    g[36][32] = "p"
-    g[97][86] = "C"
-    for y in range(50, 80, 7):
-        g[y][107] = "e"
-    return ["".join(r) for r in g]
+    try:
+        return parse_roles(open(path).read())
+    except ValueError as e:
+        raise SystemExit("%s: %s" % (path, e))
 
 
 def cmd_new(a):
@@ -118,95 +58,8 @@ def cmd_new(a):
 
 # ---- build / gen -------------------------------------------------------------
 
-def read_manifest_keys(d: str) -> dict:
-    keys = {"name": os.path.basename(os.path.normpath(d)).upper(), "theme": None, "items": 1, "music": ""}
-    path = os.path.join(d, "course.txt")
-    if os.path.exists(path):
-        for raw in open(path):
-            line = raw.split("#", 1)[0].strip()
-            if not line:
-                continue
-            k, _, v = line.partition(" ")
-            v = v.strip()
-            if k in ("name", "music"):
-                keys[k] = v
-            elif k in ("theme", "items"):
-                keys[k] = int(v)
-    return keys
-
-
-def stamped(rom: Rom, tm: bytes, stamps: list) -> bytes:
-    """The map as the game sees it: the stamps blitted ($84F1A4)."""
-    out = bytearray(tm)
-    szs = rom.snes_to_pc(T.TBL_SIZES)
-    ptrs = rom.snes_to_pc(T.TBL_STAMP)
-    for kind, col, row in stamps:
-        cls2 = (kind >> 5) & 6
-        w, h = rom.data[szs + cls2], rom.data[szs + cls2 + 1]
-        addr = rom.snes_to_pc(0x840000 | rom.u16(ptrs + (kind & 0x3F) * 2))
-        for r in range(h):
-            for c in range(w):
-                t = rom.data[addr + r * w + c]
-                at = (row + r) * 128 + col + c
-                if t != 0xFF and at < 16384 and col + c < 128:
-                    out[at] = t
-    return bytes(out)
-
-
-def build_map(rom: Rom, cat: T.Catalogue, roles: list, markers: list):
-    tm, problems = T.compile_roles(cat, roles)
-    if problems:
-        for p in problems:
-            print("  !", p)
-    used = T.rom_stamp_usage(rom)
-    kinds = {fam: T.stamp_for(cat.stamps, fam, used) for fam in ("box", "coins", "oil", "pad", "ramp")}
-    # the two ramp shapes: 3 wide (0x54-like) and 3 tall (0x98-like), read off the catalogue
-    ramps = [k for k, v in cat.stamps.items() if v[0] == "ramp"]
-    ramp_h = sorted([k for k in ramps if cat.stamps[k][1] == 3 and cat.stamps[k][2] == 1], key=lambda k: -used[k])
-    ramp_v = sorted([k for k in ramps if cat.stamps[k][1] == 1 and cat.stamps[k][2] == 3], key=lambda k: -used[k])
-    coin1 = sorted([k for k, v in cat.stamps.items() if v[0] == "coins" and v[3] == 1], key=lambda k: -used[k])
-    stamps, ents = [], []
-    for fam, x, y in markers:
-        if fam == "entity":
-            ents.append((x, y, 0))
-            continue
-        if fam == "coin":
-            k = coin1[0] if coin1 else kinds["coins"]
-        elif fam == "ramp":
-            k = ramp_h[0] if ramp_h else kinds["ramp"]
-        elif fam == "rampv":
-            k = ramp_v[0] if ramp_v else kinds["ramp"]
-        else:
-            k = kinds[fam]
-        if k is None:
-            print("  ! no stamp for", fam)
-            continue
-        if len(stamps) >= 42:
-            print("  ! more than 42 stamps: dropping", fam, "at", x, y)
-            continue
-        stamps.append((k, x, y))
-    return tm, stamps, ents
-
-
-def gen_course(rom: Rom, cat: T.Catalogue, tm: bytes, stamps: list, ents: list, line_cells=None):
-    full = stamped(rom, tm, stamps)
-    if line_cells is None:
-        line_cells = G.find_line_cells(tm, cat.line_tiles)
-    return G.generate(full, cat.cls, line_cells, stamps, ents, cat.stamps), full
-
-
 def write_course(d: str, keys: dict, tm: bytes, stamps: list, ents: list, crs: G.Course):
-    p = P.Package()
-    p.name = keys["name"]; p.theme = keys["theme"]; p.items = keys["items"]; p.music = keys["music"]
-    p.map = tm
-    p.stamps = stamps
-    order = getattr(crs, "ent_order", list(range(len(ents))))
-    p.ents = [ents[k] for k in order]
-    p.sect = bytes(crs.sect)
-    p.line = crs.line
-    p.finish = crs.finish
-    p.grid = crs.grid
-    p.segments = crs.segments
+    p = make_package(keys, tm, stamps, ents, crs)
     P.write(p, d)
     return p
 
@@ -232,7 +85,9 @@ def cmd_build(a):
     cat = T.Catalogue(rom, keys["theme"])
     roles, markers = read_roles(os.path.join(a.dir, "roles.txt"))
     line_cells = [i for i, r in enumerate(roles) if r == "LINE"]
-    tm, stamps, ents = build_map(rom, cat, roles, markers)
+    tm, stamps, ents, bprob = build_map(rom, cat, roles, markers)
+    for q in bprob:
+        print("  !", q)
     try:
         crs, full = gen_course(rom, cat, tm, stamps, ents, line_cells)
     except G.GenError as e:
@@ -313,15 +168,6 @@ def cmd_from_rom(a):
 
 
 # ---- render ----------------------------------------------------------------
-
-def png_write(path, w, h, rgb):
-    raw = b"".join(b"\x00" + bytes(rgb[y * w * 3:(y + 1) * w * 3]) for y in range(h))
-    def chunk(t, d):
-        return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xffffffff)
-    with open(path, "wb") as f:
-        f.write(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
-                + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b""))
-
 
 def cmd_render(a):
     rom = load_rom()
