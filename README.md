@@ -5,6 +5,8 @@ SDL2. No emulator, no ROM patching: the game reads assets out of a Super
 Mario Kart (USA) ROM **you supply**, decompresses them in process, and renders
 them with its own perspective renderer at any resolution you like.
 
+![Mario Circuit 1, one player, 1920x1080](docs/img/mario-circuit-1p.png)
+
 **No game data is distributed here.** This repository is tools, formats and
 addresses. See [`rom/README.md`](rom/README.md).
 
@@ -59,6 +61,8 @@ because it only has 224 lines to divide.  What the menu offers depends on
 what is plugged in: with no controller `VS 2P` is unavailable, with one it
 is the controller for player 1 and the keyboard for player 2, and with two
 it is one each.
+
+![Rainbow Road, two players side by side, 1920x1080](docs/img/rainbow-road-2p.png)
 
 Useful flags: `--track N` (0–23) skips the shell and drives that course,
 `--timetrial` makes it a solo five-lap trial, `--players 1|cpu|2` and
@@ -257,5 +261,7 @@ The method is written up as a skill in
 ## Legal
 
 This project contains no Nintendo code or data. It reads a ROM you already
-own. Do not commit a ROM, an extracted asset, or a screenshot of one — the
-`.gitignore` is set up to prevent it.
+own. Do not commit a ROM or an extracted asset (a sprite sheet, a tilemap, a
+sample) — the `.gitignore` is set up to prevent it. The two screenshots in
+`docs/img/` are ordinary in-game screenshots of the port running, the same
+kind found everywhere, and redistribute nothing.
