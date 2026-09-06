@@ -267,6 +267,82 @@ int main(int argc, char **argv)
         check("every course loads sectors and a closed racing line",
               good == SMK_TRACK_COUNT, det);
 
+        /* The course package round trip (docs/TRACKS.md T0): every GP
+         * course written as a package and read back must build the SAME
+         * track and course, byte for byte, through the registry.  If a
+         * field is missing from the format this is where it shows. */
+        {
+            char tmpl[] = "/tmp/smkpkgXXXXXX";
+            char *root = mkdtemp(tmpl);
+            int same = 0, tried = 0;
+            static smk_course_src src;
+            static smk_track ta, tb;
+            static smk_course ca, cb;
+            char err[256];
+            for (int tr = 0; root && tr < SMK_GP_TRACKS; tr++) {
+                char dir[300];
+                snprintf(dir, sizeof dir, "%s/t%02d", root, tr);
+                if (!smk_src_from_rom(&rom, tr, &src)) continue;
+                if (!smk_src_write_pkg(&src, dir, err, sizeof err)) { printf("    %s\n", err); continue; }
+                int idx = smk_tracks_add_dir(dir);
+                if (idx < 0) { printf("    %s\n", smk_tracks_error()); continue; }
+                tried++;
+                if (!smk_track_load(&rom, tr, -1, &ta, err, sizeof err)) continue;
+                if (!smk_track_load(&rom, idx, -1, &tb, err, sizeof err)) { printf("    %s\n", err); continue; }
+                smk_track_place_objects(&rom, &ta);
+                smk_track_place_objects(&rom, &tb);
+                if (!smk_course_load(&rom, tr, &ca) || !smk_course_load(&rom, idx, &cb)) continue;
+                /* the registry index is the one field allowed to differ */
+                ta.track = tb.track = 0;
+                /* Tiles the map never uses are the expander reading past
+                 * its stream into whatever the staged tilemap left (NOTES
+                 * 010); a package stages its theme's first slot, so those
+                 * junk tiles differ and are not course data.  Every tile
+                 * the map USES must match. */
+                bool tiles_ok = true;
+                {
+                    bool used[SMK_TILE_TOTAL] = { false };
+                    for (int c = 0; c < SMK_MAP_BYTES; c++) used[ta.map[c]] = true;
+                    for (int ti = 0; ti < SMK_TILE_TOTAL; ti++)
+                        if (used[ti] && memcmp(ta.tiles + ti * 64, tb.tiles + ti * 64, 64)) tiles_ok = false;
+                }
+                bool ok = memcmp(ta.map, tb.map, sizeof ta.map) == 0
+                       && memcmp(ta.surface, tb.surface, sizeof ta.surface) == 0
+                       && tiles_ok
+                       && memcmp(ta.palette, tb.palette, sizeof ta.palette) == 0
+                       && ta.theme == tb.theme && ta.nstamp == tb.nstamp
+                       && memcmp(&ca, &cb, sizeof ca) == 0;
+                if (ok) same++;
+                else {
+                    int used_diff = 0, unused_diff = 0;
+                    for (int ti = 0; ti < SMK_TILE_TOTAL; ti++) {
+                        if (!memcmp(ta.tiles + ti * 64, tb.tiles + ti * 64, 64)) continue;
+                        bool used = false;
+                        for (int c = 0; c < SMK_MAP_BYTES && !used; c++) if (ta.map[c] == ti) used = true;
+                        if (used) used_diff++; else unused_diff++;
+                    }
+                    printf("    track %d: differs - map %d surface %d tiles(used %d, unused %d) palette %d course %d\n", tr,
+                           memcmp(ta.map, tb.map, sizeof ta.map) != 0, memcmp(ta.surface, tb.surface, sizeof ta.surface) != 0,
+                           used_diff, unused_diff, memcmp(ta.palette, tb.palette, sizeof ta.palette) != 0,
+                           memcmp(&ca, &cb, sizeof ca) != 0);
+                }
+            }
+            snprintf(det, sizeof det, "%d/%d identical, %d registered as %s",
+                     same, tried, smk_tracks_custom(), root ? root : "-");
+            check("the package format round-trips every GP course (every used tile, byte-exact)",
+                  tried == SMK_GP_TRACKS && same == tried, det);
+            /* the package names come back through the registry */
+            check("a package is named from its manifest",
+                  smk_tracks_total() > SMK_TRACK_COUNT
+                  && !strcmp(smk_track_name(&rom, SMK_TRACK_COUNT), smk_track_name(&rom, 0)),
+                  smk_track_name(&rom, SMK_TRACK_COUNT));
+            if (root) {
+                char cmd[400];
+                snprintf(cmd, sizeof cmd, "rm -rf %s", root);
+                if (system(cmd) != 0) printf("    (could not remove %s)\n", root);
+            }
+        }
+
         /* values confirmed against the running game (NOTES 042) */
         smk_course_load(&rom, 7, &crs);
         check("track 7 matches the live game",

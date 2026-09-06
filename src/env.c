@@ -588,8 +588,8 @@ static void frame(smk_env *e, uint16_t held, uint16_t pressed)
          * race's own, as main.c passes them. */
         if (e->cfg.items && e->cfg.mode != SMK_MODE_TT
             && p->item_held && !had && e->itemtab.ok)
-            smk_item_box(&e->item, &e->itemtab,
-                         e->cfg.track, e->racers[0].lap < 1 ? 1 : e->racers[0].lap,
+            smk_item_box_blk(&e->item, &e->itemtab,
+                         e->crs.item_block, e->racers[0].lap < 1 ? 1 : e->racers[0].lap,
                          e->rank - 1, smk_item_roll(&e->roll));
     }
     /* the Thwomps only move once the first lap is complete */

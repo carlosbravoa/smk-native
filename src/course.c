@@ -9,6 +9,7 @@
  */
 #include "smk.h"
 #include <math.h>
+#include <stdio.h>
 #include <string.h>
 
 #define TBL_RECORDS   0x81FF9Bu
@@ -24,19 +25,27 @@ static uint32_t stream_pc(const smk_rom *rom, uint32_t table, int track)
     return smk_snes_to_pc(rom, DATA_BANK | addr);
 }
 
-bool smk_course_load(const smk_rom *rom, int track, smk_course *out)
+/* The ROM half: every per-course field of a slot, raw, into the source
+ * struct (docs/TRACKS.md section 3).  The painting is $81FC01's, the
+ * finish bit is NOT applied here - build does that, as the game does
+ * after painting - so the sector map a package writes is pure sectors. */
+bool smk_src_from_rom(const smk_rom *rom, int track, smk_course_src *out)
 {
-    /* -1: no driver has claimed a segment yet */
     if (track < 0 || track >= SMK_TRACK_COUNT) return false;
     memset(out, 0, sizeof *out);
-    /* -1: no driver has claimed a segment yet, so the first spawn fills */
-    out->seg = out->seg_of[0] = out->seg_of[1] = -1;
+    out->rom_track = track;
+    out->theme = smk_track_theme(rom, track);
+    snprintf(out->id, sizeof out->id, "rom%02d", track);
+    snprintf(out->name, sizeof out->name, "%s", smk_track_name(rom, track));
+
+    if (!smk_assets_read_tilemap(rom, track, out->map)) return false;
+    out->nstamp = smk_assets_read_stamps(rom, track, out->stamp);
 
     /* Unpainted cells are $7F, NOT 0 - MEASURED against the game's own
      * $7F:5000 (NOTES 124): it holds 1412 cells at $7F and 78 at sector 0,
      * so a zero default silently turns every off-course cell into sector
      * 0.  That is what dropped a rescued kart back at the start line. */
-    memset(out->map, SMK_SECT_OFF, sizeof out->map);
+    memset(out->sect, SMK_SECT_OFF, sizeof out->sect);
 
     /* --- sector records ---------------------------------------------- */
     uint32_t p = stream_pc(rom, TBL_RECORDS, track);
@@ -46,7 +55,7 @@ bool smk_course_load(const smk_rom *rom, int track, smk_course *out)
         if (t == 0xFF) break;
         unsigned pos = rom->data[p + 1] | ((unsigned)rom->data[p + 2] << 6);
         p += 3;
-        #define PAINT(i) (out->map[(unsigned)(i) & (SMK_SECT_CELLS - 1)] = (uint8_t)sector)
+        #define PAINT(i) (out->sect[(unsigned)(i) & (SMK_SECT_CELLS - 1)] = (uint8_t)sector)
         if (t == 0) {
             unsigned w = rom->data[p], h = rom->data[p + 1]; p += 2;
             for (unsigned row = 0; row < h; row++)
@@ -83,25 +92,18 @@ bool smk_course_load(const smk_rom *rom, int track, smk_course *out)
     /* --- racing line -------------------------------------------------- */
     p = stream_pc(rom, TBL_WAYPOINTS, track);
     for (int i = 0; i < sector; i++) {
-        out->wx[i] = (uint16_t)(rom->data[p] * 8);
-        out->wy[i] = (uint16_t)(rom->data[p + 1] * 8);
-        out->wattr[i] = rom->data[p + 2];
+        out->wp[i][0] = rom->data[p];
+        out->wp[i][1] = rom->data[p + 1];
+        out->wp[i][2] = rom->data[p + 2];
         p += 3;
     }
-    out->wx[sector] = out->wx[0];                      /* close the loop */
-    out->wy[sector] = out->wy[0];
 
     /* --- finish-line rectangle ---------------------------------------- */
     uint32_t q = smk_snes_to_pc(rom, TBL_PARAMS) + (uint32_t)track * 6u;
     out->lap_word = (uint16_t)(rom->data[q] | rom->data[q + 1] << 8);
-    unsigned cell = rom->data[q + 2] | (unsigned)rom->data[q + 3] << 8;
-    unsigned w = rom->data[q + 4], h = rom->data[q + 5];
-    for (unsigned row = 0; row < h; row++)
-        for (unsigned i = 0; i < w; i++)
-            out->map[(cell + row * SMK_SECT_W + i) & (SMK_SECT_CELLS - 1)] |= SMK_SECT_FINISH;
-    out->fin_cell = (int)cell;
-    out->fin_w = (int)w;
-    out->fin_h = (int)h;
+    out->fin_cell = (uint16_t)(rom->data[q + 2] | (unsigned)rom->data[q + 3] << 8);
+    out->fin_w = rom->data[q + 4];
+    out->fin_h = rom->data[q + 5];
 
     /* --- the starting grid (NOTES 161) ------------------------------
      * $81:8A79 + track*2 points at the course's setup entry; the entry's
@@ -120,22 +122,6 @@ bool smk_course_load(const smk_rom *rom, int track, smk_course *out)
         out->grid_step = (int16_t)(rom->data[g + 6] | rom->data[g + 7] << 8);
     }
 
-    /* --- track objects ($84F15D: $85:D000 + track*128) --------------- */
-    {
-        uint32_t p2 = smk_snes_to_pc(rom, 0x85D000u) + (uint32_t)track * 128u;
-        out->nobj = 0;
-        for (int i = 0; i < 42; i++) {
-            uint8_t kind = rom->data[p2];
-            unsigned pos = rom->data[p2 + 1] | (unsigned)rom->data[p2 + 2] << 8;
-            if (pos == 0xFFFF) break;
-            out->obj[out->nobj].kind = kind;
-            out->obj[out->nobj].x = (uint16_t)((pos & 0x7F) * 8);
-            out->obj[out->nobj].y = (uint16_t)(((pos >> 7) & 0x7F) * 8);
-            out->nobj++;
-            p2 += 3;
-        }
-    }
-
     /* --- the lap segment tables (NOTES 127) --------------------------
      * $818E7E/$818E8D fill $0D28 and $0D2C from two per-track byte
      * tables; $84DBD5 turns them into a threshold list, and $84DBFF
@@ -144,6 +130,7 @@ bool smk_course_load(const smk_rom *rom, int track, smk_course *out)
         uint32_t t73 = smk_snes_to_pc(rom, 0x818B73u) + (uint32_t)track;
         uint32_t t8c = smk_snes_to_pc(rom, 0x818B8Cu) + (uint32_t)track;
         int d28 = rom->data[t73], d2c = rom->data[t8c];
+        out->item_block = track < SMK_GP_TRACKS ? d28 >> 1 : 1;
         out->nseg = 0;
         uint32_t pp = smk_snes_to_pc(rom, 0x84DB83u) + (uint32_t)d28;
         unsigned set = rom->data[pp] | (unsigned)rom->data[pp + 1] << 8;
@@ -175,15 +162,67 @@ bool smk_course_load(const smk_rom *rom, int track, smk_course *out)
     {
         uint32_t p3 = smk_snes_to_pc(rom, 0x85C800u) + (uint32_t)track * 64u;
         out->nent = 0;
-        for (int i = 0; i < SMK_COURSE_ENTS; i++) {
+        for (int i = 0; i < SMK_SRC_ENTS; i++) {
             unsigned wd = rom->data[p3] | (unsigned)rom->data[p3 + 1] << 8;
             if (wd == 0) break;
-            out->ent[out->nent].kind = (uint8_t)(wd >> 14);
-            out->ent[out->nent].x = (uint16_t)((wd & 0x7F) * 8 + 4);
-            out->ent[out->nent].y = (uint16_t)(((wd >> 7) & 0x7F) * 8 + 4);
-            out->nent++;
+            out->ent[out->nent++] = (uint16_t)wd;
             p3 += 2;
         }
+    }
+    return true;
+}
+
+/* The build half: the source's fields become the structure every
+ * consumer reads.  The finish bit, the closed line, the direction field
+ * and the mover reset are exactly what the old loader did after reading. */
+bool smk_course_build(const smk_rom *rom, const smk_course_src *src, smk_course *out)
+{
+    (void)rom;
+    if (src->sectors <= 0 || src->sectors >= SMK_MAX_SECTORS) return false;
+    memset(out, 0, sizeof *out);
+    out->seg = out->seg_of[0] = out->seg_of[1] = -1;
+    memcpy(out->map, src->sect, sizeof out->map);
+    int sector = src->sectors;
+    out->sectors = sector;
+
+    for (int i = 0; i < sector; i++) {
+        out->wx[i] = (uint16_t)(src->wp[i][0] * 8);
+        out->wy[i] = (uint16_t)(src->wp[i][1] * 8);
+        out->wattr[i] = src->wp[i][2];
+    }
+    out->wx[sector] = out->wx[0];                      /* close the loop */
+    out->wy[sector] = out->wy[0];
+
+    out->lap_word = src->lap_word;
+    unsigned cell = src->fin_cell, w = src->fin_w, h = src->fin_h;
+    for (unsigned row = 0; row < h; row++)
+        for (unsigned i = 0; i < w; i++)
+            out->map[(cell + row * SMK_SECT_W + i) & (SMK_SECT_CELLS - 1)] |= SMK_SECT_FINISH;
+    out->fin_cell = (int)cell;
+    out->fin_w = (int)w;
+    out->fin_h = (int)h;
+
+    out->grid_x = src->grid_x;
+    out->grid_y = src->grid_y;
+    out->grid_step = src->grid_step;
+
+    for (int i = 0; i < src->nstamp && i < 42; i++) {
+        out->obj[i].kind = src->stamp[i].kind;
+        out->obj[i].x = (uint16_t)((src->stamp[i].cell & 0x7F) * 8);
+        out->obj[i].y = (uint16_t)(((src->stamp[i].cell >> 7) & 0x7F) * 8);
+        out->nobj = i + 1;
+    }
+
+    out->nseg = src->nseg;
+    memcpy(out->seg_thresh, src->seg_thresh, sizeof out->seg_thresh);
+    memcpy(out->seg_off, src->seg_off, sizeof out->seg_off);
+
+    for (int i = 0; i < src->nent && i < SMK_COURSE_ENTS; i++) {
+        unsigned wd = src->ent[i];
+        out->ent[i].kind = (uint8_t)(wd >> 14);
+        out->ent[i].x = (uint16_t)((wd & 0x7F) * 8 + 4);
+        out->ent[i].y = (uint16_t)(((wd >> 7) & 0x7F) * 8 + 4);
+        out->nent = i + 1;
     }
 
     /* --- the AI direction field ($81FCFC) --------------------------- */
@@ -200,9 +239,23 @@ bool smk_course_load(const smk_rom *rom, int track, smk_course *out)
     }
 
     /* the theme decides whether this track's objects move (NOTES 152) */
-    out->theme = smk_track_theme(rom, track);
+    out->theme = src->theme;
+    out->item_block = src->item_block;
     smk_course_movers_reset(out);
     return true;
+}
+
+bool smk_course_load(const smk_rom *rom, int track, smk_course *out)
+{
+    static smk_course_src src;
+    const smk_course_src *sp = &src;
+    if (track >= 0 && track < SMK_TRACK_COUNT) {
+        if (!smk_src_from_rom(rom, track, &src)) return false;
+    } else {
+        sp = smk_tracks_src(track);
+        if (!sp) return false;
+    }
+    return smk_course_build(rom, sp, out);
 }
 
 

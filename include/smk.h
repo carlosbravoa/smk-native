@@ -64,6 +64,11 @@ int smk_track_theme(const smk_rom *rom, int track);
 #define SMK_SURF_SOLID   0x20u    /* bit 5: blocks the kart                 */
 #define SMK_SURF_SPECIAL 0x80u    /* bit 7: handled separately ($80FA8F)    */
 
+/* One stamp record, as $85:D000 keeps it: kind bits 0-5 the graphic,
+ * bits 6-7 the size class; cell = tilemap byte offset (y/8 * 128 + x/8). */
+#define SMK_STAMPS_MAX 42
+typedef struct { uint8_t kind; uint16_t cell; } smk_stamp;
+
 typedef struct {
     uint8_t  map[SMK_MAP_BYTES];                    /* tile index per cell   */
     uint8_t  surface[SMK_TILE_TOTAL];               /* behaviour per tile    */
@@ -71,11 +76,76 @@ typedef struct {
     uint32_t palette[256];                          /* 0xRRGGBB              */
     int      track;
     int      theme;
+    /* the stamp list the blitter applies (from the ROM's per-track list
+     * or a package's `object` lines) - smk_track_place_objects */
+    smk_stamp stamp[SMK_STAMPS_MAX];
+    int      nstamp;
 } smk_track;
 
-/* Load a course.  `theme` < 0 means "use the ROM's own binding". */
+/* Load a course.  `theme` < 0 means "use the ROM's own binding".  `track`
+ * is a REGISTRY index: 0..23 are the ROM's slots, 24 and up the user's
+ * packages (docs/TRACKS.md) - see smk_tracks_* below. */
 bool smk_track_load(const smk_rom *rom, int track, int theme,
                     smk_track *out, char *err, size_t errsz);
+
+/* ---- The course SOURCE: every per-course field, from the ROM or a
+ * package directory, in the game's own shapes (docs/TRACKS.md section 3).
+ * The two loaders above are `src_from_rom` + `build`; a package is
+ * `src_from_pkg` + the same `build`.  Round-tripped byte-exact by the
+ * selftest. ------------------------------------------------------------ */
+#define SMK_SRC_ENTS  32
+#define SMK_SRC_SEGS  8
+typedef struct {
+    char     id[32];                  /* "rom07" or the package's slug   */
+    char     name[32];                /* the course's displayed name     */
+    int      rom_track;               /* the ROM slot, or -1 for a package */
+    int      theme;                   /* 0..7                            */
+    uint8_t  map[SMK_MAP_BYTES];      /* tile indices BEFORE stamping    */
+    smk_stamp stamp[SMK_STAMPS_MAX];
+    int      nstamp;
+    uint16_t ent[SMK_SRC_ENTS];       /* $85:C800 words, [kind:2][y:7][x:7] */
+    int      nent;
+    uint8_t  sect[4096];              /* sector per 16-px cell, $7F unpainted,
+                                       * WITHOUT the finish bit          */
+    int      sectors;
+    uint8_t  wp[128][3];              /* x/8, y/8, attribute             */
+    uint16_t lap_word;                /* $81:80D4, undecoded, carried    */
+    uint16_t fin_cell;                /* finish strip: cell, w, h        */
+    uint8_t  fin_w, fin_h;
+    int16_t  grid_x, grid_y, grid_step;
+    uint8_t  seg_thresh[SMK_SRC_SEGS];/* the $FF-terminated threshold list */
+    int      nseg;                    /* bytes in it, terminator included */
+    uint16_t seg_off[SMK_SRC_SEGS];   /* $84:DAC5, in bytes              */
+    int      item_block;              /* $81:8B73 >> 1: 0..7             */
+    char     music[32];               /* map.txt key, "" = the theme's   */
+    /* an optional custom style: the theme's three pieces, the author's own */
+    bool     has_style;
+    uint8_t  style_tiles[SMK_TILE_COUNT * SMK_TILE_BYTES];
+    uint16_t style_palette[256];      /* BGR555 */
+    uint8_t  style_surface[SMK_TILE_COUNT];
+} smk_course_src;
+
+bool smk_src_from_rom(const smk_rom *rom, int track, smk_course_src *out);
+/* the ROM readers the source is assembled from (src/assets.c) */
+bool smk_assets_read_tilemap(const smk_rom *rom, int track, uint8_t *map);
+int  smk_assets_read_stamps(const smk_rom *rom, int track, smk_stamp *out);
+bool smk_src_from_pkg(const char *dir, smk_course_src *out, char *err, size_t errsz);
+bool smk_src_write_pkg(const smk_course_src *src, const char *dir, char *err, size_t errsz);
+/* the build half of the two loaders, shared by the ROM and package paths */
+bool smk_track_build(const smk_rom *rom, const smk_course_src *src, int theme,
+                     smk_track *out, char *err, size_t errsz);
+
+/* ---- The registry: the 24 ROM slots and then every package found ------ */
+#define SMK_TRACKS_MAX 96
+int   smk_tracks_total(void);                 /* 24 + the packages           */
+int   smk_tracks_custom(void);                /* the packages alone          */
+int   smk_tracks_add_dir(const char *dir);    /* register one; index or -1   */
+int   smk_tracks_scan(const char *parent);    /* every <parent>/<x>/course.txt */
+void  smk_tracks_scan_default(void);          /* ./tracks, $SMK_TRACKS, XDG  */
+int   smk_tracks_find(const char *id);        /* by slug or path, or -1      */
+const char *smk_tracks_id(int track);         /* "rom07" / the slug          */
+const smk_course_src *smk_tracks_src(int track); /* a package's source, NULL for ROM */
+const char *smk_tracks_error(void);           /* why the last add failed     */
 
 /* Stamp the track's objects into the tilemap, as $84F1A4 does at race
  * setup.  A separate step because the loader cross-check (tools/test.py)
@@ -720,9 +790,11 @@ typedef struct {
     int      nent;
     smk_mover mv[32];         /* one per ENTITY, NOTES 152/155 */
     int      theme;           /* for smk_theme_has_movers */
+    int      item_block;      /* $81:8B73 >> 1, the item roulette's block */
 } smk_course;
 
 bool smk_course_load(const smk_rom *rom, int track, smk_course *out);
+bool smk_course_build(const smk_rom *rom, const smk_course_src *src, smk_course *out);
 
 bool smk_theme_has_movers(int theme);
 /* Show every object, not the game's live pair.
@@ -1920,7 +1992,14 @@ const char *smk_track_name(const smk_rom *rom, int track);
 
 #define SMK_RECORD_SLOTS 5
 typedef struct { long frames; int character; } smk_record;
-typedef struct { smk_record best[SMK_TRACK_COUNT][SMK_RECORD_SLOTS]; } smk_records;
+/* one table per registry index; lines for packages that are not
+ * registered right now are kept verbatim and written back */
+#define SMK_RECORDS_KEEP 64
+typedef struct {
+    smk_record best[SMK_TRACKS_MAX][SMK_RECORD_SLOTS];
+    char keep[SMK_RECORDS_KEEP][64];
+    int  nkeep;
+} smk_records;
 const char *smk_records_path(void);
 void smk_records_clear(smk_records *r);
 void smk_records_load(smk_records *r);
@@ -2154,6 +2233,9 @@ typedef struct {
  * five random bits (OURS - the game's $1F26 is not reproduced). */
 void smk_item_box(smk_item *it, const smk_itemtab *t, int track, int lap,
                   int rank, unsigned roll);
+/* the same, by the course's own block (a package names its block) */
+void smk_item_box_blk(smk_item *it, const smk_itemtab *t, int blk, int lap,
+                      int rank, unsigned roll);
 /* One frame.  `button` is the item button HELD (the ROM tests the level,
  * $81:B3C1 / $81:B40A); `can_use` is the $81:B3FB gate (grounded, free).
  * Returns the id fired this frame, or -1. */

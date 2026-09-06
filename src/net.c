@@ -227,5 +227,8 @@ bool smk_net_builtin(smk_net *n, char *err, size_t errn)
  */
 bool smk_net_drives_track(int track)
 {
-    return track >= 0 && track < SMK_GP_TRACKS;
+    /* ...and every package: a package is a racing loop with a sector
+     * map by construction (docs/TRACKS.md), and the policy carries no
+     * course identity, so a new course is a held-out one. */
+    return (track >= 0 && track < SMK_GP_TRACKS) || track >= SMK_TRACK_COUNT;
 }

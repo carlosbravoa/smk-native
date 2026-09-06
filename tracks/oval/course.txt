@@ -1,0 +1,30 @@
+# smk-port course package (docs/TRACKS.md)
+format   1
+name     TEST OVAL
+theme    1
+items    1
+grid     148 600 32
+finish   6 33 9 6
+# stamps: the ROM's kind byte, then the tile column and row
+object   0x74 54 26
+object   0x74 58 26
+object   0x74 62 26
+object   0x74 66 26
+object   0x74 70 26
+object   0x74 74 26
+object   0x09 32 36
+object   0x74 86 97
+object   0x02 52 100
+object   0x02 56 100
+object   0x02 60 100
+object   0x02 64 100
+object   0x02 68 100
+object   0x02 72 100
+# sprite obstacles: tile column, row, and the word's kind bits
+entity   107 50 0
+entity   107 57 0
+entity   107 64 0
+entity   107 71 0
+entity   107 78 0
+# entity spawn windows open at these sector indices
+segment  10

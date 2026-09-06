@@ -75,7 +75,7 @@ weights.  Details and how to train your own are below.
 
 ## Command line
 
-`--track N` (0–19) skips the shell and drives that course; `--timetrial`
+`--track N` (0–19, or a course package's name or directory) skips the shell and drives that course; `--timetrial`
 makes it a solo trial; `--class 0|1|2` picks 50, 100 or 150cc;
 `--character N` and `--character2 N` choose the drivers; `--players 1|cpu|2`
 sets the split.  `--width`, `--height` and `--pixel N` size the render
@@ -129,6 +129,27 @@ The renderer is single-threaded software and holds 1920×1080 at the game's
   list and standings with the game's faces.
 - Karts, objects and effects from the ROM's sprite sheets, with the
   rotation frames and the size ladder measured off the running game.
+
+## Your own courses
+
+The port takes course packages: a directory holding the author's
+arrangement of a theme's tiles and the course data the game's own AI,
+lap rule and rescue read.  The ROM stays the only source of art.  The
+creator is `tools/trackgen.py` ([`docs/TRACKS.md`](docs/TRACKS.md)):
+
+    python3 tools/trackgen.py new tracks/mine --theme 1 --name "MY COURSE"
+    # draw tracks/mine/roles.txt in any text editor: = road, . grass, # wall,
+    # S the start line (karts drive UP from it), b box, c coin, e obstacle...
+    python3 tools/trackgen.py build tracks/mine     # tiles, sectors, racing line, lint
+    python3 tools/trackgen.py render tracks/mine    # a picture of what you made
+    make trackcheck TRACK=tracks/mine               # the field must lap it, on the road
+
+Every package under `tracks/`, `~/.local/share/smk-port/tracks/` or a
+`--track-dir` shows up in a fifth column of the course screen, CUSTOM,
+for single races, VS and time trials (a Grand Prix stays on the ROM's
+four cups).  `--track tracks/mine` drives one directly, and its best laps
+are kept under its own name.  `tracks/oval` is the example the template
+draws.
 
 ## What is not
 

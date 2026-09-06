@@ -474,13 +474,21 @@ bool smk_ui_step(smk_ui *ui, const smk_rom *rom, const smk_ui_input *in)
         break;
     }
 
-    case SMK_UI_COURSE:
-        if (in->left)  ui->cup_sel = (ui->cup_sel + SMK_CUPS - 1) % SMK_CUPS;
-        if (in->right) ui->cup_sel = (ui->cup_sel + 1) % SMK_CUPS;
+    case SMK_UI_COURSE: {
+        /* The user's own courses are a fifth column, CUSTOM (docs/TRACKS.md):
+         * one row per package, five to a page, and never a cup - a Grand
+         * Prix stays on the ROM's four. */
+        int ncustom = ui->gp ? 0 : smk_tracks_custom();
+        int cols = SMK_CUPS + (ncustom > 0 ? 1 : 0);
+        if (in->left)  ui->cup_sel = (ui->cup_sel + cols - 1) % cols;
+        if (in->right) ui->cup_sel = (ui->cup_sel + 1) % cols;
+        if (ui->cup_sel >= cols) ui->cup_sel = 0;
+        int rows = ui->cup_sel == SMK_CUPS ? ncustom : SMK_CUP_COURSES;
+        if (ui->course_sel >= rows) ui->course_sel = 0;
         if (ui->gp) ui->course_sel = 0;              /* a cup starts at its first course */
         else {
-            if (in->up)    ui->course_sel = (ui->course_sel + SMK_CUP_COURSES - 1) % SMK_CUP_COURSES;
-            if (in->down)  ui->course_sel = (ui->course_sel + 1) % SMK_CUP_COURSES;
+            if (in->up)    ui->course_sel = (ui->course_sel + rows - 1) % rows;
+            if (in->down)  ui->course_sel = (ui->course_sel + 1) % rows;
         }
         if (in->back)  ui->screen = SMK_UI_PLAYER;
         if (in->confirm) {
@@ -492,11 +500,14 @@ bool smk_ui_step(smk_ui *ui, const smk_rom *rom, const smk_ui_input *in)
                     ui->gp_pts_table[i] = pc + 1 < rom->size ? (rom->data[pc] | rom->data[pc + 1] << 8) : 0;
                 }
             }
-            ui->track = smk_cup_track(rom, ui->cup_sel, ui->course_sel);
+            ui->track = ui->cup_sel == SMK_CUPS
+                        ? SMK_TRACK_COUNT + ui->course_sel
+                        : smk_cup_track(rom, ui->cup_sel, ui->course_sel);
             ui->screen = SMK_UI_RACE;
             return true;
         }
         break;
+    }
 
     case SMK_UI_RACE:
         break;
@@ -914,10 +925,12 @@ static void draw_course(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
 
     text_c(f, fb, w, h, 10, "COURSE SELECT", hi);
 
-    /* the four cups down the left */
-    for (int c = 0; c < SMK_CUPS; c++) {
+    /* the four cups down the left, and CUSTOM when the user has courses */
+    int ncustom = ui->gp ? 0 : smk_tracks_custom();
+    int cols = SMK_CUPS + (ncustom > 0 ? 1 : 0);
+    for (int c = 0; c < cols; c++) {
         char nm[24];
-        snprintf(nm, sizeof nm, "%s", SMK_CUP_NAMES[c]);
+        snprintf(nm, sizeof nm, "%s", c < SMK_CUPS ? SMK_CUP_NAMES[c] : "CUSTOM");
         char *sp = strchr(nm, ' ');
         if (sp) *sp = 0;                     /* just "MUSHROOM", "FLOWER" .. */
         int vy = 40 + c * 18;
@@ -925,19 +938,30 @@ static void draw_course(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
         text(f, fb, w, h, 10, vy, nm, c == ui->cup_sel ? sel : off);
     }
 
-    /* the selected cup's five courses */
+    /* the selected cup's five courses - or the custom page the cursor is on */
+    bool custom = ui->cup_sel == SMK_CUPS;
+    int page = custom ? ui->course_sel / SMK_CUP_COURSES * SMK_CUP_COURSES : 0;
     for (int i = 0; i < SMK_CUP_COURSES; i++) {
-        int t = smk_cup_track(rom, ui->cup_sel, i);
+        int idx = page + i;
+        if (custom && idx >= ncustom) break;
+        int t = custom ? SMK_TRACK_COUNT + idx : smk_cup_track(rom, ui->cup_sel, i);
         int vy = 40 + i * 16;
-        bool on = i == ui->course_sel;
+        bool on = idx == ui->course_sel;
         if (on) fill(fb, w, h, 92, vy - 2, 158, 12, 0x40FFC040);
         char line[40];
-        snprintf(line, sizeof line, "%d %s", i + 1, smk_track_name(rom, t));
+        snprintf(line, sizeof line, "%d %s", idx + 1, smk_track_name(rom, t));
         text(f, fb, w, h, 96, vy, line, on ? sel : lo);
+    }
+    if (custom && ncustom > SMK_CUP_COURSES) {
+        char pg[24];
+        snprintf(pg, sizeof pg, "%d-%d OF %d", page + 1,
+                 page + SMK_CUP_COURSES < ncustom ? page + SMK_CUP_COURSES : ncustom, ncustom);
+        text(f, fb, w, h, 96, 40 + SMK_CUP_COURSES * 16, pg, off);
     }
 
     /* the top five laps for whatever is highlighted */
-    int t = smk_cup_track(rom, ui->cup_sel, ui->course_sel);
+    int t = custom ? SMK_TRACK_COUNT + ui->course_sel
+                   : smk_cup_track(rom, ui->cup_sel, ui->course_sel);
     text(f, fb, w, h, 20, 132, "BEST LAPS", hi);
     for (int s = 0; s < SMK_RECORD_SLOTS; s++) {
         char line[48], tm[16];

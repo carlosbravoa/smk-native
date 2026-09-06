@@ -51,6 +51,13 @@ bool smk_items_load(const smk_rom *rom, smk_itemtab *t)
 void smk_item_box(smk_item *it, const smk_itemtab *t, int track, int lap,
                   int rank, unsigned roll)
 {
+    int blk = (track >= 0 && track < 20) ? t->block_of_track[track] : 1;
+    smk_item_box_blk(it, t, blk, lap, rank, roll);
+}
+
+void smk_item_box_blk(smk_item *it, const smk_itemtab *t, int blk, int lap,
+                      int rank, unsigned roll)
+{
     memset(it, 0, sizeof *it);
     /* $C1 - $80, clamped at 0: the port's lap 1 (first crossing done) is $80 */
     int li = lap - 1;
@@ -58,7 +65,7 @@ void smk_item_box(smk_item *it, const smk_itemtab *t, int track, int lap,
     if (li > 4) li = 4;
     if (rank < 0) rank = 0;
     if (rank > 7) rank = 7;
-    int blk = (track >= 0 && track < 20) ? t->block_of_track[track] : 1;
+    if (blk < 0) blk = 0;
     if (blk >= SMK_ITEM_BLOCKS) blk = SMK_ITEM_BLOCKS - 1;
     const uint8_t *rec = t->block[blk] + t->rec_by_lap_rank[li * 8 + rank];
     it->seq = rec[8] & 0x0F;

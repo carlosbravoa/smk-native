@@ -41,3 +41,6 @@ runs/
 *.pads
 *.pt
 
+
+# a course package holds the author's tile INDICES and sector map, not game data
+!tracks/**/*.bin

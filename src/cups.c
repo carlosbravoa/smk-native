@@ -73,7 +73,11 @@ int smk_cup_track(const smk_rom *rom, int cup, int course)
 const char *smk_track_name(const smk_rom *rom, int track)
 {
     static char buf[32];
-    if (track < 0 || track >= SMK_TRACK_COUNT) return "?";
+    if (track >= SMK_TRACK_COUNT) {
+        const smk_course_src *s = smk_tracks_src(track);
+        return s ? s->name : "?";
+    }
+    if (track < 0) return "?";
 
     /* walk the cup order, numbering each theme's courses as they appear */
     int seen[SMK_THEME_COUNT] = { 0 };

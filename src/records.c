@@ -51,7 +51,7 @@ const char *smk_records_path(void)
 void smk_records_clear(smk_records *r)
 {
     memset(r, 0, sizeof *r);
-    for (int t = 0; t < SMK_TRACK_COUNT; t++)
+    for (int t = 0; t < SMK_TRACKS_MAX; t++)
         for (int s = 0; s < SMK_RECORD_SLOTS; s++)
             r->best[t][s].frames = 0;      /* 0 = empty slot */
 }
@@ -65,9 +65,24 @@ void smk_records_load(smk_records *r)
     while (fgets(line, sizeof line, f)) {
         int track = 0, ch = 0;
         long frames = 0;
+        char id[64];
         if (line[0] == '#') continue;
-        if (sscanf(line, "%d %ld %d", &track, &frames, &ch) != 3) continue;
-        if (track < 0 || track >= SMK_TRACK_COUNT || frames <= 0) continue;
+        if (sscanf(line, "%d %ld %d", &track, &frames, &ch) == 3) {
+            if (track < 0 || track >= SMK_TRACK_COUNT || frames <= 0) continue;
+        } else if (sscanf(line, "%63s %ld %d", id, &frames, &ch) == 3) {
+            /* a package's lap, by its slug; one that is not registered
+             * now is kept as written and saved back, not lost */
+            track = smk_tracks_find(id);
+            if (track < 0 || frames <= 0) {
+                if (r->nkeep < SMK_RECORDS_KEEP) {
+                    snprintf(r->keep[r->nkeep], sizeof r->keep[0], "%s", line);
+                    char *nl = strchr(r->keep[r->nkeep], '\n');
+                    if (nl) *nl = 0;
+                    r->nkeep++;
+                }
+                continue;
+            }
+        } else continue;
         if (ch < 0 || ch >= SMK_CHARACTERS) ch = 0;
         smk_records_add(r, track, frames, ch);
     }
@@ -79,18 +94,24 @@ bool smk_records_save(const smk_records *r)
     FILE *f = fopen(smk_records_path(), "w");
     if (!f) return false;
     fprintf(f, "# smk-port best lap times: track frames character\n");
-    for (int t = 0; t < SMK_TRACK_COUNT; t++)
+    for (int t = 0; t < smk_tracks_total() && t < SMK_TRACKS_MAX; t++)
         for (int s = 0; s < SMK_RECORD_SLOTS; s++)
-            if (r->best[t][s].frames > 0)
-                fprintf(f, "%d %ld %d\n", t, r->best[t][s].frames,
-                        r->best[t][s].character);
+            if (r->best[t][s].frames > 0) {
+                if (t < SMK_TRACK_COUNT)
+                    fprintf(f, "%d %ld %d\n", t, r->best[t][s].frames,
+                            r->best[t][s].character);
+                else
+                    fprintf(f, "%s %ld %d\n", smk_tracks_id(t), r->best[t][s].frames,
+                            r->best[t][s].character);
+            }
+    for (int i = 0; i < r->nkeep; i++) fprintf(f, "%s\n", r->keep[i]);
     fclose(f);
     return true;
 }
 
 int smk_records_add(smk_records *r, int track, long frames, int character)
 {
-    if (track < 0 || track >= SMK_TRACK_COUNT || frames <= 0) return -1;
+    if (track < 0 || track >= SMK_TRACKS_MAX || frames <= 0) return -1;
     smk_record *b = r->best[track];
     int slot = -1;
     for (int s = 0; s < SMK_RECORD_SLOTS; s++)

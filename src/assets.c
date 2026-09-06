@@ -127,13 +127,11 @@ static bool load_surface(const smk_rom *rom, int theme, uint8_t *out)
 void smk_track_place_objects(const smk_rom *rom, smk_track *t)
 {
     uint8_t *map = t->map;
-    uint32_t list = smk_snes_to_pc(rom, OBJ_LISTS) + (uint32_t)t->track * 128u;
     uint32_t szs  = smk_snes_to_pc(rom, TBL_SIZES);
     uint32_t ptrs = smk_snes_to_pc(rom, TBL_STAMP);
-    for (uint32_t rec = list; rec + 3 <= list + 128; rec += 3) {
-        unsigned cell = rom->data[rec + 1] | (rom->data[rec + 2] << 8);
-        if (cell == 0xFFFF) break;
-        uint8_t kind = rom->data[rec];
+    for (int r = 0; r < t->nstamp; r++) {
+        unsigned cell = t->stamp[r].cell;
+        uint8_t kind = t->stamp[r].kind;
         unsigned cls2 = (kind >> 5) & 6;
         int w = rom->data[szs + cls2], h = rom->data[szs + cls2 + 1];
         uint32_t sp = ptrs + (uint32_t)(kind & 0x3F) * 2u;
@@ -141,11 +139,26 @@ void smk_track_place_objects(const smk_rom *rom, smk_track *t)
             0x840000u | rom->data[sp] | ((uint32_t)rom->data[sp + 1] << 8));
         for (int row = 0; row < h; row++)
             for (int col = 0; col < w; col++) {
-                uint8_t t = rom->data[stamp + (uint32_t)(row * w + col)];
+                uint8_t tt = rom->data[stamp + (uint32_t)(row * w + col)];
                 unsigned at = cell + (unsigned)row * SMK_MAP_DIM + (unsigned)col;
-                if (t != 0xFF && at < SMK_MAP_BYTES) map[at] = t;
+                if (tt != 0xFF && at < SMK_MAP_BYTES) map[at] = tt;
             }
     }
+}
+
+/* The ROM's stamp list for a slot: [kind][cell:word], $FFFF-terminated. */
+int smk_assets_read_stamps(const smk_rom *rom, int track, smk_stamp *out)
+{
+    uint32_t list = smk_snes_to_pc(rom, OBJ_LISTS) + (uint32_t)track * 128u;
+    int n = 0;
+    for (uint32_t rec = list; rec + 3 <= list + 128 && n < SMK_STAMPS_MAX; rec += 3) {
+        unsigned cell = rom->data[rec + 1] | (rom->data[rec + 2] << 8);
+        if (cell == 0xFFFF) break;
+        out[n].kind = rom->data[rec];
+        out[n].cell = (uint16_t)cell;
+        n++;
+    }
+    return n;
 }
 
 /* Decompress table[index] into the WRAM image at `dest`. */
@@ -157,25 +170,12 @@ static long load_into(const smk_rom *rom, uint32_t table, int index,
                                wram, WRAM_SIZE, dest, NULL);
 }
 
-bool smk_track_load(const smk_rom *rom, int track, int theme,
-                    smk_track *out, char *err, size_t errsz)
+/* The ROM's tilemap for a slot, in the same two steps as $81E745, into
+ * the WRAM image: the outer stream to the stage, the inner to $0000.
+ * What it leaves in the stage is what the tileset load then finds. */
+static bool stage_tilemap(const smk_rom *rom, int track, uint8_t *wram,
+                          char *err, size_t errsz)
 {
-    static uint8_t wram[WRAM_SIZE];
-
-    if (track < 0 || track >= SMK_TRACK_COUNT) {
-        snprintf(err, errsz, "track %d out of range 0..%d",
-                 track, SMK_TRACK_COUNT - 1);
-        return false;
-    }
-    if (theme < 0) theme = smk_track_theme(rom, track);
-    if (theme >= SMK_THEME_COUNT) theme %= SMK_THEME_COUNT;
-
-    memset(out, 0, sizeof *out);
-    memset(wram, 0, sizeof wram);
-    out->track = track;
-    out->theme = theme;
-
-    /* --- tilemap, in the same two steps as $81E745 ------------------- */
     if (load_into(rom, TBL_TILEMAP, track, wram, STAGE_OFF) < 0) {
         snprintf(err, errsz, "track %d: outer tilemap stream is bad", track);
         return false;
@@ -187,7 +187,48 @@ bool smk_track_load(const smk_rom *rom, int track, int theme,
                  track, n, SMK_MAP_BYTES);
         return false;
     }
-    memcpy(out->map, wram + MAP_OFF, SMK_MAP_BYTES);
+    return true;
+}
+
+bool smk_assets_read_tilemap(const smk_rom *rom, int track, uint8_t *map)
+{
+    static uint8_t wram[WRAM_SIZE];
+    char err[128];
+    memset(wram, 0, sizeof wram);
+    if (!stage_tilemap(rom, track, wram, err, sizeof err)) return false;
+    memcpy(map, wram + MAP_OFF, SMK_MAP_BYTES);
+    return true;
+}
+
+/* The first ROM slot bound to a theme - the WRAM twin a package stages
+ * through, so a theme's tileset finds the same leftovers it finds in
+ * the game (theme 6 reads past its own stream, src/lzc.c). */
+static int theme_twin(const smk_rom *rom, int theme)
+{
+    for (int t = 0; t < SMK_TRACK_COUNT; t++)
+        if (smk_track_theme(rom, t) == theme) return t;
+    return 0;
+}
+
+bool smk_track_build(const smk_rom *rom, const smk_course_src *src, int theme,
+                     smk_track *out, char *err, size_t errsz)
+{
+    static uint8_t wram[WRAM_SIZE];
+
+    if (theme < 0) theme = src->theme;
+    if (theme < 0) theme = 0;
+    if (theme >= SMK_THEME_COUNT) theme %= SMK_THEME_COUNT;
+
+    memset(out, 0, sizeof *out);
+    memset(wram, 0, sizeof wram);
+    out->track = src->rom_track;
+    out->theme = theme;
+
+    /* --- tilemap: the ROM's own for a slot, a twin's staging for a
+     * package (same buffer, same order, same leftovers) ---------------- */
+    int twin = src->rom_track >= 0 ? src->rom_track : theme_twin(rom, theme);
+    if (!stage_tilemap(rom, twin, wram, err, errsz)) return false;
+    memcpy(out->map, src->map, SMK_MAP_BYTES);
 
     /* --- tileset, staged over the same area, as $81E6D4 does ---------- */
     if (load_into(rom, TBL_TILESET, theme, wram, STAGE_OFF) < 0) {
@@ -224,6 +265,39 @@ bool smk_track_load(const smk_rom *rom, int track, int theme,
         snprintf(err, errsz, "theme %d: cannot load the surface table", theme);
         return false;
     }
+
+    /* --- a package's own style, over the theme's three pieces --------- */
+    if (src->has_style) {
+        memcpy(out->tiles, src->style_tiles, sizeof src->style_tiles);
+        for (int i = 0; i < 256; i++) out->palette[i] = bgr555(src->style_palette[i]);
+        memcpy(out->surface, src->style_surface, SMK_TILE_COUNT);
+    }
+
+    memcpy(out->stamp, src->stamp, sizeof out->stamp);
+    out->nstamp = src->nstamp;
+    return true;
+}
+
+bool smk_track_load(const smk_rom *rom, int track, int theme,
+                    smk_track *out, char *err, size_t errsz)
+{
+    static smk_course_src src;
+    const smk_course_src *sp = &src;
+    if (track >= 0 && track < SMK_TRACK_COUNT) {
+        if (!smk_src_from_rom(rom, track, &src)) {
+            snprintf(err, errsz, "track %d: cannot read the ROM's course", track);
+            return false;
+        }
+    } else {
+        sp = smk_tracks_src(track);
+        if (!sp) {
+            snprintf(err, errsz, "track %d: no such course (registry holds %d)",
+                     track, smk_tracks_total());
+            return false;
+        }
+    }
+    if (!smk_track_build(rom, sp, theme, out, err, errsz)) return false;
+    out->track = track;
     return true;
 }
 

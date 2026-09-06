@@ -1625,7 +1625,7 @@ static void step_kart(smk_kart *k, smk_track *trk,
              * and the pick at $81:B6D1, docs/ITEMS.md §3).  The lap and
              * rank are the HUD's, which are the race's own. */
             if (player.item_held && !had && itemtab.ok && !replay_path) {
-                smk_item_box(&item, &itemtab, cur_track, hud_lap, hud_rank - 1, item_roll());
+                smk_item_box_blk(&item, &itemtab, crs.item_block, hud_lap, hud_rank - 1, item_roll());
             }
         }
     }
@@ -3934,7 +3934,9 @@ static void usage(const char *argv0)
            "  --sfx           play every captured sound effect and ask what it is\n"
            "                  (c right, w wrong, ENTER skip, r again, q stop, or\n"
            "                  type the real name); answers -> rom/sfx/names.txt\n"
-           "  --track N       0..19: skip the shell and drive this course\n"
+           "  --track T       0..19, a course's name or its package directory:\n"
+           "                  skip the shell and drive it (docs/TRACKS.md)\n"
+           "  --track-dir D   also look for course packages under D\n"
            "  --timetrial     with --track: a solo 5-lap time trial\n"
            "  --autodrive     drive itself (a test aid, not the AI: it gets\n"
            "                  round most courses, not all)\n"
@@ -4041,11 +4043,26 @@ int main(int argc, char **argv)
      * --horizon / --fov knobs tuned a projection that no longer exists,
      * so they are removed rather than left lying around as dead controls. */
 
+    /* the user's own courses, before any argument can name one */
+    smk_tracks_scan_default();
     for (int i = 1; i < argc; i++) {
         const char *a = argv[i];
         #define ARG(name, var) if (!strcmp(a, name) && i + 1 < argc) { var = atoi(argv[++i]); continue; }
         if (!strcmp(a, "--rom") && i + 1 < argc) { rom_path = argv[++i]; continue; }
-        if (!strcmp(a, "--track") && i + 1 < argc) { track = atoi(argv[++i]); explicit_start = 1; continue; }
+        if (!strcmp(a, "--track") && i + 1 < argc) {
+            const char *t = argv[++i];
+            if (t[0] >= '0' && t[0] <= '9') track = atoi(t);
+            else {
+                track = smk_tracks_find(t);
+                if (track < 0) {
+                    fprintf(stderr, "--track %s: %s\n", t,
+                            smk_tracks_error()[0] ? smk_tracks_error() : "no such course");
+                    return 1;
+                }
+            }
+            explicit_start = 1; continue;
+        }
+        if (!strcmp(a, "--track-dir") && i + 1 < argc) { smk_tracks_scan(argv[++i]); continue; }
         if (!strcmp(a, "--menu")) { force_menu = 1; continue; }
         if (!strcmp(a, "--sfx")) { sfx_audition = 1; continue; }
         if (!strcmp(a, "--timetrial")) { want_tt = 1; explicit_start = 1; continue; }
@@ -4584,9 +4601,14 @@ int main(int argc, char **argv)
         /* the music follows the state; the mapping is the user's
          * music/map.txt (NOTES 202) */
         {
-            char mkey[16];
+            char mkey[40];
             if (!shell || ui.screen == SMK_UI_RACE)
-                snprintf(mkey, sizeof mkey, "theme%d", trk.theme % SMK_THEME_COUNT);
+            {
+        /* a package may name its own song; the theme's is the default */
+        const smk_course_src *ps = smk_tracks_src(cur_track);
+        if (ps && ps->music[0]) snprintf(mkey, sizeof mkey, "%s", ps->music);
+        else snprintf(mkey, sizeof mkey, "theme%d", trk.theme % SMK_THEME_COUNT);
+    }
             else if (ui.screen == SMK_UI_RESULT || ui.screen == SMK_UI_POINTS
                      || ui.screen == SMK_UI_STANDINGS)
                 snprintf(mkey, sizeof mkey, "results");
@@ -5317,7 +5339,7 @@ int main(int argc, char **argv)
                         }
                         if (tid >= 0 && hud_race_frames == tframe) {
                             /* id 99: a BOX instead - the whole roulette, from the tables */
-                            if (tid == 99) smk_item_box(&item, &itemtab, cur_track, hud_lap, hud_rank - 1, item_roll());
+                            if (tid == 99) smk_item_box_blk(&item, &itemtab, crs.item_block, hud_lap, hud_rank - 1, item_roll());
                             else item.word = (uint16_t)(0xC000 | tid);
                         }
                         if (tid >= 0 && tid != 99 && hud_race_frames == tframe + 1) item_btn = true;

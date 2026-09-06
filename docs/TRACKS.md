@@ -1,6 +1,9 @@
 # Adding a course: the track engine
 
-Design, not yet code.  This is the ground a new course has to stand on:
+Built through T4 (section 8); the status and the numbers are in section
+11 at the end.  The rest of this file is the design it was built to,
+kept as written where it still holds and corrected where the code found
+it wrong (marked CORRECTED).  This is the ground a new course has to stand on:
 what a course IS in this port (measured, with the ROM addresses), what a
 new one has to supply, where the AI's own data comes from when nobody
 authored it, and how a course proves itself before anyone drives it.
@@ -349,26 +352,39 @@ of its four tiles is):
   ramps (`$10`), oil (`$18`) count as ROAD; the stamped walls (`$80`,
   tiles 240-243) as SOLID.
 
-### 4.3 The spine
+### 4.3 The spine  (CORRECTED: as built)
 
-The closed centreline the sectors are cut along and the waypoints sit
-on.
+The loop the sectors are cut along and the waypoints sit on.  As
+built, it is not a medial axis:
 
-* If `spine.txt` exists, it is the spine (resampled to 4 px).
-* Otherwise: distance transform of ROAD; ridge (medial axis) by
-  thinning; prune spurs shorter than the local road width; the result
-  must be ONE cycle through the start line.  If it is not - a course
-  that crosses itself (Mario Circuit 2), a fork, a dead-end wider than
-  a spur - the tool stops and says which cells, and asks for
-  `spine.txt`.  It does not guess.
-* Orientation: the spine leaves the start line heading -Y (4.1 #8).
-* Arc length s along the spine, 0 at the start line.
-
-The ROM's waypoints sit near the centre of the road, not on an
-apex-to-apex racing line (the flow field, not the waypoints, is what
-the AI follows), so the centreline IS the line here.  An author who
-wants the field to hug an inside can move waypoints in `line.txt`; the
-lint (section 7) re-checks 4.1 #5.
+* A **geodesic distance** along the road from the start line, forward
+  only: Dijkstra over the road tiles, 8-connected, with the line a
+  barrier nothing steps across (the loop starts on it and ends on the
+  row behind it; the barrier also covers the verge beside the road so
+  nothing sneaks round the line's end over grass or void).  Off-road
+  tiles cost four times a road tile, so a bridge or a gap in the kerb
+  still closes a loop and a shortcut never pays; shallow water is waded
+  at the same price; a void, lava or deep water tile is entered only
+  within two tiles of a ramp - a jump - at six times.
+* The **spine** is the shortest such loop with the road's edges made
+  expensive (a tile within two of anything that is not road costs up to
+  3.5x), walked back from the row behind the line.  CORRECTED: the
+  first draft used the centroid of each distance wavefront, i.e. the
+  middle of the road, and the field drove 22% further than on the
+  ROM's data with the same speed - the ROM's waypoints hug the inside
+  of a bend, and so does a shortest path.
+* Every spine point carries its plain geodesic distance, and that is
+  the arc the cuts, the paint (by each road tile's distance) and the
+  waypoints (on the spine, by arc) all use, so they agree by
+  construction.
+* A course whose road splits (an island, a wide field, a shortcut) is
+  accepted with a note: the spine takes one side, the paint covers
+  both.  A course that CROSSES itself (Mario Circuit 2) is wrong - the
+  distance short-circuits at the crossing - and `spine.txt` is still the
+  design's answer; the tool does not read it yet.
+* The ROM's sectors are hand-laid rectangles; the generated ones are
+  bands of geodesic distance, perpendicular to the road.  Different
+  shapes, the same consumers.
 
 ### 4.4 Cuts: where one sector ends
 
@@ -376,9 +392,13 @@ Start with cuts every S = 96 px of arc length (the measured median),
 the first at the start line.  Then, per sector, run the visibility
 test of 4.1 #5 for the cells the painter would give it (4.6) against
 the waypoint it would get (4.5); while it fails, split the sector at
-its midpoint.  Merge any sector shorter than 32 px into its
-predecessor.  Stop at 120 sectors; if a course needs more it is too
-long or too twisty for the 7-bit index and the tool says so.
+its midpoint; once it is under 64 px, move its exit cut - and so its
+waypoint - by 16, 32 and 48 px either way instead.  What still fails
+is reported.  Stop at 120 sectors; if a course needs more it is too
+long or too twisty for the 7-bit index and the tool says so.  The
+visibility test skips cells a kart cannot drive in (at least half
+wall or hazard): the paint reaches over walls and water as the ROM's
+rectangles do, and the field's direction there never steers anything.
 
 This reproduces the ROM's shape without copying it: short sectors in
 hairpins (their min spacing is 8-36 px in the tightest bends), long
@@ -426,13 +446,17 @@ checked before the field exists.
 
 ### 4.8 Attributes
 
-* Speed row from the turn ahead: the angle between the spine's
-  direction at waypoint i and at waypoint i+1, quantised at the
-  measured row medians' midpoints - < 11 deg -> 3, < 22 -> 2, < 33 ->
-  1, else 0.  OURS; the medians are the ROM's.  The author can
-  override per waypoint in `line.txt`, and should: this byte is the
-  main difficulty knob of a course (Bowser Castle 1 holds the field at
-  row 0 in ten of 35 sectors; Mario Circuit 2 in one - docs/AI.md).
+* Speed row from the bend at the waypoint.  CORRECTED by measurement:
+  the bend predicts the ROM's own row on 43% of its 743 waypoints at
+  best (a search over every threshold triple, on the bend at, ahead of
+  and before the waypoint), so the rows are NOT a function of the
+  geometry - they are the designers' hand-tuned knob (docs/AI.md: the
+  sector table is the ceiling; Bowser Castle 1 holds the field at row
+  0 in ten of 35 sectors, Mario Circuit 2 in one).  The generator
+  therefore assigns rows by the QUANTILES that reproduce the ROM's mix
+  - 20% row 0, 39% row 1, 30% row 2, 12% row 3 - over the bend measured
+  at the waypoint (< 3 deg -> 3, < 18.4 -> 2, < 50.4 -> 1, else 0), and
+  `line.txt` is where the author tunes them.  OURS.
 * Row 3 also arms the AI's boost-pad throttle, so the generator gives
   any sector holding a pad stamp row 3 - the ROM does exactly that on
   Mario Circuit 2's strip (NOTES 280).
@@ -544,9 +568,12 @@ Compilation, per theme, from two catalogues read off the ROM:
 * **Stamps**: the tool renders all 64 stamps (`$84:F23D`, sizes
   `$84:F384`) once and reads which kinds yield item boxes (`$14`),
   coin scatters (`$1A`), oil (`$18`), pads (`$16`), ramps (`$10`) - a
-  catalogue by class, not by assumption (the ROM's 20 courses use box
-  kinds 0..3, coin kinds `$DC`..`$F0`, oil `$54`/`$74`/`$98`; which
-  kinds carry the pad and ramp tiles is read, not remembered).
+  catalogue by class, not by assumption.  CORRECTED by that catalogue:
+  the 3x1 kind `$74` the design notes called oil is ONE coin (83 uses in
+  the 20 courses); the 5x5 kinds `$DC`..`$F0` are coin scatters; oil is
+  the 2x2 kind `$10`; the pads are `$08`/`$09`; the ramps are `$54` (3
+  wide, for a road running up or down) and `$98` (3 tall); boxes are
+  kinds 0..3 (four graphics of one box).
 
 A role a theme cannot express - WATER on Mario Circuit, BLOCK on Donut
 Plains - is an error naming the cell, not a substitution.
@@ -734,3 +761,124 @@ there:
 * **The Python twin's `$7F`** must be fixed before any Python tool
   writes `sectors.bin`, or every package generated by it carries
   NOTES 124's bug.
+
+---
+
+## 11. Status (2026-09-06): built through T4
+
+### What exists
+
+* **The source and the build** (`smk_course_src`, `src/tracks.c`,
+  `src/assets.c`, `src/course.c`): the two loaders are `read` + `build`,
+  and a package is the same `build` fed from files.  The selftest
+  writes every GP course as a package, reads it back through the
+  registry and requires the same track and course, byte for byte, for
+  every tile the map uses (tiles it never uses are the expander's
+  leftovers and differ by construction; section 9).
+* **The registry**: indices 24 and up are the packages found under
+  `tracks/`, `$SMK_TRACKS` (a colon list) and
+  `$XDG_DATA_HOME/smk-port/tracks`, in name order; `--track` takes an
+  index, a slug or a directory; `--track-dir` adds a parent.  The
+  course screen shows a fifth column, **CUSTOM**, five to a page, when
+  packages exist and the mode is not a Grand Prix.  Best laps are kept
+  by slug (`laptimes.txt` lines `slug frames character`); a slug that
+  is not registered when the file is read is carried and written back.
+  The trained CPU drives packages (`smk_net_drives_track`); the RL
+  environment takes a package index; a package may name its own music
+  key.
+* **The creator**, `tools/trackgen.py` (section 2 for the files):
+  `new` writes a template oval as `roles.txt`; `build` compiles the
+  roles to tiles and stamps, generates the course data and lints;
+  `gen` regenerates from an existing `map.bin`; `lint`, `render`
+  (a PNG with the sectors, the line, the strip and the grid), `export`
+  (a ROM slot as a package) and `from-rom` (a ROM slot's map with
+  GENERATED course data, the benchmark's input).  `make trackcheck
+  TRACK=dir` is the lint and the field at three classes.
+* **The catalogues** (`tools/smktool/tilecat.py`): per theme, the
+  class of every tile, the tiles its courses use and how often, the
+  four-neighbour counts, the start-line tile (the one tile that lives
+  only inside finish rectangles: `$1E $42 $10 $51/$52 $79 $7F $5B
+  $01` for themes 0..7), and the 64 stamps classified by what their
+  tiles do (section 6.2, corrected there).
+* `tracks/oval` is the template built: the field laps it at 842 /
+  712 / 647 frames at 50 / 100 / 150cc with no time off the road.
+
+### The benchmark (7.3), on the last run
+
+The twenty originals, their maps and stamps only, course data
+generated; the ROM AI's first full lap in frames on the ROM's data and
+on the generated data, and the frames any AI kart spent on a hazard
+class.  `lint` is the number of problems the lint reports.
+
+| trk | course | sectors ROM/gen | 50cc ROM/gen | 100cc | 150cc | hazard frames ROM/gen (50/100/150) | lint |
+|---|---|---|---|---|---|---|---|
+| 0 | Mario Circuit 3 | 40/48 | 1828/2054 | 1516/1645 | 1342/1542 | 0/0 0/0 0/0 | 1 |
+| 1 | Ghost Valley 2 | 45/39 | 1412/1448 | 1148/1189 | 1024/1064 | 0/0 0/0 0/0 | 1 |
+| 2 | Donut Plains 2 | 37/54 | lap / NO LAP | | | 0/0 | 4 |
+| 3 | Bowser Castle 2 | 66/75 | 2229/2070 | 1814/1762 | 1653/1576 | 304/456 262/1501 238/417 | 3 |
+| 4 | Vanilla Lake 2 | 29/35 | 2398/1426 | 1687/1164 | 1644/1089 | 37/219 20/171 25/101 | 1 |
+| 5 | Rainbow Road | 46/40 | 2023/1828 | 1662/1510 | 1479/1402 | 0/258 0/159 0/347 | 0 |
+| 6 | Koopa Beach 2 | 25/4 | lap / NO LAP | | | 0/0 | 3 |
+| 7 | Mario Circuit 1 | 30/31 | 1320/1369 | 1077/1105 | 962/1014 | 0/0 0/0 0/0 | 0 |
+| 8 | Ghost Valley 3 | 46/46 | 1778/1819 | 1453/1494 | 1313/1339 | 15/227 129/177 0/265 | 1 |
+| 9 | Bowser Castle 3 | 51/81 | 1925/2170 | 1572/2189 | 1425/1442 | 946/1647 666/8171 1788/95 | 7 |
+| 10 | Choco Island 2 | 29/36 | 1617/1639 | 1305/1328 | 1172/1186 | 0/0 0/0 0/0 | 1 |
+| 11 | Donut Plains 3 | 35/44 | lap / NO LAP | | | 1167/1670 1637/1572 207/245 | 2 |
+| 12 | Vanilla Lake 1 | 23/35 | 1321/1234 | 1113/1036 | 1034/920 | 0/0 0/0 0/0 | 3 |
+| 13 | Koopa Beach 1 | 36/8 | 1366/251 | 1119/222 | 1009/211 | 0/0 0/0 0/0 | 6 |
+| 14 | Mario Circuit 4 | 41/55 | 2178/2249 | 1755/1844 | 1631/1678 | 0/0 0/0 0/0 | 1 |
+| 15 | Mario Circuit 2 | 35/17 | 1647/220 | 1333/200 | 1219/179 | 0/0 0/0 0/0 | 14 |
+| 16 | Ghost Valley 1 | 33/40 | 1473/1411 | 1210/1134 | 1078/2063 | 0/113 0/84 0/7139 | 3 |
+| 17 | Bowser Castle 1 | 35/61 | 1908/2315 | 1580/2857 | 1452/3260 | 0/6413 0/10270 0/13053 | 5 |
+| 18 | Choco Island 1 | 24/32 | 1461/1394 | 1187/1141 | 1053/1013 | 0/0 0/0 0/0 | 1 |
+| 19 | Donut Plains 1 | 37/43 | 1790/1818 | 1445/1478 | 1281/1340 | 0/0 0/0 0/0 | 1 |
+
+Read: 51 of 60 runs lap; 46 within 15% of the ROM data; twelve courses
+(0, 1, 3, 7, 8, 10, 12, 14, 18, 19, and 5 and 16 with a little time on
+the void) regenerate as courses the field races much as it races the
+originals.  The lint's single problem on most of them is a handful of
+painted cells on the far side of a wall whose flow points into it - the
+ROM's paint has those too.
+
+What the failures are, each one understood:
+
+* **The map alone does not say where the course goes** on Koopa Beach
+  (islands joined by shallow water: the shortest wade is not the
+  course), Vanilla Lake 2 (a frozen lake of driveable ice: the shortest
+  loop cuts across it, 0.59 of the ROM's lap) and Mario Circuit 2 (the
+  road crosses itself: the distance short-circuits at the crossing).
+  On these the ROM's hand-laid paint IS the route.  The design's answer
+  is `spine.txt` (4.3); the tool does not read it yet.  An author's own
+  course draws its road, so this bites only where the road is not the
+  route - a course that wades or crosses.
+* **Donut Plains 2 and 3** stall with no time on a hazard: the field
+  wedges somewhere; lint 2..4.  Not diagnosed.
+* **The Bowser Castles** cross lava on ramps.  The generated line takes
+  the ramp (a hazard is entered only within two tiles of one, and only
+  within six tiles of it), and Bowser Castle 2 laps 5% FASTER than on
+  the ROM's data, but the field falls in the lava more than it does on
+  the ROM's paint (1 and 3), and Ghost Valley 1's 150cc run finds a
+  gap.  The waypoint before a jump has to be exactly on the ramp's
+  approach; the generator does not know that yet.
+* **The seven-entity limit**: Bowser Castle 1 and Rainbow Road carry 18
+  entities; the game's windows reach the first 16 (bug 14), and the
+  generator says so.
+
+### What the numbers say about the rules
+
+* The shortest wall-avoiding loop is the racing line (4.3): switching
+  to it from the centreline took Mario Circuit 1 from 27% slower than
+  the ROM's data to 4%.
+* The speed rows are not geometry (4.8, S49): 43% at best.  Matching
+  the ROM's row MIX gets a course that plays like the originals on
+  average; making one play like a SPECIFIC original is the author's
+  `line.txt`.
+* Every consumer took the generated structures unchanged.  Nothing in
+  `src/ai.c`, the lap rule or the rescue was touched.
+
+### Not built
+
+T5 (a package into a battle-arena slot of a patched ROM, for the
+oracle), T6 (custom styles - `style/` is read and built but no tool
+writes one), `spine.txt`, the bit-7 airborne flag (the generator never
+sets it), a course-select preview, cups of packages.

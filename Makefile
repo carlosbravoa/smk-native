@@ -10,7 +10,7 @@ NATIVE  := build-native
 GAME    := $(NATIVE)/smk
 ASAR    := vendor/asar-build/asar/bin/asar
 
-.PHONY: all game run bench shots selftest test verify info trace dis \
+.PHONY: all game run bench shots selftest test verify info trace dis trackcheck \
         jumptables health extract roundtrip romhack tools clean distclean help \
         envtest envcheck train watch watch-time embed-policy
 
@@ -162,6 +162,13 @@ distclean: clean
 help:
 	@awk '/^## /{d=substr($$0,4); next} \
 	      /^[a-z][a-z-]*:/{if(d!=""){split($$0,a,":"); printf "  %-12s %s\n", a[1], d; d=""}}' Makefile
+
+## a course package against what the game needs: the lint, then the ROM's
+## AI round it at every class (docs/TRACKS.md section 7).  TRACK=dir
+trackcheck: game $(BASE)
+	@test -n "$(TRACK)" || { echo "usage: make trackcheck TRACK=tracks/<name>"; exit 2; }
+	@$(PY) tools/trackgen.py lint $(TRACK)
+	@./build-native/smk_ailap $(BASE) $(TRACK)
 
 ## the one command that proves the tree: FULL build (fails loudly), both
 ## suites, and a headless smoke run of the actual game binary

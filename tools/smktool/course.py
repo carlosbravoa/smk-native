@@ -56,7 +56,10 @@ def build_sector_map(rom: Rom, track: int) -> tuple[bytearray, int]:
     Returns (map, sector_count)."""
     data = rom.data
     p = _stream_pc(rom, TBL_RECORDS, track)
-    m = bytearray(MAP_CELLS)
+    # $7F is the unpainted cell, NOT 0 - the game prefills $7F:5000 and 0
+    # is a real sector (NOTES 124).  src/course.c was corrected first; the
+    # twin followed when the package tools began writing sector maps.
+    m = bytearray([0x7F]) * MAP_CELLS
     sector = 0
     for _ in range(1024):
         t = data[p]
