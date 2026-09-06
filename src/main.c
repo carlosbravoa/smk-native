@@ -2203,6 +2203,7 @@ static void pv_load(const pview *v) { PV_LIST(PV_LOAD) }
 static const char *driver_label(void)
 {
     bool machine = views[cur_view].bot || (autodrive && cur_view == 0);
+    if (machine && getenv("SMK_NO_BADGE")) machine = false;   /* README shots: no AUTO/NEURAL tag */
     if (!machine) return nviews > 1 ? (cur_view == 0 ? "P1" : "P2") : NULL;
     /* WHICH machine: the trained network and src/autopilot.c are not the
      * same opponent, and the scripted one still takes the battle arenas
