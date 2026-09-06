@@ -205,6 +205,20 @@ def apply_auto_line(roles: list, markers: list = ()) -> bool:
     return True
 
 
+def start_preview(roles: list, markers: list = ()):
+    """Where the start is right now: the drawn line, or the automatic one;
+    returns (line_cells, finish, grid, automatic) or None."""
+    cells = [i for i, r in enumerate(roles) if r == "LINE"]
+    auto = False
+    if not cells:
+        cells = auto_line(roles, markers) or []
+        auto = True
+    if not cells:
+        return None
+    finish, grid = G.start_geometry(cells)
+    return cells, finish, grid, auto
+
+
 # ---- the build ---------------------------------------------------------------
 
 def read_manifest_keys(d: str) -> dict:

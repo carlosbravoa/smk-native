@@ -363,9 +363,11 @@ built, it is not a medial axis:
   row behind it; the barrier also covers the verge beside the road so
   nothing sneaks round the line's end over grass or void).  Off-road
   tiles cost four times a road tile, so a bridge or a gap in the kerb
-  still closes a loop and a shortcut never pays; shallow water is waded
-  at the same price; a void, lava or deep water tile is entered only
-  within two tiles of a ramp - a jump - at six times.
+  still closes a loop and a shortcut never pays - and only within three
+  tiles of the road, so a wall across the road is an error and not a
+  detour over the infield; shallow water is waded at the same price; a
+  void, lava or deep water tile is entered only within two tiles of a
+  ramp and six of one - a jump - at six times.
 * The **spine** is the shortest such loop with the road's edges made
   expensive (a tile within two of anything that is not road costs up to
   3.5x), walked back from the row behind the line.  CORRECTED: the
@@ -815,10 +817,15 @@ there:
   and validate* runs the compile, the generator and the lint in a
   worker thread and lists every problem; *Race the AI* runs
   `smk_ailap` on the package and reports the laps and the hazard
-  frames; *Play* and *Time trial* start the game on the package.  A
-  built course's waypoints can be dragged and their speed row set with
-  the keys 0 to 3, the lint re-running as they move.  Nothing in it is
-  ROM data: the pictures are drawn from the ROM at run time.
+  frames, and when the field does not lap it, where its furthest kart
+  stopped (a red mark on the map, from `smk_ailap`'s `stalled:` line)
+  and what to try; *Play* and *Time trial* start the game on the
+  package.  The start line and the grid are on the map from the first
+  stroke and follow the road until the Start line tool pins them; a
+  road that does not loop is marked where it ends.  A built course's
+  waypoints can be dragged and their speed row set with the keys 0 to
+  3, the lint re-running as they move.  The panes resize.  Nothing in
+  it is ROM data: the pictures are drawn from the ROM at run time.
 
 ### The benchmark (7.3), on the last run
 
@@ -842,15 +849,17 @@ class.  `lint` is the number of problems the lint reports.
 | 10 | Choco Island 2 | 29/36 | 1617/1639 | 1305/1328 | 1172/1186 | 0/0 0/0 0/0 | 1 |
 | 11 | Donut Plains 3 | 35/44 | lap / NO LAP | | | 1167/1670 1637/1572 207/245 | 2 |
 | 12 | Vanilla Lake 1 | 23/35 | 1321/1234 | 1113/1036 | 1034/920 | 0/0 0/0 0/0 | 3 |
-| 13 | Koopa Beach 1 | 36/8 | 1366/251 | 1119/222 | 1009/211 | 0/0 0/0 0/0 | 6 |
+| 13 | Koopa Beach 1 | 36/- | refused: the road never comes back (the course wades between islands) | | | | |
 | 14 | Mario Circuit 4 | 41/55 | 2178/2249 | 1755/1844 | 1631/1678 | 0/0 0/0 0/0 | 1 |
-| 15 | Mario Circuit 2 | 35/17 | 1647/220 | 1333/200 | 1219/179 | 0/0 0/0 0/0 | 14 |
+| 15 | Mario Circuit 2 | 35/- | refused: the road never comes back (the course crosses itself) | | | | |
 | 16 | Ghost Valley 1 | 33/40 | 1473/1411 | 1210/1134 | 1078/2063 | 0/113 0/84 0/7139 | 3 |
 | 17 | Bowser Castle 1 | 35/61 | 1908/2315 | 1580/2857 | 1452/3260 | 0/6413 0/10270 0/13053 | 5 |
 | 18 | Choco Island 1 | 24/32 | 1461/1394 | 1187/1141 | 1053/1013 | 0/0 0/0 0/0 | 1 |
 | 19 | Donut Plains 1 | 37/43 | 1790/1818 | 1445/1478 | 1281/1340 | 0/0 0/0 0/0 | 1 |
 
-Read: 51 of 60 runs lap; 46 within 15% of the ROM data; twelve courses
+Read: 45 of 60 runs lap; 40 within 15% of the ROM data (two courses that
+earlier produced a bogus 200-frame loop across water or a crossing now
+refuse with the place the road ends); twelve courses
 (0, 1, 3, 7, 8, 10, 12, 14, 18, 19, and 5 and 16 with a little time on
 the void) regenerate as courses the field races much as it races the
 originals.  The lint's single problem on most of them is a handful of

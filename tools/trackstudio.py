@@ -48,6 +48,9 @@ class Studio:
         self.undo_stack: list = []
         self.redo_stack: list = []
         self.selected_wp = -1
+        self.line_manual = False          # the author placed the line; else it follows the road
+        self.stall = None                 # where the field stopped in the last race, per class
+        self.blocked = None               # where the generator found the road to end
         self.busy = False
         self.q: queue.Queue = queue.Queue()
         self.photo = None
@@ -97,12 +100,12 @@ class Studio:
         menu.add_cascade(label="Help", menu=hm)
         r.config(menu=menu)
 
-        outer = ttk.Frame(r)
+        outer = ttk.Panedwindow(r, orient="horizontal")
         outer.pack(fill="both", expand=True)
 
         # left: the course and the tools
         left = ttk.Frame(outer, padding=6)
-        left.pack(side="left", fill="y")
+        outer.add(left, weight=0)
         ttk.Label(left, text="Course", font=("TkDefaultFont", 10, "bold")).pack(anchor="w")
         self.name_var = tk.StringVar(value=self.project.name)
         ttk.Entry(left, textvariable=self.name_var, width=22).pack(anchor="w", pady=(0, 4))
@@ -139,7 +142,7 @@ class Studio:
 
         # centre: the map
         centre = ttk.Frame(outer)
-        centre.pack(side="left", fill="both", expand=True)
+        outer.add(centre, weight=3)
         self.canvas = tk.Canvas(centre, bg="#202020", width=1024, height=1024, highlightthickness=0)
         hs = ttk.Scrollbar(centre, orient="horizontal", command=self.canvas.xview)
         vs = ttk.Scrollbar(centre, orient="vertical", command=self.canvas.yview)
@@ -166,28 +169,35 @@ class Studio:
         for k in "0123":
             r.bind(k, lambda e, k=int(k): self.set_row(k))
 
-        # right: build, check, results
-        right = ttk.Frame(outer, padding=6, width=300)
-        right.pack(side="right", fill="y")
-        right.pack_propagate(False)
+        # right: build, check, results (drag the sash to widen it)
+        right = ttk.Frame(outer, padding=6, width=460)
+        outer.add(right, weight=1)
         ttk.Label(right, text="Check", font=("TkDefaultFont", 10, "bold")).pack(anchor="w")
-        self.b_build = ttk.Button(right, text="Build and validate", command=self.build)
-        self.b_build.pack(fill="x", pady=2)
-        self.b_race = ttk.Button(right, text="Race the AI on it (50/100/150cc)", command=self.race)
-        self.b_race.pack(fill="x", pady=2)
-        self.b_play = ttk.Button(right, text="Play it", command=lambda: self.play(False))
-        self.b_play.pack(fill="x", pady=2)
-        self.b_tt = ttk.Button(right, text="Time trial on it", command=lambda: self.play(True))
-        self.b_tt.pack(fill="x", pady=2)
+        row = ttk.Frame(right); row.pack(fill="x")
+        self.b_build = ttk.Button(row, text="Build and validate", command=self.build)
+        self.b_build.pack(side="left", fill="x", expand=True, padx=(0, 2), pady=2)
+        self.b_race = ttk.Button(row, text="Race the AI", command=self.race)
+        self.b_race.pack(side="left", fill="x", expand=True, padx=(2, 0), pady=2)
+        row = ttk.Frame(right); row.pack(fill="x")
+        self.b_play = ttk.Button(row, text="Play", command=lambda: self.play(False))
+        self.b_play.pack(side="left", fill="x", expand=True, padx=(0, 2), pady=2)
+        self.b_tt = ttk.Button(row, text="Time trial", command=lambda: self.play(True))
+        self.b_tt.pack(side="left", fill="x", expand=True, padx=(2, 0), pady=2)
         self.progress = ttk.Label(right, text="", foreground="#246")
         self.progress.pack(anchor="w", pady=(4, 2))
         ttk.Label(right, text="Results", font=("TkDefaultFont", 10, "bold")).pack(anchor="w")
-        self.results = tk.Text(right, width=38, height=40, wrap="word", state="disabled", font=("TkFixedFont", 9))
-        self.results.pack(fill="both", expand=True)
+        rf = ttk.Frame(right); rf.pack(fill="both", expand=True)
+        self.results = tk.Text(rf, width=52, height=40, wrap="word", state="disabled",
+                               font=("TkDefaultFont", 10), padx=6, pady=4, spacing1=2)
+        rs = ttk.Scrollbar(rf, orient="vertical", command=self.results.yview)
+        self.results.configure(yscrollcommand=rs.set)
+        rs.pack(side="right", fill="y")
+        self.results.pack(side="left", fill="both", expand=True)
         self.results.tag_config("bad", foreground="#b00")
         self.results.tag_config("good", foreground="#070")
         self.results.tag_config("note", foreground="#555")
-        self.results.tag_config("head", font=("TkDefaultFont", 9, "bold"))
+        self.results.tag_config("head", font=("TkDefaultFont", 10, "bold"))
+        self.results.tag_config("hint", foreground="#136", lmargin1=12, lmargin2=12)
         self.status = ttk.Label(r, text="", anchor="w", relief="sunken")
         self.status.pack(side="bottom", fill="x")
 
@@ -212,6 +222,13 @@ class Studio:
             lines.append(("%d problem(s) the game would notice:" % len(pr.problems), "bad"))
             for p in pr.problems:
                 lines.append((" - " + p, "bad"))
+                if "never comes back" in p:
+                    lines.append(("  The road from the start line does not get back round to it: it is blocked, or it "
+                                  "does not join up.  The red ring on the map is as far as it goes - look for a wall "
+                                  "across the road there, or a gap, and paint road through.", "hint"))
+                elif "no start line" in p:
+                    lines.append(("  Draw a straight of road running towards the top of the map, about 30 tiles long "
+                                  "and at least 5 wide, or pick the Start line tool and click the road.", "hint"))
         elif pr.package:
             lines.append(("Validator: clean.  Race the AI on it next.", "good"))
         if extra:
@@ -244,11 +261,51 @@ class Studio:
     def z(self, v):
         return v * self.zoom
 
+    def update_start(self):
+        """Keep the automatic start line in the roles while the road is drawn,
+        until the author pins one with the Start line tool."""
+        pr = self.project
+        if self.line_manual:
+            return
+        for i, r in enumerate(pr.roles):
+            if r == "LINE":
+                pr.roles[i] = "ROAD"
+        PJ.apply_auto_line(pr.roles, pr.markers)
+
     def draw_overlays(self):
         c = self.canvas
         c.delete("ov")
         pr = self.project
         s = self.zoom
+        # the start, before any build: the line as drawn or chosen, the strip, the grid
+        start = PJ.start_preview(pr.roles, pr.markers)
+        if start and self.show_grid.get() and (pr.package is None or self.dirty_since_build):
+            cells, (fx, fy, fw, fh), (gx, gy, gs), auto = start
+            for i in cells:
+                x, y = i % 128, i // 128
+                c.create_rectangle(x * TILE * s, y * TILE * s, (x + 1) * TILE * s, (y + 1) * TILE * s,
+                                   fill="white", outline="", tags="ov")
+            c.create_rectangle(fx * 16 * s, fy * 16 * s, (fx + fw) * 16 * s, (fy + fh) * 16 * s,
+                               outline="white", width=1, dash=(3, 3), tags="ov")
+            for slot in range(8):
+                x = gx + (gs if slot & 1 else 0)
+                y = gy + 24 * slot
+                c.create_rectangle((x - 6) * s, (y - 6) * s, (x + 6) * s, (y + 6) * s, outline="yellow", width=2, tags="ov")
+            c.create_text((gx + 16) * s, (gy + 24 * 8 + 4) * s, text="START" + ("" if self.line_manual else " (automatic)"),
+                          fill="yellow", anchor="n", font=("TkDefaultFont", 9, "bold"), tags="ov")
+        if self.blocked:
+            x, y = self.blocked
+            r = 12 * s
+            c.create_oval(x * s - r, y * s - r, x * s + r, y * s + r, outline="red", width=3, tags="ov")
+            c.create_text(x * s, y * s + r + 2, text="the road ends here", fill="red", anchor="n",
+                          font=("TkDefaultFont", 9, "bold"), tags="ov")
+        if self.stall:
+            for cls, (x, y, sec) in self.stall.items():
+                r = 10 * s
+                c.create_line(x * s - r, y * s - r, x * s + r, y * s + r, fill="red", width=3, tags="ov")
+                c.create_line(x * s - r, y * s + r, x * s + r, y * s - r, fill="red", width=3, tags="ov")
+                c.create_text(x * s, y * s + r + 2, text="%dcc stopped, sector %d" % (cls, sec), fill="red",
+                              anchor="n", font=("TkDefaultFont", 9, "bold"), tags="ov")
         # markers in the tiles view (the roles view paints them into the picture)
         if self.view.get() == "tiles":
             for fam, x, y in pr.markers:
@@ -311,6 +368,7 @@ class Studio:
         self.redo_stack.append((list(self.project.roles), list(self.project.markers)))
         self.project.roles, self.project.markers = self.undo_stack.pop()
         self.touched()
+        self.update_start()
         self.redraw(full=True)
 
     def redo(self):
@@ -319,6 +377,7 @@ class Studio:
         self.undo_stack.append((list(self.project.roles), list(self.project.markers)))
         self.project.roles, self.project.markers = self.redo_stack.pop()
         self.touched()
+        self.update_start()
         self.redraw(full=True)
 
     def touched(self):
@@ -374,6 +433,7 @@ class Studio:
             x1 += 1
         for x in range(x0, x1 + 1):
             pr.roles[ty * 128 + x] = "LINE"
+        self.line_manual = True
         self.redraw(full=True)
 
     def place_marker(self, fam, tx, ty):
@@ -389,6 +449,7 @@ class Studio:
                 if pr.roles[y * 128 + x] != "LINE":
                     pr.roles[y * 128 + x] = "ROAD"
         pr.markers.append((fam, tx, ty))
+        self.update_start()
         self.redraw(full=True)
 
     def on_press(self, event):
@@ -430,6 +491,7 @@ class Studio:
             self.project.save_line()
             self.recheck()
         elif tool in PJ.ROLE_RGB:
+            self.update_start()
             self.redraw(full=True)
 
     def on_right(self, event):
@@ -442,6 +504,7 @@ class Studio:
         if k >= 0:
             self.snapshot(); self.touched()
             self.project.markers.pop(k)
+            self.update_start()
             self.redraw(full=True)
         elif self.tool.get() in PJ.ROLE_RGB and self.tool.get() != "LINE":
             if not self.undo_stack or event.type == tk.EventType.ButtonPress:
@@ -534,6 +597,8 @@ class Studio:
             return
         name, theme, oval = dlg.result
         self.project = PJ.Project.new(name, theme, oval)
+        self.line_manual = False
+        self.stall = None
         self.push_keys()
         self.undo_stack.clear(); self.redo_stack.clear()
         self.unsaved = True; self.dirty_since_build = True
@@ -547,7 +612,10 @@ class Studio:
         self.snapshot()
         pr = self.project
         pr.roles, pr.markers = PJ.parse_roles("\n".join(PJ.template_roles() if oval else PJ.blank_roles()))
+        self.line_manual = False
+        self.stall = None
         self.touched()
+        self.update_start()
         self.redraw(full=True)
 
     def confirm_discard(self):
@@ -571,6 +639,8 @@ class Studio:
         self.push_keys()
         self.undo_stack.clear(); self.redo_stack.clear()
         self.unsaved = False
+        self.line_manual = any(r == "LINE" for r in self.project.roles)
+        self.stall = None
         self.dirty_since_build = self.project.package is None
         self.selected_wp = -1
         if self.project.package:
@@ -649,6 +719,9 @@ class Studio:
         if not pr.dir:
             pr.dir = self.default_dir()
         d = pr.dir
+        self.stall = None
+        if not self.line_manual:
+            self.update_start()
         self.set_busy(True, "building...")
         def work():
             try:
@@ -693,18 +766,27 @@ class Studio:
                     self.dirty_since_build = not val
                     self.unsaved = False
                     self.selected_wp = -1
+                    self.blocked = None
                     if val:
                         self.view.set("tiles")
+                    else:
+                        import re
+                        for pmsg in self.project.problems:
+                            m = re.search(r"farthest it reaches is tile (\d+),(\d+)", pmsg)
+                            if m:
+                                self.blocked = (int(m.group(1)) * 8 + 4, int(m.group(2)) * 8 + 4)
                     self.show_verdict()
                     self.redraw(full=True)
+                    if self.blocked:
+                        self.scroll_to(*self.blocked)
                 elif kind == "raced":
                     self.set_busy(False, "")
                     ok, out = val
-                    lines = [(("The field laps it at every class." if ok else "The field did NOT lap it."), "good" if ok else "bad")]
-                    for ln in out.splitlines():
-                        if "cc:" in ln or "runs" in ln or "hazard" in ln:
-                            lines.append((ln.strip(), "note" if "0 hazard" in ln else "bad" if "NO LAP" in ln or "off the road" in ln else "note"))
-                    self.show_verdict(lines)
+                    self.show_verdict(self.race_report(ok, out))
+                    self.draw_overlays()
+                    if self.stall:
+                        x, y, sec = next(iter(self.stall.values()))
+                        self.scroll_to(x, y)
                 elif kind == "error":
                     self.set_busy(False, "")
                     self.say([(val, "bad")])
@@ -712,12 +794,71 @@ class Studio:
             pass
         self.root.after(100, self._poll)
 
+    def race_report(self, ok, out):
+        """The AI runner's lines turned into a verdict per class, and advice."""
+        import re
+        lines = [("The field laps it at every class." if ok else "The field did NOT lap it.", "good" if ok else "bad")]
+        self.stall = {}
+        cur = None
+        pr = self.project
+        for ln in out.splitlines():
+            m = re.match(r"\s+\S+\s+(\d+)cc: (lap|NO LAP|no course)\s+full lap at frame (\d+), (\d+) hazard", ln)
+            if m:
+                cur = int(m.group(1)); res, at, hz = m.group(2), int(m.group(3)), int(m.group(4))
+                if res == "lap":
+                    txt = "%dcc: a lap in %d frames (%d.%02d s)" % (cur, at, at // 60, (at % 60) * 100 // 60)
+                    if hz:
+                        txt += ", but %d frames off the road" % hz
+                    lines.append((txt, "good" if not hz else "bad"))
+                else:
+                    lines.append(("%dcc: no lap in 2.5 minutes%s" % (cur, ", %d frames off the road" % hz if hz else ""), "bad"))
+                continue
+            m = re.match(r"\s+stalled: x (\d+) y (\d+) sector (-?\d+) of (\d+) lap (\d+) speed (-?\d+) class \$([0-9A-F]+)", ln)
+            if m and cur is not None:
+                x, y, sec, n, lap, speed = int(m.group(1)), int(m.group(2)), int(m.group(3)), int(m.group(4)), int(m.group(5)), int(m.group(6))
+                cls = int(m.group(7), 16)
+                self.stall[cur] = (x, y, sec)
+                kind = S.kind(cls)
+                where = "at tile %d,%d in sector %d of %d" % (x // 8, y // 8, sec, n)
+                if kind in ("WALL", "BLOCK") or (speed < 40 and kind == "ROAD"):
+                    lines.append(("  the furthest kart stopped %s, %s (red mark on the map)." % (where, "against a wall" if kind != "ROAD" else "on the road"), "hint"))
+                    lines.append(("  Try: Waypoints tool, drag the waypoint of sector %d (and %d) to where a kart there can see it "
+                                  "without a wall in between, or widen the road at the bend." % (sec, (sec + 1) % max(n, 1)), "hint"))
+                elif kind in ("HAZARD", "WATER"):
+                    lines.append(("  the furthest kart is in the %s %s (red mark on the map): the field drove off the road there."
+                                  % ("water" if kind == "WATER" else "void or lava", where), "hint"))
+                    lines.append(("  Try: Waypoints tool, drag the waypoints of sectors %d and %d towards the middle of the road, "
+                                  "or paint the verge wider." % (sec, (sec + 1) % max(n, 1)), "hint"))
+                else:
+                    lines.append(("  the furthest kart was still moving %s, on %s (red mark on the map): it is circling."
+                                  % (where, kind.lower()), "hint"))
+                    lines.append(("  Try: Waypoints tool - the waypoints of sectors %d and %d may send it back and forth; "
+                                  "drag them so each is further along the road than the last." % (sec, (sec + 1) % max(n, 1)), "hint"))
+                if pr.problems:
+                    lines.append(("  The validator's %d problem(s) above are the first thing to fix." % len(pr.problems), "hint"))
+        if not ok and not self.stall:
+            for ln in out.splitlines():
+                if ln.strip():
+                    lines.append((ln.strip(), "note"))
+        if ok and pr.problems:
+            lines.append(("  It laps, but the validator still lists %d problem(s) above: a kart rescued there, or "
+                          "a lap counted wrongly, would show up in play." % len(pr.problems), "hint"))
+        return lines
+
+    def scroll_to(self, x, y):
+        """Bring a world position into the middle of the view."""
+        size = 1024 * self.zoom
+        w = max(1, self.canvas.winfo_width()); h = max(1, self.canvas.winfo_height())
+        self.canvas.xview_moveto(max(0.0, (x * self.zoom - w / 2) / size))
+        self.canvas.yview_moveto(max(0.0, (y * self.zoom - h / 2) / size))
+
     def help(self):
         messagebox.showinfo("How it works",
             "Paint the road with the brush (left button; right button paints off-road).\n"
             "Draw walls, water and void the same way.\n"
-            "Pick 'Start line' and click the road where the race starts: the karts drive UP from it,\n"
-            "so the start straight must run towards the top of the map.\n"
+            "The start line and the grid are placed for you on the longest straight running north and\n"
+            "follow the road as you draw; 'Start line' and a click on the road pins them where you want.\n"
+            "The karts drive UP from the line, so a start straight runs towards the top of the map.\n"
             "Place boxes, coins, oil, pads, ramps and obstacles by clicking; right click removes.\n"
             "Choose a theme: it decides the tiles, the music, the creatures and how the ground behaves.\n\n"
             "Build and validate: the tiles, the sector map and the racing line are generated and checked.\n"
@@ -759,7 +900,7 @@ def main():
     except FileNotFoundError as e:
         sys.exit(str(e))
     root = tk.Tk()
-    root.geometry("1500x1060")
+    root.geometry("1700x1080")
     Studio(root, path)
     root.mainloop()
 

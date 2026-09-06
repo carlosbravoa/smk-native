@@ -137,6 +137,17 @@ def generate(tm: bytes, cls: bytes, line_cells: list[int], stamps: list, ents: l
             for xx in range(max(0, x - 2), min(W, x + 3)):
                 ramp[yy * W + xx] = True
     wade = [c == 0x22 for c in cm]              # shallow water: driven through, slowly
+    # the soft pass may leave the road, but never far from it: a bridge or
+    # a gap in the kerb is within three tiles of road on its way, a field
+    # is not (a wall across the road produced a detour over the infield)
+    near_road = [False] * (W * W)
+    for i in range(W * W):
+        if not road[i]:
+            continue
+        x, y = i % W, i // W
+        for yy in range(max(0, y - 3), min(W, y + 4)):
+            for xx in range(max(0, x - 3), min(W, x + 4)):
+                near_road[yy * W + xx] = True
     # ...and the flight has a length: void, lava or deep water further than
     # six tiles from a ramp is never crossed (Rainbow Road's void beside
     # its ramps was a shortcut across the map before this)
@@ -195,7 +206,7 @@ def generate(tm: bytes, cls: bytes, line_cells: list[int], stamps: list, ents: l
                     # kerb) still closes and a shortcut never pays
                     if hazard[j] and not wade[j] and not ((ramp[i] or hazard[i]) and jumpable[j]):
                         continue
-                    if not road[j] and not (hazard[j] and not wade[j]) and not soft:
+                    if not road[j] and not (hazard[j] and not wade[j]) and not (soft and near_road[j]):
                         continue
                     if not road[j] and not hazard[j] and not drive[j]:
                         continue
@@ -453,13 +464,7 @@ def generate(tm: bytes, cls: bytes, line_cells: list[int], stamps: list, ents: l
     out.line = line
 
     # --- the finish strip and the grid ------------------------------------
-    lcy = ly // 2
-    cx0 = max(0, lxs[0] // 2 - 1)
-    cx1 = min(CW - 1, lxs[-1] // 2 + 1)
-    fy0 = max(0, lcy - 2)
-    out.finish = (cx0, fy0, cx1 - cx0 + 1, min(6, CW - fy0))
-    centre = (lxs[0] + lxs[-1] + 1) * 8 // 2
-    out.grid = (centre - 16, ly * 8 + 40, 32)
+    out.finish, out.grid = start_geometry(line_cells)
 
     # --- entity spawn windows: four at a time along the lap ---------------
     if ents:
@@ -489,6 +494,23 @@ def generate(tm: bytes, cls: bytes, line_cells: list[int], stamps: list, ents: l
         if len(ents) > 16:
             out.notes.append("%d entities: the game's windows reach the first 16 only" % len(ents))
     return out
+
+
+def start_geometry(line_cells):
+    """The finish strip and the grid from the start line: the strip is the
+    road's width plus a cell each side, two cells above the line and
+    three below; the front kart is 40 px behind the line at the road's
+    centre, the columns 32 px apart, the rows 24 px back (4.9)."""
+    ly = line_cells[0] // W
+    lxs = sorted(i % W for i in line_cells)
+    lcy = ly // 2
+    cx0 = max(0, lxs[0] // 2 - 1)
+    cx1 = min(CW - 1, lxs[-1] // 2 + 1)
+    fy0 = max(0, lcy - 2)
+    finish = (cx0, fy0, cx1 - cx0 + 1, min(6, CW - fy0))
+    centre = (lxs[0] + lxs[-1] + 1) * 8 // 2
+    grid = (centre - 16, ly * 8 + 40, 32)
+    return finish, grid
 
 
 def _stands(c, drive, solid):

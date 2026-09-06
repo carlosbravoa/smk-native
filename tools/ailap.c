@@ -51,6 +51,21 @@ static int run_course(const smk_rom *rom, int t, int cls, int need, int *lap_fra
         }
     }
     if (tr) fclose(tr);
+    if (!lapped) {
+        /* where the field got to: the kart that went furthest, its
+         * position, sector and the class under it, and whether it was
+         * still moving - the editor turns this into advice */
+        int best = 1, bp = -1;
+        for (int i = 1; i < SMK_CHARACTERS; i++) {
+            int prog = (racers[i].lap << 8) | (racers[i].sector < 0 ? 0 : racers[i].sector);
+            if (prog > bp) { bp = prog; best = i; }
+        }
+        const smk_racer *r = &racers[best];
+        int px = smk_kart_px(r->k.x), py = smk_kart_px(r->k.y);
+        printf("  stalled: x %d y %d sector %d of %d lap %d speed %d class $%02X kart %d\n",
+               px, py, r->sector, crs.sectors, r->lap, r->k.speed,
+               smk_track_surface(&trk, px, py), best);
+    }
     *lap_frames = at;
     return lapped;
 }
