@@ -317,8 +317,14 @@ const char *smk_tracks_id(int track)
 
 int smk_tracks_add_dir(const char *dir)
 {
+    /* one directory is one course however it is named: the game scans
+     * ./tracks/x at startup and the editor launches /abs/path/tracks/x,
+     * and the two used to collide as "a course called 'x' is already
+     * registered" */
     char real[512];
-    snprintf(real, sizeof real, "%s", dir);
+    char *rp = realpath(dir, NULL);
+    snprintf(real, sizeof real, "%s", rp ? rp : dir);
+    free(rp);
     size_t len = strlen(real);
     while (len > 1 && real[len - 1] == '/') real[--len] = 0;
     for (int i = 0; i < nreg; i++)
