@@ -182,6 +182,86 @@ def effective_roles(cat: Catalogue) -> dict:
     return out
 
 
+def stripe_cycle(cat: Catalogue):
+    """A theme whose road is bands of colour (Rainbow Road): the road
+    tiles that each cover a fair share of the road, in the order each one
+    follows the last along it - read from the four-neighbour counts.
+    None for a theme with a plain road."""
+    road = [t for t in range(256) if S.is_road(cat.cls[t]) and cat.freq[t] > 0]
+    total = sum(cat.freq[t] for t in road)
+    bands = [t for t in road if cat.freq[t] >= 0.06 * total]
+    if len(bands) < 5:
+        return None
+    succ = {}
+    for t in bands:
+        c = collections.Counter()
+        for u in bands:
+            if u != t:
+                c[u] += cat.right[(t, u)] + cat.down[(t, u)]
+        succ[t] = c.most_common(1)[0][0] if c else t
+    cyc = [min(bands)]
+    while succ[cyc[-1]] not in cyc and len(cyc) < len(bands):
+        cyc.append(succ[cyc[-1]])
+    return cyc if len(cyc) == len(bands) and succ[cyc[-1]] == cyc[0] else None
+
+
+def kerb_tiles(cat: Catalogue) -> dict:
+    """role -> the tile that theme lays along the road's edge in that role,
+    if it has one: a tile of the role's class that is seen next to road
+    nearly every time it is seen (Rainbow Road's $0B, class $28)."""
+    out = {}
+    rom = cat.rom
+    for t in range(256):
+        if cat.freq[t] < 40 or S.is_road(cat.cls[t]) or S.is_solid(cat.cls[t]):
+            continue
+        role = S.kind(cat.cls[t])
+        if role not in ROLES:
+            continue
+        adj = 0
+        for tr in tracks_of_theme(rom, cat.theme):
+            tm = M.tilemap(rom, tr)
+            for i in range(16384):
+                if tm[i] != t:
+                    continue
+                x, y = i % 128, i // 128
+                for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    if 0 <= x + dx < 128 and 0 <= y + dy < 128 and S.is_road(cat.cls[tm[(y + dy) * 128 + x + dx]]):
+                        adj += 1
+                        break
+        if adj >= 0.8 * cat.freq[t]:
+            if role not in out or cat.freq[t] > cat.freq[out[role]]:
+                out[role] = t
+    return out
+
+
+def _along_road(roles: list) -> list:
+    """Distance along the road from the start line, in tiles, 8-connected
+    (a diamond wavefront draws the bands diagonally across a straight; a
+    square one draws them across it), -1 off the road: the stripes'
+    coordinate."""
+    onroad = [r in ("ROAD", "LINE") for r in roles]
+    seeds = [i for i, r in enumerate(roles) if r == "LINE"] or [i for i, r in enumerate(roles) if r == "ROAD"][:1]
+    d = [-1] * 16384
+    q = list(seeds)
+    for i in q:
+        d[i] = 0
+    k = 0
+    while k < len(q):
+        i = q[k]; k += 1
+        x, y = i % 128, i // 128
+        for dy in (-1, 0, 1):
+            for dx in (-1, 0, 1):
+                if not dx and not dy:
+                    continue
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < 128 and 0 <= ny < 128:
+                    j = ny * 128 + nx
+                    if onroad[j] and d[j] < 0:
+                        d[j] = d[i] + 1
+                        q.append(j)
+    return d
+
+
 def compile_roles(cat: Catalogue, roles: list[str]) -> tuple[bytearray, list[str], list[str]]:
     """roles: 16384 role names, row-major.  Returns the tilemap, a list of
     problems, and notes (a role the theme cannot express, and what it
@@ -226,6 +306,29 @@ def compile_roles(cat: Catalogue, roles: list[str]) -> tuple[bytearray, list[str
             if len(c) > 1:
                 best = max(c[:24], key=lambda ti: score(ti, left, up, rr, dr))
             tm[i] = best
+    # a striped road (Rainbow Road): bands one tile wide across the road,
+    # cycling along it in the ROM's colour order and fanning round bends -
+    # the distance along the road modulo the cycle.  MEASURED as the shape
+    # of the ROM's own stripes; their phase was painted by hand and drifts,
+    # so it is not reproduced.
+    cyc = stripe_cycle(cat)
+    if cyc:
+        along = _along_road(roles)
+        for i in range(16384):
+            if roles[i] == "ROAD" and along[i] >= 0:
+                tm[i] = cyc[along[i] % len(cyc)]
+    # a kerb: the tile the theme lays along the road's edge in a role
+    kerbs = kerb_tiles(cat)
+    if kerbs:
+        for i in range(16384):
+            r = roles[i]
+            if r not in kerbs:
+                continue
+            x, y = i % 128, i // 128
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                if 0 <= x + dx < 128 and 0 <= y + dy < 128 and roles[(y + dy) * 128 + x + dx] in ("ROAD", "LINE"):
+                    tm[i] = kerbs[r]
+                    break
     # the start line: its own tiles across the LINE cells, in the ROM's order
     if cat.line_tiles:
         for y in range(128):

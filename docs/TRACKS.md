@@ -411,7 +411,13 @@ ones on straights (up to 266 px).
 Waypoint i is the spine point 8 px PAST cut i+1, snapped to the 8-px
 grid the ROM's byte format imposes - i.e. just inside sector i+1,
 where 90% of the ROM's are.  Then nudged, if needed, to the nearest
-ROAD tile (4.1 #6).
+ROAD tile (4.1 #6).  Its CELL is then painted sector i+1 whatever the
+cut said (a cell straddling the cut takes its smallest arc, i.e.
+sector i): the rescue puts a kart down at the waypoint facing the field
+at that cell, and a cell aimed at a point inside itself points north -
+the user's "Lakitu never faced the right way".  The lint refuses an
+own-sector waypoint, and the editor repaints the cell when a waypoint
+is dragged.
 
 ### 4.6 Painting
 
@@ -567,6 +573,21 @@ Compilation, per theme, from two catalogues read off the ROM:
   the same map).  OURS; the art is the ROM's, the adjacency statistics
   are the ROM's, the choice rule is ours and is expected to look
   wrong at odd corners.  The author fixes those in tier A.
+* **Striped roads and kerbs** (`tilecat.stripe_cycle`, `kerb_tiles`):
+  a theme whose road is bands of colour - Rainbow Road, seven tiles
+  each covering a seventh of the road - is compiled as bands one tile
+  wide across the road, cycling along it in the order the ROM's
+  four-neighbour counts give (`$04` to `$0A`) and fanning round bends:
+  the 8-connected distance along the road from the start line, modulo
+  the cycle.  MEASURED as the shape of the ROM's own stripes; their
+  phase was painted by hand and drifts (the model matches the ROM's
+  tiles on 15-38% of the road, which is the phase, not the shape), so
+  it is not reproduced.  A tile of a role that the theme lays next to
+  the road nearly every time it appears (Rainbow Road's `$0B`, class
+  `$28`; the road-edge tiles of Mario Circuit, Donut Plains, Choco
+  Island, Vanilla Lake and Koopa Beach) is the kerb, laid on that
+  role's cells beside the road.  Before this a Rainbow Road course was
+  one green tile - the user's report.
 * **Stamps**: the tool renders all 64 stamps (`$84:F23D`, sizes
   `$84:F384`) once and reads which kinds yield item boxes (`$14`),
   coin scatters (`$1A`), oil (`$18`), pads (`$16`), ramps (`$10`) - a

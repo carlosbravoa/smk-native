@@ -396,6 +396,14 @@ def generate(tm: bytes, cls: bytes, line_cells: list[int], stamps: list, ents: l
             for j, a in new.items():
                 sect[j] = sector_of_arc(a)
             painted.update(new)
+        # a waypoint's own cell belongs to the NEXT sector, as 90% of the
+        # ROM's do: the rescue puts a kart down at the waypoint facing the
+        # field there, and a cell aimed at a point inside itself points
+        # north (the user: Lakitu never faced the right way)
+        for i in range(n):
+            c = wps[i][1] // 2 * CW + wps[i][0] // 2
+            if sect[c] == i:
+                sect[c] = (i + 1) % n
         # visibility: every painted cell to its waypoint over non-solid tiles
         bad = set()
         for c in painted:
@@ -605,7 +613,10 @@ def lint(tm: bytes, cls: bytes, sect: bytes, line: list, finish: tuple, grid: tu
         cell = (y // 16) * CW + x // 16
         if sect[cell] == 0x7F:
             p.append("waypoint %d's cell is unpainted (the rescue heading reads it)" % s)
-        elif sect[cell] not in (s, (s + 1) % n, (s + 2) % n):
+        elif sect[cell] == s:
+            p.append("waypoint %d sits in its own sector %d: Lakitu would put a kart down there facing north, "
+                     "whatever the road does (the cell must belong to sector %d)" % (s, s, (s + 1) % n))
+        elif sect[cell] not in ((s + 1) % n, (s + 2) % n):
             p.append("waypoint %d lies in sector %d, not in %d or %d" % (s, sect[cell], s, (s + 1) % n))
         if a & 0x7C:
             p.append("waypoint %d attribute $%02X uses bits the game never does" % (s, a))

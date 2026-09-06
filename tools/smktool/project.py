@@ -385,6 +385,14 @@ class Project:
             return
         self.package.line[i] = (x, y, attr)
         self.edits[i] = (x, y, attr)
+        # the cell it moved into belongs to the next sector (the rescue
+        # heading is the field there, and a cell aimed at itself points north)
+        n = len(self.package.line)
+        sect = bytearray(self.package.sect)
+        c = (y // 16) * 64 + x // 16
+        if sect[c] == i or sect[c] == 0x7F:
+            sect[c] = (i + 1) % n
+            self.package.sect = bytes(sect)
 
     def forget_edits(self) -> None:
         self.edits = {}
