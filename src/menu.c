@@ -952,11 +952,24 @@ static void draw_course(const smk_ui *ui, const smk_rom *rom, const smk_font *f,
         snprintf(line, sizeof line, "%d %s", idx + 1, smk_track_name(rom, t));
         text(f, fb, w, h, 96, vy, line, on ? sel : lo);
     }
-    if (custom && ncustom > SMK_CUP_COURSES) {
-        char pg[24];
-        snprintf(pg, sizeof pg, "%d-%d OF %d", page + 1,
-                 page + SMK_CUP_COURSES < ncustom ? page + SMK_CUP_COURSES : ncustom, ncustom);
-        text(f, fb, w, h, 96, 40 + SMK_CUP_COURSES * 16, pg, off);
+    if (custom) {
+        int ly = 40 + SMK_CUP_COURSES * 16;
+        if (ncustom > SMK_CUP_COURSES) {
+            char pg[24];
+            snprintf(pg, sizeof pg, "%d-%d OF %d", page + 1,
+                     page + SMK_CUP_COURSES < ncustom ? page + SMK_CUP_COURSES : ncustom, ncustom);
+            text(f, fb, w, h, 96, ly, pg, off);
+            ly += 12;
+        }
+        /* the creator, from the package's manifest */
+        const smk_course_src *ps = smk_tracks_src(SMK_TRACK_COUNT + ui->course_sel);
+        if (ps && ps->author[0]) {
+            char by[48];
+            snprintf(by, sizeof by, "BY %s", ps->author);
+            for (char *p = by; *p; p++)
+                if (*p >= 'a' && *p <= 'z') *p -= 'a' - 'A';
+            text(f, fb, w, h, 96, ly, by, off);
+        }
     }
 
     /* the top five laps for whatever is highlighted */

@@ -331,6 +331,25 @@ int main(int argc, char **argv)
                      same, tried, smk_tracks_custom(), root ? root : "-");
             check("the package format round-trips every GP course (every used tile, byte-exact)",
                   tried == SMK_GP_TRACKS && same == tried, det);
+            /* the one shareable file: the same course as a stored ZIP,
+             * written by the C writer and read back through the registry */
+            {
+                char zpath[300];
+                snprintf(zpath, sizeof zpath, "%s/rom07.smkt", root ? root : "/tmp");
+                int zi = -1;
+                static smk_course cz;
+                bool ok = smk_src_from_rom(&rom, 7, &src)
+                       && (snprintf(src.author, sizeof src.author, "selftest"), true)
+                       && smk_src_write_smkt(&src, zpath, err, sizeof err)
+                       && (zi = smk_tracks_add_dir(zpath)) >= 0
+                       && smk_course_load(&rom, zi, &cz)
+                       && smk_course_load(&rom, 7, &ca)
+                       && memcmp(&ca, &cz, sizeof ca) == 0
+                       && smk_tracks_src(zi) && !strcmp(smk_tracks_src(zi)->author, "selftest")
+                       && !strcmp(smk_tracks_id(zi), "rom07");
+                snprintf(det, sizeof det, "%s%s", zpath, ok ? "" : smk_tracks_error());
+                check("a .smkt file is the same course as its directory, creator included", ok, det);
+            }
             /* the package names come back through the registry */
             check("a package is named from its manifest",
                   smk_tracks_total() > SMK_TRACK_COUNT

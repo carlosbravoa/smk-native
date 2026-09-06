@@ -241,6 +241,14 @@ def _along_road(roles: list) -> list:
     coordinate."""
     onroad = [r in ("ROAD", "LINE") for r in roles]
     seeds = [i for i, r in enumerate(roles) if r == "LINE"] or [i for i, r in enumerate(roles) if r == "ROAD"][:1]
+    # one way round: the line is a barrier, as in the generator, so the
+    # distance runs from the line all the way round to the row behind it
+    # instead of both ways to the far side
+    ly = seeds[0] // 128
+    lxs = [i % 128 for i in seeds]
+    bx0, bx1 = min(lxs) - 12, max(lxs) + 12
+    def crosses(y0, y1, x0, x1):
+        return ((y0 <= ly < y1) or (y1 <= ly < y0)) and bx0 <= x0 <= bx1 and bx0 <= x1 <= bx1
     d = [-1] * 16384
     q = list(seeds)
     for i in q:
@@ -256,7 +264,7 @@ def _along_road(roles: list) -> list:
                 nx, ny = x + dx, y + dy
                 if 0 <= nx < 128 and 0 <= ny < 128:
                     j = ny * 128 + nx
-                    if onroad[j] and d[j] < 0:
+                    if onroad[j] and d[j] < 0 and not (len(seeds) > 1 and crosses(y, ny, x, nx)):
                         d[j] = d[i] + 1
                         q.append(j)
     return d

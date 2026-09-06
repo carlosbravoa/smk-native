@@ -98,6 +98,7 @@ bool smk_track_load(const smk_rom *rom, int track, int theme,
 typedef struct {
     char     id[32];                  /* "rom07" or the package's slug   */
     char     name[32];                /* the course's displayed name     */
+    char     author[32];              /* who made it (a package's `creator`) */
     int      rom_track;               /* the ROM slot, or -1 for a package */
     int      theme;                   /* 0..7                            */
     uint8_t  map[SMK_MAP_BYTES];      /* tile indices BEFORE stamping    */
@@ -129,8 +130,11 @@ bool smk_src_from_rom(const smk_rom *rom, int track, smk_course_src *out);
 /* the ROM readers the source is assembled from (src/assets.c) */
 bool smk_assets_read_tilemap(const smk_rom *rom, int track, uint8_t *map);
 int  smk_assets_read_stamps(const smk_rom *rom, int track, smk_stamp *out);
-bool smk_src_from_pkg(const char *dir, smk_course_src *out, char *err, size_t errsz);
+/* a package is a directory, or one .smkt file: a ZIP of the same files,
+ * stored uncompressed, that the game reads from any tracks folder */
+bool smk_src_from_pkg(const char *path, smk_course_src *out, char *err, size_t errsz);
 bool smk_src_write_pkg(const smk_course_src *src, const char *dir, char *err, size_t errsz);
+bool smk_src_write_smkt(const smk_course_src *src, const char *file, char *err, size_t errsz);
 /* the build half of the two loaders, shared by the ROM and package paths */
 bool smk_track_build(const smk_rom *rom, const smk_course_src *src, int theme,
                      smk_track *out, char *err, size_t errsz);
@@ -139,8 +143,8 @@ bool smk_track_build(const smk_rom *rom, const smk_course_src *src, int theme,
 #define SMK_TRACKS_MAX 96
 int   smk_tracks_total(void);                 /* 24 + the packages           */
 int   smk_tracks_custom(void);                /* the packages alone          */
-int   smk_tracks_add_dir(const char *dir);    /* register one; index or -1   */
-int   smk_tracks_scan(const char *parent);    /* every <parent>/<x>/course.txt */
+int   smk_tracks_add_dir(const char *dir);    /* register one (a dir or .smkt); index or -1 */
+int   smk_tracks_scan(const char *parent);    /* every <parent>/<x>/course.txt and <parent>/*.smkt */
 void  smk_tracks_scan_default(void);          /* ./tracks, $SMK_TRACKS, XDG  */
 int   smk_tracks_find(const char *id);        /* by slug or path, or -1      */
 const char *smk_tracks_id(int track);         /* "rom07" / the slug          */

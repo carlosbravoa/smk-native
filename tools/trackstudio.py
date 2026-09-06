@@ -76,6 +76,9 @@ class Studio:
         fm.add_command(label="Save", command=self.save, accelerator="Ctrl+S")
         fm.add_command(label="Save as...", command=self.save_as)
         fm.add_separator()
+        fm.add_command(label="Share as one file (.smkt)...", command=self.share)
+        fm.add_command(label="Open a shared file (.smkt)...", command=self.open_smkt)
+        fm.add_separator()
         fm.add_command(label="Export picture (PNG)...", command=self.export_png)
         fm.add_separator()
         fm.add_command(label="Quit", command=self.quit)
@@ -114,6 +117,9 @@ class Studio:
         ttk.Label(left, text="Course", font=("TkDefaultFont", 10, "bold")).pack(anchor="w")
         self.name_var = tk.StringVar(value=self.project.name)
         ttk.Entry(left, textvariable=self.name_var, width=22).pack(anchor="w", pady=(0, 4))
+        ttk.Label(left, text="Creator").pack(anchor="w")
+        self.author_var = tk.StringVar(value=self.project.author)
+        ttk.Entry(left, textvariable=self.author_var, width=22).pack(anchor="w", pady=(0, 4))
         ttk.Label(left, text="Theme (tiles, music, creatures)").pack(anchor="w")
         self.theme_var = tk.StringVar(value=PJ.THEME_NAMES[self.project.theme])
         cb = ttk.Combobox(left, textvariable=self.theme_var, values=PJ.THEME_NAMES, state="readonly", width=20)
@@ -145,6 +151,7 @@ class Studio:
             tk.Label(fr, width=2, bg=hexrgb(PJ.MARKER_RGB[fam])).pack(side="left", padx=(0, 4))
             ttk.Radiobutton(fr, text=label, variable=self.tool, value="M:" + fam).pack(side="left")
         ttk.Label(left, text="right click removes an object", foreground="#666").pack(anchor="w")
+        ttk.Button(left, text="Scatter coins...", command=self.scatter_coins).pack(anchor="w", pady=(4, 0))
         ttk.Label(left, text="Tune", font=("TkDefaultFont", 10, "bold")).pack(anchor="w", pady=(6, 0))
         ttk.Radiobutton(left, text="Waypoints (drag; keys 0-3 set the AI speed row)", variable=self.tool, value="WP").pack(anchor="w")
 
@@ -191,6 +198,8 @@ class Studio:
         self.b_play.pack(side="left", fill="x", expand=True, padx=(0, 2), pady=2)
         self.b_tt = ttk.Button(row, text="Time trial", command=lambda: self.play(True))
         self.b_tt.pack(side="left", fill="x", expand=True, padx=(2, 0), pady=2)
+        self.b_share = ttk.Button(right, text="Share as one file (.smkt)", command=self.share)
+        self.b_share.pack(fill="x", pady=(6, 2))
         self.progress = ttk.Label(right, text="", foreground="#246")
         self.progress.pack(anchor="w", pady=(4, 2))
         ttk.Label(right, text="Results", font=("TkDefaultFont", 10, "bold")).pack(anchor="w")
@@ -206,6 +215,7 @@ class Studio:
         self.results.tag_config("note", foreground="#555")
         self.results.tag_config("head", font=("TkDefaultFont", 10, "bold"))
         self.results.tag_config("hint", foreground="#136", lmargin1=12, lmargin2=12)
+        self.results.tag_config("warn", foreground="#a60")
         self.status = ttk.Label(r, text="", anchor="w", relief="sunken")
         self.status.pack(side="bottom", fill="x")
 
@@ -221,11 +231,13 @@ class Studio:
         pr = self.project
         lines = []
         if pr.package:
-            lines.append(("Built: %d sectors, %d waypoints, %d objects, %d obstacles" % (
-                pr.package.sectors, pr.package.sectors, len(pr.package.stamps), len(pr.package.ents)), "head"))
+            lines.append(("Built: %s%s - %d sectors, %d objects, %d obstacles" % (
+                pr.name, (" by " + pr.author) if pr.author else "", pr.package.sectors, len(pr.package.stamps), len(pr.package.ents)), "head"))
             lines.append(("finish strip at cells %s, grid at %s" % (pr.package.finish[:2], pr.package.grid[:2]), "note"))
         for n in pr.notes:
             lines.append(("note: " + n, "note"))
+        for wn in pr.warnings():
+            lines.append(("worth fixing: " + wn, "warn"))
         if pr.problems:
             lines.append(("%d problem(s) the game would notice:" % len(pr.problems), "bad"))
             for p in pr.problems:
@@ -577,6 +589,19 @@ class Studio:
         self.draw_overlays()
         self.status.configure(text="waypoint %d: AI speed row %d (0 slow .. 3 fast)" % (self.selected_wp, row))
 
+    def scatter_coins(self):
+        from tkinter import simpledialog
+        n = simpledialog.askinteger("Coins", "How many coins?  They go down in small groups round the lap,\n"
+                                    "clear of the start and of the objects already placed.", initialvalue=30, minvalue=1, maxvalue=120,
+                                    parent=self.root)
+        if not n:
+            return
+        self.snapshot(); self.touched()
+        placed, notes = self.project.scatter_coins(n, seed=len(self.project.markers))
+        self.redraw(full=True)
+        self.say([("%d coins laid." % placed, "good" if placed else "bad")] + [(q, "note") for q in notes]
+                 + [("Build and validate to compile them; right click removes any you do not want.", "note")])
+
     def forget_edits(self):
         pr = self.project
         pr.forget_edits()
@@ -595,12 +620,14 @@ class Studio:
     def pull_keys(self):
         pr = self.project
         pr.name = self.name_var.get().strip() or pr.name
+        pr.author = self.author_var.get().strip()
         pr.theme = PJ.THEME_NAMES.index(self.theme_var.get())
         pr.items = int(self.items_var.get())
 
     def push_keys(self):
         pr = self.project
         self.name_var.set(pr.name)
+        self.author_var.set(pr.author)
         self.theme_var.set(PJ.THEME_NAMES[pr.theme])
         self.items_var.set(pr.items)
 
@@ -744,6 +771,53 @@ class Studio:
         self.save()
         if self.project.package:
             self.project.save_line()
+
+    def share(self):
+        """One file with everything: drop it in any tracks folder."""
+        pr = self.project
+        self.pull_keys()
+        if not pr.package or self.dirty_since_build:
+            self.say([("Build and validate first: the shared file holds the built course.", "bad")])
+            return
+        if pr.problems and not messagebox.askyesno("Problems", "The validator reports %d problem(s).  Share it anyway?" % len(pr.problems)):
+            return
+        if not pr.author:
+            self.say([("Put your name in Creator first - it travels with the file.", "bad")])
+            return
+        self.save()
+        slug = os.path.basename(os.path.normpath(pr.dir))
+        path = filedialog.asksaveasfilename(title="Share the course as one file", defaultextension=".smkt",
+                                            initialdir=os.path.join(PJ.ROOT, "tracks"), initialfile=slug + ".smkt",
+                                            filetypes=[("SMK course", "*.smkt")])
+        if not path:
+            return
+        try:
+            done = pr.pack(path)
+        except Exception as e:
+            messagebox.showerror("Cannot share", str(e))
+            return
+        self.say([("Shared: %s" % path, "good"),
+                  ("%s by %s, %d files inside.  Anyone with the port drops it into their tracks folder "
+                   "and it appears under CUSTOM; the editor opens it with File > Open a shared file." % (pr.name, pr.author, len(done)), "note")])
+
+    def open_smkt(self):
+        if not self.confirm_discard():
+            return
+        path = filedialog.askopenfilename(title="Open a shared course", initialdir=os.path.join(PJ.ROOT, "tracks"),
+                                          filetypes=[("SMK course", "*.smkt"), ("all files", "*")])
+        if not path:
+            return
+        slug = os.path.splitext(os.path.basename(path))[0]
+        into = os.path.join(PJ.ROOT, "tracks", slug)
+        if os.path.exists(os.path.join(into, "course.txt")) and not messagebox.askyesno(
+                "Replace", "%s already exists as a package directory.  Replace it with the file's contents?" % into):
+            return
+        try:
+            self.project = PJ.Project.load_smkt(path, into)
+        except Exception as e:
+            messagebox.showerror("Cannot open", "%s: %s" % (path, e))
+            return
+        self.open_dir(into)
 
     def export_png(self):
         p = filedialog.asksaveasfilename(title="Export the picture", defaultextension=".png",

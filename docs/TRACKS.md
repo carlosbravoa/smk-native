@@ -141,6 +141,15 @@ tracks/<slug>/
     surface.bin     192 bytes, one class per tile
 ```
 
+**The one shareable file.**  `<slug>.smkt` is the same package as a ZIP
+with every entry stored (no compression, so the game reads it with
+sixty lines of C and no library; the editor and `trackgen.py pack`
+write it with Python's `zipfile`).  Its members are the files above,
+`roles.txt` included so the editor can reopen it.  The game's tracks
+folders take directories and `.smkt` files alike; the file's name
+without the extension is the course's id.  `course.txt` carries a
+`creator` line, shown on the course screen as BY <creator>.
+
 `course.txt` is `key value` lines, `#` comments - the convention
 `rom/music/map.txt` and `laptimes.txt` already use, so the port needs no
 parser it does not have:
@@ -148,6 +157,7 @@ parser it does not have:
 ```
 format   1
 name     CHEESE LAND
+creator  Carlos          # who made it; travels with the file
 theme    1               # 0..7: the ROM theme whose tiles, palette,
                          # classes, horizon, creature and music this uses
 style    style/          # optional, overrides tiles/palette/surface

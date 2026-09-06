@@ -12,6 +12,9 @@
   trackgen.py export N DIR       a ROM course as a package, as is
   trackgen.py from-rom N DIR     a ROM course's map with GENERATED course
                                  data - the generator's benchmark input
+  trackgen.py coins DIR N        lay about N coins in small groups round the lap
+  trackgen.py pack DIR [FILE]    the package as one shareable .smkt file
+  trackgen.py unpack FILE DIR    a .smkt back into a package directory
 
 roles.txt is 128 lines of 128 characters (lines starting with ';' are comments):
     =  road          .  off-road (grass, dirt, sand, ice - the theme's)
@@ -233,6 +236,27 @@ def cmd_render(a):
     print("wrote", path)
 
 
+def cmd_coins(a):
+    from smktool.project import Project
+    pr = Project.load(a.dir)
+    n, notes = pr.scatter_coins(a.count, a.seed)
+    pr.save_roles(a.dir)
+    for q in notes:
+        print(" ", q)
+    print("%d coins laid on %s; run build to compile them" % (n, a.dir))
+
+
+def cmd_pack(a):
+    out = a.file or os.path.join(os.path.dirname(os.path.normpath(a.dir)), os.path.basename(os.path.normpath(a.dir)) + ".smkt")
+    done = P.pack(a.dir, out)
+    print("wrote %s (%s)" % (out, ", ".join(done)))
+
+
+def cmd_unpack(a):
+    done = P.unpack(a.file, a.dir)
+    print("unpacked %s into %s (%s)" % (a.file, a.dir, ", ".join(done)))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -242,6 +266,9 @@ def main():
     s = sub.add_parser("lint"); s.add_argument("dir"); s.set_defaults(fn=cmd_lint)
     s = sub.add_parser("render"); s.add_argument("dir"); s.add_argument("png", nargs="?"); s.set_defaults(fn=cmd_render)
     s = sub.add_parser("export"); s.add_argument("track", type=int); s.add_argument("dir"); s.add_argument("--name"); s.set_defaults(fn=cmd_export)
+    s = sub.add_parser("coins"); s.add_argument("dir"); s.add_argument("count", type=int); s.add_argument("--seed", type=int, default=0); s.set_defaults(fn=cmd_coins)
+    s = sub.add_parser("pack"); s.add_argument("dir"); s.add_argument("file", nargs="?"); s.set_defaults(fn=cmd_pack)
+    s = sub.add_parser("unpack"); s.add_argument("file"); s.add_argument("dir"); s.set_defaults(fn=cmd_unpack)
     s = sub.add_parser("from-rom"); s.add_argument("track", type=int); s.add_argument("dir"); s.add_argument("--name"); s.set_defaults(fn=cmd_from_rom)
     a = ap.parse_args()
     sys.exit(a.fn(a) or 0)

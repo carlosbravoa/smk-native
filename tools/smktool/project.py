@@ -8,7 +8,7 @@ lints, and writes the package the game loads.  Nothing here opens a
 window and nothing here needs more than the standard library.
 """
 from __future__ import annotations
-import os, struct, subprocess, zlib
+import collections, os, struct, subprocess, zlib
 from .rom import Rom
 from . import course as C, mode7 as M, surface as S, tilecat as T, coursegen as G, pkg as P
 from .compress import decompress
@@ -222,7 +222,7 @@ def start_preview(roles: list, markers: list = (), automatic: bool = True):
 # ---- the build ---------------------------------------------------------------
 
 def read_manifest_keys(d: str) -> dict:
-    keys = {"name": os.path.basename(os.path.normpath(d)).upper(), "theme": None, "items": 1, "music": ""}
+    keys = {"name": os.path.basename(os.path.normpath(d)).upper(), "theme": None, "items": 1, "music": "", "creator": ""}
     path = os.path.join(d, "course.txt")
     if os.path.exists(path):
         for raw in open(path):
@@ -231,7 +231,7 @@ def read_manifest_keys(d: str) -> dict:
                 continue
             k, _, v = line.partition(" ")
             v = v.strip()
-            if k in ("name", "music"):
+            if k in ("name", "music", "creator"):
                 keys[k] = v
             elif k in ("theme", "items"):
                 keys[k] = int(v)
@@ -298,6 +298,7 @@ def gen_course(rom: Rom, cat: T.Catalogue, tm: bytes, stamps: list, ents: list, 
 def make_package(keys: dict, tm: bytes, stamps: list, ents: list, crs: G.Course) -> P.Package:
     p = P.Package()
     p.name = keys["name"]; p.theme = keys["theme"]; p.items = keys["items"]; p.music = keys.get("music", "")
+    p.author = keys.get("creator", "")
     p.map = tm
     p.stamps = stamps
     order = getattr(crs, "ent_order", list(range(len(ents))))
@@ -323,6 +324,7 @@ class Project:
     def __init__(self):
         self.dir = ""
         self.name = "MY COURSE"
+        self.author = ""
         self.theme = 1
         self.items = 1
         self.music = ""
@@ -354,7 +356,7 @@ class Project:
         pr.dir = d
         keys = read_manifest_keys(d)
         pr.name = keys["name"]; pr.theme = keys["theme"] if keys["theme"] is not None else 1
-        pr.items = keys["items"]; pr.music = keys["music"]
+        pr.items = keys["items"]; pr.music = keys["music"]; pr.author = keys.get("creator", "")
         rp = os.path.join(d, "roles.txt")
         if os.path.exists(rp):
             pr.roles, pr.markers = parse_roles(open(rp).read())
@@ -398,7 +400,19 @@ class Project:
         self.edits = {}
 
     def keys(self) -> dict:
-        return {"name": self.name, "theme": self.theme, "items": self.items, "music": self.music}
+        return {"name": self.name, "theme": self.theme, "items": self.items, "music": self.music, "creator": self.author}
+
+    def pack(self, file: str) -> list[str]:
+        """The built package as one shareable .smkt file."""
+        if not self.dir or not self.package:
+            raise RuntimeError("build the course first")
+        return P.pack(self.dir, file)
+
+    @classmethod
+    def load_smkt(cls, file: str, into: str) -> "Project":
+        """Open a shared file: unpacked into a package directory, then loaded."""
+        P.unpack(file, into)
+        return cls.load(into)
 
     def save_roles(self, d: str) -> None:
         os.makedirs(d, exist_ok=True)
@@ -407,8 +421,8 @@ class Project:
         cp = os.path.join(d, "course.txt")
         if not os.path.exists(cp):
             with open(cp, "w") as f:
-                f.write("# smk-port course package (docs/TRACKS.md)\nformat   1\nname     %s\ntheme    %d\nitems    %d\n"
-                        % (self.name, self.theme, self.items))
+                f.write("# smk-port course package (docs/TRACKS.md)\nformat   1\nname     %s\ncreator  %s\ntheme    %d\nitems    %d\n"
+                        % (self.name, self.author, self.theme, self.items))
         self.dir = d
 
     # -- the build --
@@ -503,6 +517,121 @@ class Project:
             self.auto_lined = False
         self.full = full
         return True
+
+    # -- what a course should have, beyond what the game needs --
+    def warnings(self) -> list[str]:
+        """Not errors: things a player would miss."""
+        w = []
+        fams = collections.Counter(f for f, _, _ in self.markers)
+        if not fams["box"]:
+            w.append("no item boxes: nobody gets an item all race")
+        if not fams["coin"] and not fams["coins"]:
+            w.append("no coins on the road: nothing to collect, and top speed stays at the starting coins")
+        elif fams["coin"] + 3 * fams["coins"] < 10:
+            w.append("only about %d coins on the road; the originals carry 30 to 60" % (fams["coin"] + 3 * fams["coins"]))
+        if not fams["entity"] and self.theme != 0:
+            w.append("no obstacles: the theme's %s never appear" % ("pipes" if self.theme in (1, 4) else "moles" if self.theme == 2
+                     else "piranha plants" if self.theme == 3 else "cheep-cheeps" if self.theme == 5 else "Thwomps"))
+        return w
+
+    def scatter_coins(self, n: int, seed: int = 0) -> tuple[int, list[str]]:
+        """Lay about n coins along the road in small groups, evenly spaced
+        round the lap, off the start straight and clear of other objects.
+        A group is one coin-scatter stamp (three coins, one object slot),
+        singles top the count up.  Returns (coins placed, notes)."""
+        import random
+        from . import tilecat as T
+        rnd = random.Random(seed)
+        notes = []
+        along = T._along_road(self.roles)
+        road_tiles = [i for i in range(16384) if self.roles[i] == "ROAD" and along[i] >= 0]
+        if len(road_tiles) < 50:
+            return 0, ["no road to lay coins on"]
+        lap = max(along[i] for i in road_tiles) + 1
+        taken = [False] * 16384
+        for fam, x, y in self.markers:
+            w, h = FOOTPRINT[fam]
+            for dy in range(-1, h + 1):
+                for dx in range(-1, w + 1):
+                    if 0 <= x + dx < 128 and 0 <= y + dy < 128:
+                        taken[(y + dy) * 128 + x + dx] = True
+        # off the start: the grid and the first stretch after the line
+        for i in road_tiles:
+            if along[i] < 12 or along[i] > lap - 30:
+                taken[i] = True
+        stamps_now = sum(1 for f, _, _ in self.markers if f != "entity")
+        room = 42 - stamps_now
+        if room <= 0:
+            return 0, ["the 42-object limit is used up: remove some objects first"]
+        groups = min(room, max(1, (n + 2) // 3))
+        singles = max(0, n - groups * 3) if room > groups else 0
+        singles = min(singles, room - groups)
+        # the road's centre: the tile furthest from anything not road, per arc
+        by_arc = collections.defaultdict(list)
+        for i in road_tiles:
+            by_arc[along[i]].append(i)
+        def edge_dist(i):
+            x, y = i % 128, i // 128
+            for r in (1, 2, 3, 4):
+                for yy in range(y - r, y + r + 1):
+                    for xx in range(x - r, x + r + 1):
+                        if not (0 <= xx < 128 and 0 <= yy < 128) or self.roles[yy * 128 + xx] not in ("ROAD", "LINE"):
+                            return r - 1
+            return 4
+        def fits(x, y, w, h):
+            if x < 0 or y < 0 or x + w > 128 or y + h > 128:
+                return False
+            for dy in range(h):
+                for dx in range(w):
+                    j = (y + dy) * 128 + x + dx
+                    if self.roles[j] != "ROAD" or taken[j]:
+                        return False
+            return True
+        placed_coins = 0
+        placed = []
+        span = lap - 42
+        starts = [12 + int(span * (k + rnd.random() * 0.4) / groups) for k in range(groups)]
+        for k, a0 in enumerate(starts):
+            done = False
+            for da in range(0, 25):
+                a = a0 + (da if da % 2 == 0 else -da) // 1
+                cands = sorted(by_arc.get(a, []), key=lambda i: -edge_dist(i))
+                for i in cands[:6]:
+                    x, y = i % 128 - 2, i // 128 - 2
+                    if fits(x, y, 5, 5):
+                        placed.append(("coins", x, y)); placed_coins += 3
+                        for dy in range(-1, 6):
+                            for dx in range(-1, 6):
+                                if 0 <= x + dx < 128 and 0 <= y + dy < 128:
+                                    taken[(y + dy) * 128 + x + dx] = True
+                        done = True
+                        break
+                if done:
+                    break
+        for k in range(singles):
+            a0 = 12 + int(span * (k + 0.5) / max(1, singles))
+            for da in range(0, 25):
+                a = a0 + (da if da % 2 == 0 else -da)
+                cands = sorted(by_arc.get(a, []), key=lambda i: -edge_dist(i))
+                hit = False
+                for i in cands[:6]:
+                    x, y = i % 128 - 1, i // 128
+                    if fits(x, y, 3, 1):
+                        placed.append(("coin", x, y)); placed_coins += 1
+                        for dx in range(-1, 4):
+                            if 0 <= x + dx < 128:
+                                taken[y * 128 + x + dx] = True
+                        hit = True
+                        break
+                if hit:
+                    break
+        self.markers.extend(placed)
+        if placed_coins < n:
+            notes.append("asked for %d coins, room for %d (the 42-object limit, or the road too narrow for a group)"
+                         % (n, placed_coins))
+        else:
+            notes.append("%d coins in %d groups, spread round the lap" % (placed_coins, len(placed)))
+        return placed_coins, notes
 
     def save_line(self) -> None:
         """Write back an edited racing line (the editor moves waypoints)."""

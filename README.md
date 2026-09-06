@@ -159,7 +159,15 @@ The same pipeline from the command line is `tools/trackgen.py`
     python3 tools/trackgen.py render tracks/mine    # a picture of what you made
     make trackcheck TRACK=tracks/mine               # the field must lap it, on the road
 
-Every package under `tracks/`, `~/.local/share/smk-port/tracks/` or a
+*Share as one file* writes the course as a single `.smkt` (a plain ZIP of
+the package, stored uncompressed) with its name and creator inside; drop
+it into any tracks folder and the game lists it, the course screen shows
+who made it, and the editor opens it with *File > Open a shared file*.
+*Scatter coins...* lays a chosen number of coins in small groups round the
+lap, and the results panel says when a course has no coins, boxes or
+obstacles.
+
+Every package or `.smkt` under `tracks/`, `~/.local/share/smk-port/tracks/` or a
 `--track-dir` shows up in a fifth column of the course screen, CUSTOM,
 for single races, VS and time trials (a Grand Prix stays on the ROM's
 four cups).  `--track tracks/mine` drives one directly, and its best laps

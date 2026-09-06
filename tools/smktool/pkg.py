@@ -19,6 +19,7 @@ SEG_OFF_DEFAULT = (0, 8, 16, 24, 0, 0, 0, 0)
 class Package:
     id: str = ""
     name: str = ""
+    author: str = ""
     theme: int = 0
     rom_track: int = -1
     map: bytes = b""                       # 16384 tile indices, before stamping
@@ -88,6 +89,8 @@ def write(p: Package, d: str) -> None:
         f.write("# smk-port course package (docs/TRACKS.md)\n")
         f.write("format   1\n")
         f.write("name     %s\n" % (p.name or p.id.upper()))
+        if p.author:
+            f.write("creator  %s\n" % p.author)
         f.write("theme    %d\n" % p.theme)
         if p.music:
             f.write("music    %s\n" % p.music)
@@ -143,6 +146,8 @@ def read(d: str) -> Package:
                     raise ValueError("%s:%d: format %s" % (path, ln, v))
             elif key == "name":
                 p.name = v
+            elif key == "creator":
+                p.author = v
             elif key == "theme":
                 p.theme = int(v)
             elif key == "music":
@@ -180,3 +185,39 @@ def read(d: str) -> Package:
         sd = os.path.join(d, "style")
         p.style = {k: open(os.path.join(sd, k + ".bin"), "rb").read() for k in ("tiles", "palette", "surface")}
     return p
+
+
+# ---- the one shareable file: a ZIP of the package, entries stored -----------
+
+SMKT_MEMBERS = ("course.txt", "map.bin", "sectors.bin", "line.txt", "roles.txt",
+                "style/tiles.bin", "style/palette.bin", "style/surface.bin")
+
+
+def pack(d: str, file: str) -> list[str]:
+    """Write the package directory as one .smkt (stored, so the game reads
+    it without a ZIP library).  Returns the members written."""
+    import zipfile
+    done = []
+    with zipfile.ZipFile(file, "w", compression=zipfile.ZIP_STORED) as z:
+        for m in SMKT_MEMBERS:
+            path = os.path.join(d, m)
+            if os.path.exists(path):
+                z.write(path, m)
+                done.append(m)
+    return done
+
+
+def unpack(file: str, d: str) -> list[str]:
+    """Extract a .smkt into a package directory (only the known members)."""
+    import zipfile
+    os.makedirs(d, exist_ok=True)
+    done = []
+    with zipfile.ZipFile(file) as z:
+        for m in z.namelist():
+            if m in SMKT_MEMBERS:
+                target = os.path.join(d, m)
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                with open(target, "wb") as f:
+                    f.write(z.read(m))
+                done.append(m)
+    return done
