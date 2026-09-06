@@ -1229,10 +1229,10 @@ state machines resolve by code order (last write wins), and that decides
 observable behaviour.
 
 **R6 — 2P/battle mode assumptions.**
-Battle courses (tracks 20–23) and split-screen touch everything (two
-cameras, different HUD, different physics tuning?). Defer consistently:
-decode single-player first, but when choosing data structures, never assume
-"there is exactly one kart/camera".
+Split-screen landed (S42, side by side).  **Battle Mode is out of scope for
+good** (the user, 2026-09-06): the four arenas (tracks 20–23) stay readable
+by the loader but there is no mode, no balloons and no arena AI, and the
+course cycling, `--track` and `make shots` stop at the 20 GP courses.
 
 **R7 — Versions.**
 Everything is pinned to the USA revision (sha1 `47e103d8…`). Addresses in
