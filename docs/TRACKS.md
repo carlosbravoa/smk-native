@@ -828,8 +828,14 @@ there:
   is drawn behind it as soon as it exists; a road that does not loop is
   marked where it ends.  A built course's
   waypoints can be dragged and their speed row set with the keys 0 to
-  3, the lint re-running as they move.  The panes resize.  Nothing in
-  it is ROM data: the pictures are drawn from the ROM at run time.
+  3, the lint re-running as they move.  The panes resize.  A theme
+  that lacks a role compiles it as the nearest one it has and says so
+  on the tool and in the notes (`tilecat.effective_roles`: Rainbow
+  Road has road and void only, so its off-road, walls and water are
+  void; most themes have no breakable block, so it is a wall) - before
+  that, Rainbow Road's painted grass became road and the whole map was
+  road.  Nothing in it is ROM data: the pictures are drawn from the ROM
+  at run time.
 
 ### The benchmark (7.3), on the last run
 

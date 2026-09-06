@@ -257,8 +257,8 @@ def stamped(rom: Rom, tm: bytes, stamps: list) -> bytes:
 
 
 def build_map(rom: Rom, cat: T.Catalogue, roles: list, markers: list):
-    """roles + markers -> (tilemap, stamps, entities, problems)."""
-    tm, problems = T.compile_roles(cat, roles)
+    """roles + markers -> (tilemap, stamps, entities, problems, notes)."""
+    tm, problems, notes = T.compile_roles(cat, roles)
     used = T.rom_stamp_usage(rom)
     kinds = {fam: T.stamp_for(cat.stamps, fam, used) for fam in ("box", "coins", "oil", "pad", "ramp")}
     ramps = [k for k, v in cat.stamps.items() if v[0] == "ramp"]
@@ -285,7 +285,7 @@ def build_map(rom: Rom, cat: T.Catalogue, roles: list, markers: list):
             problems.append("more than 42 stamps: %s at %d,%d dropped" % (fam, x, y))
             continue
         stamps.append((k, x, y))
-    return tm, stamps, ents, problems
+    return tm, stamps, ents, problems, notes
 
 
 def gen_course(rom: Rom, cat: T.Catalogue, tm: bytes, stamps: list, ents: list, line_cells=None):
@@ -397,7 +397,7 @@ class Project:
         say("reading the theme's catalogue")
         cat = catalogue(self.theme)
         say("compiling the tiles")
-        tm, stamps, ents, problems = build_map(rom, cat, self.roles, self.markers)
+        tm, stamps, ents, problems, notes = build_map(rom, cat, self.roles, self.markers)
         line_cells = [i for i, r in enumerate(self.roles) if r == "LINE"]
         if not line_cells:
             if automatic_line and apply_auto_line(self.roles, self.markers):
@@ -409,7 +409,7 @@ class Project:
                                  ("no start line, and no straight of road long enough for one: the karts "
                                   "need about 30 tiles of road running north behind the line - draw the "
                                   "straight, or click the line where you want it")] + problems
-                self.notes = []
+                self.notes = notes
                 self.package = None
                 self.full = stamped(rom, tm, stamps)
                 self.save_roles(d)
@@ -419,7 +419,7 @@ class Project:
             crs, full = gen_course(rom, cat, tm, stamps, ents, line_cells)
         except G.GenError as e:
             self.problems = ["cannot generate the course: %s" % e] + problems
-            self.notes = []
+            self.notes = notes
             self.package = None
             self.full = stamped(rom, tm, stamps)
             self.save_roles(d)
@@ -432,15 +432,16 @@ class Project:
         problems += G.lint(full, cat.cls, self.package.sect, self.package.line,
                            self.package.finish, self.package.grid, self.package.ents)
         cm = [cat.cls[t] for t in tm]
+        eff = T.effective_roles(cat)
         wrong = 0
         for i, r in enumerate(self.roles):
-            rr = "ROAD" if r == "LINE" else r
+            rr = "ROAD" if r == "LINE" else eff.get(r, r)
             if rr in T.ROLES and not T.ROLES[rr](cm[i]):
                 wrong += 1
         if wrong:
             problems.append("%d cells compiled to a class outside their role" % wrong)
         self.problems = problems
-        self.notes = list(crs.notes)
+        self.notes = notes + list(crs.notes)
         if getattr(self, "auto_lined", False):
             self.notes.insert(0, "the start line was placed for you, across the longest straight running "
                                  "north; the Start line tool moves it")

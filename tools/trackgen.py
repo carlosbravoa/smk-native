@@ -92,9 +92,11 @@ def cmd_build(a):
             print("  the start line was placed across the longest straight running north")
         else:
             sys.exit("no start line, and no straight of road long enough for one (about 30 tiles running north)")
-    tm, stamps, ents, bprob = build_map(rom, cat, roles, markers)
+    tm, stamps, ents, bprob, bnotes = build_map(rom, cat, roles, markers)
     for q in bprob:
         print("  !", q)
+    for q in bnotes:
+        print("  note:", q)
     try:
         crs, full = gen_course(rom, cat, tm, stamps, ents, line_cells)
     except G.GenError as e:

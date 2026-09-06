@@ -60,6 +60,7 @@ class Studio:
             self.open_dir(path)
         else:
             self.project = PJ.Project.new("MY COURSE", 1, with_line=False)
+            self.label_roles()
             self.redraw(full=True)
             self.ask_for_line()
         root.after(100, self._poll)
@@ -122,10 +123,13 @@ class Studio:
         ttk.Spinbox(f, from_=0, to=7, textvariable=self.items_var, width=3).pack(side="left", padx=4)
 
         ttk.Label(left, text="Paint", font=("TkDefaultFont", 10, "bold")).pack(anchor="w", pady=(6, 0))
+        self.role_buttons = {}
         for label, role in ROLE_TOOLS:
             fr = ttk.Frame(left); fr.pack(anchor="w")
             sw = tk.Label(fr, width=2, bg=hexrgb(PJ.ROLE_RGB[role])); sw.pack(side="left", padx=(0, 4))
-            ttk.Radiobutton(fr, text=label, variable=self.tool, value=role).pack(side="left")
+            rb = ttk.Radiobutton(fr, text=label, variable=self.tool, value=role)
+            rb.pack(side="left")
+            self.role_buttons[role] = (rb, label)
         fr = ttk.Frame(left); fr.pack(anchor="w")
         tk.Label(fr, width=2, bg=hexrgb(PJ.ROLE_RGB["LINE"])).pack(side="left", padx=(0, 4))
         ttk.Radiobutton(fr, text="Start line (click the road)", variable=self.tool, value="LINE").pack(side="left")
@@ -228,6 +232,10 @@ class Studio:
                     lines.append(("  The road from the start line does not get back round to it: it is blocked, or it "
                                   "does not join up.  The red ring on the map is as far as it goes - look for a wall "
                                   "across the road there, or a gap, and paint road through.", "hint"))
+                elif "grid slot" in p and "not on driveable ground" in p:
+                    lines.append(("  The eight karts stand in two columns behind the line, 24 px a row, so the "
+                                  "line needs about 27 tiles of road or ground straight behind it.  Move the line "
+                                  "further up the straight, or make the straight longer.", "hint"))
                 elif "no start line" in p:
                     lines.append(("  Draw a straight of road running towards the top of the map, about 30 tiles long "
                                   "and at least 5 wide, or pick the Start line tool and click the road.", "hint"))
@@ -591,7 +599,22 @@ class Studio:
         self.touched()
         if self.view.get() == "tiles":
             self.view.set("roles")
+        self.label_roles()
         self.redraw(full=True)
+
+    def label_roles(self):
+        """A theme without grass or walls says so on the tools: Rainbow Road's
+        off-road is the void, Ghost Valley's walls are its rails."""
+        from smktool import tilecat as T
+        try:
+            eff = T.effective_roles(PJ.catalogue(self.project.theme))
+        except Exception:
+            return
+        for role, (rb, label) in self.role_buttons.items():
+            if eff.get(role, role) != role:
+                rb.configure(text="%s  (= %s here)" % (label, T.ROLE_WORDS[eff[role]]))
+            else:
+                rb.configure(text=label)
 
     def default_dir(self):
         slug = "".join(ch if ch.isalnum() else "-" for ch in self.project.name.lower()).strip("-") or "course"
@@ -609,9 +632,12 @@ class Studio:
         self.line_manual = False
         self.stall = None
         self.push_keys()
+        self.label_roles()
         self.undo_stack.clear(); self.redo_stack.clear()
         self.unsaved = True; self.dirty_since_build = True
         self.selected_wp = -1
+        self.blocked = None
+        self.view.set("roles")
         self.redraw(full=True)
         self.ask_for_line()
 
@@ -622,8 +648,12 @@ class Studio:
         pr = self.project
         pr.roles, pr.markers = PJ.parse_roles("\n".join(PJ.template_roles() if oval else PJ.blank_roles()))
         pr.roles = ["ROAD" if r == "LINE" else r for r in pr.roles]
+        # the previous course's build is gone with it
+        pr.package = None; pr.full = None; pr.problems = []; pr.notes = []
         self.line_manual = False
-        self.stall = None
+        self.stall = None; self.blocked = None
+        self.selected_wp = -1
+        self.view.set("roles")
         self.touched()
         self.redraw(full=True)
         self.ask_for_line()
@@ -647,6 +677,7 @@ class Studio:
             messagebox.showerror("Cannot open", "%s: %s" % (d, e))
             return
         self.push_keys()
+        self.label_roles()
         self.undo_stack.clear(); self.redo_stack.clear()
         self.unsaved = False
         self.line_manual = any(r == "LINE" for r in self.project.roles)

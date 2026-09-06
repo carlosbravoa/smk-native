@@ -157,14 +157,44 @@ def rom_stamp_usage(rom: Rom) -> collections.Counter:
     return used
 
 
-def compile_roles(cat: Catalogue, roles: list[str]) -> tuple[bytearray, list[str]]:
-    """roles: 16384 role names, row-major.  Returns the tilemap and a list
-    of problems (a role the theme cannot express)."""
-    problems = []
-    cand = {r: cat.tiles_of_role(r) for r in ROLES}
+# what a theme uses for a role it does not have: Rainbow Road's off-road
+# is the void, Ghost Valley's walls are its rails, and so on down the list
+SUBSTITUTES = {
+    "OFF":    ("HAZARD", "WATER", "ROAD"),
+    "WALL":   ("BLOCK", "HAZARD", "WATER"),
+    "BLOCK":  ("WALL", "HAZARD", "WATER"),
+    "WATER":  ("HAZARD", "OFF"),
+    "HAZARD": ("WATER", "WALL", "OFF"),
+}
+ROLE_WORDS = {"ROAD": "road", "OFF": "off-road", "WALL": "wall", "BLOCK": "breakable block",
+              "WATER": "shallow water", "HAZARD": "void, lava or deep water"}
+
+
+def effective_roles(cat: Catalogue) -> dict:
+    """role -> the role this theme compiles it as (itself when it has it)."""
+    have = {r for r in ROLES if cat.tiles_of_role(r)}
+    out = {}
     for r in ROLES:
-        if not cand[r] and r in roles:
-            problems.append("the theme has no %s tiles" % r)
+        if r in have:
+            out[r] = r
+            continue
+        out[r] = next((sub for sub in SUBSTITUTES.get(r, ()) if sub in have), "ROAD")
+    return out
+
+
+def compile_roles(cat: Catalogue, roles: list[str]) -> tuple[bytearray, list[str], list[str]]:
+    """roles: 16384 role names, row-major.  Returns the tilemap, a list of
+    problems, and notes (a role the theme cannot express, and what it
+    became)."""
+    problems, notes = [], []
+    eff = effective_roles(cat)
+    used = set(roles)
+    for r in ROLES:
+        if eff[r] != r and r in used:
+            notes.append("this theme has no %s: what you painted as %s is %s here"
+                         % (ROLE_WORDS[r], ROLE_WORDS[r], ROLE_WORDS[eff[r]]))
+    roles = [eff.get(r, r) if r != "LINE" else r for r in roles]
+    cand = {r: cat.tiles_of_role(r) for r in ROLES}
     tm = bytearray(16384)
     # neighbour compatibility by class family, for the cells not placed yet
     fam_tiles = {r: set(cand[r]) for r in ROLES}
@@ -207,4 +237,4 @@ def compile_roles(cat: Catalogue, roles: list[str]) -> tuple[bytearray, list[str
                     k += 1
                 else:
                     k = 0
-    return tm, problems
+    return tm, problems, notes
