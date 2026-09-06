@@ -120,6 +120,91 @@ def blank_roles() -> list[str]:
     return ["".join(r) for r in g]
 
 
+# ---- the start line, chosen for the author ------------------------------------
+
+GRID_TILES = 27     # rows of ground the eight karts need behind the line (40 px + 7 x 24 px)
+
+
+def auto_line(roles: list, markers: list = ()) -> list[int] | None:
+    """Where the start line goes if nobody drew one: across the longest
+    stretch of road running north, at a third of the way up it, so the
+    grid (eight rows, 24 px apart, 40 px behind the line) sits on the
+    straight and the karts drive up the rest of it.  None if no straight
+    is long enough."""
+    road = [r in ("ROAD", "LINE") for r in roles]
+    # the karts behind the line may stand on grass (the lint allows it, the
+    # ROM's grids do it); the road ahead must be road
+    ground = [r in ("ROAD", "LINE", "OFF") for r in roles]
+    up = [0] * 16384
+    for y in range(1, 128):
+        for x in range(128):
+            i = y * 128 + x
+            if road[i] and road[i - 128]:
+                up[i] = up[i - 128] + 1
+    down = [0] * 16384
+    down_road = [0] * 16384
+    for y in range(126, -1, -1):
+        for x in range(128):
+            i = y * 128 + x
+            if ground[i] and ground[i + 128]:
+                down[i] = down[i + 128] + 1
+            if road[i] and road[i + 128]:
+                down_road[i] = down_road[i + 128] + 1
+    best, score = None, 0
+    for y in range(4, 124):
+        x = 0
+        while x < 128:
+            if not road[y * 128 + x]:
+                x += 1
+                continue
+            x0 = x
+            while x < 128 and road[y * 128 + x]:
+                x += 1
+            run = range(x0, x)
+            # a road's width, not a straight running left to right
+            if len(run) < 5 or len(run) > 24:
+                continue
+            # the grid stands on the middle of the road: judge the straight
+            # by the run's central five tiles, not its kerbs
+            mid = (run[0] + run[-1]) // 2
+            core = range(max(run[0], mid - 2), min(run[-1], mid + 2) + 1)
+            above = min(up[y * 128 + xx] for xx in core)
+            below = min(down[y * 128 + xx] for xx in core)
+            below_road = min(down_road[y * 128 + xx] for xx in core)
+            # road ahead, the front rows of the grid on road, the rest on ground
+            if below < GRID_TILES or below_road < 12 or above < 6:
+                continue
+            length = above + below
+            # prefer long straights, and a line a third of the way up them
+            want = length // 3
+            pen = abs(below - max(GRID_TILES, want))
+            # not through the objects: a line or a grid over a box row or a
+            # pipe is a poor start
+            for fam, mx, my in markers:
+                if run[0] - 2 <= mx <= run[-1] + 2 and y - 8 <= my <= y + GRID_TILES:
+                    pen += 60
+            sc = length * 4 - pen + len(run)
+            if sc > score:
+                score, best = sc, (y, x0, x - 1)
+    if best is None:
+        return None
+    y, x0, x1 = best
+    return [y * 128 + xx for xx in range(x0, x1 + 1)]
+
+
+def apply_auto_line(roles: list, markers: list = ()) -> bool:
+    """Draw the automatic start line into the roles; False if none fits."""
+    cells = auto_line(roles, markers)
+    if not cells:
+        return False
+    for i, r in enumerate(roles):
+        if r == "LINE":
+            roles[i] = "ROAD"
+    for i in cells:
+        roles[i] = "LINE"
+    return True
+
+
 # ---- the build ---------------------------------------------------------------
 
 def read_manifest_keys(d: str) -> dict:
@@ -296,6 +381,19 @@ class Project:
         say("compiling the tiles")
         tm, stamps, ents, problems = build_map(rom, cat, self.roles, self.markers)
         line_cells = [i for i, r in enumerate(self.roles) if r == "LINE"]
+        if not line_cells:
+            if apply_auto_line(self.roles, self.markers):
+                line_cells = [i for i, r in enumerate(self.roles) if r == "LINE"]
+                self.auto_lined = True
+            else:
+                self.problems = ["no start line, and no straight of road long enough for one: the karts "
+                                 "need about 30 tiles of road running north behind the line - draw the "
+                                 "straight, or click the line where you want it"] + problems
+                self.notes = []
+                self.package = None
+                self.full = stamped(rom, tm, stamps)
+                self.save_roles(d)
+                return False
         say("generating the course")
         try:
             crs, full = gen_course(rom, cat, tm, stamps, ents, line_cells)
@@ -323,6 +421,10 @@ class Project:
             problems.append("%d cells compiled to a class outside their role" % wrong)
         self.problems = problems
         self.notes = list(crs.notes)
+        if getattr(self, "auto_lined", False):
+            self.notes.insert(0, "the start line was placed for you, across the longest straight running "
+                                 "north; the Start line tool moves it")
+            self.auto_lined = False
         self.full = full
         return True
 

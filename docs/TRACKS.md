@@ -806,7 +806,9 @@ there:
   application over the same pipeline (`tools/smktool/project.py`
   holds the model both it and the command line use).  A brush for the
   six roles, a click for the start line (it spans the road at the
-  clicked row), a click per object with its footprint shown, a theme
+  clicked row; with none drawn, the build lays it across the longest
+  straight running north whose road can hold the grid, `auto_line`),
+  a click per object with its footprint shown, a theme
   box, undo and redo, two views (the roles as flat colour, the tiles
   as the game draws them from the user's ROM) with the sectors, the
   racing line, the finish strip and the grid overlaid, zoom.  *Build

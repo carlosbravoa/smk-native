@@ -85,6 +85,13 @@ def cmd_build(a):
     cat = T.Catalogue(rom, keys["theme"])
     roles, markers = read_roles(os.path.join(a.dir, "roles.txt"))
     line_cells = [i for i, r in enumerate(roles) if r == "LINE"]
+    if not line_cells:
+        from smktool.project import apply_auto_line
+        if apply_auto_line(roles, markers):
+            line_cells = [i for i, r in enumerate(roles) if r == "LINE"]
+            print("  the start line was placed across the longest straight running north")
+        else:
+            sys.exit("no start line, and no straight of road long enough for one (about 30 tiles running north)")
     tm, stamps, ents, bprob = build_map(rom, cat, roles, markers)
     for q in bprob:
         print("  !", q)

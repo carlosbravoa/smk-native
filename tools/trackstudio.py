@@ -649,10 +649,6 @@ class Studio:
         if not pr.dir:
             pr.dir = self.default_dir()
         d = pr.dir
-        if not any(r == "LINE" for r in pr.roles):
-            self.say([("No start line yet: pick 'Start line' and click the road where the karts start "
-                       "(they drive UP from it).", "bad")])
-            return
         self.set_busy(True, "building...")
         def work():
             try:
