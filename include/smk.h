@@ -1240,6 +1240,8 @@ typedef struct {
     int      squash_t;      /* bug 13: frames flat under a Thwomp (OURS) */
     int      coins;         /* $0E00,y for this kart: a bump costs one   */
     int      hit_kind;      /* what hit it: 1 banana 2 shell 3 lightning 4 coinless bump */
+    int      hold_t;        /* $5E: the 8 frames after a shell, coasting on the pushed velocity (NOTES 296) */
+    int      spin_snd_t;    /* frames since the tumble began, for the AI's spin voice (NOTES 296) */
     int      weapon_cool;   /* frames until this AI may use its weapon again (NOTES 190) */
     int      star_t;        /* Mario / Luigi's star: frames left (OURS: the player's $200) */
     /* When this kart crossed for the last time, in race frames, and where
@@ -1443,6 +1445,8 @@ void smk_engine_off(void);
 int  smk_engine_note_sent(int voice);   /* what that voice was last handed (NOTES 284) */
 /* the spin's own voice (NOTES 293): on/off per view, the DSP pitch register, volume, pan */
 void smk_spin_voice(int view, bool on, int pitch14, float vol, float pan);
+#define SMK_SPIN_VOICE_AI 2   /* the third spin voice: an AI's tumble (NOTES 296) */
+#define SMK_AI_HOLD_T     8   /* $5E = 8 at contact, counted down to 0 before the tumble */
 float smk_engine_base_volume(void);   /* the player's own engine level */
 const char *smk_sfx_name(int id);
 const char *smk_sfx_hint(int id);   /* when the game fires an unnamed one */
@@ -1512,10 +1516,11 @@ const char *smk_sfx_hint(int id);   /* when the game fires an unnamed one */
                                    * thrown ahead is SILENT (forced in the
                                    * oracle, NOTES 232) */
 #define SMK_SFX_DROP       0x58   /* $84:D8F2 - leaving an item BEHIND you   */
-#define SMK_SFX_AI_HIT     0x39   /* USER: "ai player takes a hit".  NAMED BY EAR
-                                     and NOT used by the object-hit path: it
-                                     never fires once in the `attack`
-                                     recording's 210 sound events (NOTES 264).
+#define SMK_SFX_AI_HIT     0x39   /* MEASURED (shell1, NOTES 296): the frame the
+                                     player's green shell touches an AI, $84D8B9
+                                     via the type-2 handler $8199E0 queues $39 -
+                                     the user's "TSH!".  NOTES 264 had it never
+                                     firing: that recording had no shell hit.
                                      Its own call site is still unknown. */
 #define SMK_SFX_MENU_MOVE  0x2C   /* USER                                      */
 #define SMK_SFX_MENU_OK    0x2E   /* USER                                      */
@@ -2351,6 +2356,9 @@ void smk_proj_step(smk_proj *list, int n, const smk_track *trk,
 /* does any live projectile touch this kart?  Returns its kind (and
  * starts it dying) or SMK_PROJ_NONE.  The owner is immune for a while. */
 int  smk_proj_hit(smk_proj *list, int n, const smk_kart *k, int kart_index);
+/* the velocity the item had when smk_proj_hit consumed it - $819A0D hands
+ * it to the kart, turned a quarter and halved (NOTES 296) */
+extern int16_t smk_proj_hit_vx, smk_proj_hit_vy;
 /* the same contact test WITHOUT the hit: index of the item this kart is on,
  * or -1.  For the AI's dodge roll ($819A53, NOTES 295), which has to see the
  * item before the hit consumes it. */

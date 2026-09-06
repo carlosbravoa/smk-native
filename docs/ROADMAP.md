@@ -247,7 +247,7 @@ against a per-character mask by the victim's rank, a drop or a forward
 throw or a 300-frame star by distance windows, a 180-frame cooldown, the
 game's two blocks — read from the ROM and checked against its own words on
 five recordings; the objects ride behind the kart 58 frames (a drop) or 64
-(a throw) then go, MEASURED.  The AI HOPS items too (NOTES 295, `$819A53`): the object-hits-kart handler rolls frame & 31 against a byte table before the hit - 30/32 for an item from slots 4-7, 16/32 from slots 1-3, the human's by the human's rank (4 4 2 2 2 2 0 0 of 32; Bowser/DK 2 2 2 2 2 2 0 0) - and a pass is the feather's launch, `$26 = $1E0`, the item left where it is, MEASURED on the user's aihop recording.  OURS: the drop's "driving straight" test
+(a throw) then go, MEASURED.  The AI HOPS items too (NOTES 295, `$819A53`): the object-hits-kart handler rolls frame & 31 against a byte table before the hit - 30/32 for an item from slots 4-7, 16/32 from slots 1-3, the human's by the human's rank (4 4 2 2 2 2 0 0 of 32; Bowser/DK 2 2 2 2 2 2 0 0) - and a pass is the feather's launch, `$26 = $1E0`, the item left where it is, MEASURED on the user's aihop recording.  A SHELL on an AI (NOTES 296, shell1): the kart takes the shell's velocity a quarter turn on and halved for eight unsteered frames (`$819A0D`, `$5E`), the shell leaves with the kart's, `$39` plays at contact, and the AI's own spin voice (sample $00, its measured 43-frame walk) starts twelve frames into the tumble, MEASURED.  OURS: the drop's "driving straight" test
 stands on the port's heading error where the ROM reads `$2C`; the thrown
 object's arc (measured ~48 frames to ~10 px, not yet fitted); the fireball's
 flight; the road art of the mushroom / egg / fireball (roulette icons in

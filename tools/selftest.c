@@ -2132,6 +2132,32 @@ int main(int argc, char **argv)
               ti == 0 && still == SMK_PROJ_BANANA && hk == SMK_PROJ_BANANA && pj[0].kind == SMK_PROJ_NONE, d);
     }
 
+    /* NOTES 296: the shell on an AI - $819A0D's shove and $5E's hold,
+     * against the user's shell1 recording (shell (-1054,-622) into a kart
+     * going (-497,-249) at 556: kart (-311,+527) for 8 frames, shell off
+     * with (-497,-249)) */
+    {
+        smk_kart k; memset(&k, 0, sizeof k);
+        k.vx = -497; k.vy = -249; k.speed = 556;
+        smk_proj pj[1]; memset(pj, 0, sizeof pj);
+        pj[0].kind = SMK_PROJ_GREEN; pj[0].owner = 0; pj[0].vx = -1054; pj[0].vy = -622;
+        int hk = smk_proj_hit(pj, 1, &k, 3);
+        char d[128];
+        snprintf(d, sizeof d, "hit %d; shell now dying=%d v=(%d,%d); handed (%d,%d)", hk, pj[0].dying, pj[0].vx, pj[0].vy, smk_proj_hit_vx, smk_proj_hit_vy);
+        check("shell on AI: the shell leaves dying with the kart's velocity and hands over its own",
+              hk == SMK_PROJ_GREEN && pj[0].dying && pj[0].vx == -497 && pj[0].vy == -249
+              && smk_proj_hit_vx == -1054 && smk_proj_hit_vy == -622, d);
+        smk_racer r; memset(&r, 0, sizeof r); r.k = k;
+        smk_racer_hit(&r, 2, 1);
+        snprintf(d, sizeof d, "kart v=(%d,%d) speed %d hold %d tumble $%04X hit_t %d", r.k.vx, r.k.vy, r.k.speed, r.hold_t, (unsigned)r.tumble & 0xFFFF, r.hit_t);
+        check("shell on AI: the kart takes the shell's velocity a quarter turn on and halved, speed kept, 8 frames of hold",
+              r.k.vx == -311 && r.k.vy == 527 && r.k.speed == 556 && r.hold_t == 8 && r.tumble == 0x2000 && r.hit_t == 128, d);
+        smk_racer r2; memset(&r2, 0, sizeof r2); r2.k = k;
+        smk_racer_hit(&r2, 2, 0);
+        snprintf(d, sizeof d, "kart v=(%d,%d)", r2.k.vx, r2.k.vy);
+        check("shell on AI: the other side mirrors the turn", r2.k.vx == 311 && r2.k.vy == -527, d);
+    }
+
     printf("\n%d passed, %d failed\n", pass, fail);
     smk_rom_free(&rom);
     return fail ? 1 : 0;

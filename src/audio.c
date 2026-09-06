@@ -592,7 +592,7 @@ static struct {
  * and a loop. */
 #define SPIN_LOOP_FROM 64
 static float *spin_pcm; static int spin_len; static bool spin_tried;
-static struct { double phase, step; float vol, pan; bool on, keyed; } spin[2];
+static struct { double phase, step; float vol, pan; bool on, keyed; } spin[3];   /* per view, plus the AI's (NOTES 296) */
 static void spin_load(void)
 {
     spin_tried = true;
@@ -609,7 +609,7 @@ static void spin_load(void)
 }
 void smk_spin_voice(int view, bool on, int pitch14, float vol, float pan)
 {
-    if (view < 0 || view > 1) return;
+    if (view < 0 || view > 2) return;
     if (!spin_tried) spin_load();
     if (on && !spin[view].on) { spin[view].phase = 0.0; spin[view].keyed = true; }
     spin[view].on = on;
@@ -626,7 +626,7 @@ static void engine_mix(void *ud, Uint8 *stream, int len)
     memset(stream, 0, (size_t)len);
     for (int i = 0; i < frames; i++) {
         float l = 0.0f, r = 0.0f;
-        for (int v = 0; v < 2; v++) {           /* the spins, one per view */
+        for (int v = 0; v < 3; v++) {           /* the spins: one per view, one for an AI */
             if (!spin[v].on || !spin_pcm || spin[v].vol <= 0.0f) continue;
             int j = (int)spin[v].phase;
             if (j >= spin_len - 1) { spin[v].phase -= (double)(spin_len - SPIN_LOOP_FROM); j = (int)spin[v].phase; if (j < 0) j = 0; }

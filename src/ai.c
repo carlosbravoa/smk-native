@@ -559,8 +559,21 @@ void smk_racer_step(smk_racer *r, const smk_track *trk,
     /* hit by an item (docs/ITEMS.md §6): the tumble, on the racer.  The
      * pose spins at the $E4 rate decaying $40 a frame, the speed falls 56
      * a frame to nothing, and the AI does not drive until it is over. */
+    /* $5E: the eight frames after a shell (NOTES 296).  $10 carries $4000
+     * and the AI neither steers nor spins; the kart coasts on the shoved
+     * velocity $819A0D gave it - (-311,+527) for eight frames in the
+     * recording, then the tumble takes over along the heading. */
+    if (r->hold_t > 0) {
+        r->hold_t--;
+        smk_kart_gravity(&r->k);
+        smk_kart_move(&r->k, trk);
+        r->k.hazard_hit = 0; smk_collide_objects(&r->k, crs);
+        if (r->k.hazard_hit == 2) r->squash_t = SMK_SQUASH_T;
+        return;
+    }
     if (r->hit_t > 0) {
         r->hit_t--;
+        r->spin_snd_t++;
         int rate = r->tumble > 0x1000 ? 0x1000 : r->tumble;
         r->spin_pose = (int16_t)(r->spin_pose + (r->hit_dir ? rate : -rate));
         int off = 56;

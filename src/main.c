@@ -5596,7 +5596,15 @@ int main(int argc, char **argv)
                          * PLAYER hit by one plays nothing at this site,
                          * and $39 - which the port played here - is a
                          * sound the game does not use for this at all. */
-                        if (hq) smk_sfx_play(SMK_SFX_AI_FELL);
+                        /* ...and a SHELL is the other handler (NOTES 296,
+                         * the user's shell1 recording): object type 2
+                         * goes to $8199E0, whose $84D8B9 queues $39 the
+                         * frame the shell touches an AI - the "TSH!" the
+                         * user asked for.  Green measured; red assumed the
+                         * same handler (LABELLED); egg and fireball left
+                         * on $66, unmeasured. */
+                        if (hq == SMK_PROJ_GREEN || hq == SMK_PROJ_RED) smk_sfx_play(SMK_SFX_AI_HIT);
+                        else if (hq) smk_sfx_play(SMK_SFX_AI_FELL);
                         if (hq == SMK_PROJ_BANANA) smk_racer_hit(&racers[q], 1, (int)(fx_ticks & 1));
                         else if (hq == SMK_PROJ_MUSHROOM) { if (racers[q].star_t <= 0) racers[q].shrink_t = racers[q].shrink_t > 0 ? 0 : 0x440; }   /* shrink only; a second one restores (bug 21) */
                         else if (hq != SMK_PROJ_NONE) smk_racer_hit(&racers[q], 2, (int)(fx_ticks & 1));
@@ -5633,6 +5641,29 @@ int main(int argc, char **argv)
                 for (int i = 1; i < SMK_CHARACTERS; i++) {
                     if (slot_is_driven(i)) continue;   /* a person drives this one */
                     smk_racer_step(&racers[i], &trk, &crs, &phys);
+                    /* THE AI's SPIN SOUND (NOTES 296): sample $00 on a stolen
+                     * voice twelve frames into the tumble, walked down this
+                     * table - measured on the cc150 recording's first shell
+                     * hit (voice 3, 43 frames, volume 57 against the
+                     * player's spin's 31).  One voice: the latest tumble
+                     * owns it (LABELLED - the game steals one per kart). */
+                    {
+                        static const int AI_SPIN_PITCH[43] = {
+                            4096, 4320, 4544, 4768, 4352, 3936, 3520, 3104, 3328, 3552, 3776,
+                            4000, 3584, 3168, 2752, 2336, 2560, 2784, 3008, 3232, 2816, 1984,
+                            1568, 1792, 2016, 2240, 2464, 2048, 1632, 1216,  800, 1024, 1248,
+                            1472, 1696, 1280,  864,  448,   32,  256,  480,  704,  704 };
+                        static int voice_owner = -1;
+                        smk_racer *r = &racers[i];
+                        bool mine = r->hit_t > 0 && (r->hit_kind == 1 || r->hit_kind == 2)
+                                    && r->spin_snd_t >= 12 && r->spin_snd_t < 12 + 43;
+                        if (mine && r->spin_snd_t == 12) { voice_owner = i; if (getenv("SMK_SFX_TRACE")) printf("sfx: AI spin voice keyed, kart %d\n", i); }
+                        if (voice_owner == i) {
+                            if (!mine) voice_owner = -1;
+                            smk_spin_voice(SMK_SPIN_VOICE_AI, mine, AI_SPIN_PITCH[mine ? r->spin_snd_t - 12 : 0],
+                                           smk_engine_base_volume() * (57.0f / 20.0f), 0.0f);
+                        }
+                    }
                 }
                 /* Kart against kart, once a frame over the whole field
                  * (NOTES 166).  racers[0] IS the player's kart - me->k is

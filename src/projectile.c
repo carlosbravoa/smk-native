@@ -196,7 +196,10 @@ void smk_proj_step(smk_proj *list, int n, const smk_track *trk,
         if (p->kind == SMK_PROJ_NONE) continue;
         p->t++;
         if (p->dying) {
-            /* $80:F85D: a hop, then gone when it lands */
+            /* $80:F85D: a hop, then gone when it lands - carrying whatever
+             * velocity it left with (a kart's, after a hit: NOTES 296) */
+            p->x += (int32_t)p->vx << (SMK_POS_SHIFT - 8);
+            p->y += (int32_t)p->vy << (SMK_POS_SHIFT - 8);
             p->z += (int32_t)p->zv << 8;
             p->zv = (int16_t)(p->zv - 26);
             if (p->z <= 0) p->kind = SMK_PROJ_NONE;
@@ -326,17 +329,25 @@ int smk_proj_touch(const smk_proj *list, int n, const smk_kart *k, int kart_inde
     return proj_find(list, n, k, kart_index);
 }
 
+int16_t smk_proj_hit_vx, smk_proj_hit_vy;
+
 int smk_proj_hit(smk_proj *list, int n, const smk_kart *k, int kart_index)
 {
     int i = proj_find(list, n, k, kart_index);
     if (i < 0) return SMK_PROJ_NONE;
     smk_proj *p = &list[i];
     int kind = p->kind;
+    smk_proj_hit_vx = p->vx; smk_proj_hit_vy = p->vy;
     if (getenv("SMK_ITEM_TRACE"))
         printf("  proj HIT: kind %d owner %d victim %d t %d carry %d safe %d frame %ld\n",
                kind, p->owner, kart_index, p->t, p->carry, p->safe, smk_race_frame);
     if (kind == SMK_PROJ_BANANA || kind == SMK_PROJ_MUSHROOM || kind == SMK_PROJ_EGG) p->kind = SMK_PROJ_NONE;
-    else { p->dying = true; p->zv = SMK_PROJ_DIE_HOP; p->vx = p->vy = 0; }
+    else {
+        /* $819A0D: the shell leaves with the KART's velocity - in the
+         * user's shell1 recording the dying shell rolls on at the kart's
+         * (-497,-249) while it hops out (NOTES 296) */
+        p->dying = true; p->zv = SMK_PROJ_DIE_HOP; p->vx = k->vx; p->vy = k->vy;
+    }
     return kind;
 }
 

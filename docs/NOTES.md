@@ -13109,3 +13109,76 @@ only the lying poison mushroom was seen hopped.  `$12` bit 15 on the
 victim (the first test) was never set in the recording and is not
 modelled.  The AI's `$A6 = $18` (the feather's pose state) is not
 ported: the game's `$AA` did not move through the flight.
+
+## 296. A shell on a COM: the shove, the hold, the TSH and the AI's spin voice
+
+The user, on the shell hitting a COM (NOTES 292 left it open): *"two
+sounds... TSH!... also pushed them a little to the side"*, and recorded
+it: `shell1`, one green shell into kart 1 - *"The hit is very audible,
+the AI-spinning is less because a coin took over while the sound was
+coming out."*  Both are in the recording exactly as described.
+
+**The frame of contact (3218)**, everything logged per frame (kart 1's
+block, object block `$1A00`, the sound queue at frame end, the queue's
+writers under the debugger, the DSP's eight voices):
+
+| | before (3217) | contact (3218) | 3219-3225 | tumble (3226 on) |
+|---|---|---|---|---|
+| kart `$22/$24` (velocity, 1/256 px) | (-497, -249) | (-311, +527) | held | (-507,-254), then -50/frame |
+| kart `$EA` speed | 556 | 556 | 556 | 567, then -56/frame to 0 at +11 |
+| kart `$A6`/`$AC`/`$E4` | 0 / 0 / 0 | 0 / 0 / $2000 | held | $1A / $14 / $2000 -$40/frame |
+| kart `$10` / `$5E` | $2000 / 0 | $7000 / 7 | $5E counts to 0 | $2000 / 0 |
+| kart `$2A` (drawn pose) | = heading | = heading | unchanged | +$1001 a frame |
+| shell `$22/$24` | (-1054, -622) | (-497, -249) | rolls on, z up 248 -8/frame | gone |
+| sound queue | - | **$39** | - | - |
+
+So the hit does three things at once and one thing eight frames later:
+
+1. **The shove.**  Object type 2 (`$70`) dispatches through `$8198FB` to
+   `$8199E0`, which ends in `$819A0D`: the kart's velocity is pushed, the
+   SHELL's is written into the kart turned a quarter and halved (with
+   `$1EE4` set: `vx = shell.vy / 2`, `vy = -shell.vx / 2`, exactly
+   (-1054,-622) -> (-311,+527)), and the kart's old velocity is popped
+   into the shell - which is why the dying shell rolls on at the kart's
+   pace while it hops out.  `$1EE4` = 0 mirrors the turn; it was 0 early
+   in the race and 2 from somewhere before frame 2000, and what sets it
+   is not decoded.
+2. **The hold.**  `$988C` set `$5E` = 8 on both bodies at contact and
+   `$10 |= $5000`; while `$5E` counts down the AI neither steers nor
+   spins and the kart coasts on the shoved velocity - eight frames,
+   (-1.2, +2.1) px each, ten pixels sideways.  That is the user's "pushed
+   them a little to the side".
+3. **The sound.**  `$84D8B9`, called from `$8199F2` for an AI victim,
+   queues **$39** (both branches of its `$6A` test) - the port's
+   `SMK_SFX_AI_HIT`, which NOTES 264 had "named by ear and never firing":
+   the `attack` recording had no shell hit in it.  The `$66` of NOTES 264
+   is `$84D8CC`, the banana / mushroom handlers' sound; both stand.  A
+   HUMAN victim takes `$5E = $10` here and no sound from this site.
+4. **Then the tumble**, at `$5E` = 0: `$80B49D` sees `$E2` bit 9, state
+   $1A, `$AC` = $14, and NOTES 292's measured run - speed -56 a frame
+   along the heading, pose +$1000 a frame, `$E4` -$40 a frame.
+
+**The AI's spin voice.**  Sample $00 is keyed on a stolen voice twelve
+frames into the tumble (3238 = 3226 + 12; the player's own is ten frames
+in, NOTES 293), at DSP volume 57 against the player's 31, and its pitch
+walks the same triangle shape as the player's on different steps: 4096,
++224 x3, -416 x4, +224 x4, ... - 43 frames on the cc150 recording's first
+shell hit (voice 3, 3316-3358); in shell1 the coin sample took the voice
+at frame 6, which is what the user heard.
+
+**Ported.**  `smk_proj_hit` hands the item's velocity out
+(`smk_proj_hit_vx/vy`) and gives the dying shell the kart's, which the
+dying step now carries; `smk_racer_hit(kind 2)` turns and halves it into
+the kart with `dir` choosing the side (LABELLED for `$1EE4`) and sets
+`hold_t` = 8; the AI step coasts through the hold before the tumble; the
+hit site plays $39 for green and red shells ($66 stays for banana,
+mushroom, egg and fireball - red assumed with green, egg and fireball
+unmeasured, LABELLED); and a third spin voice plays the AI's table 12
+frames into the tumble at 57/31 of the player's level - one voice, the
+latest tumble owns it (LABELLED; the game steals one per kart).  Selftest
++3 (114): the exchange to the unit both ways, the hold, the dying shell.
+
+The debugger detail that cost three empty runs: the sound queue is
+written through the bank-$81 mirror (`sta $0E6C,x` with DBR = $81), so a
+watch on `7e0e6c` and `000e6c` sees nothing; `tools/labs/mame/watch_queue.txt`
+sets all four mirrors.

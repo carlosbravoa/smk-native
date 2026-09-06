@@ -1287,4 +1287,21 @@ void smk_racer_hit(smk_racer *r, int kind, int dir)
     r->tumble  = kind == 1 ? 0x0A00 : 0x2000;     /* $E4 = $2000 for an AI */
     if (kind == 1) { if (r->k.speed > 0x300) r->k.speed = 0x300; }
     if (kind == 3) r->shrink_t = 0x440;
+    r->spin_snd_t = 0;
+    if (kind == 2) {
+        /* THE SHOVE (NOTES 296, the user's shell1 recording).  The
+         * type-2 handler $8199E0 ends in $819A0D: the kart's velocity is
+         * swapped with the shell's, and the shell's is handed over turned
+         * a quarter and HALVED - $1EE4 set: vx = shell.vy / 2, vy =
+         * -shell.vx / 2 (measured: shell (-1054,-622), kart (-497,-249)
+         * -> kart (-311,+527), shell (-497,-249)).  Then $5E = 8 holds
+         * the kart on that velocity, unsteered and unspun, for eight
+         * frames before the tumble starts along its heading.  $1EE4's
+         * other value mirrors the turn; what sets it is not decoded, so
+         * `dir` picks the side (LABELLED). */
+        int16_t svx = smk_proj_hit_vx, svy = smk_proj_hit_vy;
+        if (dir) { r->k.vx = (int16_t)(svy / 2);  r->k.vy = (int16_t)(-svx / 2); }
+        else     { r->k.vx = (int16_t)(-svy / 2); r->k.vy = (int16_t)(svx / 2);  }
+        r->hold_t = SMK_AI_HOLD_T;
+    }
 }

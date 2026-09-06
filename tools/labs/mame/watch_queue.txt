@@ -1,0 +1,8 @@
+# NOTES 296: who queues each sound id - the queue at $0E6C is written through the bank-$81
+# mirror, so all four mirrors are watched; rtl= is the JSL caller (b@(s+10) is off by one, use the word).
+# mame ... -playback shell1 -seconds_to_run 58 -debug -debugscript tools/labs/mame/watch_queue.txt -debuglog
+wpset 7e0e6c,2,w,1,{printf "Q6C <- %04X pc=%06X f38=%04X ret=%04X rtl=%02X%04X", wpdata, pc, w@7e0038, w@(s+1), b@(s+10), w@(s+8); g}
+wpset 000e6c,2,w,1,{printf "Q6C <- %04X pc=%06X f38=%04X ret=%04X rtl=%02X%04X", wpdata, pc, w@7e0038, w@(s+1), b@(s+10), w@(s+8); g}
+wpset 800e6c,2,w,1,{printf "Q6C <- %04X pc=%06X f38=%04X ret=%04X rtl=%02X%04X", wpdata, pc, w@7e0038, w@(s+1), b@(s+10), w@(s+8); g}
+wpset 810e6c,2,w,1,{printf "Q6C <- %04X pc=%06X f38=%04X ret=%04X rtl=%02X%04X", wpdata, pc, w@7e0038, w@(s+1), b@(s+10), w@(s+8); g}
+go
