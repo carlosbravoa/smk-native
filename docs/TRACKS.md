@@ -820,9 +820,13 @@ there:
   frames, and when the field does not lap it, where its furthest kart
   stopped (a red mark on the map, from `smk_ailap`'s `stalled:` line)
   and what to try; *Play* and *Time trial* start the game on the
-  package.  The start line and the grid are on the map from the first
-  stroke and follow the road until the Start line tool pins them; a
-  road that does not loop is marked where it ends.  A built course's
+  package.  The start line is the author's, placed with the Start line
+  tool and never moved by the editor (an automatic line that followed
+  the road as it was painted walked the grid off the screen - the
+  user's report - and was removed; the command line still lays one
+  when a roles file has none); Build asks for the line first; the grid
+  is drawn behind it as soon as it exists; a road that does not loop is
+  marked where it ends.  A built course's
   waypoints can be dragged and their speed row set with the keys 0 to
   3, the lint re-running as they move.  The panes resize.  Nothing in
   it is ROM data: the pictures are drawn from the ROM at run time.

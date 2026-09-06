@@ -205,12 +205,12 @@ def apply_auto_line(roles: list, markers: list = ()) -> bool:
     return True
 
 
-def start_preview(roles: list, markers: list = ()):
-    """Where the start is right now: the drawn line, or the automatic one;
-    returns (line_cells, finish, grid, automatic) or None."""
+def start_preview(roles: list, markers: list = (), automatic: bool = True):
+    """Where the start is right now: the drawn line, or (if asked) the
+    automatic one; returns (line_cells, finish, grid, automatic) or None."""
     cells = [i for i, r in enumerate(roles) if r == "LINE"]
     auto = False
-    if not cells:
+    if not cells and automatic:
         cells = auto_line(roles, markers) or []
         auto = True
     if not cells:
@@ -335,10 +335,12 @@ class Project:
 
     # -- files --
     @classmethod
-    def new(cls, name: str, theme: int, oval: bool = True) -> "Project":
+    def new(cls, name: str, theme: int, oval: bool = True, with_line: bool = True) -> "Project":
         pr = cls()
         pr.name, pr.theme = name, theme
         pr.roles, pr.markers = parse_roles("\n".join(template_roles() if oval else blank_roles()))
+        if not with_line:
+            pr.roles = ["ROAD" if r == "LINE" else r for r in pr.roles]
         return pr
 
     @classmethod
@@ -383,9 +385,11 @@ class Project:
         self.dir = d
 
     # -- the build --
-    def build(self, d: str, progress=None) -> bool:
+    def build(self, d: str, progress=None, automatic_line: bool = True) -> bool:
         """Compile, generate, lint, write the package.  False if the course
-        could not be generated (the problems say why)."""
+        could not be generated (the problems say why).  automatic_line: lay
+        a start line if none is drawn (the command line does; the editor
+        asks the author for one instead)."""
         def say(msg):
             if progress:
                 progress(msg)
@@ -396,13 +400,15 @@ class Project:
         tm, stamps, ents, problems = build_map(rom, cat, self.roles, self.markers)
         line_cells = [i for i, r in enumerate(self.roles) if r == "LINE"]
         if not line_cells:
-            if apply_auto_line(self.roles, self.markers):
+            if automatic_line and apply_auto_line(self.roles, self.markers):
                 line_cells = [i for i, r in enumerate(self.roles) if r == "LINE"]
                 self.auto_lined = True
             else:
-                self.problems = ["no start line, and no straight of road long enough for one: the karts "
-                                 "need about 30 tiles of road running north behind the line - draw the "
-                                 "straight, or click the line where you want it"] + problems
+                self.problems = [("no start line: pick the Start line tool and click the road where the race "
+                                  "starts (the karts drive up from it)") if not automatic_line else
+                                 ("no start line, and no straight of road long enough for one: the karts "
+                                  "need about 30 tiles of road running north behind the line - draw the "
+                                  "straight, or click the line where you want it")] + problems
                 self.notes = []
                 self.package = None
                 self.full = stamped(rom, tm, stamps)

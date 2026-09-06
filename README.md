@@ -139,11 +139,11 @@ lap rule and rescue read.  The ROM stays the only source of art.
 **The editor** is `make studio` (`tools/trackstudio.py`, tkinter, no
 extra packages): paint the road, grass, walls, water and void with a
 brush, click boxes, coins, oil, pads, ramps and obstacles into place,
-pick the theme, press *Build and validate*.  The start line and the
-grid are placed for you across the longest straight running north (the
-Start line tool moves them); the tiles, the sector map, the racing
-line, the finish strip and the grid are generated and checked, the
-problems are listed, *Race
+click the start line onto a straight running north (the grid appears
+behind it, and Build asks for the line if it is missing), pick the
+theme, press *Build and validate*.  The tiles, the sector map, the
+racing line, the finish strip and the grid are generated and checked,
+the problems are listed, *Race
 the AI* has the game's own field lap it at three classes, *Play* starts
 the game on it.  A waypoint can be dragged and its AI speed row set
 with the keys 0 to 3.

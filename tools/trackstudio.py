@@ -59,7 +59,9 @@ class Studio:
         if path:
             self.open_dir(path)
         else:
+            self.project = PJ.Project.new("MY COURSE", 1, with_line=False)
             self.redraw(full=True)
+            self.ask_for_line()
         root.after(100, self._poll)
         root.protocol("WM_DELETE_WINDOW", self.quit)
 
@@ -262,15 +264,22 @@ class Studio:
         return v * self.zoom
 
     def update_start(self):
-        """Keep the automatic start line in the roles while the road is drawn,
-        until the author pins one with the Start line tool."""
-        pr = self.project
-        if self.line_manual:
-            return
-        for i, r in enumerate(pr.roles):
-            if r == "LINE":
-                pr.roles[i] = "ROAD"
-        PJ.apply_auto_line(pr.roles, pr.markers)
+        """The start is the author's: nothing is placed or moved for them.
+        (An earlier version chose a line and re-chose it after every stroke,
+        so the grid walked down the straight as it was painted - the user's
+        report.  The line now exists only where it was clicked.)"""
+        return
+
+    def has_line(self):
+        return any(r == "LINE" for r in self.project.roles)
+
+    def ask_for_line(self):
+        self.tool.set("LINE")
+        self.say([("First, the start line.", "head"),
+                  ("Click the road where the race starts.  The line is laid across the road at that "
+                   "row, the eight grid slots appear behind it, and the karts drive UP from it - so "
+                   "pick a straight that runs towards the top of the map, about 30 tiles long.", "hint"),
+                  ("The Start line tool is selected.  Click again anywhere on the road to move it.", "note")])
 
     def draw_overlays(self):
         c = self.canvas
@@ -278,7 +287,7 @@ class Studio:
         pr = self.project
         s = self.zoom
         # the start, before any build: the line as drawn or chosen, the strip, the grid
-        start = PJ.start_preview(pr.roles, pr.markers)
+        start = PJ.start_preview(pr.roles, pr.markers, automatic=False)
         if start and self.show_grid.get() and (pr.package is None or self.dirty_since_build):
             cells, (fx, fy, fw, fh), (gx, gy, gs), auto = start
             for i in cells:
@@ -291,7 +300,7 @@ class Studio:
                 x = gx + (gs if slot & 1 else 0)
                 y = gy + 24 * slot
                 c.create_rectangle((x - 6) * s, (y - 6) * s, (x + 6) * s, (y + 6) * s, outline="yellow", width=2, tags="ov")
-            c.create_text((gx + 16) * s, (gy + 24 * 8 + 4) * s, text="START" + ("" if self.line_manual else " (automatic)"),
+            c.create_text((gx + 16) * s, (gy + 24 * 8 + 4) * s, text="START",
                           fill="yellow", anchor="n", font=("TkDefaultFont", 9, "bold"), tags="ov")
         if self.blocked:
             x, y = self.blocked
@@ -596,15 +605,15 @@ class Studio:
         if not dlg.result:
             return
         name, theme, oval = dlg.result
-        self.project = PJ.Project.new(name, theme, oval)
+        self.project = PJ.Project.new(name, theme, oval, with_line=False)
         self.line_manual = False
         self.stall = None
         self.push_keys()
         self.undo_stack.clear(); self.redo_stack.clear()
         self.unsaved = True; self.dirty_since_build = True
         self.selected_wp = -1
-        self.say([("A new course.  Paint the road, place the start line, press Build.", "note")])
         self.redraw(full=True)
+        self.ask_for_line()
 
     def reset(self, oval):
         if not self.confirm_discard():
@@ -612,11 +621,12 @@ class Studio:
         self.snapshot()
         pr = self.project
         pr.roles, pr.markers = PJ.parse_roles("\n".join(PJ.template_roles() if oval else PJ.blank_roles()))
+        pr.roles = ["ROAD" if r == "LINE" else r for r in pr.roles]
         self.line_manual = False
         self.stall = None
         self.touched()
-        self.update_start()
         self.redraw(full=True)
+        self.ask_for_line()
 
     def confirm_discard(self):
         if not self.unsaved:
@@ -720,12 +730,13 @@ class Studio:
             pr.dir = self.default_dir()
         d = pr.dir
         self.stall = None
-        if not self.line_manual:
-            self.update_start()
+        if not self.has_line():
+            self.ask_for_line()
+            return
         self.set_busy(True, "building...")
         def work():
             try:
-                ok = pr.build(d, progress=lambda m: self.q.put(("progress", m)))
+                ok = pr.build(d, progress=lambda m: self.q.put(("progress", m)), automatic_line=False)
                 self.q.put(("built", ok))
             except Exception as e:
                 self.q.put(("error", "build failed: %s" % e))
@@ -856,9 +867,9 @@ class Studio:
         messagebox.showinfo("How it works",
             "Paint the road with the brush (left button; right button paints off-road).\n"
             "Draw walls, water and void the same way.\n"
-            "The start line and the grid are placed for you on the longest straight running north and\n"
-            "follow the road as you draw; 'Start line' and a click on the road pins them where you want.\n"
+            "Pick 'Start line' and click the road where the race starts; the grid appears behind it.\n"
             "The karts drive UP from the line, so a start straight runs towards the top of the map.\n"
+            "Nothing places or moves the start for you, and Build asks for it if it is missing.\n"
             "Place boxes, coins, oil, pads, ramps and obstacles by clicking; right click removes.\n"
             "Choose a theme: it decides the tiles, the music, the creatures and how the ground behaves.\n\n"
             "Build and validate: the tiles, the sector map and the racing line are generated and checked.\n"
