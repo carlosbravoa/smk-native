@@ -84,6 +84,8 @@ class Studio:
         em.add_command(label="Undo", command=self.undo, accelerator="Ctrl+Z")
         em.add_command(label="Redo", command=self.redo, accelerator="Ctrl+Y")
         em.add_separator()
+        em.add_command(label="Forget my waypoint edits (next build regenerates them)", command=self.forget_edits)
+        em.add_separator()
         em.add_command(label="Start again from the oval", command=lambda: self.reset(True))
         em.add_command(label="Start again from a blank map", command=lambda: self.reset(False))
         menu.add_cascade(label="Edit", menu=em)
@@ -560,7 +562,7 @@ class Studio:
         if self.selected_wp < 0 or not pr.package:
             return
         x, y, a = pr.package.line[self.selected_wp]
-        pr.package.line[self.selected_wp] = (tx * 8, ty * 8, a)
+        pr.edit_waypoint(self.selected_wp, tx * 8, ty * 8, a)
         self.unsaved = True
         self.draw_overlays()
 
@@ -569,11 +571,19 @@ class Studio:
         if self.selected_wp < 0 or not pr.package:
             return
         x, y, a = pr.package.line[self.selected_wp]
-        pr.package.line[self.selected_wp] = (x, y, (a & 0x80) | row)
+        pr.edit_waypoint(self.selected_wp, x, y, (a & 0x80) | row)
         self.unsaved = True
         pr.save_line()
         self.draw_overlays()
         self.status.configure(text="waypoint %d: AI speed row %d (0 slow .. 3 fast)" % (self.selected_wp, row))
+
+    def forget_edits(self):
+        pr = self.project
+        pr.forget_edits()
+        pr.built_key = None
+        self.dirty_since_build = True
+        self.say([("Your waypoint edits are forgotten; the next Build generates the line afresh.", "note")])
+        self.status.configure(text=self.status_text())
 
     def recheck(self):
         pr = self.project
@@ -650,6 +660,7 @@ class Studio:
         pr.roles = ["ROAD" if r == "LINE" else r for r in pr.roles]
         # the previous course's build is gone with it
         pr.package = None; pr.full = None; pr.problems = []; pr.notes = []
+        pr.forget_edits(); pr.gen_line = []; pr.built_key = None
         self.line_manual = False
         self.stall = None; self.blocked = None
         self.selected_wp = -1
@@ -778,7 +789,8 @@ class Studio:
             return
         pr = self.project
         if not pr.package or self.dirty_since_build:
-            self.say([("Build the course first.", "bad")])
+            self.say([("The map changed since the last build.  Build and validate first - the waypoints you "
+                       "moved are kept.", "bad")])
             return
         self.set_busy(True, "the ROM's field is driving it at three classes...")
         def work():

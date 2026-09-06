@@ -332,6 +332,11 @@ class Project:
         self.problems: list[str] = []
         self.notes: list[str] = []
         self.full: bytes | None = None      # the built map with stamps
+        # the author's waypoint edits survive a rebuild: index -> (x, y, attr),
+        # re-applied to the nearest generated waypoint each time
+        self.edits: dict = {}
+        self.gen_line: list = []            # the line as last generated
+        self.built_key = None               # what the last build was made from
 
     # -- files --
     @classmethod
@@ -370,6 +375,20 @@ class Project:
             pr.package = None
         return pr
 
+    def map_key(self):
+        """Everything a build depends on: the map, the objects, the theme."""
+        return (hash(tuple(self.roles)), tuple(sorted(self.markers)), self.theme, self.items, self.name)
+
+    def edit_waypoint(self, i: int, x: int, y: int, attr: int) -> None:
+        """The author moves waypoint i or sets its row; remembered."""
+        if not self.package or not (0 <= i < len(self.package.line)):
+            return
+        self.package.line[i] = (x, y, attr)
+        self.edits[i] = (x, y, attr)
+
+    def forget_edits(self) -> None:
+        self.edits = {}
+
     def keys(self) -> dict:
         return {"name": self.name, "theme": self.theme, "items": self.items, "music": self.music}
 
@@ -394,6 +413,17 @@ class Project:
             if progress:
                 progress(msg)
         rom = load_rom()
+        # nothing changed on the map since the last build: keep the course,
+        # the author's waypoints included, and just check it again
+        if self.package and self.built_key == self.map_key() and self.package.sect:
+            say("checking")
+            self.problems = lint_package(self.package)
+            self.notes = ["the map is unchanged since the last build: the course is kept as it is"]
+            if self.edits:
+                self.notes.append("%d waypoint(s) you moved or re-rowed are kept" % len(self.edits))
+            self.save_roles(d)
+            P.write(self.package, d)
+            return True
         say("reading the theme's catalogue")
         cat = catalogue(self.theme)
         say("compiling the tiles")
@@ -424,6 +454,21 @@ class Project:
             self.full = stamped(rom, tm, stamps)
             self.save_roles(d)
             return False
+        # the author's edits, re-applied: each to the generated waypoint
+        # nearest to where the edited one was generated
+        gen = list(crs.line)
+        if self.edits:
+            moved = {}
+            for i, (x, y, a) in self.edits.items():
+                gx, gy = (self.gen_line[i][0], self.gen_line[i][1]) if i < len(self.gen_line) else (x, y)
+                j = min(range(len(gen)), key=lambda k: (gen[k][0] - gx) ** 2 + (gen[k][1] - gy) ** 2)
+                if j not in moved:
+                    moved[j] = (x, y, a)
+            for j, v in moved.items():
+                crs.line[j] = v
+            self.edits = moved
+        self.gen_line = gen
+        self.built_key = self.map_key()
         self.package = make_package(self.keys(), tm, stamps, ents, crs)
         say("writing the package")
         self.save_roles(d)
@@ -442,6 +487,8 @@ class Project:
             problems.append("%d cells compiled to a class outside their role" % wrong)
         self.problems = problems
         self.notes = notes + list(crs.notes)
+        if self.edits:
+            self.notes.append("%d waypoint(s) you moved or re-rowed are kept" % len(self.edits))
         if getattr(self, "auto_lined", False):
             self.notes.insert(0, "the start line was placed for you, across the longest straight running "
                                  "north; the Start line tool moves it")
