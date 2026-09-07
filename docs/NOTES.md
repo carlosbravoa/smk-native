@@ -13182,3 +13182,85 @@ The debugger detail that cost three empty runs: the sound queue is
 written through the bank-$81 mirror (`sta $0E6C,x` with DBR = $81), so a
 watch on `7e0e6c` and `000e6c` sees nothing; `tools/labs/mame/watch_queue.txt`
 sets all four mirrors.
+
+## 297. The user's round of ten: what the recordings and the oracle said about each
+
+Ten items in one message.  Three were built as asked (the finish's five
+seconds and fade, the kart driving itself after the line, the stuck
+trained driver's hand-over - all OURS, in main.c); the rest were
+measured before anything was changed.
+
+**Donut Plains 3: the field in the lake.**  Every one of the port's seven
+karts entered the water at x 767, y 345 - cutting from the dirt toward
+the waypoint at the bridge's near end - and stayed a hundred frames and
+more.  The game's own field, run in the oracle at 100cc on the same
+course (`fieldrun.py`, the cup/course hooks of NOTES 118), enters the
+same water and SKIMS: thirty to forty frames over the class-$22 tiles in
+state 2, airborne, then the bridge.  The hazard dispatch runs for every
+kart; the port's AI ran no water code.  `smk_kart_move_ex` now takes the
+skim for an AI kart (the player's loss and launch); 1167/1637/207 wet
+frames became none.  The game's laps there at 100cc: 1136-1200 frames.
+
+**Bowser Castle 1 at 100cc** ("I was able to easily overlap everyone").
+The game's own field, human parked: laps of 1380-1742 frames, mean speeds
+525-602.  The port's field, alone: a first lap of 1580, mean 680.  The
+port's AI is not slow there.  What fits the report is the rubber band
+keying on the second human slot - the neural driver, when it had wedged
+itself in a corner - as the ROM's would; the hand-over above is the
+remedy.  Not proven.
+
+**Deep water has no grace.**  Forced in the oracle (`deepwater.py`,
+NOTES 066's fill): $22 wades with $CA = 258 and sinks at 0; $24 and $20
+and $28 are state 6 / 4 on the first frame; $26 is state $0A on the
+first frame.  The port already does this.  The user's two water
+recordings (`vanila-lake-underwater`: Vanilla Lake 2; `underwater2`:
+Koopa Beach 2, not Donut Plains) never touch a deep class - every fall-in
+in them is $22.
+
+**The sounds per class**, the queue at $0E6C forced the same way:
+$20/$28 queue $27 twice at the fall and $27 at the put-down; $24 queues
+$28 at the fall and $28 at the put-down; $26 queues $3C at the drop; the
+$22 skim queues $4D then $4C, the fall-in $4C, and the SINK NOTHING.  The
+port played $27 for all of them.  Now `smk_player.fall_class` picks.
+
+**The mole grab** (`moles` session, frame 15340, Donut Plains 2): the
+speed holds seven frames at 581, drops to 0, climbs 2 a frame for 32
+frames (4, 6 ... 64), then the ordinary acceleration; the kart hops
+(state 2) and lands six frames on ($25 in the queue, the landing); $22
+three frames BEFORE +$50 is set; no state change; the mole rides, and
+the speed is 806 four seconds later.  The port's $100 crawl for the whole
+ride was not the recording.  +$50 stays set to the end of the race.
+
+**The riding mole** (OAM through the PPU, `oamwin.lua`): the same 32x32
+block as in the hole - $C0 over $C2, mirrored - at the kart's size, its
+top ten rows above the kart's top at rest (71 vs 59-61), so it overlaps
+the kart's upper 22 rows; at the grab it springs from 60 to 47 in five
+frames and swings 47-63-55-63-55-63 on a 22-frame period that dies over
+sixty frames; x jitters a pixel.  The port drew it two thirds the size
+and twelve rows too high.  The pop's OTHER pose - $C4 over $C6, seen in
+runs of 15-66 frames while a mole is up - is NOT ported: with four moles
+cycling at once the recording does not say which pose belongs to which
+stage without per-entity projection.  Open.
+
+**The shrunk kart** (`cc150`, the poison mushroom's timer $84 = 1086,
+OAM): the ordinary kart is $80 mirrored over $A0 mirrored, halves at x
+112 and 128; shrunk it is $80 mirrored at 116 and 123 over $90 mirrored
+eight rows lower - the pose's rows 0-23, the halves overlapping nine
+pixels: 23 wide, 24 tall.  The port drew the Thwomp's flattened quarter
+for it ("just our head over the floor").  `draw_shrunk` now.
+
+**Where the fall triggers** ("one wheel off the track").  The user's own
+`gv1` run: $A0 went 0 -> 4 the frame the kart's centre stood on class
+$82 - the rail - with $42 under it the frame before; z was 1.  Rainbow
+Road's kerb stripe is class $28, a fall (NOTES 120).  So the ROM's own
+table makes the rail and the kerb the drop, at the kart's centre point
+($80FA62 reads one point), and the port reads the same point on the
+same table.  No tolerance was found to add.  What the port does
+differently: a class-$82 rail is a WALL it bounces off and then breaks
+(src/blocks.c); in the recording the rail dropped the kart on contact.
+Open, and probably the opposite of "too tight".
+
+**Not measured this round**: whether a shell DROPPED behind and hit
+standing still queues $39 (NOTES 296 measured a thrown one; a rig with
+a forced static shell is the next step); the mole's shake-off, still
+OURS.

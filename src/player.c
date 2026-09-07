@@ -541,7 +541,7 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
     if (p->hazard == 8) {                  /* $80B24D: in the water */
         /* $80B24E: $CA at zero is the sink - Lakitu's rescue, and he
          * LIFTS the kart out (NOTES 283) */
-        if (p->ca == 0) { p->hazard = 6; p->resc_t = 0; k->speed = 0; p->resc_lift = true; }
+        if (p->ca == 0) { p->hazard = 6; p->resc_t = 0; k->speed = 0; p->resc_lift = true; p->fall_class = 0x22; }
         else {
             p->ca--;
             /* $80B254: the first eighteen frames ($CA from $102 down to
@@ -555,7 +555,7 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
                  * recordings (NOTES 283) */
                 if (p->ca < 0x78) p->lakitu_called = true;
                 uint8_t here = smk_track_surface(t, smk_kart_px(k->x), smk_kart_px(k->y));
-                if (here == 0x24) { p->hazard = 6; p->resc_t = 0; k->speed = 0; p->resc_lift = true; }
+                if (here == 0x24) { p->hazard = 6; p->resc_t = 0; k->speed = 0; p->resc_lift = true; p->fall_class = 0x24; }
                 else if (here != 0x22 && here < 0x80) {      /* $80B286: out */
                     p->hazard = 0;
                     p->flags |= 0x0010;
@@ -705,6 +705,7 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
                 p->flags |= 0x0010;
                 launch(p, k, 0x0800);
                 p->jump_state = 2; p->drive = 2;
+                p->skim_sfx = 1;                /* $4D, measured in the oracle */
             } else {                        /* $80B5EC: fall in */
                 p->flags &= 0x4002;
                 k->z = 0; k->zvel = 0; k->airborne = false;
@@ -736,6 +737,7 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
             k->speed = 0; k->speed_frac = 0; p->accel32 = 0;
             p->rev = 0;                     /* $80B64B -> $80B768: STZ $C2 (NOTES 285) */
             p->hazard = 6; p->resc_t = 0;
+            p->fall_class = surf & 0xFE;
             p->drive = (surf & 0x0E) == 0x04 ? 6 : 0x0A;   /* $20 measured as $04 */
             p->jump_state = p->drive;
             break;
@@ -1168,8 +1170,9 @@ void smk_player_step(smk_player *p, smk_kart *k, const smk_track *t,
     /* small after lightning: MEASURED, the kart accelerates at 2 a frame
      * (466 -> 644 over a hundred frames).  Where the game does it is not
      * decoded; the clamp is ours, labelled. */
-    if (p->shrink_t > 0 && (p->accel32 >> 16) > 2)
+    if ((p->shrink_t > 0 || p->mole_ramp > 0) && (p->accel32 >> 16) > 2)
         p->accel32 = ((int32_t)2 << 16) | (p->accel32 & 0xFFFF);
+    if (p->mole_ramp > 0) p->mole_ramp--;
 
     k->angle = p->heading;   /* the camera follows the heading ($808632) */
 }

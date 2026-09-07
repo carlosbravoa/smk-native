@@ -1564,6 +1564,9 @@ static void step_kart(smk_kart *k, smk_track *trk,
     } else if (k->hazard_hit == 3) {                 /* bug 12: the mole grabs on */
         if (!player.mole_on) {
             player.mole_on = 1; player.mole_hops = 0; player.mole_dir = 0;
+            player.mole_hold = 7;                    /* the measured grab, smk.h */
+            player.mole_t = 0;
+            smk_kart_launch(k, SMK_BOUNCE_VEL);     /* the little hop, landing 6 frames on */
             if (getenv("SMK_MOLE_TRACE")) printf("mole ON f%ld\n", hud_race_frames);
         }
     } else if (k->hazard_hit) {
@@ -1574,10 +1577,13 @@ static void step_kart(smk_kart *k, smk_track *trk,
         smk_sfx_play(SMK_SFX_RAMP);
         smk_player_hit_banana(&player, k);
     }
-    /* a mole on the kart drags it to a crawl - it "sticks forever" until
-     * shaken (the recording's rides sit at crawl speeds; the cap and the
-     * three-hop shake-off are OURS) */
-    if (player.mole_on && k->speed > 0x100) k->speed = 0x100;
+    /* the grab's stop and climb (smk_player.mole_hold, measured); the
+     * ride itself costs nothing more, and the shake-off stays OURS */
+    if (player.mole_on && player.mole_t < 1000) player.mole_t++;
+    if (player.mole_hold > 0 && --player.mole_hold == 0) {
+        k->speed = 0; k->speed_frac = 0; player.accel32 = 0;
+        player.mole_ramp = 32;
+    }
     if (player.squash_t > 0) {
         /* THE SQUASH, MEASURED in the user's 150cc recording (NOTES 292):
          * 200 frames flat ($70 = 2), the speed and the rev at zero.  $42
@@ -1766,8 +1772,20 @@ static void step_kart(smk_kart *k, smk_track *trk,
                            smk_engine_base_volume() * (31.0f / 20.0f), sfx_side());
             if (on && spin_t == 10 && getenv("SMK_SFX_TRACE")) printf("sfx: spin voice keyed pan %+.1f\n", sfx_side());
         }
-        if (player.hazard != was_hazard2 && player.hazard == 6)
-            smk_sfx_play(SMK_SFX_FALL);              /* off the road   */
+        if (player.hazard != was_hazard2 && player.hazard == 6) {
+            /* by what dropped it (smk_player.fall_class, measured) */
+            if (player.fall_class == 0x24) smk_sfx_play(SMK_SFX_LAVA);
+            else if (player.fall_class == 0x26) smk_sfx_play(SMK_SFX_DEEP_DROP);
+            else if (player.fall_class != 0x22) smk_sfx_play(SMK_SFX_FALL);   /* the void, the edge */
+            /* the wade's sink is silent */
+        }
+        /* the put-down repeats the fall's own sound - $27 for the void,
+         * $28 for lava - and the deep drop and the sink have none */
+        if (was_hazard2 == 0x0E && player.hazard == 0) {
+            if (player.fall_class == 0x24) smk_sfx_play(SMK_SFX_LAVA);
+            else if (player.fall_class == 0x20 || player.fall_class == 0x28) smk_sfx_play(SMK_SFX_FALL);
+        }
+        if (player.skim_sfx) { smk_sfx_play(SMK_SFX_SKIM); player.skim_sfx = 0; }
         if (player.mole_on && !was_mole) smk_sfx_play(SMK_SFX_MOLE);
         /* the little bumps on the grid ($80:B6B9), which the port had the
          * physics for but no sound (NOTES 265) */
@@ -3049,6 +3067,48 @@ static void draw_entity(const smk_track *trk, const smk_camera *cam,
  * flatart.inc was a screenshot of.  The pose still turns with the
  * heading, so the quarter is taken from whatever frame the kart would
  * otherwise be showing. */
+/* THE SHRUNK KART, MEASURED from the user's cc150 recording (OAM through
+ * the PPU, frames 5312-5610, the poison mushroom's 1086-frame timer):
+ * the ordinary kart is four 16x16 sprites - $80 mirrored over $A0
+ * mirrored, halves at x 112 and 128; shrunk it is $80 mirrored at x 116
+ * and 123 over $90 mirrored at the same x, eight rows lower.  $90 is the
+ * sheet's row eight pixels under $80, so the screen shows the pose's
+ * rows 0-23 - the top three quarters, the wheels' bottom cut - and the
+ * halves overlap by nine pixels, 23 wide instead of 32.  The port drew
+ * the flattened (Thwomp) art for it - the user: "we just get our head
+ * over the floor, no body".  cx, cy: the pose's centre bottom. */
+static void draw_shrunk(uint32_t *fb, int rw, int rh, const uint32_t *palette, int pal,
+                        const smk_sprites *spr, int frame, int cx, int cy, float s)
+{
+    if (!spr || frame < 0 || frame >= spr->frames || s <= 0.0f) return;
+    const int H = SMK_SPR_PX / 2;                   /* a 16-px half */
+    int dw = (int)((float)H * s + 0.5f);            /* one half, drawn */
+    int rows = (int)(24.0f * s + 0.5f);
+    if (dw < 1 || rows < 1) return;
+    int overlap = (int)(9.0f * s + 0.5f);
+    int base = cy - (int)(32.0f * s + 0.5f) + rows; /* the kart's own base stays where it is;
+                                                     * the cropped block sits on it */
+    int y0 = base - rows;
+    int xl = cx - dw + overlap / 2;                 /* the left half, shifted right */
+    int xr = cx - overlap + overlap / 2;            /* the mirrored right half, shifted left */
+    const uint8_t *px = spr->px[frame];
+    for (int yy = 0; yy < rows; yy++) {
+        int sy = y0 + yy;
+        if (sy < 0 || sy >= rh) continue;
+        int ty = yy * 24 / rows;
+        for (int xx = 0; xx < dw; xx++) {
+            int tx = xx * H / dw;
+            uint8_t v = px[ty * SMK_SPR_PX + tx];
+            if (!v) continue;
+            uint32_t c = palette[(pal + v) & 0xFF];
+            int sl = xl + xx;                       /* the left half owns the left of the seam */
+            int sr = xr + (dw - 1 - xx);
+            if (sl >= 0 && sl < rw && sl < cx) fb[(size_t)sy * rw + sl] = c;
+            if (sr >= 0 && sr < rw && sr >= cx) fb[(size_t)sy * rw + sr] = c;
+        }
+    }
+}
+
 static void draw_flat(uint32_t *fb, int rw, int rh, const uint32_t *palette, int pal,
                       const smk_sprites *spr, int frame, int cx, int cy, float s)
 {
@@ -3220,9 +3280,14 @@ static void draw_ai_kart(const smk_rom *rom, const smk_track *trk,
         int fdraw = mirror ? 0 : f;
         bool hf2 = hf;
         (void)kt;
-        if (racers[k].squash_t > 0 || racers[k].shrink_t > 0) {   /* flattened / shrunk */
+        if (racers[k].squash_t > 0) {                            /* flattened */
             draw_flat(fb, rw, rh, trk->palette, d2->pal, &other[k], fdraw,
                       (int)lroundf(px), (int)lroundf(py), ks);
+            return;
+        }
+        if (racers[k].shrink_t > 0) {                            /* shrunk, the measured way */
+            draw_shrunk(fb, rw, rh, trk->palette, d2->pal, &other[k], fdraw,
+                        (int)lroundf(px), (int)lroundf(py), ks);
             return;
         }
         {
@@ -3528,8 +3593,12 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
             int fq = frame == 1000 ? 0
                    : (frame == SMK_POSE_LEAN || frame == -SMK_POSE_LEAN) ? SMK_SPR_LEAN
                    : (frame < 0 ? -frame : frame);
-            draw_flat(fb, rw, rh, trk->palette, ppal, karts, fq,
-                      rw / 2, prow - lift, (float)scale);
+            if (player.squash_t > 0)
+                draw_flat(fb, rw, rh, trk->palette, ppal, karts, fq,
+                          rw / 2, prow - lift, (float)scale);
+            else
+                draw_shrunk(fb, rw, rh, trk->palette, ppal, karts, fq,
+                            rw / 2, prow - lift, (float)scale);
         }
         else if (frame == SMK_POSE_LEAN || frame == -SMK_POSE_LEAN)
             /* the SAME block as the straight pose, drawn UNFOLDED so its
@@ -3556,14 +3625,32 @@ static void draw_scene(const smk_rom *rom, const smk_track *trk,
              * counter.  Same art as the one in its hole - obj_texel folds
              * $C0 over $C2 and mirrors - sized by the INK so it keeps the
              * size it had when it was 26 px of ripped pixels. */
+            /* MEASURED (the user's moles recording, OAM through the PPU
+             * from the grab at frame 15340): the riding mole is the same
+             * 32x32 block the hole shows - $C0 over $C2, mirrored - at
+             * the kart's own size, its top ten rows above the kart's top
+             * at rest (the kart's top at 71, the mole's at 59-61), so it
+             * overlaps the kart's upper 22 rows.  On the grab it springs
+             * up 13 rows in five frames and bobs eight rows either way on
+             * a 22-frame swing that dies out over the next sixty; the x
+             * jitters one pixel.  The port drew it two thirds the size,
+             * twelve rows too high. */
             int mil, mir, mib;
             if (obj_near_ink(&mil, &mir, &mib)) {
                 const int mw = SMK_OBJ_NEAR_W, mh = SMK_OBJ_NEAR_H;
-                int inkw = mir - mil + 1;
-                int mdw = mw * (26 * scale * 2 / 3) / inkw;
-                int mdh = mh * (26 * scale * 2 / 3) / inkw;
+                (void)mil; (void)mir; (void)mib;
+                int mdw = mw * scale, mdh = mh * scale;
                 int mcx = rw / 2 + (int)(((fx_ticks >> 3) & 1u) ? 1 : -1) * scale;
-                int mcy = prow - lift - 22 * scale;
+                int t = player.mole_t;
+                float bob;
+                if (t < 5) bob = -9.0f + 13.0f * (float)t / 5.0f;           /* 60 -> 47 */
+                else if (t < 70) {
+                    float amp = t < 40 ? 8.0f : 8.0f * (float)(70 - t) / 30.0f;
+                    float centre = t < 40 ? -16.0f : -16.0f + 6.0f * (float)(t - 40) / 30.0f;
+                    bob = centre + amp * cosf((float)(t - 10) * 6.2831853f / 22.0f);
+                } else bob = -10.0f;
+                /* mcy: the mole's BOTTOM; the kart's top is prow-lift-32*scale */
+                int mcy = prow - lift - 32 * scale + (int)(bob * (float)scale) + mdh;
                 int mpal = smk_obj_pal(trk->theme);
                 for (int dy = 0; dy < mdh; dy++) {
                     int yy = mcy - mdh + dy;

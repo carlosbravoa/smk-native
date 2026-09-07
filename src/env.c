@@ -568,9 +568,11 @@ static void frame(smk_env *e, uint16_t held, uint16_t pressed)
     k->hazard_hit = 0;
     if (!p->hazard) smk_collide_objects(k, &e->crs);
     if (k->hazard_hit == 2)      p->squash_t = SMK_SQUASH_T;
-    else if (k->hazard_hit == 3) { if (!p->mole_on) { p->mole_on = 1; p->mole_hops = 0; p->mole_dir = 0; } }
+    else if (k->hazard_hit == 3) {
+        if (!p->mole_on) { p->mole_on = 1; p->mole_hops = 0; p->mole_dir = 0; p->mole_hold = 7; smk_kart_launch(k, SMK_BOUNCE_VEL); }
+    }
     else if (k->hazard_hit)      smk_player_hit_banana(p, k);
-    if (p->mole_on && k->speed > 0x100) k->speed = 0x100;
+    if (p->mole_hold > 0 && --p->mole_hold == 0) { k->speed = 0; k->speed_frac = 0; p->accel32 = 0; p->mole_ramp = 32; }
     if (p->squash_t > 0) { p->squash_t--; k->speed = 0; k->speed_frac = 0; }
     /* the rescue's exit: Lakitu takes his two-coin fee */
     if (was_hazard == 0x0E && p->hazard == 0) {

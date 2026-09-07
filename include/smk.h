@@ -412,6 +412,27 @@ typedef struct {
     int      shrink_t;         /* $84: 1088 frames small after lightning    */
     int      squash_t;         /* bug 13: frames flat under a Thwomp (OURS) */
     int      mole_on;          /* bug 12: a mole rides the kart (sticks until shaken) */
+    /* THE GRAB, MEASURED in the user's moles recording (frame 15340 of
+     * Donut Plains 2): the speed holds 7 frames at what it was, drops to
+     * ZERO, then climbs 2 a frame for 32 frames (4, 6, 8 ... 64) before
+     * the ordinary acceleration resumes (70, 76 ...); the kart hops
+     * (state 2) and lands six frames on, which is the $25 in the queue;
+     * no state change otherwise, and the ride goes on.  The port's old
+     * crawl - a $100 cap for the whole ride - was NOT the recording: the
+     * kart is back to 806 four seconds after the grab, mole and all. */
+    int      mole_hold;        /* frames of the 7-frame hold left       */
+    int      mole_t;           /* frames since the grab, for the ride's bob */
+    /* what dropped the kart, for the sound.  MEASURED in the oracle with
+     * every driveable tile filled with one class (the queue at $0E6C):
+     *   $20 / $28  the void, Rainbow Road's edge   $27 at the fall, $27 at the put-down
+     *   $24        lava, the pit                    $28 at the fall, $28 at the put-down
+     *   $26        the deep drop (state $0A)        $3C at the drop, nothing after
+     *   $22        the wade's sink at $CA = 0       NOTHING - the splash was the fall-in's
+     * The port played $27 for every one of them (the user: the sink
+     * "playing the falling off the road sound doesn't make sense"). */
+    uint8_t  fall_class;
+    int      skim_sfx;         /* the water skim just launched: $4D once */
+    int      mole_ramp;        /* frames of the 2-a-frame climb left    */
     /* Shaking it off is WAGGLING the d-pad, left and right - the user,
      * who has played the original: "P1 cannot get rid of the moles
      * pressing left right repeatedly as in the original game".  The
@@ -1626,6 +1647,9 @@ const char *smk_sfx_hint(int id);   /* when the game fires an unnamed one */
  * skid is a HELD voice, NOTES 221.  The user then named it by ear -
  * gravel - which fits: the game plays it on a surface, like $4C's mud.) */
 #define SMK_SFX_BOOST      0x48   /* USER + ROM $80:B48C                       */
+#define SMK_SFX_SKIM       0x4D   /* the water skim's launch ($22 at speed), MEASURED in the oracle */
+#define SMK_SFX_LAVA       0x28   /* $80:B647 - lava and the pit ($24), and their put-down */
+#define SMK_SFX_DEEP_DROP  0x3C   /* $26, the deep drop, MEASURED in the oracle */
 #define SMK_SFX_LAND_SOFT  0x4C   /* $80:B201/$B1F7 - landing on class >= $5C
                                    * or on water: the SAME landing code as $25 */
 /* The OVERTAKE voices (NOTES 235), read from the ROM's own two tables
