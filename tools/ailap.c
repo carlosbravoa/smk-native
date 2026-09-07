@@ -36,14 +36,15 @@ static int run_course(const smk_rom *rom, int t, int cls, int need, int *lap_fra
 
     int lapped = 0, at = 0;
     *hazard = 0;
-    /* SMK_AILAP_TRACE=path: kart 1's frame, x, y, speed, sector, row - to
-     * see WHERE a course is slow, not just that it is */
-    FILE *tr = getenv("SMK_AILAP_TRACE") ? fopen(getenv("SMK_AILAP_TRACE"), "w") : NULL;
+    /* SMK_AILAP_TRACE=path: every kart every frame - class, kart, frame,
+     * x, y, speed, sector, row - to see WHERE a course is slow or wet,
+     * not just that it is */
+    FILE *tr = getenv("SMK_AILAP_TRACE") ? fopen(getenv("SMK_AILAP_TRACE"), cls == 0 ? "w" : "a") : NULL;
     for (int f = 0; f < MAX_FRAMES && !lapped; f++) {
         for (int i = 1; i < SMK_CHARACTERS; i++) {
             smk_racer_step(&racers[i], &trk, &crs, &phys);
-            if (tr && i == 1)
-                fprintf(tr, "%d %d %d %d %d %d\n", f, smk_kart_px(racers[i].k.x), smk_kart_px(racers[i].k.y),
+            if (tr)
+                fprintf(tr, "%d %d %d %d %d %d %d %d\n", cls, i, f, smk_kart_px(racers[i].k.x), smk_kart_px(racers[i].k.y),
                         racers[i].k.speed, racers[i].sector, crs.wattr[racers[i].sector < 0 ? 0 : racers[i].sector] & 3);
             uint8_t s = smk_track_surface(&trk, smk_kart_px(racers[i].k.x), smk_kart_px(racers[i].k.y));
             if (s >= 0x20 && s < 0x40 && !racers[i].k.airborne) (*hazard)++;
