@@ -351,7 +351,11 @@ static int  hud_input;                   /* L/R/accel bits, for the HUD */
  * results screen is for. */
 enum { RACE_COUNTDOWN, RACE_RUN, RACE_FINISH };
 #define SMK_FINISH_TURN   80     /* frames to swing the camera round     */
-#define SMK_FINISH_HOLD  210     /* and how long the celebration lasts   */
+#define SMK_FINISH_HOLD  100     /* and how long the celebration lasts:
+                                  * three seconds with the swing (the user:
+                                  * "3 secs of celebration and 2 for fade
+                                  * out") */
+#define SMK_FINISH_FADE  120     /* the two seconds of fade to the results */
 #define SMK_FINISH_DIST 34.0f    /* how far ahead of the kart it ends  */
 static int race_state = RACE_COUNTDOWN;
 static int race_count;                   /* frames spent counting down  */
@@ -1362,6 +1366,22 @@ static smk_autopilot autopilot;
 static int      net_act = 1;
 static int      net_hold;
 static uint16_t net_pad_prev;
+/* The trained driver can wedge itself facing the wrong way and sit
+ * there - the user: "if the Neural 2P player gets facing outwards, they
+ * get stuck and won't move any more".  Its observation carries no
+ * memory, so nothing in it says "you have been here five seconds".  A
+ * watch does: no ground made in three seconds while it is not being
+ * rescued or spun hands the wheel to the autopilot for five, and the
+ * dial says AUTO for as long as that lasts.  OURS. */
+static int      net_stuck;
+static int32_t  net_anchor_x, net_anchor_y;
+static int      net_fallback;
+#define NET_STUCK_FRAMES   180
+#define NET_STUCK_PX        24
+#define NET_FALLBACK_FRAMES 300
+/* the fade to the results, 0..1, applied at present (item 5 of the
+ * user's round: three seconds of celebration, two of fade) */
+static float    finish_fade;
 
 /* SMK_OBS_TRACE=frame - see the note at its call site */
 static void obs_trace(const float *obs, int act);
@@ -2158,6 +2178,10 @@ static int show_kart = 1, show_grid = 1;
     X(smk_ui_result,   result)      \
     X(bool,            tt_mushroom) \
     X(smk_autopilot,   autopilot)   \
+    X(int,             net_stuck)    /* frames the trained driver has made no ground */ \
+    X(int32_t,         net_anchor_x) /* where it was when the watch began    */ \
+    X(int32_t,         net_anchor_y) \
+    X(int,             net_fallback) /* frames the autopilot drives for it instead */ \
     X(int,             net_act)      /* the decision --cpu-policy is holding */ \
     X(int,             net_hold)     /* frames left of it, as trained        */ \
     X(uint16_t,        net_pad_prev) /* its own button edges                 */ \
@@ -2208,7 +2232,7 @@ static const char *driver_label(void)
     /* WHICH machine: the trained network and src/autopilot.c are not the
      * same opponent, and the scripted one still takes the battle arenas
      * and any build with no weights compiled in. */
-    return (cpu_net.ok && smk_net_drives_track(cur_track)) ? "NEURAL" : "AUTO";
+    return (cpu_net.ok && smk_net_drives_track(cur_track) && net_fallback <= 0) ? "NEURAL" : "AUTO";
 }
 
 static bool slot_is_driven(int q)
@@ -5083,8 +5107,41 @@ int main(int argc, char **argv)
              * policy drive alone, full screen, is the clearest look at
              * it there is - a split screen halves exactly the thing you
              * are trying to see. */
+            /* A driver whose race is run keeps going by itself - the
+             * original hands your kart to the CPU at the line and it
+             * drives on through the celebration and the wait (the user:
+             * "after arriving, the kart should continue in auto mode").
+             * The stuck watch on the trained driver, and its fallback,
+             * live here too. */
+            bool self_driven = race_over && !replay_path;
             if (cpu_net.ok && smk_net_drives_track(cur_track)
-                && (views[v].bot || autodrive)
+                && (views[v].bot || autodrive) && !self_driven
+                && race_state == RACE_RUN && !replay_path) {
+                bool calm = player.hazard == 0 && player.squash_t == 0
+                            && (player.state < 0x0A || player.state > 0x1A) && kart.speed >= 0;
+                if (net_fallback > 0) {
+                    net_fallback--;
+                    if (net_fallback == 0) { net_stuck = 0; }
+                } else if (calm) {
+                    if (net_stuck == 0) { net_anchor_x = kart.x; net_anchor_y = kart.y; }
+                    net_stuck++;
+                    if (net_stuck >= NET_STUCK_FRAMES) {
+                        int dx = smk_kart_px(kart.x) - smk_kart_px(net_anchor_x);
+                        int dy = smk_kart_px(kart.y) - smk_kart_px(net_anchor_y);
+                        if (dx * dx + dy * dy < NET_STUCK_PX * NET_STUCK_PX) {
+                            net_fallback = NET_FALLBACK_FRAMES;
+                            if (getenv("SMK_POLICY_TRACE"))
+                                printf("policy stuck at %d,%d for %d frames: the autopilot takes view %d for %d frames\n",
+                                       smk_kart_px(kart.x), smk_kart_px(kart.y), net_stuck, cur_view, NET_FALLBACK_FRAMES);
+                        }
+                        net_stuck = 0;
+                    }
+                } else {
+                    net_stuck = 0;
+                }
+            }
+            if (cpu_net.ok && smk_net_drives_track(cur_track)
+                && (views[v].bot || autodrive) && !self_driven && net_fallback <= 0
                 && race_state == RACE_RUN && !replay_path) {
                 /* The trained policy, as the second player's driver.  It
                  * gets the SAME observation smk_env_batch_step hands it
@@ -5135,11 +5192,14 @@ int main(int argc, char **argv)
                     in.item = it != 0;
                     in.dpad_up = in.dpad_down = (it == 2);
                 }
-            } else if ((autodrive || views[v].bot)
-                && race_state == RACE_RUN && !replay_path) {
+            } else if ((autodrive || views[v].bot || self_driven || net_fallback > 0)
+                && (race_state == RACE_RUN || (race_state == RACE_FINISH && self_driven))
+                && !replay_path) {
                 /* The autopilot presses buttons and nothing else, so the
                  * kart it drives is subject to every rule the player's is
-                 * (src/autopilot.c). */
+                 * (src/autopilot.c).  It also drives a finished kart on
+                 * through the celebration, and a wedged trained driver
+                 * out of its corner. */
                 smk_autopilot_out ap;
                 smk_autopilot_step(&autopilot, &trk, &crs, &player, &kart, &ap);
                 if (getenv("SMK_OBS_TRACE")) {
@@ -5906,9 +5966,25 @@ int main(int argc, char **argv)
             /* ...and they come when the field is home, or fifteen seconds
              * after the fourth kart was (NOTES 282); a time trial waits
              * for its own drivers only, and a minute is the backstop */
-            bool due = race_mode == SMK_MODE_TT ? every_view_finished()
-                                                : (field_home || cooldown_over);
+            /* Once everybody PLAYING is home the wait is five seconds
+             * from the last of them - three of celebration and two of
+             * fade - and the fifteen-second cooldown only matters while
+             * a player is still out there (the user, item 5). */
+            int since_last = finish_wait;
+            for (int i = 0; i < nviews; i++)
+                if (views[i].drives && i != cur_view && views[i].finish_wait < since_last)
+                    since_last = views[i].finish_wait;
+            bool all_home = every_view_finished();
+            bool due = race_mode == SMK_MODE_TT ? all_home
+                     : (all_home ? since_last >= SMK_FINISH_TURN + SMK_FINISH_HOLD + SMK_FINISH_FADE
+                                 : (field_home || cooldown_over));
+            finish_fade = 0.0f;
+            if (all_home && race_mode != SMK_MODE_TT && race_over) {
+                int f = since_last - (SMK_FINISH_TURN + SMK_FINISH_HOLD);
+                if (f > 0) finish_fade = f >= SMK_FINISH_FADE ? 1.0f : (float)f / SMK_FINISH_FADE;
+            }
             if (results_ready && (due || finish_wait >= SMK_FINISH_WAIT)) {
+                finish_fade = 0.0f;
                 results_ready = false;
                 race_state = RACE_RUN;          /* nothing more to celebrate */
                 build_result_table(&result, racers, result.total, (int)(me - racers));
@@ -6146,6 +6222,17 @@ int main(int argc, char **argv)
                         fclose(pf);
                     }
                     in.quit = true;
+                }
+            }
+            if (finish_fade > 0.0f) {
+                /* the fade to the results: the whole frame darkens */
+                unsigned keep = (unsigned)((1.0f - finish_fade) * 256.0f);
+                for (int i = 0; i < rw * rh; i++) {
+                    uint32_t c = fb[i];
+                    fb[i] = (c & 0xFF000000u)
+                          | ((((c >> 16) & 255) * keep >> 8) << 16)
+                          | ((((c >> 8) & 255) * keep >> 8) << 8)
+                          | ((c & 255) * keep >> 8);
                 }
             }
             SDL_UpdateTexture(tex, NULL, fb, rw * (int)sizeof *fb);
