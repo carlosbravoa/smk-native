@@ -117,10 +117,15 @@ The renderer is single-threaded software and holds 1920×1080 at the game's
   target speeds per class, the surface table, drift, hop, the turbo start
   and the countdown.  Gated by replaying recorded human runs through the
   port frame for frame.  Water: the wade, the sink and Lakitu's fishing,
-  measured from recordings.
+  measured from recordings; the deep classes drop you on the first frame,
+  as the oracle showed the game does, and each fall has the game's own
+  sound (the void's, lava's, the deep drop's thud, the skim's, and
+  silence for the sink).
 - **Seven opponents on the ROM's own racing lines**: its direction field,
   speed classes and rubber band, kart-to-kart contact with the weight
-  table, ramp launches, wall escapes, Lakitu's rescue.  Their item
+  table, ramp launches, the water skim (measured in the oracle: the
+  game's field skims Donut Plains 3's lake onto the bridge), wall
+  escapes, Lakitu's rescue.  Their item
   behaviour is the game's: the per-character attack masks, and the hop
   over a floor item with the ROM's own odds (an AI's poison mushroom is
   jumped 30 times in 32 by the karts behind it; your banana one time in
@@ -137,10 +142,17 @@ The renderer is single-threaded software and holds 1920×1080 at the game's
   ROM and mapped by you ([`docs/SOUND.md`](docs/SOUND.md)); off by
   default, `n` toggles it.
 - **The furniture**: the HUD on the game's own art, Lakitu and his
-  lights, the flag, the lap sign, Thwomps, moles, cheep-cheeps, piranha
-  plants, pipes, breakable blocks, water and the fall, the horizon per
-  theme, the winner's pose, the squash, the track map, the finishing
-  list and standings with the game's faces.
+  lights, the flag, the lap sign, Thwomps, moles (the grab's stop and
+  climb and the mole riding the kart as the recording shows them),
+  cheep-cheeps, piranha plants, pipes, breakable blocks, water and the
+  fall, the horizon per theme, the winner's pose, the squash, the shrunk
+  kart as the game draws it, the track map, the finishing list and
+  standings with the game's faces.
+- **The finish**: after the line your kart drives itself, as the
+  original's does; once everybody playing is home the results come five
+  seconds after the last of them, three of celebration and two of fade.
+  A trained CPU driver that wedges itself in a corner hands over to the
+  autopilot for five seconds, and the dial says AUTO while it does.
 - Karts, objects and effects from the ROM's sprite sheets, with the
   rotation frames and the size ladder measured off the running game.
 
