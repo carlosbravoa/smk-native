@@ -143,7 +143,11 @@ class Studio:
         ttk.Radiobutton(fr, text="Start line (click the road)", variable=self.tool, value="LINE").pack(side="left")
         f = ttk.Frame(left); f.pack(anchor="w", pady=(2, 6))
         ttk.Label(f, text="Brush").pack(side="left")
-        ttk.Scale(f, from_=1, to=12, variable=self.brush, orient="horizontal", length=110).pack(side="left", padx=4)
+        self.brush_label = ttk.Label(f, text="%d" % self.brush.get(), width=3, anchor="e")
+        ttk.Scale(f, from_=1, to=12, variable=self.brush, orient="horizontal", length=110,
+                  command=self.on_brush).pack(side="left", padx=4)
+        self.brush_label.pack(side="left")
+        ttk.Label(f, text="tiles").pack(side="left")
 
         ttk.Label(left, text="Place", font=("TkDefaultFont", 10, "bold")).pack(anchor="w")
         for label, fam in MARKER_TOOLS:
@@ -165,6 +169,8 @@ class Studio:
         vs.pack(side="right", fill="y"); hs.pack(side="bottom", fill="x")
         self.canvas.pack(side="left", fill="both", expand=True)
         c = self.canvas
+        c.configure(cursor="crosshair")
+        c.bind("<Leave>", lambda e: self.canvas.delete("cursor"))
         c.bind("<ButtonPress-1>", self.on_press)
         c.bind("<B1-Motion>", self.on_drag)
         c.bind("<ButtonRelease-1>", self.on_release)
@@ -507,6 +513,7 @@ class Studio:
         if self.busy:
             return
         tx, ty = self.tile_at(event)
+        self.draw_cursor(tx, ty)
         if not (0 <= tx < 128 and 0 <= ty < 128):
             return
         tool = self.tool.get()
@@ -543,8 +550,38 @@ class Studio:
             self.touched()
             self.paint_role(tx, ty, "OFF")
 
+    def on_brush(self, v):
+        """The slider moves in whole tiles, and says how many."""
+        n = max(1, min(12, int(round(float(v)))))
+        if self.brush.get() != n:
+            self.brush.set(n)
+        self.brush_label.configure(text="%d" % n)
+
+    def draw_cursor(self, tx, ty):
+        """The brush's outline under the pointer: what a click will paint,
+        or the object's footprint, or the line's tile."""
+        c = self.canvas
+        c.delete("cursor")
+        if not (0 <= tx < 128 and 0 <= ty < 128):
+            return
+        tool = self.tool.get()
+        s = TILE * self.zoom
+        if tool in PJ.ROLE_RGB and tool != "LINE":
+            b = int(self.brush.get())
+            x0, y0 = max(0, tx - b // 2), max(0, ty - b // 2)
+            x1, y1 = min(128, x0 + b), min(128, y0 + b)
+            c.create_rectangle(x0 * s, y0 * s, x1 * s, y1 * s, outline="white", width=2, tags="cursor")
+            c.create_rectangle(x0 * s + 1, y0 * s + 1, x1 * s - 1, y1 * s - 1, outline="black", width=1, tags="cursor")
+        elif tool.startswith("M:"):
+            w, h = PJ.FOOTPRINT[tool[2:]]
+            c.create_rectangle(tx * s, ty * s, (tx + w) * s, (ty + h) * s, outline=hexrgb(PJ.MARKER_RGB[tool[2:]]), width=2, tags="cursor")
+        elif tool == "LINE":
+            c.create_rectangle(tx * s, ty * s, (tx + 1) * s, (ty + 1) * s, outline="white", width=2, tags="cursor")
+
     def on_move(self, event):
-        self.status.configure(text=self.status_text(self.tile_at(event)))
+        tx, ty = self.tile_at(event)
+        self.draw_cursor(tx, ty)
+        self.status.configure(text=self.status_text((tx, ty)))
 
     def on_wheel(self, event):
         self.canvas.yview_scroll(-1 if event.delta > 0 else 1, "units")
