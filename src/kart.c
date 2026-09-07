@@ -265,6 +265,28 @@ void smk_kart_move_ex(smk_kart *k, const smk_track *t, bool auto_ramp)
             k->y = ny;
             return;
         }
+        /* Shallow water under an AI kart: it SKIMS, as the player does
+         * ($80B606 - the hazard dispatch runs for every kart).  MEASURED
+         * in the oracle on Donut Plains 3 at 100cc: the game's seven karts
+         * each spend 30-40 frames over the class-$22 water beside the
+         * bridge in state 2 (airborne) and land on the bridge; the port's
+         * AI, which ran no water code, drove through it on the ground and
+         * sat in the lake (the user: "they all fell down from the bridge").
+         * The loss is the player's ($2C0 over $400, else $A0); an AI too
+         * slow to skim was never seen, so it skims regardless - LABELLED. */
+        if (auto_ramp && (here & 0xFE) == 0x22 && !k->airborne) {
+            int16_t s = k->speed;
+            if (s >= 0x200) s = (int16_t)(s - (s >= 0x400 ? 0x2C0 : 0xA0));
+            if (s < 0x100) s = 0x100;
+            int16_t up, fwd;
+            smk_dsp_sincos(0x0800, s, &up, &fwd);
+            k->zvel = up;
+            k->speed = fwd;
+            k->airborne = true;
+            k->x = nx;
+            k->y = ny;
+            return;
+        }
     }
 
     /* CORRECTION (NOTES 088): the bit-7 classes are WALLS, not ramps.
