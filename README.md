@@ -20,6 +20,20 @@ make game
 make run
 ```
 
+`./run.sh` does the same in one step.  Both check first that a compiler,
+cmake, pkg-config, SDL2, SDL2_mixer and the ROM are there, and name what
+is missing with the install command for your package manager
+(`tools/deps.sh`) instead of letting cmake fail in its own words.
+
+**Sound.**  The effects and the engine are decoded from the ROM and play
+at once.  The music is not: it is pre-recorded from the game's own sound
+driver into `rom/music/` by you ([`docs/SOUND.md`](docs/SOUND.md)), and
+it is off until `n` in the race or `SMK_MUSIC=1`.  If a race has no
+sound at all, the console says why at start-up: most often SDL found no
+audio device because no sound server (PipeWire, PulseAudio) is running
+or ALSA's library is missing; `SDL_AUDIODRIVER=pipewire`, `pulseaudio`
+or `alsa` picks a backend by hand.
+
 `make run` opens the shell: **title → players → mode → class → driver →
 course → race**.  It starts fullscreen; `alt+enter` or F11 toggles, and
 `--windowed` starts in a window.

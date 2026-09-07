@@ -4458,7 +4458,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
         return 1;
     }
-    if (!smk_audio_init()) printf("audio: unavailable (silent)\n");
+    if (!smk_audio_init()) fprintf(stderr, "audio: unavailable - the game is silent\n");
     smk_audio_set_dir(rom_path);
     if (sfx_audition) {
         /* `--sfx`: play every captured effect, named where the ROM's own

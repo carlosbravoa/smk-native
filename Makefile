@@ -21,6 +21,7 @@ game: $(NATIVE)/Makefile
 	@cmake --build $(NATIVE) -j$$(nproc)
 
 $(NATIVE)/Makefile:
+	@tools/deps.sh
 	@cmake -S . -B $(NATIVE) -DCMAKE_BUILD_TYPE=Release
 
 ## build and play
@@ -166,6 +167,7 @@ help:
 ## the course editor: draw a course, place its objects, pick a theme, build,
 ## validate, race the AI on it, play it.  DIR is optional (a package to open)
 studio: game $(BASE)
+	@tools/deps.sh editor
 	@$(PY) tools/trackstudio.py $(DIR)
 
 ## a course package against what the game needs: the lint, then the ROM's

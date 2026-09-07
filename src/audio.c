@@ -47,8 +47,26 @@ static void on_music_done(void)
 
 bool smk_audio_init(void)
 {
-    if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) return false;
-    if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) != 0) return false;
+    /* Say WHY when there is no sound.  A fresh machine most often has
+     * SDL built but no audio backend it can open (no PipeWire or Pulse
+     * running, no libasound), and the old one-line "unavailable" left
+     * the user guessing (the user: "my game is working but without
+     * sound"). */
+    if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) {
+        fprintf(stderr, "audio: SDL cannot start its audio subsystem: %s\n"
+                        "       (is a sound server running - PipeWire or PulseAudio - or ALSA's libasound installed?\n"
+                        "        SDL_AUDIODRIVER=pipewire|pulseaudio|alsa picks a backend by hand; "
+                        "the game runs on without sound)\n", SDL_GetError());
+        return false;
+    }
+    if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) != 0) {
+        fprintf(stderr, "audio: no audio device could be opened: %s\n"
+                        "       (SDL's driver is '%s'; is a sound server running?  "
+                        "SDL_AUDIODRIVER=pipewire|pulseaudio|alsa picks another; the game runs on without sound)\n",
+                Mix_GetError(), SDL_GetCurrentAudioDriver() ? SDL_GetCurrentAudioDriver() : "none");
+        return false;
+    }
+    printf("audio: %s\n", SDL_GetCurrentAudioDriver());
     Mix_AllocateChannels(16);        /* several effects can overlap */
     Mix_ReserveChannels(SFX_LOOPS);  /* the held sounds get their own */
     /* THE EFFECTS' LEVEL.  They played at the mixer's full volume while
