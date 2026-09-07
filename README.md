@@ -11,6 +11,15 @@ with its own perspective renderer at any resolution.
 formats and addresses. See [`rom/README.md`](rom/README.md) for where the
 ROM goes.
 
+It also builds courses of its own.  **Track Studio** (`make studio`) is
+an editor where you paint a course, place its objects, pick one of the
+game's eight themes and press Build: the tiles, the sector map, the
+racing line, the grid and everything the game's own AI, lap rule and
+rescue need are generated and validated, the ROM's field is raced round
+it, and the course appears under CUSTOM in the game.  One button shares
+it as a single file anyone can drop into their tracks folder.  See
+[Your own courses](#your-own-courses).
+
 ## Build and run
 
 ```bash
@@ -155,6 +164,12 @@ The renderer is single-threaded software and holds 1920×1080 at the game's
   autopilot for five seconds, and the dial says AUTO while it does.
 - Karts, objects and effects from the ROM's sprite sheets, with the
   rotation frames and the size ladder measured off the running game.
+- **Track Studio and the course engine**: draw a course as roles, place
+  boxes, coins, oil, pads, ramps and obstacles, choose the theme, and
+  the tool compiles it to the theme's tiles, generates the sector map
+  and racing line the ROM's AI drives, validates it, races the field on
+  it and starts the game on it; share it as one `.smkt` file with your
+  name inside ([`docs/TRACKS.md`](docs/TRACKS.md), the section below).
 
 ## Your own courses
 

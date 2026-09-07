@@ -1,7 +1,9 @@
 # Roadmap: a faithful native Super Mario Kart
 
 Goal: the game running on PC, SDL2, no emulator, **as faithful as possible**
-to the SNES original. "Faithful" means: behaviour derived from the ROM's own
+to the SNES original - and, since P9, a course engine and editor (Track
+Studio) that lets anyone build new courses the game's own AI drives
+([`docs/TRACKS.md`](TRACKS.md)). "Faithful" means: behaviour derived from the ROM's own
 code and data, not from how it looks in videos or how another remake did it.
 
 This file is the single place where we are honest about the gap between the
