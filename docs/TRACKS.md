@@ -809,11 +809,13 @@ there:
   every tile the map uses (tiles it never uses are the expander's
   leftovers and differ by construction; section 9).
 * **The registry**: indices 24 and up are the packages found under
-  `tracks/`, `$SMK_TRACKS` (a colon list) and
-  `$XDG_DATA_HOME/smk-port/tracks`, in name order; `--track` takes an
-  index, a slug or a directory; `--track-dir` adds a parent.  The
-  course screen shows a fifth column, **CUSTOM**, five to a page, when
-  packages exist and the mode is not a Grand Prix.  Best laps are kept
+  `tracks/`, `$SMK_TRACKS` (a colon list, semicolon on Windows, where a
+  colon is part of every absolute path) and the user's data directory
+  (`$XDG_DATA_HOME/smk-port/tracks`, `%APPDATA%\smk-port\tracks`), in
+  name order; `--track` takes an index, a slug or a directory;
+  `--track-dir` adds a parent.  The course screen shows a fifth column,
+  **CUSTOM**, five to a page, when packages exist and the mode is not a
+  Grand Prix.  Best laps are kept
   by slug (`laptimes.txt` lines `slug frames character`); a slug that
   is not registered when the file is read is carried and written back.
   The trained CPU drives packages (`smk_net_drives_track`); the RL

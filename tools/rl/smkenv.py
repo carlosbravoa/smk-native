@@ -173,6 +173,7 @@ def _load_lib(path: str | None = None) -> ctypes.CDLL:
     candidates = [path] if path else [
         os.path.join(_ROOT, "build-native", "libsmkenv.so"),
         os.path.join(_ROOT, "build-native", "libsmkenv.dylib"),
+        os.path.join(_ROOT, "build-native", "libsmkenv.dll"),
     ]
     for c in candidates:
         if c and os.path.exists(c):

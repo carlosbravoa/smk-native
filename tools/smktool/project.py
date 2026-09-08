@@ -724,10 +724,13 @@ def png_write(path, w, h, rgb):
 # ---- the game's own tools ----------------------------------------------------
 
 def tool_path(name: str) -> str:
+    # Windows builds the same target with an .exe on the end
+    names = (name, name + ".exe") if os.name == "nt" else (name,)
     for d in ("build-native", "build"):
-        p = os.path.join(ROOT, d, name)
-        if os.path.exists(p):
-            return p
+        for n in names:
+            p = os.path.join(ROOT, d, n)
+            if os.path.exists(p):
+                return p
     return ""
 
 

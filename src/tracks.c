@@ -16,6 +16,7 @@
  * GP courses through it byte for byte.
  */
 #include "smk.h"
+#include "smkos.h"
 #include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -49,24 +50,13 @@ static bool write_file(const char *path, const void *buf, size_t n, char *err, s
     return ok;
 }
 
-static void mkdirs(const char *dir)
-{
-    char path[1024];
-    snprintf(path, sizeof path, "%s", dir);
-    for (char *p = path + 1; *p; p++) {
-        if (*p != '/') continue;
-        *p = 0; mkdir(path, 0755); *p = '/';
-    }
-    mkdir(path, 0755);
-}
-
 static void slug_of_dir(const char *dir, char *out, size_t n)
 {
     /* the last path component, trailing slashes ignored */
     size_t len = strlen(dir);
-    while (len > 1 && dir[len - 1] == '/') len--;
+    while (len > 1 && smk_is_sep(dir[len - 1])) len--;
     size_t start = len;
-    while (start > 0 && dir[start - 1] != '/') start--;
+    while (start > 0 && !smk_is_sep(dir[start - 1])) start--;
     size_t k = len - start;
     if (k >= n) k = n - 1;
     memcpy(out, dir + start, k);
@@ -130,32 +120,65 @@ static bool zip_open(pkg_ctx *c, const char *path, char *err, size_t errsz)
 
 static void pkg_close(pkg_ctx *c) { free(c->blob); c->blob = NULL; }
 
-/* a member as a FILE*: the directory's file, or the ZIP entry in memory */
-static FILE *member_open(pkg_ctx *c, const char *name)
+/* A member's BYTES, not a FILE*: the ZIP entry where it already sits in
+ * the blob, the directory's file read whole.  One shape for both, so the
+ * parsers below need no fmemopen - which POSIX has and Windows does not. */
+typedef struct { const uint8_t *p; size_t n; uint8_t *owned; } member;
+
+static bool member_get(pkg_ctx *c, const char *name, member *m)
 {
-    if (!c->is_zip) {
-        char path[1200];
-        snprintf(path, sizeof path, "%s/%s", c->dir, name);
-        return fopen(path, "rb");
+    memset(m, 0, sizeof *m);
+    if (c->is_zip) {
+        for (int i = 0; i < c->nent; i++)
+            if (!strcmp(c->ent[i].name, name)) {
+                m->p = c->ent[i].data; m->n = c->ent[i].size;
+                return true;
+            }
+        return false;
     }
-    for (int i = 0; i < c->nent; i++)
-        if (!strcmp(c->ent[i].name, name))
-            return fmemopen((void *)c->ent[i].data, c->ent[i].size, "rb");
-    return NULL;
+    char path[1200];
+    snprintf(path, sizeof path, "%s/%s", c->dir, name);
+    FILE *f = fopen(path, "rb");
+    if (!f) return false;
+    fseek(f, 0, SEEK_END);
+    long n = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (n < 0) { fclose(f); return false; }
+    uint8_t *buf = malloc((size_t)n + 1);
+    if (!buf) { fclose(f); return false; }
+    m->n = fread(buf, 1, (size_t)n, f);
+    fclose(f);
+    m->owned = buf; m->p = buf;
+    return true;
+}
+
+static void member_free(member *m) { free(m->owned); memset(m, 0, sizeof *m); }
+
+/* fgets over a member: the next line, the newline kept, NUL terminated,
+ * split at bufsz - 1 exactly as fgets splits an over-long line */
+static bool member_line(const member *m, size_t *pos, char *buf, size_t bufsz)
+{
+    if (*pos >= m->n) return false;
+    size_t i = *pos, k = 0;
+    while (i < m->n && k + 1 < bufsz) {
+        char ch = (char)m->p[i++];
+        buf[k++] = ch;
+        if (ch == '\n') break;
+    }
+    buf[k] = 0;
+    *pos = i;
+    return true;
 }
 
 static bool member_read(pkg_ctx *c, const char *name, void *buf, size_t want, char *err, size_t errsz)
 {
-    FILE *f = member_open(c, name);
-    if (!f) { snprintf(err, errsz, "%s/%s: missing", c->dir, name); return false; }
-    size_t n = fread(buf, 1, want, f);
-    int extra = fgetc(f);
-    fclose(f);
-    if (n != want || extra != EOF) {
-        snprintf(err, errsz, "%s/%s: expected %zu bytes", c->dir, name, want);
-        return false;
-    }
-    return true;
+    member m;
+    if (!member_get(c, name, &m)) { snprintf(err, errsz, "%s/%s: missing", c->dir, name); return false; }
+    bool ok = m.n == want;
+    if (ok) memcpy(buf, m.p, want);
+    else    snprintf(err, errsz, "%s/%s: expected %zu bytes", c->dir, name, want);
+    member_free(&m);
+    return ok;
 }
 
 static bool ends_with(const char *s, const char *suffix)
@@ -192,12 +215,13 @@ bool smk_src_from_pkg(const char *dir, smk_course_src *out, char *err, size_t er
         if (*p >= 'a' && *p <= 'z') *p -= 'a' - 'A';
 
     snprintf(path, sizeof path, "%s/course.txt", dir);
-    FILE *f = member_open(&ctx, "course.txt");
-    if (!f) { snprintf(err, errsz, "%s: missing", path); pkg_close(&ctx); return false; }
+    member m;
+    size_t mpos = 0;
+    if (!member_get(&ctx, "course.txt", &m)) { snprintf(err, errsz, "%s: missing", path); pkg_close(&ctx); return false; }
     char line[256];
     int lineno = 0, format = 0;
     bool have_grid = false, have_fin = false, have_seg = false;
-    while (fgets(line, sizeof line, f)) {
+    while (member_line(&m, &mpos, line, sizeof line)) {
         lineno++;
         char *h = strchr(line, '#');
         if (h) *h = 0;
@@ -237,7 +261,7 @@ bool smk_src_from_pkg(const char *dir, smk_course_src *out, char *err, size_t er
             char kind[32];
             if (sscanf(v, "%31s %d %d", kind, &a, &b) != 3) goto bad;
             if (a < 0 || a > 127 || b < 0 || b > 127) goto bad;
-            if (out->nstamp >= SMK_STAMPS_MAX) { snprintf(err, errsz, "%s:%d: more than %d objects", path, lineno, SMK_STAMPS_MAX); fclose(f); return false; }
+            if (out->nstamp >= SMK_STAMPS_MAX) { snprintf(err, errsz, "%s:%d: more than %d objects", path, lineno, SMK_STAMPS_MAX); member_free(&m); return false; }
             out->stamp[out->nstamp].kind = (uint8_t)strtol(kind, NULL, 0);
             out->stamp[out->nstamp].cell = (uint16_t)(b * 128 + a);
             out->nstamp++;
@@ -245,11 +269,11 @@ bool smk_src_from_pkg(const char *dir, smk_course_src *out, char *err, size_t er
             int k = 0;
             int n = sscanf(v, "%d %d %d", &a, &b, &k);
             if (n < 2 || a < 0 || a > 127 || b < 0 || b > 127 || k < 0 || k > 3) goto bad;
-            if (out->nent >= SMK_SRC_ENTS) { snprintf(err, errsz, "%s:%d: more than %d entities", path, lineno, SMK_SRC_ENTS); fclose(f); return false; }
+            if (out->nent >= SMK_SRC_ENTS) { snprintf(err, errsz, "%s:%d: more than %d entities", path, lineno, SMK_SRC_ENTS); member_free(&m); return false; }
             out->ent[out->nent++] = (uint16_t)((k << 14) | (b << 7) | a);
         } else if (!strcmp(key, "segment")) {
             if (sscanf(v, "%d", &a) != 1 || a < 0 || a > 254) goto bad;
-            if (out->nseg >= SMK_SRC_SEGS - 1) { snprintf(err, errsz, "%s:%d: more than %d segments", path, lineno, SMK_SRC_SEGS - 1); fclose(f); return false; }
+            if (out->nseg >= SMK_SRC_SEGS - 1) { snprintf(err, errsz, "%s:%d: more than %d segments", path, lineno, SMK_SRC_SEGS - 1); member_free(&m); return false; }
             out->seg_thresh[out->nseg++] = (uint8_t)a;
             have_seg = true;
         } else if (!strcmp(key, "segoff")) {
@@ -260,14 +284,14 @@ bool smk_src_from_pkg(const char *dir, smk_course_src *out, char *err, size_t er
             out->has_style = true;
         } else {
             snprintf(err, errsz, "%s:%d: unknown key '%s'", path, lineno, key);
-            fclose(f); return false;
+            member_free(&m); return false;
         }
         continue;
     bad:
         snprintf(err, errsz, "%s:%d: bad '%s' line", path, lineno, key);
-        fclose(f); return false;
+        member_free(&m); return false;
     }
-    fclose(f);
+    member_free(&m);
     #define FAIL_PKG(...) do { snprintf(err, errsz, __VA_ARGS__); pkg_close(&ctx); return false; } while (0)
     if (format != 1) FAIL_PKG("%s: format %d is not 1", path, format);
     if (out->theme < 0 || out->theme >= SMK_THEME_COUNT) FAIL_PKG("%s: theme must be 0..7", path);
@@ -282,10 +306,10 @@ bool smk_src_from_pkg(const char *dir, smk_course_src *out, char *err, size_t er
     if (!member_read(&ctx, "sectors.bin", out->sect, SMK_SECT_CELLS, err, errsz)) { pkg_close(&ctx); return false; }
 
     snprintf(path, sizeof path, "%s/line.txt", dir);
-    f = member_open(&ctx, "line.txt");
-    if (!f) { snprintf(err, errsz, "%s: missing", path); pkg_close(&ctx); return false; }
+    if (!member_get(&ctx, "line.txt", &m)) { snprintf(err, errsz, "%s: missing", path); pkg_close(&ctx); return false; }
+    mpos = 0;
     lineno = 0;
-    while (fgets(line, sizeof line, f)) {
+    while (member_line(&m, &mpos, line, sizeof line)) {
         lineno++;
         char *h = strchr(line, '#');
         if (h) *h = 0;
@@ -294,15 +318,15 @@ bool smk_src_from_pkg(const char *dir, smk_course_src *out, char *err, size_t er
         if (n < 2) continue;
         if (x < 0 || x > 1016 || y < 0 || y > 1016 || (x & 7) || (y & 7) || attr < 0 || attr > 255) {
             snprintf(err, errsz, "%s:%d: a waypoint is x y attr, x and y multiples of 8", path, lineno);
-            fclose(f); return false;
+            member_free(&m); return false;
         }
-        if (out->sectors >= SMK_MAX_SECTORS - 1) { snprintf(err, errsz, "%s: more than %d waypoints", path, SMK_MAX_SECTORS - 1); fclose(f); return false; }
+        if (out->sectors >= SMK_MAX_SECTORS - 1) { snprintf(err, errsz, "%s: more than %d waypoints", path, SMK_MAX_SECTORS - 1); member_free(&m); return false; }
         out->wp[out->sectors][0] = (uint8_t)(x / 8);
         out->wp[out->sectors][1] = (uint8_t)(y / 8);
         out->wp[out->sectors][2] = (uint8_t)attr;
         out->sectors++;
     }
-    fclose(f);
+    member_free(&m);
     if (out->sectors == 0) FAIL_PKG("%s: no waypoints", path);
     /* every painted cell must name a sector that has a waypoint */
     for (int i = 0; i < SMK_SECT_CELLS; i++)
@@ -327,7 +351,7 @@ bool smk_src_from_pkg(const char *dir, smk_course_src *out, char *err, size_t er
 bool smk_src_write_pkg(const smk_course_src *src, const char *dir, char *err, size_t errsz)
 {
     char path[1024];
-    mkdirs(dir);
+    smk_mkdirs(dir);
     snprintf(path, sizeof path, "%s/course.txt", dir);
     FILE *f = fopen(path, "w");
     if (!f) { snprintf(err, errsz, "%s: cannot write", path); return false; }
@@ -377,7 +401,7 @@ bool smk_src_write_pkg(const smk_course_src *src, const char *dir, char *err, si
 
     if (src->has_style) {
         snprintf(path, sizeof path, "%s/style", dir);
-        mkdirs(path);
+        smk_mkdirs(path);
         snprintf(path, sizeof path, "%s/style/tiles.bin", dir);
         if (!write_file(path, src->style_tiles, sizeof src->style_tiles, err, errsz)) return false;
         snprintf(path, sizeof path, "%s/style/palette.bin", dir);
@@ -405,14 +429,13 @@ static void wr32(FILE *f, uint32_t v) { wr16(f, v & 0xFFFF); wr16(f, v >> 16); }
 
 bool smk_src_write_smkt(const smk_course_src *src, const char *file, char *err, size_t errsz)
 {
-    char tmpl[] = "/tmp/smktXXXXXX";
-    char *dir = mkdtemp(tmpl);
-    if (!dir) { snprintf(err, errsz, "cannot make a scratch directory"); return false; }
-    if (!smk_src_write_pkg(src, dir, err, errsz)) return false;
+    char dir[1024];
+    if (!smk_scratch_dir(dir, sizeof dir)) { snprintf(err, errsz, "cannot make a scratch directory"); return false; }
+    if (!smk_src_write_pkg(src, dir, err, errsz)) { smk_rmtree(dir); return false; }
     static const char *names[] = { "course.txt", "map.bin", "sectors.bin", "line.txt", "roles.txt",
                                    "style/tiles.bin", "style/palette.bin", "style/surface.bin" };
     FILE *out = fopen(file, "wb");
-    if (!out) { snprintf(err, errsz, "%s: cannot write", file); return false; }
+    if (!out) { snprintf(err, errsz, "%s: cannot write", file); smk_rmtree(dir); return false; }
     long offs[8]; size_t sizes[8]; uint32_t crcs[8]; int written = 0, idx[8];
     for (int i = 0; i < 8; i++) {
         char path[1100];
@@ -445,9 +468,7 @@ bool smk_src_write_smkt(const smk_course_src *src, const char *file, char *err, 
     wr32(out, 0x06054b50u); wr16(out, 0); wr16(out, 0); wr16(out, (unsigned)written); wr16(out, (unsigned)written);
     wr32(out, (uint32_t)(cdend - cd)); wr32(out, (uint32_t)cd); wr16(out, 0);
     fclose(out);
-    char cmd[300];
-    snprintf(cmd, sizeof cmd, "rm -rf %s", dir);
-    if (system(cmd) != 0) { /* scratch left behind; harmless */ }
+    smk_rmtree(dir);
     return true;
 }
 
@@ -487,11 +508,9 @@ int smk_tracks_add_dir(const char *dir)
      * and the two used to collide as "a course called 'x' is already
      * registered" */
     char real[512];
-    char *rp = realpath(dir, NULL);
-    snprintf(real, sizeof real, "%s", rp ? rp : dir);
-    free(rp);
+    if (!smk_realpath(dir, real, sizeof real)) snprintf(real, sizeof real, "%s", dir);
     size_t len = strlen(real);
-    while (len > 1 && real[len - 1] == '/') real[--len] = 0;
+    while (len > 1 && smk_is_sep(real[len - 1])) real[--len] = 0;
     for (int i = 0; i < nreg; i++)
         if (!strcmp(reg[i].dir, real)) return SMK_TRACK_COUNT + i;
     if (nreg >= SMK_TRACKS_MAX - SMK_TRACK_COUNT) {
@@ -555,16 +574,14 @@ void smk_tracks_scan_default(void)
     if (env && *env) {
         char buf[2048];
         snprintf(buf, sizeof buf, "%s", env);
-        for (char *tok = strtok(buf, ":"); tok; tok = strtok(NULL, ":"))
+        const char *sep = smk_path_list_sep();
+        for (char *tok = strtok(buf, sep); tok; tok = strtok(NULL, sep))
             smk_tracks_scan(tok);
     }
-    char path[1024];
-    const char *xdg = getenv("XDG_DATA_HOME");
-    const char *home = getenv("HOME");
-    if (xdg && *xdg) snprintf(path, sizeof path, "%s/smk-port/tracks", xdg);
-    else if (home && *home) snprintf(path, sizeof path, "%s/.local/share/smk-port/tracks", home);
-    else path[0] = 0;
-    if (path[0]) smk_tracks_scan(path);
+    char path[1024], data[512];
+    smk_data_dir(data, sizeof data);
+    snprintf(path, sizeof path, "%s/tracks", data);
+    smk_tracks_scan(path);
 }
 
 int smk_tracks_find(const char *id)

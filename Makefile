@@ -17,10 +17,10 @@ ASAR    := vendor/asar-build/asar/bin/asar
 all: game
 
 ## build the native SDL game
-game: $(NATIVE)/Makefile
+game: $(NATIVE)/CMakeCache.txt
 	@cmake --build $(NATIVE) -j$$(nproc)
 
-$(NATIVE)/Makefile:
+$(NATIVE)/CMakeCache.txt:
 	@tools/deps.sh
 	@cmake -S . -B $(NATIVE) -DCMAKE_BUILD_TYPE=Release
 

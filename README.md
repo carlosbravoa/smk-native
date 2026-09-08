@@ -34,6 +34,26 @@ cmake, pkg-config, SDL2, SDL2_mixer and the ROM are there, and name what
 is missing with the install command for your package manager
 (`tools/deps.sh`) instead of letting cmake fail in its own words.
 
+**Windows.**  The toolchain is [MSYS2](https://www.msys2.org/), and the
+build is the same one: install MSYS2, open the **UCRT64** shell from the
+Start menu (not the plain MSYS one - `tools/deps.sh` stops you if you
+are in the wrong shell, because that one links against MSYS2's POSIX
+layer instead of building a Windows binary), and
+
+```bash
+pacman -S mingw-w64-ucrt-x86_64-{gcc,cmake,pkgconf,SDL2,SDL2_mixer} git make
+make game
+make run
+```
+
+That is a real `build-native/smk.exe`, not an emulation layer; MSYS2 is
+only where the compiler lives.  Copy it out with the SDL2 and SDL2_mixer
+DLLs beside it (`ldd build-native/smk.exe` lists them) and it runs on a
+machine with no MSYS2 at all.  Lap times and installed courses go to
+`%APPDATA%\smk-port` rather than `~/.local/share/smk-port`.  MSVC is not
+supported: the port uses POSIX directory reading and a GNU `typeof`, and
+MinGW-w64 has both.
+
 **Sound.**  The effects and the engine are decoded from the ROM and play
 at once.  The music is not: it is pre-recorded from the game's own sound
 driver into `rom/music/` by you ([`docs/SOUND.md`](docs/SOUND.md)), and

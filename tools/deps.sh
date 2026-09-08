@@ -13,8 +13,22 @@ what=""             # what each one is, for the reader
 have() { command -v "$1" >/dev/null 2>&1; }
 pc() { have pkg-config && pkg-config --exists "$1" 2>/dev/null; }
 
+# MSYS2 ships two kinds of shell and only one of them builds a Windows
+# binary: the MSYS shell links against its own POSIX layer, which needs
+# msys-2.0.dll beside the exe and gives no SDL window worth having.
+if [ "$MSYSTEM" = "MSYS" ]; then
+    echo "This is the MSYS shell, which builds against MSYS2's POSIX layer." >&2
+    echo "Open the UCRT64 shell instead (Start menu: MSYS2 UCRT64) and build there." >&2
+    exit 1
+fi
+
 # the package manager decides the names
-if have apt-get; then
+if [ -n "$MINGW_PACKAGE_PREFIX" ]; then
+    # MSYS2/MinGW-w64: the toolchain packages are the prefixed ones
+    pm="pacman -S"; q="$MINGW_PACKAGE_PREFIX"
+    p_cc="$q-gcc"; p_cmake="$q-cmake"; p_pkg="$q-pkgconf"
+    p_sdl="$q-SDL2"; p_mix="$q-SDL2_mixer"; p_py="$q-python"; p_tk="$q-tk"
+elif have apt-get; then
     pm="sudo apt install"; p_cc=build-essential; p_cmake=cmake; p_pkg=pkg-config
     p_sdl=libsdl2-dev; p_mix=libsdl2-mixer-dev; p_py=python3; p_tk=python3-tk
 elif have dnf; then

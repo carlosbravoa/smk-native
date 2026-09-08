@@ -5,6 +5,7 @@
  */
 #include <math.h>
 #include "smk.h"
+#include "smkos.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -272,8 +273,8 @@ int main(int argc, char **argv)
          * track and course, byte for byte, through the registry.  If a
          * field is missing from the format this is where it shows. */
         {
-            char tmpl[] = "/tmp/smkpkgXXXXXX";
-            char *root = mkdtemp(tmpl);
+            char rootbuf[128];
+            const char *root = smk_scratch_dir(rootbuf, sizeof rootbuf) ? rootbuf : NULL;
             int same = 0, tried = 0;
             static smk_course_src src;
             static smk_track ta, tb;
@@ -335,7 +336,7 @@ int main(int argc, char **argv)
              * written by the C writer and read back through the registry */
             {
                 char zpath[300];
-                snprintf(zpath, sizeof zpath, "%s/rom07.smkt", root ? root : "/tmp");
+                snprintf(zpath, sizeof zpath, "%s/rom07.smkt", root ? root : ".");
                 int zi = -1;
                 static smk_course cz;
                 bool ok = smk_src_from_rom(&rom, 7, &src)
@@ -355,11 +356,7 @@ int main(int argc, char **argv)
                   smk_tracks_total() > SMK_TRACK_COUNT
                   && !strcmp(smk_track_name(&rom, SMK_TRACK_COUNT), smk_track_name(&rom, 0)),
                   smk_track_name(&rom, SMK_TRACK_COUNT));
-            if (root) {
-                char cmd[400];
-                snprintf(cmd, sizeof cmd, "rm -rf %s", root);
-                if (system(cmd) != 0) printf("    (could not remove %s)\n", root);
-            }
+            if (root) smk_rmtree(root);
         }
 
         /* values confirmed against the running game (NOTES 042) */

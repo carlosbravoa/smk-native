@@ -11,38 +11,16 @@
  * stored time is exact and never accumulates rounding.
  */
 #include "smk.h"
+#include "smkos.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-
-/* mkdir -p: the data directory may not exist at all yet, and creating
- * only the last component silently fails then (which is how the first
- * save of a fresh install went missing). */
-static void mkdirs(char *path)
-{
-    for (char *p = path + 1; *p; p++) {
-        if (*p != '/') continue;
-        *p = 0;
-        mkdir(path, 0755);
-        *p = '/';
-    }
-    mkdir(path, 0755);
-}
 
 const char *smk_records_path(void)
 {
     static char path[1024];
-    const char *xdg = getenv("XDG_DATA_HOME");
-    const char *home = getenv("HOME");
-    if (xdg && *xdg)
-        snprintf(path, sizeof path, "%s/smk-port", xdg);
-    else if (home && *home)
-        snprintf(path, sizeof path, "%s/.local/share/smk-port", home);
-    else
-        snprintf(path, sizeof path, ".smk-port");
-    mkdirs(path);
+    smk_data_dir(path, sizeof path);
+    smk_mkdirs(path);
     size_t n = strlen(path);
     snprintf(path + n, sizeof path - n, "/laptimes.txt");
     return path;
